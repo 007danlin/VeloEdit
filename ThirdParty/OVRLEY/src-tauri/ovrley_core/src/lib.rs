@@ -1,0 +1,45 @@
+//! Core rendering and encoding library for OVRLEY.
+//!
+//! This crate is the Rust backend used by the Tauri shell. It owns the
+//! production data path from frontend JSON payloads through activity trimming,
+//! per-frame interpolation, Skia overlay rendering, ffmpeg encoding, progress
+//! tracking, and debug artifact generation.
+//!
+//! Public modules are intentionally grouped by responsibility so the Tauri
+//! command layer can stay thin while the testable business logic remains here.
+
+/// Activity JSON contracts plus trim and interpolation utilities.
+pub mod activity;
+/// Shared benchmark infrastructure for diagnostic benchmark binaries.
+pub mod benchmark_common;
+/// Shared CLI argument helpers for diagnostic binaries.
+pub mod bin_common;
+/// Backend-facing command helpers used by the Tauri application layer.
+pub mod commands;
+/// Progress and timing diagnostics shared by render and encode code.
+pub mod debug;
+/// Video encoding and ffmpeg integration.
+pub mod encode;
+/// Structured error types and result alias used by all core modules.
+pub mod error;
+/// Shared interpolation utilities used by activity and render modules.
+pub mod interpolation;
+/// Source media probing and embedded telemetry extraction.
+pub mod media;
+/// Render config validation seam — zero backend-owned defaults.
+pub mod normalize;
+/// Application path configuration and resolution.
+pub mod paths;
+/// Shared Ramer-Douglas-Peucker line simplification.
+pub mod rdp;
+/// Skia-based overlay rendering.
+pub mod render;
+/// Shared standard-metric widget definitions.
+pub mod standard_metrics;
+/// Shared standard-widget definitions.
+pub mod standard_widgets;
+/// Cross-cutting domain types (MetricKind, etc.) shared by config, render, and activity.
+pub mod types;
+
+pub use error::{CoreError, CoreResult};
+pub use types::{BackdropType, DisplayType, MetricKind, TrackFillStyle};

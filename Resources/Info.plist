@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleDevelopmentRegion</key><string>ru</string>
+<key>CFBundleExecutable</key><string>VeloEdit</string>
+<key>CFBundleIdentifier</key><string>app.veloedit.VeloEdit</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundleName</key><string>VeloEdit</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>2</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSSpeechRecognitionUsageDescription</key><string>VeloEdit локально распознаёт речь, чтобы не обрывать фразы при автоматическом монтаже.</string>
+<key>NSAppTransportSecurity</key><dict>
+<key>NSAllowsLocalNetworking</key><true/>
+</dict>
+<key>NSHumanReadableCopyright</key><string>Copyright © 2026 VeloEdit</string>
+</dict></plist>

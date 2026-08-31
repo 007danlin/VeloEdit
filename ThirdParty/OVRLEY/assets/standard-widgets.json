@@ -1,0 +1,154 @@
+{
+  "plot": {
+    "definitions": {
+      "course": {
+        "label": "Course",
+        "defaults": {
+          "value": "course",
+          "x": 100,
+          "y": 100,
+          "rotation": 0,
+          "opacity": 1,
+          "completed_line_width": 6,
+          "remaining_line_width": 6,
+          "width": 400,
+          "height": 200,
+          "completed_line_opacity": 100,
+          "remaining_line_opacity": 35,
+          "simplify_tolerance_px": 0.3,
+          "target_density": 1,
+          "show_full_activity": true,
+          "marker_variant": "single",
+          "marker_variant_diameter": 44,
+          "marker_size": 10,
+          "marker_opacity": 100,
+          "completed_line_color": "#ffffff",
+          "remaining_line_color": "#ffffff",
+          "marker_color": "#ffffff",
+          "color": "#ffffff"
+        }
+      },
+      "elevation": {
+        "label": "Elevation",
+        "defaults": {
+          "value": "elevation",
+          "x": 100,
+          "y": 100,
+          "rotation": 0,
+          "opacity": 1,
+          "completed_line_width": 6,
+          "remaining_line_width": 6,
+          "width": 400,
+          "height": 200,
+          "completed_line_opacity": 100,
+          "remaining_line_opacity": 35,
+          "area_completed_opacity": 24,
+          "area_remaining_opacity": 12,
+          "marker_variant": "single",
+          "marker_variant_diameter": 40,
+          "marker_size": 10,
+          "marker_opacity": 100,
+          "show_elevation_metric": true,
+          "show_elevation_imperial": false,
+          "starting_altitude": null,
+          "starting_altitude_unit": "m",
+          "show_full_activity": true,
+          "y_scale": 1,
+          "simplify_tolerance_px": 1,
+          "target_density": 0.75,
+          "metric_label_offset_x": 0,
+          "metric_label_offset_y": 0,
+          "imperial_label_offset_x": 0,
+          "imperial_label_offset_y": 0,
+          "completed_line_color": "#ffffff",
+          "remaining_line_color": "#ffffff",
+          "area_completed_color": "#ffffff",
+          "area_remaining_color": "#ffffff",
+          "marker_color": "#ffffff",
+          "color": "#ffffff",
+          "point_label": {
+            "font": "Arial.ttf",
+            "font_size": 12.5,
+            "color": "#ffffff"
+          }
+        }
+      }
+    }
+  },
+  "gradient": {
+    "definitions": {
+      "gradient": {
+        "label": "Gradient",
+        "defaults": {
+          "decimals": 1,
+          "unit_color": "#ffffff",
+          "value_offset": 0,
+          "show_sign": true,
+          "show_triangle": true,
+          "triangle_width": 72,
+          "triangle_positive_color": "#40e0d0",
+          "triangle_negative_color": "#c65102"
+        }
+      }
+    }
+  },
+  "label": {
+    "definitions": {
+      "label": {
+        "label": "Text",
+        "defaults": {
+          "x": 100,
+          "y": 100,
+          "font": "Arial.ttf",
+          "font_size": 60,
+          "text": "New Text",
+          "color": "#ffffff",
+          "opacity": 1
+        }
+      }
+    }
+  },
+  "backdrops": {
+    "defaults": ["rectangle"],
+    "definitions": {
+      "circle": {
+        "label": "Circle",
+        "icon": { "source": "shared", "assetFile": "display-type-circle.svg" },
+        "defaults": {
+          "display_type": "circle",
+          "x": 100,
+          "y": 100,
+          "opacity": 1,
+          "diameter": 200,
+          "fill_color": "#212121",
+          "fill_opacity": 0.5,
+          "border_thickness": 0,
+          "border_color": "#D6D6D6",
+          "border_opacity": 1
+        }
+      },
+      "rectangle": {
+        "label": "Rectangle",
+        "icon": { "source": "shared", "assetFile": "display-type-rectangle.svg" },
+        "defaults": {
+          "display_type": "rectangle",
+          "x": 100,
+          "y": 100,
+          "opacity": 1,
+          "width": 300,
+          "height": 150,
+          "fill_color": "#212121",
+          "fill_opacity": 0.5,
+          "border_thickness": 0,
+          "border_color": "#D6D6D6",
+          "border_opacity": 1,
+          "corner_radius": 20,
+          "round_top_left": true,
+          "round_top_right": false,
+          "round_bottom_left": false,
+          "round_bottom_right": true
+        }
+      }
+    }
+  }
+}

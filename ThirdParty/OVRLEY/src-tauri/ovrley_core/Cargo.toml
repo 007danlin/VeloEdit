@@ -1,0 +1,38 @@
+[package]
+# Standalone Rust core for OVRLEY's Tauri backend. The crate contains activity
+# preparation, Skia overlay rendering, ffmpeg encoding, and backend command
+# helpers so those behaviors can be tested independently from the UI shell.
+name = "ovrley_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+csv = "1.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2"
+log = "0.4"
+open = "5"
+skia-safe = { version = "0.97.2", features = ["binary-cache"] }
+tzf-rs = { version = "1.3.7", default-features = false, features = ["bundled"] }
+# build.rs applies scripts/patches/telemetry-parser-dji-camera-metadata.patch
+# to this checkout automatically at build time (no fork needed).
+telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git", rev = "fd9a73e" }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = "symbols"
+
+[features]
+canvas-parity = []
+
+[dev-dependencies]
+anyhow = "1.0"
+
+[[test]]
+name = "canvas_parity_tests"
+required-features = ["canvas-parity"]

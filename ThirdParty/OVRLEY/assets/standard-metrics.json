@@ -1,0 +1,1237 @@
+{
+  "displayTypes": {
+    "definitions": {
+      "text": {
+        "label": "Text",
+        "icon": { "source": "shared", "assetFile": "display-type-text.svg" },
+        "layoutMode": "intrinsic",
+        "defaults": {
+          "x": 100,
+          "y": 100,
+          "prefix": "",
+          "suffix": "",
+          "decimals": 0,
+          "display_type": "text",
+          "unit_color": "#ffffff",
+          "show_icon": true,
+          "icon_size": 45,
+          "icon_offset_x": 0,
+          "icon_offset_y": 0,
+          "icon_color": "#ffffff",
+          "font": "Arial.ttf",
+          "font_size": 100,
+          "color": "#ffffff",
+          "opacity": 1,
+          "show_units": false,
+          "display_unit": null
+        },
+        "fontSizeByType": {
+          "time": 72,
+          "gradient": 96,
+          "heading": 100,
+          "default": 100
+        },
+        "metricTypeOverrides": {
+          "time": {
+            "format": "time-24"
+          },
+          "distance": {
+            "decimals": 1,
+            "show_full_distance": true
+          },
+          "gps_coordinates": {
+            "coordinate_format": "dms"
+          },
+          "total_ascent": {
+            "decimals": 1,
+            "show_full_ascent": true
+          },
+          "left_right_balance": {
+            "balance_format": "percent_label"
+          },
+          "vertical_speed": {
+            "decimals": 1
+          }
+        }
+      },
+      "lap_timer": {
+        "label": "Lap Times",
+        "layoutMode": "intrinsic",
+        "defaults": {
+          "show_label": true,
+          "negative_delta_color": "#61ffab",
+          "positive_delta_color": "#ff6e83",
+          "font_size": 50,
+          "label_font": "Arial.ttf",
+          "label_font_size": 17.5,
+          "label_color": "#ffffff"
+        },
+        "modes": [
+          { "value": "current_lap", "label": "Current Lap", "icon": { "source": "lucide", "name": "Timer" } },
+          {
+            "value": "best_lap",
+            "label": "Best Lap",
+            "icon": { "source": "custom", "assetFile": "display-mode-best-lap.svg" }
+          },
+          {
+            "value": "delta",
+            "label": "Delta",
+            "icon": { "source": "custom", "assetFile": "display-mode-delta.svg" }
+          },
+          {
+            "value": "lap_log",
+            "label": "Lap Log",
+            "font_size": 30,
+            "label_font_size": 15,
+            "icon": { "source": "custom", "assetFile": "display-mode-lap-log.svg" }
+          }
+        ],
+        "configFields": ["lap_timer_mode", "label"]
+      },
+      "heading_tape": {
+        "label": "Heading Tape",
+        "icon": {
+          "source": "shared",
+          "assetFile": "display-type-heading-tape.svg"
+        },
+        "layoutMode": "boxed",
+        "defaultFrameWidth": 600,
+        "defaultFrameHeight": 100,
+        "defaults": {
+          "pixels_per_degree": 9,
+          "major_tick_interval": 15,
+          "minor_ticks_per_major": 3,
+          "show_major_ticks": true,
+          "show_minor_ticks": true,
+          "major_tick_length_pct": 40,
+          "minor_tick_length_pct": 20,
+          "major_tick_thickness": 2,
+          "minor_tick_thickness": 2,
+          "tick_color": "#ffffff",
+          "cardinal_tick_color": "#ff0000",
+          "tick_alignment": "below",
+          "show_minor_labels": true,
+          "show_major_labels": true,
+          "label_color": "#cccccc",
+          "cardinal_label_color": "#ff0000",
+          "label_font_size": 12,
+          "label_offset": 4,
+          "indicator_style": "chevron",
+          "indicator_placement": "top",
+          "show_indicator": true,
+          "indicator_color": "#ff0000",
+          "indicator_size": 10
+        }
+      },
+      "lean_angle": {
+        "label": "Lean Angle",
+        "icon": {
+          "source": "shared",
+          "assetFile": "display-type-lean-angle.svg"
+        },
+        "layoutMode": "boxed",
+        "defaults": {
+          "display_type": "lean_angle",
+          "diameter": 450,
+          "show_icon": false,
+          "track_empty_color": "#222222",
+          "track_empty_opacity": 0.5,
+          "track_filled_color": "#dce2e8",
+          "track_filled_opacity": 1,
+          "track_border_thickness": 0,
+          "track_border_color": "#ffffff",
+          "track_thickness": 150,
+          "font": "Arial.ttf",
+          "font_size": 90,
+          "color": "#ffffff",
+          "unit_color": "#ffffff",
+          "show_units": true,
+          "value_offset_x": 0,
+          "value_offset_y": 0
+        }
+      },
+      "g_force": {
+        "label": "G-Force",
+        "icon": {
+          "source": "shared",
+          "assetFile": "display-type-g-force.svg"
+        },
+        "layoutMode": "boxed",
+        "defaultFrameWidth": 274,
+        "defaultFrameHeight": 274,
+        "defaults": {
+          "display_type": "g_force",
+          "diameter": 250,
+          "fill_color": "#212121",
+          "fill_opacity": 0.5,
+          "border_thickness": 0,
+          "border_color": "#ffffff",
+          "border_opacity": 1,
+          "marker_size": 24,
+          "marker_color": "#ffffff",
+          "marker_opacity": 1,
+          "axis_horizontal": "x",
+          "axis_vertical": "y",
+          "invert_horizontal": false,
+          "invert_vertical": false,
+          "clip_percentile": 99,
+          "label_font": "Arial.ttf",
+          "label_font_size": 50,
+          "label_color": "#ffffff",
+          "label_decimals": 1,
+          "label_unit": "G",
+          "label_unit_color": "#ffffff",
+          "label_offset_x": 0,
+          "label_offset_y": 0
+        }
+      },
+      "linear": {
+        "label": "Linear Bar",
+        "icon": { "source": "shared", "assetFile": "display-type-linear.svg" },
+        "layoutMode": "boxed",
+        "defaultFrameWidth": 200,
+        "defaultFrameHeight": 24,
+        "conditionalKeys": ["bar_count", "bar_gap"],
+        "defaults": {
+          "width": 80,
+          "orientation": "horizontal",
+          "track_fill_style": "fill",
+          "track_corner_radius": 12,
+          "track_border_thickness": 0,
+          "track_border_color": "#ffffff",
+          "track_empty_color": "#222222",
+          "track_empty_opacity": 0.5,
+          "track_filled_color": "#dce2e8",
+          "track_filled_opacity": 1,
+          "track_fill_flat": false,
+          "show_min_max_labels": false,
+          "min_max_label_font": null,
+          "min_max_label_font_size": 12,
+          "min_max_label_position": "bottom",
+          "min_max_label_color": "#ffffff"
+        }
+      },
+      "arc": {
+        "label": "Arc Gauge",
+        "icon": {
+          "source": "lucide",
+          "name": "Gauge",
+          "assetFile": "display-type-arc.svg"
+        },
+        "layoutMode": "boxed",
+        "defaultFrameWidth": 220,
+        "defaultFrameHeight": 220,
+        "conditionalKeys": ["bar_count", "bar_gap"],
+        "defaults": {
+          "font_size": 60,
+          "font": "Arial.ttf",
+          "arc_angle": 240,
+          "track_fill_style": "fill",
+          "inner_widget_offset_x": 0,
+          "inner_widget_offset_y": 0,
+          "track_thickness": 24,
+          "track_corner_radius": 15,
+          "track_border_thickness": 0,
+          "track_border_color": "#ffffff",
+          "track_empty_color": "#222222",
+          "track_empty_opacity": 0.5,
+          "track_filled_color": "#dce2e8",
+          "track_filled_opacity": 1,
+          "track_fill_flat": false,
+          "show_min_max_labels": false,
+          "min_max_label_font": null,
+          "min_max_label_font_size": 12,
+          "min_max_label_color": "#ffffff"
+        }
+      },
+      "corner": {
+        "label": "Corner Gauge",
+        "icon": {
+          "source": "custom",
+          "name": "CornerGauge",
+          "assetFile": "display-type-corner.svg"
+        },
+        "layoutMode": "boxed",
+        "defaultFrameWidth": 162,
+        "defaultFrameHeight": 162,
+        "conditionalKeys": ["bar_count", "bar_gap"],
+        "defaults": {
+          "font_size": 51,
+          "font": "Arial.ttf",
+          "corner_orientation": "bottom-left",
+          "track_fill_style": "fill",
+          "inner_widget_offset_x": 0,
+          "inner_widget_offset_y": 0,
+          "track_thickness": 24,
+          "track_corner_radius": 12,
+          "track_border_thickness": 0,
+          "track_border_color": "#ffffff",
+          "track_empty_color": "#222222",
+          "track_empty_opacity": 0.5,
+          "track_filled_color": "#dce2e8",
+          "track_filled_opacity": 1,
+          "track_fill_flat": false,
+          "show_min_max_labels": false,
+          "min_max_label_font": null,
+          "min_max_label_font_size": 12,
+          "min_max_label_color": "#ffffff"
+        }
+      }
+    },
+    "variantFrameKeys": ["width", "height", "rotation"],
+    "defaults": ["text", "linear", "arc", "corner"],
+    "overrides": {
+      "heading": ["text", "heading_tape"],
+      "g_force": ["text", "g_force"],
+      "core_temperature": ["text"],
+      "gear_position": ["text"],
+      "left_right_balance": ["text"],
+      "time": ["text"],
+      "lean_angle": ["text", "lean_angle"],
+      "iso": ["text"],
+      "aperture": ["text"],
+      "shutter_speed": ["text"],
+      "focal_length": ["text"],
+      "ev": ["text"],
+      "color_temperature": ["text"],
+      "gps_coordinates": ["text"],
+      "distance_to_home": ["text", "linear"],
+      "total_ascent": ["text", "linear"],
+      "calories": ["text", "linear"],
+      "lap_timer": ["lap_timer"]
+    }
+  },
+  "definitions": [
+    {
+      "type": "speed",
+      "current": true,
+      "label": "Speed",
+      "defaultDisplayUnit": "kmh",
+      "supportedDisplayUnits": [
+        {
+          "value": "kmh",
+          "label": "km/h",
+          "renderLabel": "KM/H"
+        },
+        {
+          "value": "mph",
+          "label": "mph",
+          "renderLabel": "MPH"
+        },
+        {
+          "value": "kn",
+          "label": "kn",
+          "renderLabel": "KN"
+        },
+        {
+          "value": "mps",
+          "label": "m/s",
+          "renderLabel": "M/S"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "speed",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "shared",
+        "assetFile": "widget-speed.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "distance",
+      "current": true,
+      "label": "Distance",
+      "defaultDisplayUnit": "km",
+      "supportedDisplayUnits": [
+        {
+          "value": "m",
+          "label": "m",
+          "renderLabel": "M"
+        },
+        {
+          "value": "km",
+          "label": "km",
+          "renderLabel": "KM"
+        },
+        {
+          "value": "mi",
+          "label": "mi",
+          "renderLabel": "MI"
+        },
+        {
+          "value": "ft",
+          "label": "ft",
+          "renderLabel": "FT"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-distance.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "gps_coordinates",
+      "current": true,
+      "label": "Location",
+      "defaultDisplayUnit": "both",
+      "supportedDisplayUnits": [
+        {
+          "value": "latitude",
+          "label": "Latitude"
+        },
+        {
+          "value": "longitude",
+          "label": "Longitude"
+        },
+        {
+          "value": "both",
+          "label": "Both"
+        }
+      ],
+      "showUnitsByDefault": false,
+      "formatter": "coordinates",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-satellite.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "distance_to_home",
+      "current": true,
+      "label": "Home",
+      "defaultDisplayUnit": "m",
+      "supportedDisplayUnits": [
+        {
+          "value": "m",
+          "label": "m",
+          "renderLabel": "M"
+        },
+        {
+          "value": "km",
+          "label": "km",
+          "renderLabel": "KM"
+        },
+        {
+          "value": "mi",
+          "label": "mi",
+          "renderLabel": "MI"
+        },
+        {
+          "value": "ft",
+          "label": "ft",
+          "renderLabel": "FT"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "distance",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-house.svg"
+      },
+      "category": "other"
+    },
+    {
+      "type": "total_ascent",
+      "current": true,
+      "label": "Ascent",
+      "defaultDisplayUnit": "m",
+      "supportedDisplayUnits": [
+        {
+          "value": "m",
+          "label": "m",
+          "renderLabel": "M"
+        },
+        {
+          "value": "ft",
+          "label": "ft",
+          "renderLabel": "FT"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "elevation",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-arrow-up-narrow-wide.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "calories",
+      "current": true,
+      "label": "Calories",
+      "defaultDisplayUnit": "kcal",
+      "supportedDisplayUnits": [
+        {
+          "value": "kcal",
+          "label": "kcal",
+          "renderLabel": "KCAL"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-calories.svg"
+      },
+      "category": "other"
+    },
+    {
+      "type": "heartrate",
+      "current": true,
+      "label": "Heart Rate",
+      "defaultDisplayUnit": "bpm",
+      "supportedDisplayUnits": [
+        {
+          "value": "bpm",
+          "label": "BPM"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "shared",
+        "assetFile": "widget-heartrate.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "cadence",
+      "current": true,
+      "label": "Cadence",
+      "defaultDisplayUnit": "rpm",
+      "supportedDisplayUnits": [
+        {
+          "value": "rpm",
+          "label": "RPM"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "shared",
+        "assetFile": "widget-cadence.svg"
+      },
+      "category": "cycling"
+    },
+    {
+      "type": "power",
+      "current": true,
+      "label": "Power",
+      "defaultDisplayUnit": "w",
+      "supportedDisplayUnits": [
+        {
+          "value": "w",
+          "label": "W"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "shared",
+        "assetFile": "widget-power.svg"
+      },
+      "category": "cycling"
+    },
+    {
+      "type": "engine_power",
+      "current": true,
+      "label": "Eng. Power",
+      "defaultDisplayUnit": "w",
+      "supportedDisplayUnits": [{ "value": "w", "label": "W" }],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "shared",
+        "assetFile": "widget-power.svg"
+      },
+      "category": "motosports"
+    },
+    {
+      "type": "temperature",
+      "current": true,
+      "label": "Temperature",
+      "defaultDisplayUnit": "celsius",
+      "supportedDisplayUnits": [
+        {
+          "value": "celsius",
+          "label": "°C"
+        },
+        {
+          "value": "fahrenheit",
+          "label": "°F"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "temperature",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "shared",
+        "assetFile": "widget-temperature.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "pace",
+      "current": true,
+      "label": "Pace",
+      "defaultDisplayUnit": "min_per_km",
+      "supportedDisplayUnits": [
+        {
+          "value": "min_per_km",
+          "label": "min/km",
+          "renderLabel": "MIN/KM"
+        },
+        {
+          "value": "min_per_mi",
+          "label": "min/mi",
+          "renderLabel": "MIN/MI"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "pace",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Footprints",
+        "assetFile": "widget-pace.svg"
+      },
+      "category": "running"
+    },
+    {
+      "type": "g_force",
+      "current": true,
+      "label": "G-Force",
+      "defaultDisplayUnit": "g",
+      "supportedDisplayUnits": [
+        {
+          "value": "g",
+          "label": "g",
+          "renderLabel": "G"
+        },
+        {
+          "value": "mps2",
+          "label": "m/s^2",
+          "renderLabel": "M/S^2"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-g-force.svg"
+      },
+      "category": "other"
+    },
+    {
+      "type": "air_pressure",
+      "current": true,
+      "label": "Air Pressure",
+      "defaultDisplayUnit": "hpa",
+      "supportedDisplayUnits": [
+        {
+          "value": "hpa",
+          "label": "hPa",
+          "renderLabel": "HPA"
+        },
+        {
+          "value": "mbar",
+          "label": "mbar",
+          "renderLabel": "MBAR"
+        },
+        {
+          "value": "inhg",
+          "label": "inHg",
+          "renderLabel": "INHG"
+        },
+        {
+          "value": "mmhg",
+          "label": "mmHg",
+          "renderLabel": "MMHG"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Wind",
+        "assetFile": "widget-air-pressure.svg"
+      },
+      "category": "other"
+    },
+    {
+      "type": "ground_contact_time",
+      "current": true,
+      "label": "Ground Contact Time",
+      "defaultDisplayUnit": "ms",
+      "supportedDisplayUnits": [
+        {
+          "value": "ms",
+          "label": "ms",
+          "renderLabel": "MS"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-ground-contact-time.svg"
+      },
+      "category": "running"
+    },
+    {
+      "type": "left_right_balance",
+      "current": true,
+      "label": "Left/Right Balance",
+      "defaultDisplayUnit": "percent",
+      "supportedDisplayUnits": [
+        {
+          "value": "percent",
+          "label": "52% / 48%",
+          "renderLabel": "%"
+        }
+      ],
+      "showUnitsByDefault": false,
+      "formatter": "balance",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Scale",
+        "assetFile": "widget-left-right-balance.svg"
+      },
+      "category": "cycling"
+    },
+    {
+      "type": "stride_length",
+      "current": true,
+      "label": "Stride Length",
+      "defaultDisplayUnit": "m",
+      "supportedDisplayUnits": [
+        {
+          "value": "m",
+          "label": "m",
+          "renderLabel": "M"
+        },
+        {
+          "value": "cm",
+          "label": "cm",
+          "renderLabel": "CM"
+        },
+        {
+          "value": "ft",
+          "label": "ft",
+          "renderLabel": "FT"
+        },
+        {
+          "value": "in",
+          "label": "in",
+          "renderLabel": "IN"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Ruler",
+        "assetFile": "widget-stride-length.svg"
+      },
+      "category": "running"
+    },
+    {
+      "type": "stroke_rate",
+      "current": true,
+      "label": "Stroke Rate",
+      "defaultDisplayUnit": "spm",
+      "supportedDisplayUnits": [
+        {
+          "value": "spm",
+          "label": "SPM"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Waves",
+        "assetFile": "widget-stroke-rate.svg"
+      },
+      "category": "other"
+    },
+    {
+      "type": "torque",
+      "current": true,
+      "label": "Torque",
+      "defaultDisplayUnit": "nm",
+      "supportedDisplayUnits": [
+        {
+          "value": "nm",
+          "label": "Nm",
+          "renderLabel": "NM"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-torque.svg"
+      },
+      "category": "cycling"
+    },
+    {
+      "type": "vertical_speed",
+      "current": true,
+      "label": "Vertical Speed",
+      "defaultDisplayUnit": "mps",
+      "supportedDisplayUnits": [
+        {
+          "value": "mps",
+          "label": "m/s",
+          "renderLabel": "M/S"
+        },
+        {
+          "value": "ftmin",
+          "label": "ft/min",
+          "renderLabel": "FT/MIN"
+        },
+        {
+          "value": "ftph",
+          "label": "ft/h",
+          "renderLabel": "FT/H"
+        },
+        {
+          "value": "mph_vertical",
+          "label": "m/h",
+          "renderLabel": "M/H"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "TrendingUp",
+        "assetFile": "widget-vertical-speed.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "gear_position",
+      "current": true,
+      "label": "Gear Position",
+      "defaultDisplayUnit": "gear",
+      "supportedDisplayUnits": [
+        {
+          "value": "gear",
+          "label": "Gear",
+          "renderLabel": "GEAR"
+        }
+      ],
+      "showUnitsByDefault": false,
+      "formatter": "gear",
+      "interpolation": "hold",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-gear-position.svg"
+      },
+      "category": "motosports"
+    },
+    {
+      "type": "vertical_ratio",
+      "current": true,
+      "label": "V. Ratio",
+      "defaultDisplayUnit": "percent",
+      "supportedDisplayUnits": [
+        {
+          "value": "percent",
+          "label": "%"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Percent",
+        "assetFile": "widget-vertical-ratio.svg"
+      },
+      "category": "running"
+    },
+    {
+      "type": "vertical_oscillation",
+      "current": true,
+      "label": "Vertical Oscillation",
+      "defaultDisplayUnit": "mm",
+      "supportedDisplayUnits": [
+        {
+          "value": "mm",
+          "label": "mm",
+          "renderLabel": "MM"
+        },
+        {
+          "value": "cm",
+          "label": "cm",
+          "renderLabel": "CM"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "ArrowUpDown",
+        "assetFile": "widget-vertical-oscillation.svg"
+      },
+      "category": "running"
+    },
+    {
+      "type": "core_temperature",
+      "current": true,
+      "label": "Core Temperature",
+      "defaultDisplayUnit": "celsius",
+      "supportedDisplayUnits": [
+        {
+          "value": "celsius",
+          "label": "°C"
+        },
+        {
+          "value": "fahrenheit",
+          "label": "°F"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "temperature",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Thermometer",
+        "assetFile": "widget-core-temperature.svg"
+      },
+      "category": "other"
+    },
+    {
+      "type": "heading",
+      "current": true,
+      "label": "Heading",
+      "defaultDisplayUnit": "degrees",
+      "supportedDisplayUnits": [
+        {
+          "value": "degrees",
+          "label": "°"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "Compass",
+        "assetFile": "widget-heading.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "altitude",
+      "current": true,
+      "label": "Altitude",
+      "dataSource": "elevation",
+      "defaultDisplayUnit": "m",
+      "supportedDisplayUnits": [
+        {
+          "value": "m",
+          "label": "m",
+          "renderLabel": "M"
+        },
+        {
+          "value": "ft",
+          "label": "ft",
+          "renderLabel": "FT"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "defaults": {
+        "starting_altitude": null
+      },
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-altitude.svg"
+      },
+      "category": "general"
+    },
+    {
+      "type": "iso",
+      "current": true,
+      "label": "ISO",
+      "defaultDisplayUnit": "iso",
+      "supportedDisplayUnits": [
+        {
+          "value": "iso",
+          "label": "ISO"
+        }
+      ],
+      "showUnitsByDefault": false,
+      "formatter": "integer",
+      "interpolation": "hold",
+      "unitsMode": "hidden",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-iso.svg"
+      },
+      "category": "camera"
+    },
+    {
+      "type": "aperture",
+      "current": true,
+      "label": "Aperture",
+      "defaultDisplayUnit": "fnum",
+      "supportedDisplayUnits": [
+        {
+          "value": "fnum",
+          "label": "f/"
+        }
+      ],
+      "showUnitsByDefault": false,
+      "formatter": "aperture",
+      "interpolation": "hold",
+      "unitsMode": "hidden",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-aperture.svg"
+      },
+      "category": "camera"
+    },
+    {
+      "type": "shutter_speed",
+      "current": true,
+      "label": "Shutter",
+      "defaultDisplayUnit": "seconds",
+      "supportedDisplayUnits": [
+        {
+          "value": "seconds",
+          "label": "s"
+        }
+      ],
+      "showUnitsByDefault": false,
+      "formatter": "shutter",
+      "interpolation": "hold",
+      "unitsMode": "hidden",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-shutter-speed.svg"
+      },
+      "category": "camera"
+    },
+    {
+      "type": "focal_length",
+      "current": true,
+      "label": "Focal L.",
+      "defaultDisplayUnit": "mm",
+      "supportedDisplayUnits": [
+        {
+          "value": "mm",
+          "label": "mm",
+          "renderLabel": "MM"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "hold",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-focal-length.svg"
+      },
+      "category": "camera"
+    },
+    {
+      "type": "ev",
+      "current": true,
+      "label": "EV",
+      "defaultDisplayUnit": "ev",
+      "supportedDisplayUnits": [
+        {
+          "value": "ev",
+          "label": "EV"
+        }
+      ],
+      "showUnitsByDefault": false,
+      "formatter": "ev",
+      "interpolation": "hold",
+      "unitsMode": "hidden",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-ev.svg"
+      },
+      "category": "camera"
+    },
+    {
+      "type": "color_temperature",
+      "current": true,
+      "label": "WB",
+      "defaultDisplayUnit": "kelvin",
+      "supportedDisplayUnits": [
+        {
+          "value": "kelvin",
+          "label": "K",
+          "renderLabel": "K"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "hold",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-color-temperature.svg"
+      },
+      "category": "camera"
+    },
+    {
+      "type": "rpm",
+      "current": true,
+      "label": "RPM",
+      "defaultDisplayUnit": "rpm",
+      "supportedDisplayUnits": [
+        {
+          "value": "rpm",
+          "label": "RPM"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "decimal",
+      "interpolation": "preserve",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "lucide",
+        "name": "CircleGauge",
+        "assetFile": "widget-rpm.svg"
+      },
+      "category": "motosports"
+    },
+    {
+      "type": "throttle_position",
+      "current": true,
+      "label": "Throttle Position",
+      "defaultDisplayUnit": "percent",
+      "supportedDisplayUnits": [
+        {
+          "value": "percent",
+          "label": "%"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-throttle-position.svg"
+      },
+      "category": "motosports"
+    },
+    {
+      "type": "brake_position",
+      "current": true,
+      "label": "Brake Position",
+      "defaultDisplayUnit": "percent",
+      "supportedDisplayUnits": [
+        {
+          "value": "percent",
+          "label": "%"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-brake-position.svg"
+      },
+      "category": "motosports"
+    },
+    {
+      "type": "lean_angle",
+      "current": true,
+      "label": "Lean Angle",
+      "defaultDisplayUnit": "degrees",
+      "supportedDisplayUnits": [
+        {
+          "value": "degrees",
+          "label": "°"
+        }
+      ],
+      "showUnitsByDefault": true,
+      "formatter": "integer",
+      "interpolation": "linear",
+      "unitsMode": "selectable",
+      "icon": {
+        "source": "custom",
+        "assetFile": "widget-lean-angle.svg"
+      },
+      "category": "motosports"
+    },
+    {
+      "type": "lap_timer",
+      "current": true,
+      "label": "Lap Timer",
+      "defaultDisplayUnit": "none",
+      "supportedDisplayUnits": [],
+      "showUnitsByDefault": false,
+      "formatter": "laptimer",
+      "interpolation": "hold",
+      "unitsMode": "hidden",
+      "icon": {
+        "source": "shared",
+        "assetFile": "widget-time.svg"
+      },
+      "category": "motosports"
+    }
+  ]
+}

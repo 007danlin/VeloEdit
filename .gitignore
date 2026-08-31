@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+.build-app/
+.swiftpm/
+DerivedData/
+Build/
+*.xcuserstate
+*.dmg
+*.app/
+*.veloedit/Cache/
