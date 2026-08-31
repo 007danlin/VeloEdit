@@ -153,15 +153,13 @@ final class AppModel: ObservableObject {
     @Published var directorMessages = DirectorMessage.initial { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorStatus = "Готов выслушать ваш замысел"
     @Published var directorRuntimeStatus = LocalDirectorAgent.currentRuntimeLabel()
-    // Fast mode is bundled with the app. Never present a downloaded mode as
-    // active until its model is actually available on this Mac.
     @Published var aiPowerMode: AIPowerMode = .fast
     @Published var advancedAISettings = AdvancedAISettings()
     @Published var aiVisionModelStatus = "Проверяю локальную vision-модель…"
     @Published var aiVisionModelInstalled = false
     @Published var isDownloadingAIModel = false
     @Published var aiModelDownloadProgress = 0.0
-    @Published private(set) var aiModelAvailability: [AIPowerMode: Bool] = [.fast: true]
+    @Published private(set) var aiModelAvailability: [AIPowerMode: Bool] = [:]
     @Published private(set) var downloadingAIPowerMode: AIPowerMode?
     @Published var isDirectorResponding = false
     @Published var isCreatingFilm = false
@@ -360,15 +358,10 @@ final class AppModel: ObservableObject {
     var aiProfileSummary: String { aiProfile.summary }
     var canDownloadAIModel: Bool { aiProfile.runtime != .mlx }
     func isAIModelInstalled(for mode: AIPowerMode) -> Bool {
-        if usesBuiltInFastMode(mode) { return true }
         return aiModelAvailability[mode] ?? (mode == aiPowerMode && aiVisionModelInstalled)
     }
     func canDownloadAIModel(for mode: AIPowerMode) -> Bool {
-        if usesBuiltInFastMode(mode) { return false }
         return AIAnalysisProfile.resolve(mode: mode, advanced: advancedAISettings, thermalState: .nominal).runtime != .mlx
-    }
-    private func usesBuiltInFastMode(_ mode: AIPowerMode) -> Bool {
-        mode == .fast && !advancedAISettings.enabled
     }
     var aiAnalysisRuntimeStatus: String {
         project?.analyses.compactMap(\.aiRuntimeLabel).last ?? "Runtime будет проверен при первом анализе"
@@ -801,7 +794,7 @@ final class AppModel: ObservableObject {
     func setAdvancedAISettings(_ value: AdvancedAISettings) {
         guard advancedAISettings != value else { return }
         advancedAISettings = value
-        aiModelAvailability = value.enabled ? [:] : [.fast: true]
+        aiModelAvailability = [:]
         persistAISettings()
         status = "Расширенные настройки AI сохранены. Анализ будет обновлён при следующем запуске."
         if timeline != nil { markFilmNeedsRebuild("Модель AI изменена — фильм нужно обновить") }
@@ -810,12 +803,6 @@ final class AppModel: ObservableObject {
 
     func refreshLocalVisionModelStatus() async {
         let profile = aiProfile
-        if usesBuiltInFastMode(aiPowerMode) {
-            aiVisionModelInstalled = true
-            aiModelAvailability[.fast] = true
-            aiVisionModelStatus = "Встроенный быстрый режим готов"
-            return
-        }
         guard profile.runtime != .mlx else {
             aiVisionModelInstalled = false
             aiVisionModelStatus = "MLX adapter ещё не включён в эту release-сборку; доступен Apple Vision fallback"
@@ -834,9 +821,8 @@ final class AppModel: ObservableObject {
     }
 
     func refreshAIModelAvailability() async {
-        var availabilityByMode: [AIPowerMode: Bool] = usesBuiltInFastMode(.fast) ? [.fast: true] : [:]
+        var availabilityByMode: [AIPowerMode: Bool] = [:]
         for mode in AIPowerMode.allCases {
-            if usesBuiltInFastMode(mode) { continue }
             let profile = AIAnalysisProfile.resolve(mode: mode, advanced: advancedAISettings, thermalState: .nominal)
             guard profile.runtime != .mlx else {
                 availabilityByMode[mode] = false
@@ -850,11 +836,6 @@ final class AppModel: ObservableObject {
             }
         }
         aiModelAvailability = availabilityByMode
-        if availabilityByMode[aiPowerMode] != true, canDownloadAIModel(for: aiPowerMode) {
-            aiPowerMode = .fast
-            aiVisionModelInstalled = true
-            aiVisionModelStatus = "Встроенный быстрый режим готов"
-        }
     }
 
     func downloadAIModel(for mode: AIPowerMode) {
@@ -3851,7 +3832,7 @@ final class AppModel: ObservableObject {
         aiVisionModelInstalled = false
         isDownloadingAIModel = false
         aiModelDownloadProgress = 0
-        aiModelAvailability = [.fast: true]
+        aiModelAvailability = [:]
         downloadingAIPowerMode = nil
         Task { await refreshDirectorRuntimeStatus() }
         directorMessages = DirectorMessage.initial

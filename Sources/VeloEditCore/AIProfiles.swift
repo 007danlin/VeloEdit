@@ -167,10 +167,10 @@ public struct AIAnalysisProfile: Hashable, Sendable {
 
     public var maximumVLMScenes: Int {
         switch mode {
-        // Fast is intentionally Apple Vision/local-score only. Even a single
-        // cold VLM request can take longer than the source clip and violate
-        // the mode's faster-than-realtime contract.
-        case .fast: return 0
+        // Keep Fast to one compact VLM batch. It still benefits from semantic
+        // visual judgement without turning the lightweight mode into a broad
+        // scene-by-scene pass.
+        case .fast: return min(2, maximumDeepCandidates)
         case .balanced: return min(6, maximumDeepCandidates)
         case .quality: return maximumDeepCandidates
         case .maximum: return maximumDeepCandidates
@@ -221,17 +221,17 @@ public struct AIAnalysisProfile: Hashable, Sendable {
         let base: AIAnalysisProfile
         switch mode {
         case .fast:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:2b", mlxModelID: "mlx-community/Qwen3-VL-2B-Instruct-4bit", quantization: .q4, proxyLongEdge: 720, coarseInterval: 12, denseInterval: 2, maximumCoarseFrames: 40, maximumDeepCandidates: 4, framesPerCandidate: 3, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:2b-instruct", mlxModelID: "mlx-community/Qwen3-VL-2B-Instruct-4bit", quantization: .q4, proxyLongEdge: 720, coarseInterval: 12, denseInterval: 2, maximumCoarseFrames: 40, maximumDeepCandidates: 4, framesPerCandidate: 3, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false)
         case .balanced:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:4b", mlxModelID: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit", quantization: .q4, proxyLongEdge: 960, coarseInterval: 7, denseInterval: 1, maximumCoarseFrames: 70, maximumDeepCandidates: 8, framesPerCandidate: 5, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:4b-instruct", mlxModelID: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit", quantization: .q4, proxyLongEdge: 960, coarseInterval: 7, denseInterval: 1, maximumCoarseFrames: 70, maximumDeepCandidates: 8, framesPerCandidate: 5, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false)
         case .quality:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:8b", mlxModelID: "mlx-community/Qwen3-VL-8B-Instruct-4bit", quantization: .q4, proxyLongEdge: 1080, coarseInterval: 4, denseInterval: 0.67, maximumCoarseFrames: 110, maximumDeepCandidates: 12, framesPerCandidate: 8, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:8b-instruct", mlxModelID: "mlx-community/Qwen3-VL-8B-Instruct-4bit", quantization: .q4, proxyLongEdge: 1080, coarseInterval: 4, denseInterval: 0.67, maximumCoarseFrames: 110, maximumDeepCandidates: 12, framesPerCandidate: 8, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
         case .maximum:
             // A 30B quantized VLM needs substantially more unified memory than
             // a base MacBook Air. Falling back here prevents memory pressure
             // and swap from making the nominally "maximum" mode worse.
             let canUse30B = physicalMemory >= 32 * 1_073_741_824
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: canUse30B ? "qwen3-vl:30b" : "qwen3-vl:8b", mlxModelID: canUse30B ? "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit" : "mlx-community/Qwen3-VL-8B-Instruct-8bit", quantization: canUse30B ? .q4 : .q8, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: true)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: canUse30B ? "qwen3-vl:30b-a3b-instruct" : "qwen3-vl:8b-instruct", mlxModelID: canUse30B ? "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit" : "mlx-community/Qwen3-VL-8B-Instruct-8bit", quantization: canUse30B ? .q4 : .q8, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
         }
 
         var result = base

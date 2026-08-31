@@ -16,7 +16,7 @@ import Testing
     #expect(quality.proxyPolicy == .required)
     #expect(maximum.proxyPolicy == .highQuality)
     #expect(fast.audioAnalysisLevel == .none)
-    #expect(fast.maximumVLMScenes == 0)
+    #expect(fast.maximumVLMScenes == 2)
     #expect(maximum.audioAnalysisLevel == .deep)
     #expect(maximum.rechecksImportantScenes)
     #expect(maximum.comparesAcrossVideos)

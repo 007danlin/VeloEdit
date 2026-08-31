@@ -2,21 +2,37 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
-@Test func bundledFastModeIsTheEffectiveDefault() {
+@Test func fastInstructModeIsTheEffectiveDefault() {
     let preferences = UserPreferences()
     #expect(preferences.effectiveAIPowerMode == .fast)
     let profile = AIAnalysisProfile.resolve(mode: preferences.effectiveAIPowerMode, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
     #expect(profile.targetDepth == .quick)
     #expect(profile.proxyPolicy == .avoidFullEncode)
     #expect(profile.audioAnalysisLevel == .none)
+    #expect(profile.ollamaModelID == "qwen3-vl:2b-instruct")
+    #expect(profile.maximumVLMScenes == 2)
 }
 
 @Test func maximumDoesNotSelectThirtyBillionParametersOnBaseMemory() {
     let baseMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
     let largeMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 32 * 1_073_741_824, thermalState: .nominal)
-    #expect(baseMemory.ollamaModelID == "qwen3-vl:8b")
+    #expect(baseMemory.ollamaModelID == "qwen3-vl:8b-instruct")
     #expect(baseMemory.quantization == .q8)
-    #expect(largeMemory.ollamaModelID == "qwen3-vl:30b")
+    #expect(largeMemory.ollamaModelID == "qwen3-vl:30b-a3b-instruct")
+}
+
+@Test func friendlyModesUseExplicitInstructVisionModels() {
+    let expected: [AIPowerMode: String] = [
+        .fast: "qwen3-vl:2b-instruct",
+        .balanced: "qwen3-vl:4b-instruct",
+        .quality: "qwen3-vl:8b-instruct",
+        .maximum: "qwen3-vl:30b-a3b-instruct"
+    ]
+    for (mode, modelID) in expected {
+        let profile = AIAnalysisProfile.resolve(mode: mode, physicalMemory: 32 * 1_073_741_824, thermalState: .nominal)
+        #expect(profile.ollamaModelID == modelID)
+        #expect(!profile.thinkingEnabled)
+    }
 }
 
 @Test func thermalPressureReducesSamplingWithoutInvalidatingCacheIdentity() {

@@ -767,8 +767,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         let ollamaAllowed = profile.maximumVLMScenes > 0 && profile.runtime != .mlx && !thermalCritical
         let hasVisionModel = ollamaAllowed
             ? await LocalAIModelManager.shared.availability(
-                model: profile.ollamaModelID,
-                startService: profile.mode != .fast
+                model: profile.ollamaModelID
             ).installed
             : false
         var deepIndices: Set<Int> = []
@@ -841,7 +840,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                     if let judgements = try? await runtime.analyzeBatch(
                         scenes: inputs,
                         model: profile.ollamaModelID,
-                        thinking: true,
+                        thinking: profile.thinkingEnabled,
                         timeout: profile.vlmTimeout
                     ) {
                         await metrics?.recordVLMCall(latency: Date().timeIntervalSince(started))
