@@ -60,6 +60,36 @@ import Testing
     }
 }
 
+@Test func nonMotionEffectCardsDoNotInheritAnAbsentZeroScale() {
+    let size = CGSize(width: 96, height: 54)
+    let nonMotionEffects = TimelineEffectType.allCases.filter { $0.category != .motion }
+    for effect in nonMotionEffects {
+        let item = EffectTimelineItem(
+            effectType: effect,
+            startTime: 0,
+            duration: 1,
+            parameters: EffectPresetRegistry.preset(for: effect).defaultParameters
+        )
+        let transform = TransitionEffectRenderer.effectTransform(
+            [item], base: .identity, timelineTime: 0.5, renderSize: size
+        )
+        #expect(transform == .identity, "\(effect.rawValue) must not inherit absent zero-scale parameters")
+    }
+}
+
+@Test func basicEffectCardsRenderVisiblePixels() throws {
+    let size = CGSize(width: 96, height: 54)
+    for effect in TimelineEffectType.allCases where effect.category == .basic {
+        let image = try #require(
+            TransitionEffectRenderer.previewEffectCGImage(type: effect, progress: 0.35, size: size),
+            "\(effect.rawValue) preview must produce an image"
+        )
+        let pixel = try averagePixel(image)
+        #expect(Int(pixel.0) + Int(pixel.1) + Int(pixel.2) > 45, "\(effect.rawValue) preview must not be black")
+        #expect(pixel.3 > 32, "\(effect.rawValue) preview must not be transparent")
+    }
+}
+
 @Test func legacyTransitionDecodesWithMetadataDefaults() throws {
     let transition = TimelineTransitionItem(
         style: .lensBlur,
@@ -166,5 +196,21 @@ private func averagePixel(_ image: CIImage, bounds: CGRect) throws -> (UInt8, UI
         format: .RGBA8,
         colorSpace: CGColorSpaceCreateDeviceRGB()
     )
+    return (pixel[0], pixel[1], pixel[2], pixel[3])
+}
+
+private func averagePixel(_ image: CGImage) throws -> (UInt8, UInt8, UInt8, UInt8) {
+    var pixel = [UInt8](repeating: 0, count: 4)
+    let context = try #require(CGContext(
+        data: &pixel,
+        width: 1,
+        height: 1,
+        bitsPerComponent: 8,
+        bytesPerRow: 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ))
+    context.interpolationQuality = .high
+    context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
     return (pixel[0], pixel[1], pixel[2], pixel[3])
 }

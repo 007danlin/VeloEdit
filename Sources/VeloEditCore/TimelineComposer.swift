@@ -11,8 +11,10 @@ public struct TimelineComposer: Sendable {
             result.telemetry.map { (result.assetID, $0) }
         })
         let prompt = plan.prompt.lowercased()
+        let directorBrief = plan.directorBrief
+        let titlePolicy = directorBrief?.titlePolicy
         let grammar = plan.autonomousDecision?.grammar
-        let explicitlyAsksTelemetry = ["телеметри", "gps", "маршрут", "скорост", "высот", "g-force", "перегрузк"].contains(where: prompt.contains)
+        let explicitlyAsksTelemetry = TelemetryOverlayRequestPolicy.requestsOverlay(in: prompt)
         let asksPhotoLayout = ["фотоколлаж", "коллаж", "несколько фото", "фото рядом", "split screen фото"].contains(where: prompt.contains)
         let explicitlyDisablesTransitions = ["без переход", "убери переход", "никаких переход", "no transition"].contains(where: prompt.contains)
         let explicitlyRequestsTransitions = !explicitlyDisablesTransitions
@@ -24,10 +26,18 @@ public struct TimelineComposer: Sendable {
         var telemetryItems: [TimelineTelemetryItem] = []
         var titleItems: [TitleTimelineItem] = []
         var usedTitleTexts: [String] = []
+        var titleSceneScopeByID: [UUID: UUID] = [:]
+        var titleEventScopeByID: [UUID: UUID] = [:]
+        var directTitleContainment: [UUID: ClosedRange<Double>] = [:]
         var insertedProjectTitle = false
         var lastTelemetryEnd = -Double.greatestFiniteMagnitude
         var telemetryAccentCount = 0
         let maximumTelemetryAccents = max(1, Int(ceil(plan.constraints.targetDuration / 18)))
+        let explicitRanges = exactCandidateRanges(plan: plan, candidates: candidates, assets: assetsByID)
+        // Native transition overlaps shorten the rendered AVComposition clock.
+        // Exact-duration films therefore use clean cuts automatically; this
+        // keeps the exported file, not only the magnetic Timeline, on target.
+        let preservesExactRenderedDuration = !explicitRanges.isEmpty
 
         func smartTitle(
             purpose: SmartTitlePurpose,
@@ -65,9 +75,22 @@ public struct TimelineComposer: Sendable {
             ))
         }
 
-        func appendTitle(_ decision: SmartTitleDecision, at startTime: Double, reason: String) {
-            guard let template = TitleTemplateRegistry.template(id: decision.templateID) else { return }
-            titleItems.append(TitleTimelineItem(
+        @discardableResult
+        func appendTitle(
+            _ decision: SmartTitleDecision,
+            at startTime: Double,
+            reason: String,
+            sceneID: UUID? = nil,
+            eventID: UUID? = nil
+        ) -> UUID? {
+            guard let template = TitleTemplateRegistry.template(id: decision.templateID) else { return nil }
+            let identity = decision.primaryText.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            guard !usedTitleTexts.contains(where: {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) == identity
+            }) else { return nil }
+            let item = TitleTimelineItem(
                 kind: template.kind,
                 templateID: template.id,
                 text: decision.primaryText,
@@ -76,13 +99,24 @@ public struct TimelineComposer: Sendable {
                 duration: decision.duration,
                 style: template.defaultStyle,
                 explanation: [reason] + decision.explanation
-            ))
+            )
+            titleItems.append(item)
             usedTitleTexts.append(decision.primaryText)
+            if let sceneID {
+                titleSceneScopeByID[item.id] = sceneID
+            } else if let eventID {
+                titleEventScopeByID[item.id] = eventID
+            }
+            return item.id
         }
 
         for (chapterIndex, chapter) in plan.chapters.enumerated() {
+            let chapterStart = cursor
+            var chapterGeneratedTitleIDs: [UUID] = []
+            var directlyChapterScopedTitleIDs: [UUID] = []
             var chapterTitleStartOffset = 0.0
-            if !insertedProjectTitle,
+            if titlePolicy != DirectorTitlePolicy.none,
+               !insertedProjectTitle,
                chapter.isColdOpen != true,
                let projectTitle = plan.eventStory?.projectTitle,
                !projectTitle.isEmpty {
@@ -93,12 +127,15 @@ public struct TimelineComposer: Sendable {
                     sequenceIndex: nil,
                     preferredTemplateID: plan.preset == .cinematic ? "title.cinematic.v1" : nil
                 ) {
-                    appendTitle(decision, at: cursor, reason: "Название фильма создано из event hierarchy")
+                    if let id = appendTitle(decision, at: cursor, reason: "Название фильма создано из event hierarchy") {
+                        chapterGeneratedTitleIDs.append(id)
+                    }
                     chapterTitleStartOffset = decision.duration + 0.15
                 }
                 insertedProjectTitle = true
             }
-            if let chapterTitle = chapter.chapterCardTitle,
+            if titlePolicy != DirectorTitlePolicy.none,
+               let chapterTitle = chapter.chapterCardTitle,
                plan.eventStory?.chapterCardsEnabled == true,
                !chapterTitle.isEmpty {
                 let eventIndex = chapter.eventID.flatMap { eventID in
@@ -111,13 +148,18 @@ public struct TimelineComposer: Sendable {
                     sequenceIndex: eventIndex,
                     preferredTemplateID: "title.chapter.v1"
                 ) {
-                    appendTitle(
+                    if let id = appendTitle(
                         decision,
                         at: cursor + chapterTitleStartOffset,
-                        reason: "Автоматическая глава события использует существующий шаблон"
-                    )
+                        reason: "Автоматическая глава события использует существующий шаблон",
+                        sceneID: chapter.eventSceneID,
+                        eventID: chapter.eventID
+                    ) {
+                        chapterGeneratedTitleIDs.append(id)
+                    }
                 }
-            } else if plan.eventStory == nil,
+            } else if titlePolicy != DirectorTitlePolicy.none,
+               plan.eventStory == nil,
                plan.constraints.targetDuration >= 10 * 60,
                plan.constraints.targetClipCount == nil {
                 if let decision = smartTitle(
@@ -127,15 +169,23 @@ public struct TimelineComposer: Sendable {
                     sequenceIndex: chapterIndex + 1,
                     preferredTemplateID: "title.chapter.v1"
                 ) {
-                    appendTitle(decision, at: cursor, reason: chapter.purpose ?? "Автоматическая глава длинного фильма")
+                    if let id = appendTitle(decision, at: cursor, reason: chapter.purpose ?? "Автоматическая глава длинного фильма") {
+                        chapterGeneratedTitleIDs.append(id)
+                        directlyChapterScopedTitleIDs.append(id)
+                    }
                 }
             }
             for id in chapter.candidateIDs {
                 guard let candidate = candidates[id], let asset = assetsByID[candidate.assetID], !candidate.excluded else { continue }
-                let preferred = preferredDuration(candidate: candidate, role: chapter.role, pacing: plan.constraints.pacing, grammar: grammar)
+                let preferred = explicitRanges[id]?.sourceDuration
+                    ?? preferredDuration(candidate: candidate, role: chapter.role, pacing: plan.constraints.pacing, grammar: grammar)
                 let remaining = plan.constraints.targetDuration - cursor
                 guard remaining > 0.5 else { break }
                 let eventAllowance: Double = {
+                    // exactCandidateRanges has already reconciled event shares
+                    // against real non-overlapping source capacity. Reapplying
+                    // the original quality cap here would recreate the deficit.
+                    if explicitRanges[id] != nil { return remaining }
                     guard let eventID = chapter.eventID,
                           let allocation = plan.eventStory?.entries.first(where: { $0.eventID == eventID })?.allocatedDuration else {
                         return remaining
@@ -149,7 +199,12 @@ public struct TimelineComposer: Sendable {
                 }
                 let duration = min(preferred, remaining, tagAllowance, eventAllowance)
                 guard duration > 0.5 else { continue }
-                let sourceRange = MomentPhaseTrimmer().range(for: candidate, desiredDuration: duration)
+                let sourceRange = explicitRanges[id].map { range in
+                    ExactCandidateRange(sourceStart: range.sourceStart, sourceDuration: min(range.sourceDuration, duration))
+                } ?? {
+                    let trimmed = MomentPhaseTrimmer().range(for: candidate, desiredDuration: duration)
+                    return ExactCandidateRange(sourceStart: trimmed.sourceStart, sourceDuration: trimmed.sourceDuration)
+                }()
                 let previousPrimary = items.last { $0.kind != .title && $0.overlay == nil }
                 let previousCandidate = previousPrimary?.candidateID.flatMap { candidates[$0] }
                 let boundaryDecision = motivatedBoundary(
@@ -159,7 +214,7 @@ public struct TimelineComposer: Sendable {
                     incomingAsset: asset,
                     chapter: chapter,
                     plan: plan,
-                    transitionsDisabled: explicitlyDisablesTransitions,
+                    transitionsDisabled: explicitlyDisablesTransitions || preservesExactRenderedDuration,
                     explicitlyRequestsTransitions: explicitlyRequestsTransitions,
                     boundaryIndex: items.filter { $0.kind != .title && $0.overlay == nil }.count
                 )
@@ -178,7 +233,12 @@ public struct TimelineComposer: Sendable {
                     return Double(width) / Double(height)
                 }()
                 let telemetryDecision: SmartTelemetryDecision? = {
-                    guard telemetryAccentCount < maximumTelemetryAccents,
+                    // Sensor data is editorial source material, not permission
+                    // to put a HUD over the picture. Keep it invisible until
+                    // the user explicitly asks for telemetry; manual Timeline
+                    // widgets continue to use the same renderer.
+                    guard explicitlyAsksTelemetry,
+                          telemetryAccentCount < maximumTelemetryAccents,
                           cursor - lastTelemetryEnd >= 5.5,
                           let summary = telemetryByAsset[asset.id], summary.hasTelemetry else { return nil }
                     return SmartTelemetryEngine().decide(SmartTelemetryContext(
@@ -214,6 +274,21 @@ public struct TimelineComposer: Sendable {
                 if let eventID = chapter.eventID { eventDurations[eventID, default: 0] += sourceRange.sourceDuration }
                 candidate.tags.forEach { tagDurations[$0, default: 0] += sourceRange.sourceDuration }
             }
+            // Auto titles belong to this story block. A collision must never
+            // push a label into the next activity; shorten it to the actual
+            // block and omit unreadable flashes instead.
+            let minimumReadableTitleDuration = 1.25
+            titleItems.removeAll { item in
+                guard chapterGeneratedTitleIDs.contains(item.id) else { return false }
+                let available = cursor - item.startTime
+                return available < minimumReadableTitleDuration
+            }
+            for index in titleItems.indices where chapterGeneratedTitleIDs.contains(titleItems[index].id) {
+                titleItems[index].duration = min(titleItems[index].duration, cursor - titleItems[index].startTime)
+            }
+            for titleID in directlyChapterScopedTitleIDs {
+                directTitleContainment[titleID] = chapterStart...cursor
+            }
         }
         if asksPhotoLayout {
             for index in items.indices.dropFirst() where items[index].kind == .photo && items[index - 1].kind == .photo && items[index - 1].overlay == nil {
@@ -221,9 +296,16 @@ public struct TimelineComposer: Sendable {
             }
             items = TimelineTiming.retimed(items)
         }
-        let originalAudioVolume = OriginalAudioPromptInterpreter().volume(prompt: plan.prompt) ?? 1
+        let originalAudioVolume = directorBrief?.sourceAudioPolicy.volume
+            ?? OriginalAudioPromptInterpreter().volume(prompt: plan.prompt)
+            ?? 1
         let audioClips = originalAudioVolume > 0.0001
-            ? makeSoundBridges(items: &items, candidates: candidates, assets: assetsByID)
+            ? makeSoundBridges(
+                items: &items,
+                candidates: candidates,
+                assets: assetsByID,
+                originalAudioVolume: originalAudioVolume
+            )
             : []
         // The visual analyzer's tags are part of the creative brief. This lets
         // an otherwise generic request select an energetic soundtrack for a
@@ -244,11 +326,38 @@ public struct TimelineComposer: Sendable {
                 autonomousIntent: decision.music
             )
         }
-        let music = explicitlyNoMusic ? nil : explicitMusic ?? autonomousMusic ?? MusicPromptInterpreter().interpret(
+        let contentAwareMusic = autonomousMusic ?? MusicPromptInterpreter().interpret(
             prompt: musicPrompt,
             preset: plan.preset,
             automaticDefault: true
         )
+        let music: MusicDirective? = {
+            guard let directorBrief else {
+                return explicitlyNoMusic ? nil : explicitMusic ?? contentAwareMusic
+            }
+            switch directorBrief.musicPolicy {
+            case .none:
+                return nil
+            case .soft:
+                return MusicDirective(style: .calm, bpm: 68, volume: 0.12)
+            case .matchVideo:
+                // The questionnaire's generic "match the video" wording is not
+                // an explicit genre. Selection remains driven by analyzed
+                // content and the autonomous music intent.
+                return contentAwareMusic
+            case .specificTrack:
+                var directive = contentAwareMusic
+                    ?? MusicPromptInterpreter().interpret(
+                        prompt: musicPrompt,
+                        preset: plan.preset,
+                        automaticDefault: true
+                    )
+                    ?? MusicDirective(style: .cinematic, bpm: 82)
+                directive.trackID = directorBrief.musicTrackID
+                directive.preferDifferentTrack = nil
+                return directive
+            }
+        }()
         let primaryItems = items.filter { $0.overlay == nil }
         let transitionItems: [TimelineTransitionItem] = primaryItems.indices.dropFirst().compactMap { index in
             let incoming = primaryItems[index]
@@ -270,17 +379,60 @@ public struct TimelineComposer: Sendable {
                 ].compactMap { $0 }
             )
         }
+        let boundedTitles = titleItems.compactMap { item -> TitleTimelineItem? in
+            guard item.startTime < cursor else { return nil }
+            var copy = item
+            copy.duration = min(copy.duration, max(0.05, cursor - copy.startTime))
+            if let sceneID = titleSceneScopeByID[item.id] {
+                copy.targetClipID = items.first { $0.overlay == nil && $0.eventSceneID == sceneID }?.id
+            } else if let eventID = titleEventScopeByID[item.id] {
+                copy.targetClipID = items.first { $0.overlay == nil && $0.eventID == eventID }?.id
+            } else if let scope = directTitleContainment[item.id] {
+                copy.targetClipID = items.first {
+                    $0.overlay == nil && $0.timelineStart >= scope.lowerBound && $0.timelineStart < scope.upperBound
+                }?.id
+            }
+            return copy
+        }
+        var containmentByTitleID = directTitleContainment
+        for (titleID, sceneID) in titleSceneScopeByID {
+            let block = items.filter { $0.overlay == nil && $0.eventSceneID == sceneID }
+            if let start = block.map(\.timelineStart).min(),
+               let end = block.map({ $0.timelineStart + $0.timelineDuration }).max(),
+               end > start {
+                containmentByTitleID[titleID] = start...end
+            }
+        }
+        for (titleID, eventID) in titleEventScopeByID where containmentByTitleID[titleID] == nil {
+            let block = items.filter { $0.overlay == nil && $0.eventID == eventID }
+            if let start = block.map(\.timelineStart).min(),
+               let end = block.map({ $0.timelineStart + $0.timelineDuration }).max(),
+               end > start {
+                containmentByTitleID[titleID] = start...end
+            }
+        }
+        let titleReview = AutomatedTitlePolicy.reviewed(
+            boundedTitles,
+            timelineDuration: cursor,
+            containmentByTitleID: containmentByTitleID
+        )
+        let finalTitles = titlePolicy.map {
+            DirectorTitlePolicyEngine.applying($0, to: titleReview.titles, timelineDuration: cursor)
+        } ?? titleReview.titles
+        if !titleReview.diagnostics.isEmpty,
+           let diagnosticItemIndex = items.firstIndex(where: { $0.overlay == nil && $0.kind != .title }) {
+            items[diagnosticItemIndex].explanation.append(contentsOf: titleReview.diagnostics.map {
+                "Title quality gate [\($0.code)]: \($0.message)"
+            })
+        }
         return Timeline(
             storyPlanID: plan.id,
+            width: directorBrief?.canvasFormat.width ?? 1920,
+            height: directorBrief?.canvasFormat.height ?? 1080,
             items: items,
             audioClips: audioClips,
             telemetryItems: telemetryItems,
-            titleItems: titleItems.compactMap { item in
-                guard item.startTime < cursor else { return nil }
-                var copy = item
-                copy.duration = min(copy.duration, max(0.05, cursor - copy.startTime))
-                return copy
-            },
+            titleItems: finalTitles,
             transitionItems: transitionItems,
             music: music,
             originalAudioVolume: originalAudioVolume,
@@ -368,7 +520,8 @@ public struct TimelineComposer: Sendable {
     private func makeSoundBridges(
         items: inout [TimelineItem],
         candidates: [UUID: Candidate],
-        assets: [UUID: MediaAsset]
+        assets: [UUID: MediaAsset],
+        originalAudioVolume: Double
     ) -> [TimelineAudioClip] {
         var result: [TimelineAudioClip] = []
         for index in items.indices where items[index].kind == .video && items[index].overlay == nil {
@@ -395,6 +548,10 @@ public struct TimelineComposer: Sendable {
 
             var adjustments = items[index].effectiveAudioAdjustments
             adjustments.muted = false
+            // Detached J/L-cuts bypass the primary original-audio mix. Apply
+            // the brief's source level here as well so a cinematic sound bridge
+            // never jumps back to full camera volume.
+            adjustments.volume *= min(max(0, originalAudioVolume), 1)
             adjustments.fadeIn = max(adjustments.fadeIn, 0.06)
             adjustments.fadeOut = max(adjustments.fadeOut, 0.08)
             adjustments.duckOthers = usefulSpeech
@@ -441,6 +598,211 @@ public struct TimelineComposer: Sendable {
             return grammar.meanShotDuration * roleFactor * (0.78 + interest * 0.38)
         } ?? legacy
         return min(candidate.sourceDuration, max(role == .action ? 0.85 : 1.35, desired))
+    }
+
+    private struct ExactCandidateRange: Sendable {
+        var sourceStart: Double
+        var sourceDuration: Double
+    }
+
+    /// Allocates an explicitly requested duration across selected moments. The
+    /// analyzed range remains the editorial anchor, but long camera sources may
+    /// contribute adjacent continuity up to non-overlapping midpoints between
+    /// anchors. This respects a five-minute brief without repeating five-second
+    /// snippets or inventing duplicate cuts.
+    private func exactCandidateRanges(
+        plan: StoryPlan,
+        candidates: [UUID: Candidate],
+        assets: [UUID: MediaAsset]
+    ) -> [UUID: ExactCandidateRange] {
+        guard plan.requiresExactDuration,
+              let decision = plan.autonomousDecision?.duration,
+              abs(decision.safeRange.upperBound - decision.safeRange.lowerBound) < 0.001 else { return [:] }
+
+        struct SelectedMoment {
+            let id: UUID
+            let candidate: Candidate
+            let role: StoryRole?
+            let eventID: UUID?
+            var lowerBound: Double = 0
+            var upperBound: Double = 0
+
+            var capacity: Double { max(0, upperBound - lowerBound) }
+        }
+        var selected = plan.chapters.flatMap { chapter in
+            chapter.candidateIDs.compactMap { id in
+                candidates[id].map { SelectedMoment(id: id, candidate: $0, role: chapter.role, eventID: chapter.eventID) }
+            }
+        }
+        guard !selected.isEmpty else { return [:] }
+
+        for assetID in Set(selected.map { $0.candidate.assetID }) {
+            let positions = selected.indices.filter { selected[$0].candidate.assetID == assetID }.sorted {
+                let left = selected[$0].candidate.sourceStart + selected[$0].candidate.sourceDuration * 0.5
+                let right = selected[$1].candidate.sourceStart + selected[$1].candidate.sourceDuration * 0.5
+                if left != right { return left < right }
+                if selected[$0].candidate.sourceStart != selected[$1].candidate.sourceStart {
+                    return selected[$0].candidate.sourceStart < selected[$1].candidate.sourceStart
+                }
+                return selected[$0].id.uuidString < selected[$1].id.uuidString
+            }
+            guard !positions.isEmpty else { continue }
+            let asset = assets[assetID]
+            let assetEnd = max(
+                asset?.metadata.duration ?? 0,
+                positions.map { selected[$0].candidate.sourceStart + selected[$0].candidate.sourceDuration }.max() ?? 0
+            )
+            // Give adjacent anchors one shared boundary. Sorting and splitting
+            // by center (rather than independently by start/end midpoints)
+            // also handles containment such as [0, 100] plus [10, 15]: every
+            // allocated source window remains monotonic and disjoint.
+            let anchors = positions.map { position in
+                min(assetEnd, max(0,
+                    selected[position].candidate.sourceStart
+                        + selected[position].candidate.sourceDuration * 0.5
+                ))
+            }
+            let boundaries = zip(anchors, anchors.dropFirst()).map { left, right in
+                min(assetEnd, max(0, (left + right) * 0.5))
+            }
+            for offset in positions.indices {
+                let index = positions[offset]
+                let candidate = selected[index].candidate
+                let candidateEnd = candidate.sourceStart + candidate.sourceDuration
+                let lower = offset == positions.startIndex ? 0 : boundaries[offset - 1]
+                let upper = offset == positions.index(before: positions.endIndex) ? assetEnd : boundaries[offset]
+                selected[index].lowerBound = max(0, min(candidateEnd, lower))
+                selected[index].upperBound = max(selected[index].lowerBound, min(assetEnd, upper))
+                if asset?.kind == .photo {
+                    selected[index].lowerBound = candidate.sourceStart
+                    selected[index].upperBound = candidateEnd
+                }
+            }
+        }
+
+        func allocate(_ moments: [SelectedMoment], target: Double) -> [UUID: Double] {
+            guard !moments.isEmpty, target > 0 else { return [:] }
+            var values = Dictionary(uniqueKeysWithValues: moments.map { moment in
+                let preferred = preferredDuration(
+                    candidate: moment.candidate,
+                    role: moment.role,
+                    pacing: plan.constraints.pacing,
+                    grammar: plan.autonomousDecision?.grammar
+                )
+                return (moment.id, min(preferred, moment.capacity))
+            })
+            let preferredTotal = values.values.reduce(0, +)
+            if preferredTotal > target + 0.000_001 {
+                let scale = target / preferredTotal
+                for id in values.keys { values[id, default: 0] *= scale }
+                return values
+            }
+            var remaining = max(0, target - preferredTotal)
+            var active = moments.filter { moment in
+                (values[moment.id] ?? 0) + 0.001 < moment.capacity
+            }
+            while remaining > 0.000_001, !active.isEmpty {
+                let fairShare = remaining / Double(active.count)
+                var consumed = 0.0
+                for moment in active {
+                    let current = values[moment.id] ?? 0
+                    let addition = min(fairShare, max(0, moment.capacity - current))
+                    values[moment.id] = current + addition
+                    consumed += addition
+                }
+                guard consumed > 0.000_001 else { break }
+                remaining -= consumed
+                active.removeAll { moment in
+                    (values[moment.id] ?? 0) + 0.001 >= moment.capacity
+                }
+            }
+            return values
+        }
+
+        func toppingUp(
+            _ moments: [SelectedMoment],
+            durations source: [UUID: Double],
+            target: Double
+        ) -> [UUID: Double] {
+            var values = source
+            var remaining = max(0, target - values.values.reduce(0, +))
+            var active = moments.filter { moment in
+                (values[moment.id] ?? 0) + 0.001 < moment.capacity
+            }
+            while remaining > 0.000_001, !active.isEmpty {
+                let fairShare = remaining / Double(active.count)
+                var consumed = 0.0
+                for moment in active {
+                    let current = values[moment.id] ?? 0
+                    let addition = min(fairShare, max(0, moment.capacity - current))
+                    values[moment.id] = current + addition
+                    consumed += addition
+                }
+                guard consumed > 0.000_001 else { break }
+                remaining -= consumed
+                active.removeAll { moment in
+                    (values[moment.id] ?? 0) + 0.001 >= moment.capacity
+                }
+            }
+            return values
+        }
+
+        func expandedRanges(_ moments: [SelectedMoment], durations: [UUID: Double]) -> [UUID: ExactCandidateRange] {
+            Dictionary(uniqueKeysWithValues: moments.compactMap { moment in
+                guard let requested = durations[moment.id], moment.capacity > 0.05 else { return nil }
+                let duration = min(max(0.05, requested), moment.capacity)
+                let candidate = moment.candidate
+                if duration + 0.001 < candidate.sourceDuration {
+                    let trimmed = MomentPhaseTrimmer().range(for: candidate, desiredDuration: duration)
+                    let start = min(
+                        max(moment.lowerBound, trimmed.sourceStart),
+                        max(moment.lowerBound, moment.upperBound - duration)
+                    )
+                    return (moment.id, ExactCandidateRange(sourceStart: start, sourceDuration: duration))
+                }
+
+                let anchorStart = max(moment.lowerBound, candidate.sourceStart)
+                let anchorEnd = min(moment.upperBound, candidate.sourceStart + candidate.sourceDuration)
+                var start = anchorStart
+                var end = anchorEnd
+                var extra = max(0, duration - (end - start))
+                let before = min(extra * 0.5, max(0, start - moment.lowerBound))
+                start -= before
+                extra -= before
+                let after = min(extra, max(0, moment.upperBound - end))
+                end += after
+                extra -= after
+                if extra > 0 {
+                    let finalBefore = min(extra, max(0, start - moment.lowerBound))
+                    start -= finalBefore
+                }
+                return (moment.id, ExactCandidateRange(sourceStart: start, sourceDuration: min(duration, end - start)))
+            })
+        }
+
+        guard let eventStory = plan.eventStory, !eventStory.entries.isEmpty else {
+            return expandedRanges(selected, durations: allocate(selected, target: plan.constraints.targetDuration))
+        }
+        var durations: [UUID: Double] = [:]
+        for entry in eventStory.entries {
+            durations.merge(
+                allocate(selected.filter { $0.eventID == entry.eventID }, target: entry.allocatedDuration),
+                uniquingKeysWith: { _, new in new }
+            )
+        }
+        let ungrouped = selected.filter { $0.eventID == nil }
+        if !ungrouped.isEmpty {
+            let allocated = eventStory.entries.reduce(0) { $0 + $1.allocatedDuration }
+            durations.merge(
+                allocate(ungrouped, target: max(0, plan.constraints.targetDuration - allocated)),
+                uniquingKeysWith: { _, new in new }
+            )
+        }
+        // An event's editorial share can exceed the source capacity of its
+        // selected moments. Borrow the deficit from other selected events with
+        // unused source before declaring an exact user duration impossible.
+        durations = toppingUp(selected, durations: durations, target: plan.constraints.targetDuration)
+        return expandedRanges(selected, durations: durations)
     }
 }
 

@@ -197,3 +197,642 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
         return
     }
 }
+
+@Test func previewGeometryContractKeepsTheWholeCameraFrame() {
+    let fitted = PreviewGeometryContract.assess(
+        sourceWidth: 5_312,
+        sourceHeight: 2_988,
+        viewportWidth: 640,
+        viewportHeight: 640,
+        contentMode: .aspectFit
+    )
+    let filled = PreviewGeometryContract.assess(
+        sourceWidth: 5_312,
+        sourceHeight: 2_988,
+        viewportWidth: 640,
+        viewportHeight: 640,
+        contentMode: .aspectFill
+    )
+
+    #expect(fitted.preservesCompleteSource)
+    #expect(fitted.cropFraction < 0.000_1)
+    #expect(!filled.preservesCompleteSource)
+    #expect(filled.cropFraction > 0.43)
+    #expect(PreviewDeliveryProfile.production.sourcePreviewContentMode == .aspectFit)
+    #expect(PreviewDeliveryProfile.production.timelinePreviewContentMode == .aspectFit)
+}
+
+@Test func deliveryContractRepairsExplicitMusicTitleAndSourceAudioRequirements() {
+    let assetID = UUID()
+    let items = (0..<2).map { index in
+        TimelineItem(
+            assetID: assetID,
+            kind: .video,
+            sourceStart: Double(index * 5),
+            sourceDuration: 5,
+            timelineStart: Double(index * 5),
+            timelineDuration: 5
+        )
+    }
+    let sourceAudio = TimelineAudioClip(
+        assetID: assetID,
+        title: "J/L-cut · диалог",
+        role: .dialogue,
+        sourceDuration: 5,
+        timelineStart: 0,
+        timelineDuration: 5
+    )
+    let musicAudio = TimelineAudioClip(
+        trackID: UUID(),
+        title: "Музыка",
+        role: .music,
+        sourceDuration: 10,
+        timelineStart: 0,
+        timelineDuration: 10
+    )
+    let plan = StoryPlan(
+        prompt: "Ровно 10 секунд, без музыки, без титров, звук исходников приглушить",
+        preset: .cinematic,
+        constraints: StoryConstraints(targetDuration: 10),
+        chapters: []
+    )
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        items: items,
+        audioClips: [sourceAudio, musicAudio],
+        titleItems: [TitleTimelineItem(
+            kind: .chapter,
+            text: "Ключевой момент",
+            startTime: 0,
+            duration: 3,
+            explanation: ["Автоматический режиссёрский титр"]
+        )],
+        music: MusicDirective(style: .cinematic, bpm: 82),
+        originalAudioVolume: 1
+    )
+
+    let result = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: []
+    )
+
+    #expect(result.canPersist)
+    #expect(result.timeline.music == nil)
+    #expect(result.timeline.effectiveAudioClips.count == 1)
+    #expect(result.timeline.effectiveAudioClips.first?.role == .dialogue)
+    #expect(abs((result.timeline.effectiveAudioClips.first?.adjustments.effectiveVolume ?? 1) - 0.3) < 0.000_1)
+    #expect(abs(result.timeline.effectiveOriginalAudioVolume - 0.3) < 0.000_1)
+    #expect(result.timeline.effectiveTitleItems.isEmpty)
+    #expect(result.issues.contains { $0.kind == .forbiddenMusic && $0.resolution == .repaired })
+    #expect(result.issues.contains { $0.kind == .forbiddenTitles && $0.resolution == .repaired })
+    #expect(result.issues.contains { $0.kind == .originalAudioVolume && $0.resolution == .repaired })
+}
+
+@Test func deliveryContractBlocksMismatchedExactDurationAndMomentCount() {
+    let plan = StoryPlan(
+        prompt: "Сделай фильм ровно 10 секунд, используй 3 момента",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 10, targetClipCount: 3),
+        chapters: []
+    )
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        items: (0..<2).map { index in
+            TimelineItem(
+                assetID: UUID(),
+                kind: .video,
+                sourceDuration: 4,
+                timelineStart: Double(index * 4),
+                timelineDuration: 4
+            )
+        }
+    )
+
+    let result = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: []
+    )
+
+    #expect(!result.canPersist)
+    #expect(result.blockingIssues.contains { $0.kind == .exactDuration })
+    #expect(result.blockingIssues.contains { $0.kind == .exactClipCount })
+}
+
+@Test func directorBriefContractRepairsFormatSpecificMusicAudioAndTitlesButBlocksOriginalRequestedDuration() {
+    let requestedTrackID = UUID()
+    let brief = DirectorBrief(
+        canvasFormat: .portrait9x16,
+        requestedDuration: 10,
+        mood: .cinematic,
+        musicPolicy: .specificTrack,
+        musicTrackID: requestedTrackID,
+        sourceAudioPolicy: .mute,
+        titlePolicy: .none
+    )
+    // Simulates an optimizer that shortened the plan. The original brief must
+    // remain the delivery target and therefore cannot silently pass at 8 s.
+    let plan = StoryPlan(
+        prompt: "Фильм",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 8),
+        chapters: [],
+        directorBrief: brief
+    )
+    let assetID = UUID()
+    let wrongTrackID = UUID()
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        width: 1920,
+        height: 1080,
+        items: [TimelineItem(
+            assetID: assetID,
+            kind: .video,
+            sourceDuration: 8,
+            timelineStart: 0,
+            timelineDuration: 8,
+            audioAdjustments: AudioAdjustments(volume: 0.4)
+        )],
+        audioClips: [TimelineAudioClip(
+            assetID: assetID,
+            title: "Исходный звук",
+            role: .naturalSound,
+            sourceDuration: 8,
+            timelineStart: 0,
+            timelineDuration: 8
+        )],
+        titleItems: [TitleTimelineItem(
+            kind: .chapter,
+            text: "Поездка",
+            startTime: 0,
+            duration: 2,
+            explanation: ["Автоматический режиссёрский титр"]
+        )],
+        music: MusicDirective(style: .energetic, bpm: 120, trackID: wrongTrackID),
+        originalAudioVolume: 1
+    )
+
+    let result = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: []
+    )
+
+    #expect(result.timeline.width == 1080)
+    #expect(result.timeline.height == 1920)
+    #expect(result.timeline.music?.trackID == requestedTrackID)
+    #expect(result.timeline.effectiveOriginalAudioVolume == 0)
+    #expect(result.timeline.items.first?.effectiveAudioAdjustments.muted == true)
+    #expect(result.timeline.effectiveAudioClips.first?.adjustments.muted == true)
+    #expect(result.timeline.effectiveTitleItems.isEmpty)
+    #expect(!result.canPersist)
+    #expect(result.blockingIssues.contains { $0.kind == .exactDuration })
+    #expect(result.issues.contains { $0.kind == .canvasFormat && $0.resolution == .repaired })
+    #expect(result.issues.contains { $0.kind == .musicPolicy && $0.resolution == .repaired })
+}
+
+@Test func directorBriefContractEnforcesSoftMusicDuckAndSparseKeyTitles() {
+    let brief = DirectorBrief(
+        requestedDuration: 120,
+        musicPolicy: .soft,
+        sourceAudioPolicy: .duck,
+        titlePolicy: .keyOnly
+    )
+    let plan = StoryPlan(
+        prompt: "Фильм",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 120),
+        chapters: [],
+        directorBrief: brief
+    )
+    let assetID = UUID()
+    let titles = [0.0, 10, 45, 80].map { start in
+        TitleTimelineItem(
+            kind: .chapter,
+            text: "Глава \(Int(start))",
+            startTime: start,
+            duration: 2,
+            explanation: ["Автоматический режиссёрский титр"]
+        )
+    }
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        items: [TimelineItem(
+            assetID: assetID,
+            kind: .video,
+            sourceDuration: 120,
+            timelineStart: 0,
+            timelineDuration: 120
+        )],
+        audioClips: [TimelineAudioClip(
+            assetID: assetID,
+            title: "Диалог",
+            role: .dialogue,
+            sourceDuration: 120,
+            timelineStart: 0,
+            timelineDuration: 120
+        )],
+        titleItems: titles,
+        music: MusicDirective(style: .energetic, bpm: 126, volume: 0.4),
+        originalAudioVolume: 1
+    )
+
+    let result = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: []
+    )
+
+    #expect(result.canPersist)
+    #expect(result.timeline.music?.style == .calm)
+    #expect((result.timeline.music?.volume ?? 1) <= 0.14)
+    #expect(abs(result.timeline.effectiveOriginalAudioVolume - 0.28) < 0.000_1)
+    #expect(abs((result.timeline.effectiveAudioClips.first?.adjustments.effectiveVolume ?? 1) - 0.28) < 0.000_1)
+    #expect(result.timeline.effectiveTitleItems.count == 2)
+    #expect(result.timeline.effectiveTitleItems.allSatisfy {
+        !SmartTitleEngine.isMeaningless($0.text) && !SmartTitleEngine.isStructuralPlaceholder($0.text)
+    })
+}
+
+@Test func deliveryContractRemovesPlaceholderAndCollidingAutomaticTitles() {
+    let plan = StoryPlan(
+        prompt: "Добавь только ключевые титры",
+        preset: .cinematic,
+        constraints: StoryConstraints(targetDuration: 10),
+        chapters: []
+    )
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        items: [TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 10, timelineStart: 0, timelineDuration: 10)],
+        titleItems: [
+            TitleTimelineItem(
+                kind: .chapter,
+                text: "Ключевой момент",
+                startTime: 0,
+                duration: 3,
+                explanation: ["Автоматический режиссёрский титр"]
+            ),
+            TitleTimelineItem(
+                kind: .chapter,
+                text: "Поездка на багги",
+                startTime: 1,
+                duration: 4,
+                explanation: ["Автоматический режиссёрский титр"]
+            ),
+            TitleTimelineItem(
+                kind: .chapter,
+                text: "Велопрогулка",
+                startTime: 2,
+                duration: 4,
+                explanation: ["Автоматический режиссёрский титр"]
+            )
+        ]
+    )
+
+    let result = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: []
+    )
+
+    #expect(result.canPersist)
+    #expect(result.timeline.effectiveTitleItems.map(\.text) == ["Поездка на багги"])
+    #expect(result.issues.contains { $0.kind == .generatedTitleQuality && $0.resolution == .repaired })
+}
+
+@Test func deliveryContractRequiresStableRealtimePathForDecorated5KCameraMedia() {
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/camera.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "camera-5k",
+        metadata: MediaMetadata(width: 5_312, height: 2_988, codec: "hevc", hasAudio: true)
+    )
+    let plan = StoryPlan(
+        prompt: "Кинематографичный фильм",
+        preset: .cinematic,
+        constraints: StoryConstraints(targetDuration: 5),
+        chapters: []
+    )
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        width: 1_920,
+        height: 1_080,
+        items: [TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)],
+        titleItems: [TitleTimelineItem(
+            kind: .chapter,
+            text: "Поездка на багги",
+            startTime: 0,
+            duration: 2,
+            explanation: ["Автоматический режиссёрский титр"]
+        )]
+    )
+    let unsafe = PreviewDeliveryProfile(
+        sourcePreviewContentMode: .aspectFit,
+        timelinePreviewContentMode: .aspectFit,
+        usesStableRealtimePlayback: false
+    )
+
+    let blocked = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: [asset],
+        previewProfile: unsafe
+    )
+    let stable = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: [asset]
+    )
+
+    #expect(!blocked.canPersist)
+    #expect(blocked.blockingIssues.contains { $0.kind == .unstableHighResolutionPreview })
+    #expect(stable.canPersist)
+    #expect(stable.issues.contains {
+        $0.kind == .unstableHighResolutionPreview && $0.resolution == .repaired
+    })
+}
+
+@Test func deliveryContractBlocksConfirmedRenderedBlackFramesButNotMissingSamples() {
+    let plan = StoryPlan(
+        prompt: "Короткий фильм",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 5),
+        chapters: []
+    )
+    var timeline = Timeline(
+        storyPlanID: plan.id,
+        items: [TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)]
+    )
+    let score = PerceptualScore(
+        continuity: 1,
+        composition: 1,
+        momentCompleteness: 1,
+        pacing: 1,
+        musicAlignment: 1,
+        audioContinuity: 1,
+        visualVariety: 1,
+        storyCoherence: 1,
+        effectQuality: 1,
+        titleQuality: 1,
+        technicalIntegrity: 0
+    )
+    let finding = PerceptualFinding(
+        severity: .critical,
+        scope: .film,
+        timelineRange: PerceptualTimeRange(start: 0, end: 5),
+        type: .blackFrame,
+        confidence: 1,
+        explanation: "Decoded frame is black"
+    )
+    func run(sampleCount: Int) -> DirectorRunSummary {
+        let summary = PerceptualReviewSummary(
+            perceptualReviewIterations: 1,
+            findings: [finding],
+            repairsAttempted: 0,
+            repairsAccepted: 0,
+            repairsRejected: 0,
+            rollbackCount: 0,
+            initialScore: score,
+            finalScore: score,
+            cutScores: [],
+            repairAttempts: [],
+            renderedFrameSampleCount: sampleCount,
+            renderReviewStatus: sampleCount == 0 ? "render-built-no-decodable-samples" : "selective-render-reviewed"
+        )
+        return DirectorRunSummary(
+            reviewIterations: 1,
+            appliedToolNames: [],
+            decisionReasons: [],
+            rejectedOperations: [],
+            initialReview: DirectorReview(score: 1, issues: []),
+            finalReview: DirectorReview(score: 1, issues: []),
+            perceptualReview: summary
+        )
+    }
+
+    timeline.directorRun = run(sampleCount: 1)
+    let confirmed = TimelineDeliveryContract().validateAndRepair(timeline: timeline, plan: plan, assets: [])
+    timeline.directorRun = run(sampleCount: 0)
+    let noSamples = TimelineDeliveryContract().validateAndRepair(timeline: timeline, plan: plan, assets: [])
+
+    #expect(!confirmed.canPersist)
+    #expect(confirmed.blockingIssues.contains { $0.kind == .renderedBlackFrame })
+    #expect(noSamples.canPersist)
+    #expect(!noSamples.issues.contains { $0.kind == .renderedBlackFrame })
+}
+
+@Test func deliveryContractRejectsCroppingPreviewConfiguration() {
+    let plan = StoryPlan(
+        prompt: "Фильм",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 5),
+        chapters: []
+    )
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        items: [TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)]
+    )
+    let profile = PreviewDeliveryProfile(
+        sourcePreviewContentMode: .aspectFill,
+        timelinePreviewContentMode: .aspectFill,
+        usesStableRealtimePlayback: true
+    )
+
+    let result = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: [],
+        previewProfile: profile
+    )
+
+    #expect(!result.canPersist)
+    #expect(result.blockingIssues.contains { $0.kind == .sourcePreviewCrop })
+    #expect(result.blockingIssues.contains { $0.kind == .timelinePreviewCrop })
+}
+
+@Test func deliveryContractValidatesCanonicalTagCoverageSharesAndRoleAnchors() {
+    let cyclingAssetID = UUID()
+    let buggyAssetID = UUID()
+    let cyclingCandidate = Candidate(
+        assetID: cyclingAssetID,
+        sourceStart: 0,
+        sourceDuration: 8,
+        scores: ClipScores(quality: 0.8, interest: 0.8, action: 0.7, stability: 0.8),
+        tags: ["bicycle"]
+    )
+    // The low-level classifier did not name this activity. SourceMap and the
+    // confirmed chapter provide the canonical buggy provenance instead.
+    let buggyCandidate = Candidate(
+        assetID: buggyAssetID,
+        sourceStart: 0,
+        sourceDuration: 4,
+        scores: ClipScores(quality: 0.8, interest: 0.9, action: 0.9, stability: 0.7),
+        tags: ["vehicle"]
+    )
+    let analyses = [
+        AnalysisResult(assetID: cyclingAssetID, analyzedContentHash: "cycling", candidates: [cyclingCandidate]),
+        AnalysisResult(assetID: buggyAssetID, analyzedContentHash: "buggy", candidates: [buggyCandidate])
+    ]
+    let sourceMap = SourceMap(entries: [], activityGroups: [
+        SourceActivityGroup(
+            id: UUID(),
+            order: 0,
+            title: "Велопрогулка",
+            assetIDs: [cyclingAssetID],
+            confidence: 0.9,
+            evidence: []
+        ),
+        SourceActivityGroup(
+            id: UUID(),
+            order: 1,
+            title: "Багги",
+            assetIDs: [buggyAssetID],
+            confidence: 0.9,
+            evidence: []
+        )
+    ])
+    let diagnostics = EventRunDiagnostics(
+        eventsDetected: 2,
+        eventConfidence: [:],
+        eventTitles: [],
+        eventDateRanges: [],
+        eventOrder: [],
+        sceneCount: 2,
+        crossDeviceMatches: 0,
+        sourceMap: sourceMap
+    )
+    var constraints = StoryConstraints(
+        targetDuration: 12,
+        includeTags: ["bike", "buggy"],
+        excludeTags: ["fishing"],
+        maximumTagShares: ["bike": 0.70],
+        preferredIntroTags: ["bike"],
+        preferredClimaxTags: ["buggy"]
+    )
+    let plan = StoryPlan(
+        prompt: "Велосипед в начале, багги — кульминация, без рыбалки, велосипеда максимум 70%",
+        preset: .adventure,
+        constraints: constraints,
+        chapters: [
+            StoryChapter(title: "Велопрогулка", candidateIDs: [cyclingCandidate.id], role: .intro),
+            StoryChapter(title: "Багги", candidateIDs: [buggyCandidate.id], role: .climax)
+        ],
+        eventStory: EventStoryPlan(entries: [], diagnostics: diagnostics)
+    )
+    let timeline = Timeline(storyPlanID: plan.id, items: [
+        TimelineItem(
+            candidateID: cyclingCandidate.id,
+            assetID: cyclingAssetID,
+            kind: .video,
+            sourceDuration: 4,
+            timelineStart: 0,
+            timelineDuration: 4,
+            storyRole: .intro
+        ),
+        TimelineItem(
+            candidateID: buggyCandidate.id,
+            assetID: buggyAssetID,
+            kind: .video,
+            sourceDuration: 4,
+            timelineStart: 4,
+            timelineDuration: 4,
+            storyRole: .climax
+        ),
+        TimelineItem(
+            candidateID: cyclingCandidate.id,
+            assetID: cyclingAssetID,
+            kind: .video,
+            sourceStart: 4,
+            sourceDuration: 4,
+            timelineStart: 8,
+            timelineDuration: 4,
+            storyRole: .outro
+        )
+    ])
+
+    let valid = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: [],
+        analyses: analyses
+    )
+    #expect(valid.canPersist)
+
+    constraints.includeTags.insert("sunset")
+    constraints.excludeTags.insert("bike")
+    constraints.maximumTagShares["bike"] = 0.50
+    constraints.preferredClimaxTags = ["bike"]
+    let invalidPlan = StoryPlan(
+        prompt: plan.prompt,
+        preset: plan.preset,
+        constraints: constraints,
+        chapters: plan.chapters,
+        eventStory: plan.eventStory
+    )
+    let invalid = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: invalidPlan,
+        assets: [],
+        analyses: analyses
+    )
+
+    #expect(!invalid.canPersist)
+    #expect(invalid.blockingIssues.contains { $0.kind == .missingRequiredTag })
+    #expect(invalid.blockingIssues.contains { $0.kind == .excludedTagPresent })
+    #expect(invalid.blockingIssues.contains { $0.kind == .maximumTagShare })
+    #expect(invalid.blockingIssues.contains { $0.kind == .preferredRoleTag })
+}
+
+@Test func deliveryContractReappliesEventSceneTitleContainmentAfterMusicSync() {
+    let firstSceneID = UUID()
+    let secondSceneID = UUID()
+    let first = TimelineItem(
+        assetID: UUID(),
+        kind: .video,
+        sourceDuration: 5,
+        timelineStart: 0,
+        timelineDuration: 5,
+        eventSceneID: firstSceneID
+    )
+    let second = TimelineItem(
+        assetID: UUID(),
+        kind: .video,
+        sourceDuration: 5,
+        timelineStart: 5,
+        timelineDuration: 5,
+        eventSceneID: secondSceneID
+    )
+    let plan = StoryPlan(
+        prompt: "Только ключевые титры",
+        preset: .cinematic,
+        constraints: StoryConstraints(targetDuration: 10),
+        chapters: []
+    )
+    let title = TitleTimelineItem(
+        kind: .chapter,
+        text: "Велопрогулка",
+        startTime: 3,
+        duration: 4,
+        targetClipID: first.id,
+        explanation: ["Автоматический режиссёрский титр"]
+    )
+    let timeline = Timeline(
+        storyPlanID: plan.id,
+        items: [first, second],
+        titleItems: [title]
+    )
+
+    let result = TimelineDeliveryContract().validateAndRepair(
+        timeline: timeline,
+        plan: plan,
+        assets: []
+    )
+
+    let repaired = result.timeline.effectiveTitleItems.first
+    #expect(result.canPersist)
+    #expect(repaired?.startTime == 3)
+    #expect(repaired?.endTime == 5)
+    #expect(result.issues.contains { $0.kind == .generatedTitleQuality && $0.resolution == .repaired })
+}

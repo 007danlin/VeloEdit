@@ -9,6 +9,64 @@ public enum BackgroundAnimationConfiguration {
     public static var intensity: Double = 0.5
 }
 
+enum StillImageRenderGeometry {
+    static func orientedImage(at url: URL) -> CIImage? {
+        guard let loaded = CIImage(
+            contentsOf: url,
+            options: [.applyOrientationProperty: true]
+        ) else { return nil }
+        let extent = loaded.extent.standardized
+        guard extent.width.isFinite, extent.height.isFinite,
+              extent.width > 0, extent.height > 0 else { return nil }
+        return loaded.transformed(
+            by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)
+        )
+    }
+
+    static func placement(
+        sourceExtent: CGRect,
+        targetSize: CGSize,
+        motionScale: CGFloat,
+        horizontalTravel: CGFloat,
+        verticalTravel: CGFloat,
+        subjectReframe: SubjectReframePlan?,
+        progress: CGFloat,
+        fill: Bool = true
+    ) -> (scale: CGFloat, x: CGFloat, y: CGFloat) {
+        let widthScale = targetSize.width / sourceExtent.width
+        let heightScale = targetSize.height / sourceExtent.height
+        let baseScale = fill ? max(widthScale, heightScale) : min(widthScale, heightScale)
+        let progressValue = Double(min(max(0, progress), 1))
+        let subjectScale = subjectReframe.map {
+            $0.startScale + ($0.endScale - $0.startScale) * progressValue
+        } ?? 1
+        let scale = baseScale * max(1, motionScale) * CGFloat(max(1, subjectScale))
+        let scaledWidth = sourceExtent.width * scale
+        let scaledHeight = sourceExtent.height * scale
+
+        var x = (targetSize.width - scaledWidth) / 2 + horizontalTravel
+        var y = (targetSize.height - scaledHeight) / 2 + verticalTravel
+        if let subjectReframe {
+            let centerX = subjectReframe.startCenterX +
+                (subjectReframe.endCenterX - subjectReframe.startCenterX) * progressValue
+            let centerY = subjectReframe.startCenterY +
+                (subjectReframe.endCenterY - subjectReframe.startCenterY) * progressValue
+            x = targetSize.width / 2 - scaledWidth * CGFloat(centerX) + horizontalTravel
+            y = targetSize.height / 2 - scaledHeight * CGFloat(centerY) + verticalTravel
+        }
+
+        // Keep the image within its legal overscan/letterbox range throughout
+        // every pan/zoom frame.
+        let minimumX = min(0, targetSize.width - scaledWidth)
+        let maximumX = max(0, targetSize.width - scaledWidth)
+        let minimumY = min(0, targetSize.height - scaledHeight)
+        let maximumY = max(0, targetSize.height - scaledHeight)
+        x = min(maximumX, max(minimumX, x))
+        y = min(maximumY, max(minimumY, y))
+        return (scale, x, y)
+    }
+}
+
 public actor StillImageVideoGenerator {
     private struct ParticleLayer {
         let speed: CGFloat
@@ -32,10 +90,12 @@ public actor StillImageVideoGenerator {
         destination: URL,
         codec: AVVideoCodecType = .h264,
         motion: ClipEffect? = .kenBurns,
+        subjectReframe: SubjectReframePlan? = nil,
+        cropStyle: CropStyle = .fill,
         backgroundAnimationStyle: BackgroundAnimationStyle? = nil,
         animationIntensity: Double = BackgroundAnimationConfiguration.intensity
     ) async throws -> URL {
-        guard let source = CGImageSourceCreateWithURL(imageURL as CFURL, nil), let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+        guard let image = StillImageRenderGeometry.orientedImage(at: imageURL) else {
             throw DerivedMediaError.cannotCreateDestination
         }
         let intensity = CGFloat(max(0, min(1, animationIntensity)))
@@ -68,9 +128,7 @@ public actor StillImageVideoGenerator {
         writer.startSession(atSourceTime: .zero)
 
         let frames = max(1, Int((duration * Double(frameRate)).rounded()))
-        let image = CIImage(cgImage: cgImage)
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
-        let baseScale = max(CGFloat(width) / image.extent.width, CGFloat(height) / image.extent.height)
         for frame in 0..<frames {
             if Task.isCancelled { writer.cancelWriting(); throw CancellationError() }
             while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
@@ -92,7 +150,7 @@ public actor StillImageVideoGenerator {
                     height: CGFloat(height),
                     intensity: intensity
                 )
-                motionScale = baseScale * transform.scale
+                motionScale = transform.scale
                 horizontalTravel = transform.translation.width
                 verticalTravel = transform.translation.height
             } else {
@@ -119,17 +177,56 @@ public actor StillImageVideoGenerator {
                 }
             }
 
-            let scale = motionScale
-            let scaledWidth = image.extent.width * scale
-            let scaledHeight = image.extent.height * scale
-            let x = (CGFloat(width) - scaledWidth) / 2 + horizontalTravel
-            let y = (CGFloat(height) - scaledHeight) / 2 + verticalTravel
-            let baseImage = image.transformed(
-                by: CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: x / scale, y: y / scale)
+            let preserveFullFrame = cropStyle == .fit && subjectReframe == nil
+            let placement = StillImageRenderGeometry.placement(
+                sourceExtent: image.extent,
+                targetSize: bounds.size,
+                motionScale: preserveFullFrame ? 1 : motionScale,
+                horizontalTravel: preserveFullFrame ? 0 : horizontalTravel,
+                verticalTravel: preserveFullFrame ? 0 : verticalTravel,
+                subjectReframe: subjectReframe,
+                progress: progress,
+                fill: !preserveFullFrame
             )
-            // Every animated background uses the same calm continuous push-in.
-            // No particles, wobble, pans or style-specific motion are layered on.
-            let finalImage = baseImage.cropped(to: bounds)
+            let baseImage = image.transformed(
+                by: CGAffineTransform(scaleX: placement.scale, y: placement.scale)
+                    .translatedBy(x: placement.x / placement.scale, y: placement.y / placement.scale)
+            )
+            let finalImage: CIImage
+            if preserveFullFrame {
+                let backgroundPlacement = StillImageRenderGeometry.placement(
+                    sourceExtent: image.extent,
+                    targetSize: bounds.size,
+                    motionScale: motionScale,
+                    horizontalTravel: horizontalTravel,
+                    verticalTravel: verticalTravel,
+                    subjectReframe: nil,
+                    progress: progress,
+                    fill: true
+                )
+                let background = image.transformed(
+                    by: CGAffineTransform(scaleX: backgroundPlacement.scale, y: backgroundPlacement.scale)
+                        .translatedBy(
+                            x: backgroundPlacement.x / backgroundPlacement.scale,
+                            y: backgroundPlacement.y / backgroundPlacement.scale
+                        )
+                )
+                .clampedToExtent()
+                .applyingFilter("CIGaussianBlur", parameters: [
+                    kCIInputRadiusKey: min(36, max(12, CGFloat(min(width, height)) * 0.016))
+                ])
+                .applyingFilter("CIColorControls", parameters: [
+                    kCIInputBrightnessKey: -0.16,
+                    kCIInputContrastKey: 0.88,
+                    kCIInputSaturationKey: 0.72
+                ])
+                .cropped(to: bounds)
+                finalImage = baseImage.composited(over: background).cropped(to: bounds)
+            } else {
+                // Every animated background uses the same calm continuous
+                // push-in; no unrelated particles or wobble are layered on.
+                finalImage = baseImage.cropped(to: bounds)
+            }
 
             context.render(finalImage, to: buffer, bounds: bounds, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
             guard adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: frameRate)) else {

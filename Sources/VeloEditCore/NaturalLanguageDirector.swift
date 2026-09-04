@@ -26,7 +26,7 @@ public enum NaturalLanguageOperationKind: String, Codable, CaseIterable, Hashabl
     case genericEdit, autonomousEdit
 }
 
-public struct DirectorCanvasFormat: Codable, Hashable, Sendable {
+public struct DirectorCanvasFormat: Codable, Hashable, Identifiable, CaseIterable, Sendable {
     public var width: Int
     public var height: Int
     public var label: String
@@ -42,6 +42,35 @@ public struct DirectorCanvasFormat: Codable, Hashable, Sendable {
     }
 
     public var aspectRatio: Double { Double(width) / Double(max(1, height)) }
+
+    /// Questionnaire choices and natural-language format commands share this
+    /// exact value type, so framing, safe areas and delivery cannot disagree
+    /// about the requested canvas.
+    public static let landscape16x9 = DirectorCanvasFormat(
+        width: 1_920,
+        height: 1_080,
+        label: "16:9"
+    )
+    public static let portrait9x16 = DirectorCanvasFormat(
+        width: 1_080,
+        height: 1_920,
+        label: "9:16"
+    )
+
+    public static let allCases: [DirectorCanvasFormat] = [
+        .landscape16x9,
+        .portrait9x16
+    ]
+
+    public var id: String { "\(width)x\(height):\(label)" }
+
+    public var localizedTitle: String {
+        switch (width, height) {
+        case (1_920, 1_080): return "Горизонтальное 16:9"
+        case (1_080, 1_920): return "Вертикальное 9:16"
+        default: return "\(label) · \(width)×\(height)"
+        }
+    }
 }
 
 public enum DirectorSubtitleLanguage: String, Codable, CaseIterable, Hashable, Sendable {
@@ -377,10 +406,35 @@ public struct NaturalLanguageDirector: Sendable {
         var calls: [DirectorToolCall] = []
         var rejected: [String] = []
 
+        let deterministicCommands = EditorCommandParser().parse(
+            input.userRequest,
+            preset: input.currentProject.storyPlans.last?.preset ?? .story
+        )
         var commands = mergedCommands(
-            deterministic: EditorCommandParser().parse(input.userRequest, preset: input.currentProject.storyPlans.last?.preset ?? .story),
+            deterministic: deterministicCommands,
             supplemental: supplementalCommands
         )
+        let storyPreset = input.currentProject.storyPlans.last?.preset ?? .story
+        let baseStoryConstraints = input.currentProject.storyPlans.last?.constraints
+            ?? PromptInterpreter.defaults(for: storyPreset)
+        var interpretedStoryConstraints = PromptInterpreter().interpret(
+            prompt: input.userRequest,
+            preset: storyPreset,
+            base: baseStoryConstraints
+        )
+        if deterministicCommands.contains(where: { $0.semanticCategory == "duration" }) {
+            // An explicit “selected/first/all clips are N seconds” command is
+            // a local editor operation, not a request to resize the film.
+            interpretedStoryConstraints.targetDuration = baseStoryConstraints.targetDuration
+        }
+        if deterministicCommands.contains(where: { $0.semanticCategory == "speed" }),
+           !isVaguePacing(text) {
+            interpretedStoryConstraints.pacing = baseStoryConstraints.pacing
+        }
+        if deterministicCommands.contains(where: { $0.semanticCategory == "transition" }) {
+            interpretedStoryConstraints.transitionFrequency = baseStoryConstraints.transitionFrequency
+        }
+        let requiresStoryConstraintRebuild = interpretedStoryConstraints != baseStoryConstraints
 
         if isVaguePacing(text) {
             // “Сделай быстрее” means denser editing, not 2× playback of every
@@ -727,13 +781,17 @@ public struct NaturalLanguageDirector: Sendable {
             intents.append(EditIntent(scope: .shot, target: generalTarget, operation: .genericEdit, desiredResult: "Применить типизированные editing tools", confidence: 0.93, executionTier: .instant))
         }
 
-        if Self.requiresAutonomousEdit(text) {
+        if Self.requiresAutonomousEdit(text) || requiresStoryConstraintRebuild {
             let tasteConfidence = min(1, Double(input.tasteProfile.totalSignalCount) / 20)
             intents.append(EditIntent(
                 scope: .global,
                 operation: .autonomousEdit,
-                constraints: ["PersonalTaste", "ProjectStyle", "EventGraph", "P6 perceptual review"],
-                desiredResult: "Самостоятельно выбрать лучший монтаж по материалу и вкусу",
+                constraints: requiresStoryConstraintRebuild
+                    ? ["exact story constraints", "reuse media analysis", "PersonalTaste", "ProjectStyle", "EventGraph"]
+                    : ["PersonalTaste", "ProjectStyle", "EventGraph", "P6 perceptual review"],
+                desiredResult: requiresStoryConstraintRebuild
+                    ? "Пересобрать историю по точным ограничениям пользователя"
+                    : "Самостоятельно выбрать лучший монтаж по материалу и вкусу",
                 confidence: max(0.62, input.styleProfile.confidence * 0.65 + tasteConfidence * 0.35),
                 executionTier: .deep
             ))
@@ -854,7 +912,7 @@ public struct NaturalLanguageDirector: Sendable {
         if NLText.containsAny(text, ["21:9", "21х9", "ультраширок", "широкоформатное кино", "widescreen cinema"]) {
             return DirectorCanvasFormat(width: 2_560, height: 1_080, label: "21:9")
         }
-        if NLText.containsAny(text, ["16:9", "16х9", "для телевизора", "для тв", "телевизор", "landscape"]) {
+        if NLText.containsAny(text, ["16:9", "16х9", "для телевизора", "для тв", "телевизор", "горизонталь", "горизонтальный", "горизонтальное", "landscape"]) {
             return DirectorCanvasFormat(width: 1_920, height: 1_080, label: "16:9")
         }
         if NLText.containsAny(text, ["4:3", "4х3", "старое видео", "old video"]) {
@@ -922,15 +980,28 @@ public struct NaturalLanguageDirector: Sendable {
         let durations = Dictionary(uniqueKeysWithValues: assets.compactMap { asset in
             asset.metadata.duration.map { (asset.id, $0) }
         })
+        let frame = 1 / max(1, timeline.frameRate)
         for index in timeline.items.indices {
             guard let assetID = timeline.items[index].assetID, let duration = durations[assetID] else { continue }
+            let preservedTimelineDuration = timeline.items[index].timelineDuration
             timeline.items[index].sourceStart = min(max(0, timeline.items[index].sourceStart), max(0, duration - 0.05))
             timeline.items[index].sourceDuration = min(
                 timeline.items[index].sourceDuration,
                 max(0.05, duration - timeline.items[index].sourceStart)
             )
-            let outputFactor = timeline.items[index].speedRamp?.outputDuration(sourceDuration: 1) ?? (1 / timeline.items[index].speed)
-            timeline.items[index].timelineDuration = max(0.05, timeline.items[index].sourceDuration * outputFactor)
+            if timeline.items[index].isFreezeFrame {
+                // A freeze intentionally holds one source frame for an
+                // arbitrary output duration. Recomputing its Timeline length
+                // from sourceDuration collapses a multi-second hold to a frame.
+                timeline.items[index].sourceDuration = min(
+                    max(frame, timeline.items[index].sourceDuration),
+                    max(frame, duration - timeline.items[index].sourceStart)
+                )
+                timeline.items[index].timelineDuration = max(frame, preservedTimelineDuration)
+            } else {
+                let outputFactor = timeline.items[index].speedRamp?.outputDuration(sourceDuration: 1) ?? (1 / timeline.items[index].speed)
+                timeline.items[index].timelineDuration = max(0.05, timeline.items[index].sourceDuration * outputFactor)
+            }
         }
         timeline.items = TimelineTiming.retimed(timeline.items)
         return timeline
@@ -938,8 +1009,8 @@ public struct NaturalLanguageDirector: Sendable {
 
     private func mergedCommands(deterministic: [EditorCommand], supplemental: [EditorCommand]) -> [EditorCommand] {
         guard !supplemental.isEmpty else { return deterministic }
-        let categories = Set(supplemental.map(\.semanticCategory))
-        return deterministic.filter { !categories.contains($0.semanticCategory) } + supplemental
+        let categories = Set(deterministic.map(\.semanticCategory))
+        return deterministic + supplemental.filter { !categories.contains($0.semanticCategory) }
     }
 
     private func isVaguePacing(_ text: String) -> Bool {

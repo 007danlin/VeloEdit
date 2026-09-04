@@ -84,6 +84,35 @@ private actor DownloadableMusicProvider: MusicProvider {
     func counts() -> (searches: Int, downloads: Int) { (searches, downloads) }
 }
 
+private actor SlowFailingMusicProvider: MusicProvider {
+    nonisolated let identifier = "slow-free-to-use"
+    nonisolated let sourceProvider: MusicSourceProvider = .freeToUse
+    nonisolated let priority = 100
+    private var searches = 0
+    private var cancellations = 0
+
+    func availability() async -> MusicProviderAvailability { .available }
+
+    func search(_ intent: MusicIntent) async throws -> [MusicProviderTrack] {
+        searches += 1
+        do {
+            try await Task.sleep(for: .seconds(2))
+        } catch {
+            cancellations += 1
+            throw error
+        }
+        throw URLError(.timedOut)
+    }
+
+    func download(_ track: MusicProviderTrack) async throws -> LocalMusicTrack {
+        throw URLError(.timedOut)
+    }
+
+    func metadata(_ track: MusicProviderTrack) async throws -> MusicTrackMetadata { track.metadata }
+    func license(_ track: MusicProviderTrack) async throws -> MusicLicenseRecord { track.license }
+    func counts() -> (searches: Int, cancellations: Int) { (searches, cancellations) }
+}
+
 private func musicFixtureRoot() -> URL {
     URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
@@ -128,6 +157,51 @@ private func energeticDirective() -> MusicDirective {
 
     #expect(track.sourceProvider == .bundled)
     #expect(track.isPlayable)
+}
+
+@Test func newProjectRotationAvoidsRecentlySelectedRealTracksAndPersistsHistory() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let bundled = BundledMusicProvider(library: local, rootURL: musicFixtureRoot())
+    let online = FailingMusicProvider(identifier: "offline", sourceProvider: .freeToUse, priority: 100)
+    let system = MusicLibrary(localLibrary: local, providers: [bundled, online])
+    let historyURL = root.appendingPathComponent("recent-music.json")
+    let history = LocalMusicSelectionHistoryStore(url: historyURL)
+
+    let first = try #require(await system.resolve(MusicIntent(directive: energeticDirective())).track)
+    try await history.record(first, selectedAt: Date(timeIntervalSince1970: 1))
+    let recent = await history.recentIdentities()
+    let second = try #require(await system.resolve(
+        MusicIntent(directive: energeticDirective()),
+        excludingIdentities: recent
+    ).track)
+
+    #expect(first.sourceProvider == .bundled)
+    #expect(second.sourceProvider == .bundled)
+    #expect(second.selectionIdentity != first.selectionIdentity)
+    #expect(second.author == "HoliznaCC0")
+
+    let reopenedHistory = LocalMusicSelectionHistoryStore(url: historyURL)
+    #expect(await reopenedHistory.recentSelections().map(\.identity) == [first.selectionIdentity])
+}
+
+@Test func exhaustedRotationFallsBackToAPlayableAuthoredTrackOffline() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let bundled = BundledMusicProvider(library: local, rootURL: musicFixtureRoot())
+    let online = FailingMusicProvider(identifier: "offline", sourceProvider: .freeToUse, priority: 100)
+    let system = MusicLibrary(localLibrary: local, providers: [bundled, online])
+    let allBundledIdentities = Set(try await system.tracks().filter { $0.sourceProvider == .bundled }.map(\.selectionIdentity))
+
+    let fallback = try #require(await system.resolve(
+        MusicIntent(directive: energeticDirective()),
+        excludingIdentities: allBundledIdentities,
+        preferCachedOnline: true
+    ).track)
+
+    #expect(fallback.isPlayable)
+    #expect(fallback.sourceProvider == .bundled)
+    #expect(fallback.author == "HoliznaCC0")
 }
 
 @Test func everyBundledTrackIsAReadableHoliznaCC0AudioAsset() async throws {
@@ -303,6 +377,29 @@ private func energeticDirective() -> MusicDirective {
     let counts = await online.counts()
     #expect(counts.searches == 1)
     #expect(counts.downloads == 1)
+}
+
+@Test func onlineProvidersRaceAndCancelAStalledServiceAfterFastFallbackSucceeds() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let stalled = SlowFailingMusicProvider()
+    let fallback = DownloadableMusicProvider(
+        library: local,
+        sourceURL: musicFixtureRoot().appendingPathComponent("holiznacc0-lost-on-the-freeway.mp3")
+    )
+    let system = MusicLibrary(localLibrary: local, providers: [stalled, fallback])
+    let clock = ContinuousClock()
+    let started = clock.now
+
+    let result = await system.resolve(MusicIntent(directive: energeticDirective()))
+    let elapsed = started.duration(to: clock.now)
+
+    #expect(result.track?.sourceProvider == .openverse)
+    #expect(result.track?.title == "Fresh online track")
+    #expect(elapsed < .seconds(1))
+    let stalledCounts = await stalled.counts()
+    #expect(stalledCounts.searches == 1)
+    #expect(stalledCounts.cancellations == 1)
 }
 
 @Test func testGAttributionSurvivesProjectMetadataRoundTrip() throws {

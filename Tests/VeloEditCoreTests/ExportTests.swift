@@ -5,6 +5,27 @@ import ImageIO
 import UniformTypeIdentifiers
 @testable import VeloEditCore
 
+@Test func exportGeometryPreservesPortraitAndLandscapeAspectRatios() {
+    let empty: [TimelineItem] = []
+    let portrait = Timeline(storyPlanID: UUID(), width: 1_080, height: 1_920, items: empty)
+    let landscape = Timeline(storyPlanID: UUID(), width: 1_920, height: 1_080, items: empty)
+    let cinematic = Timeline(storyPlanID: UUID(), width: 2_560, height: 1_080, items: empty)
+
+    let portrait1080 = RenderGeometryPolicy.timeline(portrait, for: .final1080p)
+    let portrait4K = RenderGeometryPolicy.timeline(portrait, for: .final4K)
+    let landscape720 = RenderGeometryPolicy.timeline(landscape, for: .preview720p)
+    let cinematic1080 = RenderGeometryPolicy.timeline(cinematic, for: .final1080p)
+
+    #expect(portrait1080.width == 1_080)
+    #expect(portrait1080.height == 1_920)
+    #expect(portrait4K.width == 2_160)
+    #expect(portrait4K.height == 3_840)
+    #expect(landscape720.width == 1_280)
+    #expect(landscape720.height == 720)
+    #expect(cinematic1080.width == 1_920)
+    #expect(cinematic1080.height == 810)
+}
+
 @Test func overlappingFadeAndDuckingRampsDoNotCrashPlaybackBuild() async throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("veloedit-overlapping-audio-ramps-\(UUID().uuidString)", isDirectory: true)
@@ -394,6 +415,48 @@ import UniformTypeIdentifiers
     } catch DerivedMediaError.exportFailed(let reason) where reason.contains("-11834") || reason.contains("-12903") {
         return
     }
+}
+
+@Test func realtimeTitlePreviewAvoidsTheCustomVideoCompositor() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let imageURL = root.appendingPathComponent("title-preview-source.png")
+    let context = try #require(CGContext(data: nil, width: 64, height: 36, bitsPerComponent: 8, bytesPerRow: 64 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    context.setFillColor(CGColor(red: 0.1, green: 0.55, blue: 0.25, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: 64, height: 36))
+    let destination = try #require(CGImageDestinationCreateWithURL(imageURL as CFURL, UTType.png.identifier as CFString, 1, nil))
+    CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
+    #expect(CGImageDestinationFinalize(destination))
+
+    let asset = MediaAsset(originalURL: imageURL, kind: .photo, byteSize: 1, contentHash: "stable-title-preview", metadata: MediaMetadata(width: 64, height: 36, hasAudio: false))
+    let clip = TimelineItem(
+        assetID: asset.id,
+        kind: .photo,
+        sourceDuration: 1,
+        timelineStart: 0,
+        timelineDuration: 1,
+        telemetryOverlay: TelemetryOverlaySettings()
+    )
+    let title = TitleTimelineItem(kind: .cinematicTitle, templateID: "title.cinematic.v1", text: "Маршрут", startTime: 0, duration: 0.8)
+    let telemetry = TimelineTelemetryItem(sourceStart: 0, timelineStart: 0, timelineDuration: 1)
+    let timeline = Timeline(
+        storyPlanID: UUID(),
+        width: 320,
+        height: 180,
+        frameRate: 10,
+        items: [clip],
+        telemetryItems: [telemetry],
+        titleItems: [title]
+    )
+
+    let playback = try await PlaybackEngine().build(
+        timeline: timeline,
+        assets: [asset],
+        preferStableRealtimePreview: true
+    )
+    #expect(playback.videoComposition?.customVideoCompositorClass == nil)
+    #expect(playback.renderedItemCount == 1)
 }
 
 @Test func titleCardIsRenderedIntoPlaybackInsteadOfBeingSkipped() async throws {

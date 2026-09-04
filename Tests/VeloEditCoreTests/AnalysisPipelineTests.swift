@@ -133,10 +133,43 @@ import Testing
 
 @Test func etaDoesNotPretendToKnowTheAnswerFromMetadataMilliseconds() async {
     let eta = AnalysisETAEngine()
-    await eta.startFile()
-    let estimate = await eta.estimate(fileFraction: 0.05, fileIndex: 0, totalFiles: 1, fallbackSecondsPerFile: 12)
+    let start = Date(timeIntervalSinceReferenceDate: 1_000)
+    await eta.startFile(now: start)
+    let estimate = await eta.estimate(
+        fileFraction: 0.05,
+        fileIndex: 0,
+        totalFiles: 1,
+        fallbackSecondsPerFile: 12,
+        now: start.addingTimeInterval(0.1)
+    )
     #expect(estimate != nil)
     #expect((estimate ?? 0) > 10)
+}
+
+@Test func etaForThreeVideosDoesNotExplodeOrCountUpDuringSparseStages() async {
+    let eta = AnalysisETAEngine()
+    let start = Date(timeIntervalSinceReferenceDate: 2_000)
+    await eta.startFile(now: start)
+
+    let calibrated = await eta.estimate(
+        fileFraction: 0.334,
+        fileIndex: 0,
+        totalFiles: 3,
+        fallbackSecondsPerFile: 120,
+        queuedFallbackSeconds: 240,
+        now: start.addingTimeInterval(240)
+    )
+    let later = await eta.estimate(
+        fileFraction: 0.56,
+        fileIndex: 0,
+        totalFiles: 3,
+        fallbackSecondsPerFile: 120,
+        queuedFallbackSeconds: 240,
+        now: start.addingTimeInterval(300)
+    )
+
+    #expect((calibrated ?? .infinity) < 15 * 60)
+    #expect((later ?? .infinity) <= (calibrated ?? 0))
 }
 
 @Test func thermalSchedulerUsesHysteresisBeforeRestoringLoad() async {

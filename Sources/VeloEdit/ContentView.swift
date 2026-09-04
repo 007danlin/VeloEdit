@@ -253,12 +253,14 @@ private struct PlayerView: NSViewRepresentable {
     let player: AVPlayer
     var posterImage: NSImage? = nil
     var showsPoster = false
+    var showsControls = false
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
         view.playerView.player = player
+        view.playerView.controlsStyle = showsControls ? .floating : .none
         context.coordinator.installPoster(in: view.playerView)
         context.coordinator.updatePoster(image: posterImage, isVisible: showsPoster)
         return view
@@ -266,8 +268,18 @@ private struct PlayerView: NSViewRepresentable {
 
     func updateNSView(_ view: PlayerContainerView, context: Context) {
         if view.playerView.player !== player { view.playerView.player = player }
+        view.playerView.controlsStyle = showsControls ? .floating : .none
         context.coordinator.installPoster(in: view.playerView)
         context.coordinator.updatePoster(image: posterImage, isVisible: showsPoster)
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        nsView: PlayerContainerView,
+        context: Context
+    ) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        return CGSize(width: max(0, width), height: max(0, height))
     }
 
     /// `AVPlayerView` may give its private video surface the movie's natural
@@ -347,6 +359,65 @@ private struct PlayerView: NSViewRepresentable {
     }
 }
 
+/// Interactive playback keeps 5K HEVC on AVPlayer's reliable native path.
+/// Modern title objects are drawn by the same renderer above that video, so a
+/// title cannot force the whole camera composition through a black-frame-prone
+/// custom compositor merely to preview a few seconds of text.
+private struct TimelinePreviewPlayer: View {
+    @EnvironmentObject var model: AppModel
+    let player: AVPlayer
+    let clock: TimelinePlaybackClock
+
+    var body: some View {
+        ZStack {
+            PlayerView(
+                player: player,
+                posterImage: model.previewPosterImage,
+                showsPoster: model.isPreviewPosterVisible
+            )
+            if let timeline = model.timeline {
+                TimelineTitlePreviewOverlay(timeline: timeline, clock: clock)
+            }
+        }
+        .background(Color.black)
+        .clipped()
+    }
+}
+
+/// Only this lightweight overlay observes playback time. Keeping the AVPlayer
+/// representable outside that observation prevents a full player/layout update
+/// on every video frame.
+private struct TimelineTitlePreviewOverlay: View {
+    let timeline: Timeline
+    @ObservedObject var clock: TimelinePlaybackClock
+
+    var body: some View {
+        ForEach(activeTitles) { title in
+            if let frame = TitleOverlayRenderer.cgImage(
+                item: title,
+                timelineTime: clock.time,
+                renderSize: previewRenderSize
+            ) {
+                Image(decorative: frame, scale: 1)
+                    .resizable()
+                    .scaledToFit()
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private var activeTitles: [TitleTimelineItem] {
+        timeline.effectiveTitleItems.filter {
+            $0.enabled && clock.time >= $0.startTime && clock.time < $0.endTime
+        }.sorted { $0.track < $1.track }
+    }
+
+    private var previewRenderSize: CGSize {
+        let width: CGFloat = 960
+        return CGSize(width: width, height: width * CGFloat(timeline.height) / CGFloat(max(1, timeline.width)))
+    }
+}
+
 private struct MoviePreviewPanel: View {
     @EnvironmentObject var model: AppModel
     let player: AVPlayer
@@ -368,11 +439,7 @@ private struct MoviePreviewPanel: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            PlayerView(
-                player: player,
-                posterImage: model.previewPosterImage,
-                showsPoster: model.isPreviewPosterVisible
-            )
+            TimelinePreviewPlayer(player: player, clock: model.playbackClock)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .frame(maxWidth: 720, maxHeight: 238)
                 .frame(maxWidth: .infinity)
@@ -550,10 +617,8 @@ private struct RecentProjectPreview: View {
                 endPoint: .bottomTrailing
             )
 
-            if let image = info.previewImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
+            if let previewURL = info.previewURL {
+                CachedThumbnailImage(url: previewURL, kind: info.previewKind ?? .video, contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Image(systemName: info.exists ? "film.stack.fill" : "exclamationmark.triangle.fill")
@@ -572,38 +637,43 @@ private struct RecentProjectInfo {
     let exists: Bool
     let assetCount: Int
     let updatedAt: Date?
-    let previewImage: NSImage?
+    let previewURL: URL?
+    let previewKind: MediaKind?
 
     init(url: URL) {
         self.url = url
         let exists = FileManager.default.fileExists(atPath: url.path)
         self.exists = exists
 
-        guard exists,
-              let data = try? Data(contentsOf: url.appendingPathComponent("project.json")),
-              let project = try? JSONDecoder.veloEdit.decode(ProjectManifest.self, from: data)
-        else {
+        guard exists else {
             name = url.deletingPathExtension().lastPathComponent
             assetCount = 0
             updatedAt = nil
-            previewImage = nil
+            previewURL = nil
+            previewKind = nil
             return
         }
 
-        name = project.name
-        assetCount = project.assets.count
-        updatedAt = project.updatedAt
-
-        let timelineCoverID = project.timelines.last?.items.first(where: { $0.assetID != nil })?.assetID
-        let coverAsset = project.assets.first(where: { $0.id == timelineCoverID }) ?? project.assets.first
-        if let coverAsset {
-            let thumbnailURL = url
-                .appendingPathComponent("Cache/Thumbnails", isDirectory: true)
-                .appendingPathComponent("\(coverAsset.contentHash.prefix(20)).jpg")
-            previewImage = NSImage(contentsOf: thumbnailURL)
-        } else {
-            previewImage = nil
+        // Never decode the full project manifest on the main actor. The store
+        // maintains this tiny summary whenever it saves the project.
+        guard let summary = ProjectSummary.load(from: url) else {
+            name = url.deletingPathExtension().lastPathComponent
+            assetCount = 0
+            updatedAt = nil
+            previewURL = nil
+            previewKind = nil
+            return
         }
+        name = summary.name
+        assetCount = summary.assetCount
+        updatedAt = summary.updatedAt
+        previewKind = summary.previewKind
+        let packagePath = url.standardizedFileURL.path + "/"
+        previewURL = summary.previewRelativePaths.lazy.compactMap { relativePath in
+            let candidate = url.appendingPathComponent(relativePath).standardizedFileURL
+            guard candidate.path.hasPrefix(packagePath), FileManager.default.fileExists(atPath: candidate.path) else { return nil }
+            return candidate
+        }.first
     }
 
     var subtitle: String {
@@ -647,7 +717,11 @@ private struct MediaLibraryView: View {
                         .layoutPriority(1)
                     if selectedMediaAsset != nil || model.selectedMusicTrack != nil {
                         mediaInspector
-                            .frame(minWidth: 230, idealWidth: 275, maxWidth: 320)
+                            .frame(
+                                minWidth: 230,
+                                idealWidth: 320,
+                                maxWidth: max(230, geometry.size.width * 0.5)
+                            )
                     }
                 }
             } else {
@@ -847,9 +921,12 @@ private struct AssetInspector: View {
                     .help("Закрыть инспектор")
                 }
                 if asset.kind == .video, !asset.missing {
-                    SourcePreview(url: asset.originalURL)
+                    SourcePreview(
+                        url: asset.originalURL,
+                        duration: asset.metadata.duration
+                    )
                         .id(asset.id)
-                        .frame(height: 170)
+                        .frame(height: 190)
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 } else {
@@ -1064,15 +1141,102 @@ private struct AudioPreview: View {
 
 private struct SourcePreview: View {
     @State private var player: AVPlayer
+    @State private var currentTime = 0.0
+    @State private var isPlaying = false
+    @State private var timeObserver: Any?
+    private let duration: Double
 
-    init(url: URL) {
+    init(url: URL, duration: Double?) {
+        self.duration = max(duration ?? 0, 0)
         _player = State(initialValue: AVPlayer(url: url))
     }
 
     var body: some View {
-        PlayerView(player: player)
-            .background(Color.black)
-            .onDisappear { player.pause() }
+        VStack(spacing: 10) {
+            PlayerView(player: player)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+                .clipped()
+
+            HStack(spacing: 8) {
+                Button(action: togglePlayback) {
+                    Label(
+                        isPlaying ? "Пауза" : "Воспроизвести",
+                        systemImage: isPlaying ? "pause.fill" : "play.fill"
+                    )
+                    .labelStyle(.iconOnly)
+                    .frame(width: 18)
+                }
+                .buttonStyle(.plain)
+                .help(isPlaying ? "Пауза" : "Воспроизвести")
+
+                Slider(
+                    value: Binding(
+                        get: { min(currentTime, effectiveDuration) },
+                        set: seek
+                    ),
+                    in: 0...effectiveDuration
+                )
+                .help("Перемотать исходное видео")
+
+                Text("\(time(currentTime)) / \(time(duration))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 8)
+        }
+        .background(Color.black.opacity(0.92))
+        .onAppear(perform: installTimeObserver)
+        .onDisappear(perform: stopAndRemoveObserver)
+    }
+
+    private var effectiveDuration: Double { max(duration, 0.1) }
+
+    private func togglePlayback() {
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            if duration > 0, currentTime >= duration - 0.05 { seek(to: 0) }
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    private func seek(to seconds: Double) {
+        currentTime = min(max(0, seconds), effectiveDuration)
+        player.seek(
+            to: CMTime(seconds: currentTime, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
+    }
+
+    private func installTimeObserver() {
+        guard timeObserver == nil else { return }
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.2, preferredTimescale: 600),
+            queue: .main
+        ) { time in
+            currentTime = max(0, time.seconds.isFinite ? time.seconds : 0)
+            isPlaying = player.timeControlStatus == .playing
+        }
+    }
+
+    private func stopAndRemoveObserver() {
+        player.pause()
+        isPlaying = false
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+    }
+
+    private func time(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded(.down)))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 
@@ -1097,7 +1261,7 @@ private struct TimelineWorkspaceView: View {
                     .frame(height: geometry.size.height / 2)
 
                     Divider()
-                    MagneticTimelineView(timeline: timeline)
+                    MagneticTimelineView(timeline: timeline, playbackClock: model.playbackClock)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
@@ -1924,11 +2088,7 @@ private struct MontagePlayerWorkspace: View {
                             Color.black
                             ZStack {
                                 if let player = model.previewPlayer {
-                                    PlayerView(
-                                        player: player,
-                                        posterImage: model.previewPosterImage,
-                                        showsPoster: model.isPreviewPosterVisible
-                                    )
+                                    TimelinePreviewPlayer(player: player, clock: model.playbackClock)
                                 } else {
                                     VStack(spacing: 10) {
                                         Image(systemName: "play.rectangle")
@@ -1970,7 +2130,7 @@ private struct MontagePlayerWorkspace: View {
 
                     if let player = model.previewPlayer {
                         Divider()
-                        MontagePlaybackControls(player: player)
+                        MontagePlaybackControls(player: player, clock: model.playbackClock)
                     }
                 }
             }
@@ -2021,7 +2181,7 @@ private struct MontagePlayerWorkspace: View {
                     .buttonStyle(.plain)
                     .padding(.leading, 5)
             }
-            .disabled(model.selectedTimelineItem == nil || model.isWorking)
+            .disabled(model.selectedTimelineItem == nil || model.isTimelineInteractionBlocked)
 
         }
         .buttonStyle(.borderless)
@@ -2140,7 +2300,7 @@ private struct MontagePlayerWorkspace: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
-        .disabled(model.isWorking)
+        .disabled(model.isTimelineInteractionBlocked)
     }
 
     private func resetButton(_ action: @escaping () -> Void) -> some View {
@@ -2179,13 +2339,15 @@ private struct MontagePlayerWorkspace: View {
 private struct MontagePlaybackControls: View {
     @EnvironmentObject private var model: AppModel
     let player: AVPlayer
+    @ObservedObject var clock: TimelinePlaybackClock
 
     @State private var isPlaying = false
     @State private var volume: Double
     @State private var isMuted: Bool
 
-    init(player: AVPlayer) {
+    init(player: AVPlayer, clock: TimelinePlaybackClock) {
         self.player = player
+        self.clock = clock
         _isPlaying = State(initialValue: player.rate != 0 || player.timeControlStatus == .waitingToPlayAtSpecifiedRate)
         _volume = State(initialValue: Double(player.volume))
         _isMuted = State(initialValue: player.isMuted)
@@ -2194,7 +2356,7 @@ private struct MontagePlaybackControls: View {
     var body: some View {
         HStack(spacing: 8) {
             Button {
-                model.seekTimeline(to: model.timelinePlayheadTime - 5)
+                model.seekTimeline(to: clock.time - 5)
             } label: {
                 Label("Назад на 5 секунд", systemImage: "gobackward.5")
                     .labelStyle(.iconOnly)
@@ -2211,7 +2373,7 @@ private struct MontagePlaybackControls: View {
             .help(isPlaying ? "Пауза (Пробел)" : "Воспроизвести (Пробел)")
 
             Button {
-                model.seekTimeline(to: model.timelinePlayheadTime + 5)
+                model.seekTimeline(to: clock.time + 5)
             } label: {
                 Label("Вперёд на 5 секунд", systemImage: "goforward.5")
                     .labelStyle(.iconOnly)
@@ -2220,14 +2382,14 @@ private struct MontagePlaybackControls: View {
 
             Slider(
                 value: Binding(
-                    get: { min(model.timelinePlayheadTime, effectiveDuration) },
+                    get: { min(clock.time, effectiveDuration) },
                     set: model.seekTimeline
                 ),
                 in: 0...effectiveDuration
             )
             .help("Перемотать фильм")
 
-            Text("\(time(model.timelinePlayheadTime)) / \(time(model.timeline?.duration ?? 0))")
+            Text("\(time(clock.time)) / \(time(model.timeline?.duration ?? 0))")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .fixedSize()
@@ -2417,7 +2579,7 @@ private struct TimelineInspector: View {
                         inspectorGroup("Оформление фрагмента") { editorPickers(item) }
                         inspectorGroup("Действия с фрагментом") { itemActions(item) }
                     }
-                    .disabled(model.isWorking)
+                    .disabled(model.isTimelineInteractionBlocked)
                 } else if let effect = model.selectedEffectTimelineItem {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                         inspectorGroup("Эффект") { effectIdentity(effect) }
@@ -2425,19 +2587,19 @@ private struct TimelineInspector: View {
                         inspectorGroup("Keyframes") { effectKeyframeControls(effect) }
                         inspectorGroup("Действия") { effectActions(effect) }
                     }
-                    .disabled(model.isWorking)
+                    .disabled(model.isTimelineInteractionBlocked)
                 } else if let title = model.selectedTitleTimelineItem {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                         inspectorGroup("Текст") { modernTitleTextControls(title) }
                         inspectorGroup("Шаблон и стиль") { modernTitleStyleControls(title) }
                         inspectorGroup("✨ Изменить с помощью AI") { modernTitleAIControls(title) }
                     }
-                    .disabled(model.isWorking)
+                    .disabled(model.isTimelineInteractionBlocked)
                 } else if let transition = model.selectedTransitionTimelineItem {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                         inspectorGroup("Переход") { transitionControls(transition) }
                     }
-                    .disabled(model.isWorking)
+                    .disabled(model.isTimelineInteractionBlocked)
                 } else if let telemetry = model.selectedTelemetryItem {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                         inspectorGroup("Слой телеметрии") { telemetryIdentity(telemetry) }
@@ -2445,7 +2607,7 @@ private struct TimelineInspector: View {
                         inspectorGroup("Положение и размер") { telemetryLayoutControls(telemetry) }
                         inspectorGroup("Действия") { telemetryActions }
                     }
-                    .disabled(model.isWorking)
+                    .disabled(model.isTimelineInteractionBlocked)
                 } else if let clip = model.selectedTimelineAudioClip {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                         inspectorGroup("Выбранная аудиодорожка") {
@@ -2458,7 +2620,7 @@ private struct TimelineInspector: View {
                         }
                         inspectorGroup("Настройки аудио") { timelineAudioControls(clip) }
                     }
-                    .disabled(model.isWorking)
+                    .disabled(model.isTimelineInteractionBlocked)
                 } else if model.selectedSoundtrack {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                         inspectorGroup("Основная музыка") {
@@ -2904,7 +3066,7 @@ private struct TimelineInspector: View {
             model.addTitle(titleText, atEnd: titleAtEnd)
             titleText = ""
         }
-        .disabled(titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isWorking)
+        .disabled(titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isTimelineInteractionBlocked)
     }
 
     private var originalAudioToggle: some View {
@@ -3407,7 +3569,12 @@ private struct DirectorChatColumn: View {
                         Button {
                             model.selectDirectorMusicTrack(nil)
                         } label: {
-                            Label("Автоподбор", systemImage: model.directorMusicTrackID == nil ? "checkmark" : "wand.and.stars")
+                            Label(
+                                "Автоподбор",
+                                systemImage: model.directorMusicTrackID == nil && model.directorBrief.musicPolicy == .matchVideo
+                                    ? "checkmark"
+                                    : "wand.and.stars"
+                            )
                         }
                         Divider()
                         ForEach(model.userMusicTracks) { track in
@@ -3442,7 +3609,9 @@ private struct DirectorChatColumn: View {
 private struct DirectorConversationView: View {
     @EnvironmentObject var model: AppModel
     @State private var setupQuestionIndex = 0
-    @State private var setupAnswers: [String] = []
+    @State private var isEnteringCustomDuration = false
+    @State private var customDurationText = ""
+    @State private var customDurationError: String?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -3475,18 +3644,93 @@ private struct DirectorConversationView: View {
         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
     }
 
-    private struct SetupQuestion {
+    private enum SetupQuestionKind {
+        case canvas
+        case duration
+        case mood
+        case music
+        case sourceAudio
+        case titles
+    }
+
+    private enum SetupAnswer {
+        case canvas(DirectorCanvasFormat)
+        case duration(Double)
+        case customDuration
+        case mood(DirectorNarrativeMood)
+        case music(DirectorMusicPolicy)
+        case sourceAudio(DirectorSourceAudioPolicy)
+        case titles(DirectorTitlePolicy)
+    }
+
+    private struct SetupOption: Identifiable {
         let title: String
-        let options: [String]
+        let answer: SetupAnswer
+
+        var id: String { title }
+    }
+
+    private struct SetupQuestion {
+        let kind: SetupQuestionKind
+        let title: String
+        let options: [SetupOption]
     }
 
     private var setupQuestions: [SetupQuestion] {
         [
-            SetupQuestion(title: "Какой должна быть длительность?", options: ["2 мин", "5 мин", "Другая"]),
-            SetupQuestion(title: "Какое настроение важнее?", options: ["Спокойное", "Киношное", "Динамичное"]),
-            SetupQuestion(title: "Как поступить с музыкой?", options: ["Подобрать под видео", "Мягкая и ненавязчивая", "Без музыки"]),
-            SetupQuestion(title: "Что делать со звуком исходников?", options: ["Оставить", "Приглушить", "Убрать"]),
-            SetupQuestion(title: "Сколько титров использовать?", options: ["Минимально", "Только ключевые", "Без титров"])
+            SetupQuestion(
+                kind: .canvas,
+                title: "Какой формат ролика сделать?",
+                options: [
+                    SetupOption(title: DirectorCanvasFormat.landscape16x9.localizedTitle, answer: .canvas(.landscape16x9)),
+                    SetupOption(title: DirectorCanvasFormat.portrait9x16.localizedTitle, answer: .canvas(.portrait9x16))
+                ]
+            ),
+            SetupQuestion(
+                kind: .duration,
+                title: "Какой должна быть длительность?",
+                options: [
+                    SetupOption(title: "2 мин", answer: .duration(2)),
+                    SetupOption(title: "5 мин", answer: .duration(5)),
+                    SetupOption(title: "Другая", answer: .customDuration)
+                ]
+            ),
+            SetupQuestion(
+                kind: .mood,
+                title: "Какое настроение важнее?",
+                options: [
+                    SetupOption(title: "Спокойное", answer: .mood(.calm)),
+                    SetupOption(title: "Киношное", answer: .mood(.cinematic)),
+                    SetupOption(title: "Динамичное", answer: .mood(.dynamic))
+                ]
+            ),
+            SetupQuestion(
+                kind: .music,
+                title: "Как поступить с музыкой?",
+                options: [
+                    SetupOption(title: "Подобрать под видео", answer: .music(.matchVideo)),
+                    SetupOption(title: "Мягкая и ненавязчивая", answer: .music(.soft)),
+                    SetupOption(title: "Без музыки", answer: .music(.none))
+                ]
+            ),
+            SetupQuestion(
+                kind: .sourceAudio,
+                title: "Что делать со звуком исходников?",
+                options: [
+                    SetupOption(title: "Оставить", answer: .sourceAudio(.preserve)),
+                    SetupOption(title: "Приглушить", answer: .sourceAudio(.duck)),
+                    SetupOption(title: "Убрать", answer: .sourceAudio(.mute))
+                ]
+            ),
+            SetupQuestion(
+                kind: .titles,
+                title: "Сколько титров использовать?",
+                options: [
+                    SetupOption(title: "Минимально", answer: .titles(.minimal)),
+                    SetupOption(title: "Только ключевые", answer: .titles(.keyOnly)),
+                    SetupOption(title: "Без титров", answer: .titles(.none))
+                ]
+            )
         ]
     }
 
@@ -3500,10 +3744,29 @@ private struct DirectorConversationView: View {
             }
             Text(question.title).font(.body.weight(.medium))
             HStack(spacing: 7) {
-                ForEach(question.options, id: \.self) { option in
-                    Button(option) { applySetupAnswer(option) }
+                ForEach(question.options) { option in
+                    Button(option.title) { applySetupAnswer(option) }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                }
+            }
+            if question.kind == .duration, isEnteringCustomDuration {
+                HStack(spacing: 8) {
+                    TextField("Например, 3,5", text: $customDurationText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 130)
+                        .onSubmit { commitCustomDuration() }
+                    Text("минут")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button("Продолжить", action: commitCustomDuration)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
+                if let customDurationError {
+                    Text(customDurationError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
         }
@@ -3512,21 +3775,100 @@ private struct DirectorConversationView: View {
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func applySetupAnswer(_ answer: String) {
-        let question = setupQuestions[setupQuestionIndex]
-        if setupQuestionIndex == 0 {
-            if answer == "2 мин" { model.setTargetMinutes(2) }
-            else if answer == "5 мин" { model.setTargetMinutes(5) }
-            else { model.directorInput = "Желаемая длительность: " }
+    private func applySetupAnswer(_ option: SetupOption) {
+        switch option.answer {
+        case .canvas(let format):
+            model.setDirectorCanvasFormat(format)
+        case .duration(let minutes):
+            model.setTargetMinutes(minutes)
+        case .customDuration:
+            customDurationText = formattedMinutes(model.targetMinutes)
+            customDurationError = nil
+            isEnteringCustomDuration = true
+            return
+        case .mood(let mood):
+            model.setDirectorNarrativeMood(mood)
+        case .music(let policy):
+            model.setDirectorMusicPolicy(policy)
+        case .sourceAudio(let policy):
+            model.setDirectorSourceAudioPolicy(policy)
+        case .titles(let policy):
+            model.setDirectorTitlePolicy(policy)
         }
-        setupAnswers.append("\(question.title) \(answer).")
+        isEnteringCustomDuration = false
+        customDurationError = nil
+        finishSetupQuestion()
+    }
+
+    private func commitCustomDuration() {
+        let normalized = customDurationText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let minutes = Double(normalized), minutes.isFinite, (0.5...60).contains(minutes) else {
+            customDurationError = "Введите длительность от 0,5 до 60 минут"
+            return
+        }
+        model.setTargetMinutes(minutes)
+        isEnteringCustomDuration = false
+        customDurationError = nil
+        finishSetupQuestion()
+    }
+
+    private func finishSetupQuestion() {
         setupQuestionIndex += 1
         if setupQuestionIndex == setupQuestions.count {
-            let brief = setupAnswers.joined(separator: " ")
-            model.directorInput = [brief, model.directorInput]
+            model.directorInput = [directorBriefSummary, model.directorInput]
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n")
         }
+    }
+
+    private var directorBriefSummary: String {
+        let brief = model.directorBrief
+        let mood = switch brief.mood {
+        case .calm: "спокойное"
+        case .cinematic: "киношное"
+        case .dynamic: "динамичное"
+        }
+        let music = switch brief.musicPolicy {
+        case .matchVideo: "подобрать под видео"
+        case .soft: "мягкая и ненавязчивая"
+        case .none: "без музыки"
+        case .specificTrack: "использовать выбранный трек"
+        }
+        let sourceAudio = switch brief.sourceAudioPolicy {
+        case .preserve: "оставить звук исходников"
+        case .duck: "приглушить звук исходников"
+        case .mute: "убрать звук исходников"
+        }
+        let titles = switch brief.titlePolicy {
+        case .minimal: "минимум титров"
+        case .keyOnly: "титры только в ключевых моментах"
+        case .none: "без титров"
+        }
+        return [
+            "Формат: \(brief.canvasFormat.localizedTitle).",
+            "Точная длительность: \(durationDescription(brief.requestedDuration)).",
+            "Настроение: \(mood).",
+            "Музыка: \(music).",
+            "Звук: \(sourceAudio).",
+            "Титры: \(titles)."
+        ].joined(separator: " ")
+    }
+
+    private func formattedMinutes(_ value: Double) -> String {
+        let rounded = value.rounded()
+        if abs(value - rounded) < 0.001 { return String(Int(rounded)) }
+        return String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
+    }
+
+    private func durationDescription(_ seconds: Double) -> String {
+        let roundedSeconds = Int(seconds.rounded())
+        let minutes = roundedSeconds / 60
+        let remainder = roundedSeconds % 60
+        if remainder == 0 { return "\(minutes) мин" }
+        if minutes == 0 { return "\(remainder) с" }
+        return "\(minutes) мин \(remainder) с"
     }
 }
 
@@ -3760,8 +4102,8 @@ private struct DirectorFilmSettingsPopover: View {
                 }
                 Slider(
                     value: Binding(get: { model.targetMinutes }, set: model.setTargetMinutes),
-                    in: 0.5...60,
-                    step: 0.5
+                    in: (5.0 / 60.0)...60,
+                    step: 5.0 / 60.0
                 )
             }
             Text(model.aiPowerMode.shortDescription)
@@ -3776,7 +4118,9 @@ private struct DirectorFilmSettingsPopover: View {
     }
 
     private var durationText: String {
-        if model.targetMinutes < 1 { return "30 секунд" }
+        if model.targetMinutes < 1 {
+            return "\(max(5, Int((model.targetMinutes * 60).rounded()))) секунд"
+        }
         let minutes = Int(model.targetMinutes)
         let seconds = Int((model.targetMinutes - Double(minutes)) * 60)
         return seconds == 0 ? "\(minutes) мин" : "\(minutes) мин \(seconds) с"
@@ -3785,6 +4129,8 @@ private struct DirectorFilmSettingsPopover: View {
 
 private struct DirectorPlayerColumn: View {
     @EnvironmentObject var model: AppModel
+    @State private var isConfirmingFullRemake = false
+    private let playbackControlsHeight: CGFloat = 38
 
     var body: some View {
         VStack(spacing: 0) {
@@ -3803,24 +4149,31 @@ private struct DirectorPlayerColumn: View {
                     }
                 }
                 Spacer()
+                if model.timeline != nil {
+                    Button("Переделать заново", systemImage: "arrow.trianglehead.2.counterclockwise") {
+                        isConfirmingFullRemake = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(model.isWorking || model.isDirectorResponding)
+                    .help("Построить новую историю из уже проанализированных исходников")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
             Divider()
 
-            VStack {
-                Spacer(minLength: 20)
+            GeometryReader { geometry in
                 if let player = model.previewPlayer {
+                    let canvas = playerCanvasSize(in: geometry.size)
                     VStack(spacing: 0) {
-                        PlayerView(
-                            player: player,
-                            posterImage: model.previewPosterImage,
-                            showsPoster: model.isPreviewPosterVisible
-                        )
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                        MontagePlaybackControls(player: player)
+                        TimelinePreviewPlayer(player: player, clock: model.playbackClock)
+                            .frame(width: canvas.width, height: canvas.height)
+                        MontagePlaybackControls(player: player, clock: model.playbackClock)
+                            .frame(width: canvas.width, height: playbackControlsHeight)
                     }
+                    .frame(width: canvas.width, height: canvas.height + playbackControlsHeight)
                     .background(Color.black)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay {
@@ -3828,7 +4181,9 @@ private struct DirectorPlayerColumn: View {
                             .stroke(Color.white.opacity(0.08))
                     }
                     .shadow(color: .black.opacity(0.14), radius: 14, y: 5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 } else {
+                    let canvas = playerCanvasSize(in: geometry.size, includesControls: false)
                     ZStack {
                         Color.black
                         VStack(spacing: 10) {
@@ -3844,12 +4199,12 @@ private struct DirectorPlayerColumn: View {
                         }
                         .foregroundStyle(.white.opacity(0.88))
                     }
-                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .frame(width: canvas.width, height: canvas.height)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
-                Spacer(minLength: 20)
             }
-            .padding(.horizontal, 20)
+            .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
 
@@ -3868,6 +4223,15 @@ private struct DirectorPlayerColumn: View {
             .padding(.vertical, 11)
         }
         .animation(.easeInOut(duration: 0.2), value: model.playbackReady)
+        .confirmationDialog(
+            "Переделать фильм с нуля?",
+            isPresented: $isConfirmingFullRemake
+        ) {
+            Button("Переделать заново") { model.remakeFilmFromScratch() }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Умный режиссёр сохранит анализ исходников, но заново построит историю и постарается выбрать заметно отличающийся монтаж. Текущая версия останется в истории изменений.")
+        }
     }
 
     @ViewBuilder private var playerStatus: some View {
@@ -3899,6 +4263,24 @@ private struct DirectorPlayerColumn: View {
         let minutes = Int(seconds) / 60
         let remainingSeconds = Int(seconds) % 60
         return minutes == 0 ? "\(remainingSeconds) с" : "\(minutes) мин \(remainingSeconds) с"
+    }
+
+    private var playerAspectRatio: CGFloat {
+        guard let timeline = model.timeline, timeline.height > 0 else { return 16 / 9 }
+        return CGFloat(timeline.width) / CGFloat(timeline.height)
+    }
+
+    private func playerCanvasSize(in available: CGSize, includesControls: Bool = true) -> CGSize {
+        let controlsHeight = includesControls ? playbackControlsHeight : 0
+        let canvasSpace = CGSize(
+            width: max(0, available.width),
+            height: max(0, available.height - controlsHeight)
+        )
+        guard canvasSpace.width > 0, canvasSpace.height > 0, playerAspectRatio > 0 else { return .zero }
+        if canvasSpace.width / canvasSpace.height > playerAspectRatio {
+            return CGSize(width: canvasSpace.height * playerAspectRatio, height: canvasSpace.height)
+        }
+        return CGSize(width: canvasSpace.width, height: canvasSpace.width / playerAspectRatio)
     }
 }
 
@@ -4165,7 +4547,7 @@ private struct TimelineStrip: View {
                 .padding(.horizontal, selected ? 16 : 0)
                 .onTapGesture { model.selectTimelineItem(item.id, modifiers: NSEvent.modifierFlags) }
                 .gesture(reorderGesture(for: item))
-                .allowsHitTesting(!model.isWorking)
+                .allowsHitTesting(!model.isTimelineInteractionBlocked)
         }
         .overlay(alignment: .leading) {
             if selected, item.kind == .video {
@@ -4235,7 +4617,7 @@ private struct TimelineStrip: View {
             .contentShape(Rectangle())
             .offset(x: preview?.edge == edge ? preview?.handleOffset ?? 0 : 0)
             .gesture(trimGesture(edge: edge, item: item))
-            .allowsHitTesting(!model.isWorking)
+            .allowsHitTesting(!model.isTimelineInteractionBlocked)
             .help(edge == .leading ? "Потяните, чтобы изменить начало фрагмента" : "Потяните, чтобы изменить конец фрагмента")
             .accessibilityLabel(edge == .leading ? "Изменить начало фрагмента" : "Изменить конец фрагмента")
     }
@@ -4379,19 +4761,7 @@ private struct MediaThumbnail: View {
     let kind: MediaKind
 
     var body: some View {
-        Group {
-            if let url, let image = NSImage(contentsOf: url) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                ZStack {
-                    Color.secondary.opacity(0.13)
-                    Image(systemName: kind == .video ? "video.fill" : "photo.fill")
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
+        CachedThumbnailImage(url: url, kind: kind, contentMode: .fit)
     }
 }
 

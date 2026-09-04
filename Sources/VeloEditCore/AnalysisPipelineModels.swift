@@ -339,32 +339,74 @@ public struct AnalysisStageUpdate: Sendable {
 public actor AnalysisETAEngine {
     private var completedDurations: [TimeInterval]
     private var currentStartedAt = Date()
+    private var stableEstimate: TimeInterval?
+    private var stableEstimateUpdatedAt: Date?
 
     public init(history: [TimeInterval] = []) {
         completedDurations = history.filter { $0.isFinite && $0 > 0 }
     }
 
-    public func startFile() { currentStartedAt = Date() }
+    public func startFile(now: Date = Date()) { currentStartedAt = now }
 
-    public func finishFile() {
-        completedDurations.append(max(0.01, Date().timeIntervalSince(currentStartedAt)))
+    public func finishFile(now: Date = Date()) {
+        completedDurations.append(max(0.01, now.timeIntervalSince(currentStartedAt)))
         if completedDurations.count > 50 { completedDurations.removeFirst(completedDurations.count - 50) }
     }
 
-    public func estimate(fileFraction: Double, fileIndex: Int, totalFiles: Int, fallbackSecondsPerFile: TimeInterval) -> TimeInterval? {
+    public func estimate(
+        fileFraction: Double,
+        fileIndex: Int,
+        totalFiles: Int,
+        fallbackSecondsPerFile: TimeInterval,
+        queuedFallbackSeconds: TimeInterval? = nil,
+        now: Date = Date()
+    ) -> TimeInterval? {
         guard totalFiles > 0 else { return nil }
         let fraction = fileFraction.clamped01
-        let elapsed = max(0.01, Date().timeIntervalSince(currentStartedAt))
-        // Do not extrapolate from a few milliseconds of metadata work. The
-        // fallback/history remains more honest until meaningful work elapsed.
-        let projectedCurrent = fraction >= 0.08 && elapsed >= 0.5
-            ? elapsed / fraction
-            : fallbackSecondsPerFile
-        let history = robustAverage(completedDurations) ?? projectedCurrent
-        let smoothed = 0.60 * projectedCurrent + 0.40 * history
-        let currentRemaining = smoothed * (1 - fraction)
-        let queued = Double(max(0, totalFiles - fileIndex - 1)) * history
-        return max(0, currentRemaining + queued)
+        let elapsed = max(0.01, now.timeIntervalSince(currentStartedAt))
+        let fallback = max(1, fallbackSecondsPerFile)
+        let history = robustAverage(completedDurations)
+        let historicalBaseline = history.map { 0.25 * $0 + 0.75 * fallback } ?? fallback
+
+        // Pipeline fractions are weighted milestones, not a continuous measure
+        // of work. In particular, frame sampling can sit near 33% for minutes.
+        // Extrapolating `elapsed / fraction` from the early 2-10% milestones made
+        // a three-video ETA grow roughly 29 seconds for every elapsed second.
+        let hasMeasuredPace = fraction >= 0.30 && elapsed >= 3
+        let projectedTotal: TimeInterval
+        if hasMeasuredPace {
+            let rawProjection = elapsed / max(0.01, fraction)
+            let projectionCeiling = max(historicalBaseline * 4, historicalBaseline + 120)
+            projectedTotal = min(projectionCeiling, max(historicalBaseline * 0.5, rawProjection))
+        } else {
+            projectedTotal = historicalBaseline
+        }
+        let observationWeight = hasMeasuredPace
+            ? min(0.65, max(0.25, (fraction - 0.30) / 0.70))
+            : 0
+        let estimatedCurrentTotal = historicalBaseline * (1 - observationWeight) + projectedTotal * observationWeight
+        let currentRemaining = estimatedCurrentTotal * (1 - fraction)
+        let queued = queuedFallbackSeconds.map { max(0, $0) }
+            ?? Double(max(0, totalFiles - fileIndex - 1)) * historicalBaseline
+        let rawEstimate = max(0, currentRemaining + queued)
+
+        // Show the duration-based fallback during metadata/proxy setup, but do
+        // not lock the countdown until there is a meaningful pace observation.
+        guard hasMeasuredPace || stableEstimate != nil else { return rawEstimate }
+        guard let previous = stableEstimate, let previousDate = stableEstimateUpdatedAt else {
+            stableEstimate = rawEstimate
+            stableEstimateUpdatedAt = now
+            return rawEstimate
+        }
+
+        // Once calibrated, ETA behaves as remaining time. New sparse milestone
+        // reports may lower it faster, but cannot make it count upwards.
+        let elapsedSinceUpdate = max(0, now.timeIntervalSince(previousDate))
+        let countdown = max(0, previous - elapsedSinceUpdate)
+        let result = min(rawEstimate, countdown)
+        stableEstimate = result
+        stableEstimateUpdatedAt = now
+        return result
     }
 
     private func robustAverage(_ values: [TimeInterval]) -> TimeInterval? {
@@ -384,13 +426,16 @@ public actor AnalysisProgressReporter {
     private let fileCount: Int
     private let totalUnits: Int
     private let fallbackSecondsPerFile: TimeInterval
+    private let queuedFallbackSeconds: TimeInterval?
+    private var lastFraction: Double = 0
 
     public init(
         callback: (@Sendable (ImportProgress) -> Void)?,
         eta: AnalysisETAEngine,
         fileIndex: Int,
         fileCount: Int,
-        fallbackSecondsPerFile: TimeInterval
+        fallbackSecondsPerFile: TimeInterval,
+        queuedFallbackSeconds: TimeInterval? = nil
     ) {
         self.callback = callback
         self.eta = eta
@@ -398,15 +443,19 @@ public actor AnalysisProgressReporter {
         self.fileCount = fileCount
         totalUnits = fileCount * 100
         self.fallbackSecondsPerFile = fallbackSecondsPerFile
+        self.queuedFallbackSeconds = queuedFallbackSeconds
     }
 
     public func publish(_ update: AnalysisStageUpdate, fileName: String, thermalThrottled: Bool = false) async {
         let fraction = update.fraction.clamped01
+        guard fraction >= lastFraction else { return }
+        lastFraction = fraction
         let remaining = await eta.estimate(
             fileFraction: fraction,
             fileIndex: fileIndex,
             totalFiles: fileCount,
-            fallbackSecondsPerFile: fallbackSecondsPerFile
+            fallbackSecondsPerFile: fallbackSecondsPerFile,
+            queuedFallbackSeconds: queuedFallbackSeconds
         )
         callback?(ImportProgress(
             completed: fileIndex * 100 + Int((fraction * 100).rounded(.down)),
@@ -542,20 +591,73 @@ public struct CrossVideoRelationshipAnalyzer: Sendable {
 
     public func refine(_ analyses: [AnalysisResult]) -> [AnalysisResult] {
         var result = analyses
-        let allCandidates = result.flatMap(\.candidates)
-        let semanticIndex = SemanticSceneIndex(candidates: allCandidates)
+        let previousCandidates = result.flatMap(\.candidates)
+        let previousCandidateByID = Dictionary(uniqueKeysWithValues: previousCandidates.map { ($0.id, $0) })
+        let semanticIndex = SemanticSceneIndex(candidates: previousCandidates)
         let embeddedClusters = semanticIndex.clusters(threshold: 0.88).filter { cluster in
-            let assets = Set(cluster.candidateIDs.compactMap { id in allCandidates.first(where: { $0.id == id })?.assetID })
+            let assets = Set(cluster.candidateIDs.compactMap { previousCandidateByID[$0]?.assetID })
             return assets.count > 1
+        }
+        let freshClusterIDByCandidate = embeddedClusters.reduce(into: [UUID: String]()) { index, cluster in
+            for candidateID in cluster.candidateIDs { index[candidateID] = cluster.id }
+        }
+        let previousSemanticGroups = Dictionary(grouping: previousCandidates.compactMap { candidate -> (String, UUID, UUID)? in
+            guard let semanticEventID = candidate.insights?.semanticEventID, !semanticEventID.isEmpty else { return nil }
+            return (semanticEventID, candidate.id, candidate.assetID)
+        }, by: { $0.0 })
+        let crossVideoLegacyGroups = previousSemanticGroups.filter { Set($0.value.map(\.2)).count > 1 }
+        var staleCrossVideoCandidateIDs = Set<UUID>()
+        var preservedLegacyIDsByFreshCluster: [String: [String]] = [:]
+        for (legacyID, members) in crossVideoLegacyGroups {
+            let freshClusterIDs = Set(members.compactMap { freshClusterIDByCandidate[$0.1] })
+            let validatesAsOneFreshCluster = freshClusterIDs.count == 1
+                && members.allSatisfy { freshClusterIDByCandidate[$0.1] != nil }
+            if validatesAsOneFreshCluster, let freshClusterID = freshClusterIDs.first {
+                preservedLegacyIDsByFreshCluster[freshClusterID, default: []].append(legacyID)
+            } else {
+                staleCrossVideoCandidateIDs.formUnion(members.map(\.1))
+            }
+        }
+        let preservedLegacyIDByFreshCluster = preservedLegacyIDsByFreshCluster.mapValues { ids in
+            // If two old IDs describe the same validated fresh cluster, choose
+            // deterministically instead of making persistence depend on input order.
+            ids.sorted().first ?? ""
+        }
+        // Semantic relationships are derived data. Rebuild them so projects
+        // analyzed by an older, over-broad cosine cluster do not keep treating
+        // every outdoor GoPro shot as the same take forever. A legacy ID is
+        // retained only when current visual + activity evidence independently
+        // reconstructs all of its cross-video members as one cluster.
+        for analysisIndex in result.indices {
+            for candidateIndex in result[analysisIndex].candidates.indices {
+                let candidateID = result[analysisIndex].candidates[candidateIndex].id
+                if staleCrossVideoCandidateIDs.contains(candidateID),
+                   result[analysisIndex].candidates[candidateIndex].insights != nil {
+                    result[analysisIndex].candidates[candidateIndex].insights?.semanticEventID = nil
+                }
+                if staleCrossVideoCandidateIDs.contains(candidateID) {
+                    let candidate = result[analysisIndex].candidates[candidateIndex]
+                    result[analysisIndex].candidates[candidateIndex].scores.uniqueness = max(
+                        candidate.scores.uniqueness,
+                        recoveredUniqueness(candidate)
+                    )
+                    result[analysisIndex].candidates[candidateIndex].explanation.removeAll { reason in
+                        let normalized = reason.lowercased()
+                        return normalized.contains("near-duplicate")
+                            || normalized.contains("похожий момент найден в другом ролике")
+                    }
+                }
+            }
         }
         var embeddedDuplicateIDs: Set<UUID> = []
         for cluster in embeddedClusters {
+            let semanticEventID = preservedLegacyIDByFreshCluster[cluster.id] ?? cluster.id
             for id in cluster.candidateIDs where id != cluster.bestCandidateID { embeddedDuplicateIDs.insert(id) }
             for analysisIndex in result.indices {
                 for candidateIndex in result[analysisIndex].candidates.indices
                 where cluster.candidateIDs.contains(result[analysisIndex].candidates[candidateIndex].id) {
                     var insight = result[analysisIndex].candidates[candidateIndex].insights
-                    insight?.semanticEventID = cluster.id
+                    insight?.semanticEventID = semanticEventID
                     insight?.bestTakeScore = SemanticSceneIndex.bestTakeScore(result[analysisIndex].candidates[candidateIndex])
                     result[analysisIndex].candidates[candidateIndex].insights = insight
                     if result[analysisIndex].candidates[candidateIndex].id == cluster.bestCandidateID {
@@ -572,7 +674,7 @@ public struct CrossVideoRelationshipAnalyzer: Sendable {
             for candidateIndex in result[analysisIndex].candidates.indices {
                 let currentID = result[analysisIndex].candidates[candidateIndex].id
                 if embeddedDuplicateIDs.contains(currentID) {
-                    let nearest = semanticIndex.nearest(to: result[analysisIndex].candidates[candidateIndex], limit: 1, excludingSameAsset: true).first?.similarity ?? 0.88
+                    let nearest = semanticIndex.nearestDuplicate(to: result[analysisIndex].candidates[candidateIndex], limit: 1, excludingSameAsset: true).first?.similarity ?? 0.88
                     result[analysisIndex].candidates[candidateIndex].scores.uniqueness = max(0.10, min(0.24, 1 - nearest))
                     let explanation = "Embedding index: near-duplicate события в другом ролике; выбран более сильный дубль."
                     if !result[analysisIndex].candidates[candidateIndex].explanation.contains(explanation) {
@@ -589,7 +691,7 @@ public struct CrossVideoRelationshipAnalyzer: Sendable {
                 for prior in seen where result[prior.analysisIndex].assetID != result[analysisIndex].assetID {
                     let lhs = result[analysisIndex].candidates[candidateIndex]
                     let rhs = result[prior.analysisIndex].candidates[prior.candidateIndex]
-                    bestSimilarity = max(bestSimilarity, semanticIndex.similarity(between: lhs, and: rhs))
+                    bestSimilarity = max(bestSimilarity, semanticIndex.nearDuplicateSimilarity(between: lhs, and: rhs))
                 }
                 if bestSimilarity >= 0.78 {
                     result[analysisIndex].candidates[candidateIndex].scores.uniqueness = max(0.15, 1 - bestSimilarity)
@@ -603,13 +705,31 @@ public struct CrossVideoRelationshipAnalyzer: Sendable {
         }
         for index in result.indices {
             guard var diagnostics = result[index].deepMediaDiagnostics else { continue }
-            let nearDuplicateIDs = Array(Set(diagnostics.nearDuplicateCandidateIDs))
-            let discardedIDs = Array(Set(diagnostics.discardedCandidateIDs))
+            let candidateIDs = Set(result[index].candidates.map(\.id))
+            let freshDuplicateIDs = embeddedDuplicateIDs.intersection(candidateIDs)
+            let nearDuplicateIDs = Array(Set(diagnostics.nearDuplicateCandidateIDs.filter {
+                !staleCrossVideoCandidateIDs.contains($0)
+            }).union(freshDuplicateIDs))
+            let discardedIDs = Array(Set(diagnostics.discardedCandidateIDs.filter {
+                !staleCrossVideoCandidateIDs.contains($0)
+            }).union(freshDuplicateIDs))
             diagnostics.nearDuplicateCandidateIDs = nearDuplicateIDs
             diagnostics.discardedCandidateIDs = discardedIDs
             result[index].deepMediaDiagnostics = diagnostics
         }
         return result
+    }
+
+    private func recoveredUniqueness(_ candidate: Candidate) -> Double {
+        let insight = candidate.insights
+        return (
+            candidate.scores.interest * 0.30
+                + candidate.scores.quality * 0.24
+                + candidate.scores.action * 0.14
+                + candidate.scores.stability * 0.10
+                + (insight?.visualAppeal ?? candidate.scores.quality) * 0.12
+                + (insight?.storyValue ?? candidate.scores.interest) * 0.10
+        ).clamped01
     }
 }
 

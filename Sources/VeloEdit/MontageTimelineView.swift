@@ -27,11 +27,28 @@ private struct EffectTimelineBlock: Identifiable {
     var category: TimelineEffectCategory { primary.effectType.category }
 }
 
+@MainActor
+private final class TimelineHoverState: ObservableObject {
+    @Published var time: Double?
+    @Published var x: CGFloat?
+
+    func update(time: Double, x: CGFloat) {
+        self.time = time
+        self.x = x
+    }
+
+    func clear() {
+        time = nil
+        x = nil
+    }
+}
+
 /// The iMovie-like editing surface: one magnetic primary storyline, optional
 /// connected media, a compact music lane, and a local AI brush.
 struct MagneticTimelineView: View {
     @EnvironmentObject private var model: AppModel
     let timeline: Timeline
+    let playbackClock: TimelinePlaybackClock
 
     @State private var zoom: Double = 18
     @State private var brushEnabled = false
@@ -53,8 +70,9 @@ struct MagneticTimelineView: View {
     @State private var titleDragTranslation: CGFloat = 0
     @State private var soundtrackDragTranslation: CGFloat = 0
     @State private var trimPreview: TrimPreview?
-    @State private var hoverTime: Double?
-    @State private var hoverX: CGFloat?
+    // This reference is observed only by the tiny hover overlay. Pointer motion
+    // must not rebuild the full timeline hierarchy on every mouse event.
+    private let hoverState = TimelineHoverState()
     @GestureState private var magnification: CGFloat = 1
 
     private let clipSpacing: CGFloat = 8
@@ -228,6 +246,20 @@ struct MagneticTimelineView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 41)
             }
+
+            if model.isWorking || model.queuedTimelineAIEditCount > 0 {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(model.queuedTimelineAIEditCount > 0
+                         ? "ИИ выполняет правки по порядку · в очереди: \(model.queuedTimelineAIEditCount)"
+                         : "ИИ применяет правку к монтажу…")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 41)
+            }
         }
         .padding(.vertical, brushEnabled ? 7 : 10)
         .background(.regularMaterial)
@@ -265,19 +297,19 @@ struct MagneticTimelineView: View {
             Divider().frame(height: 18)
 
             Button(action: model.undoTimelineEdit) { Image(systemName: "arrow.uturn.backward") }
-                .disabled(!model.canUndoTimelineEdit || model.isWorking)
+                .disabled(!model.canUndoTimelineEdit || model.isTimelineInteractionBlocked)
                 .help("Отменить правку (⌘Z)")
             Button(action: model.redoTimelineEdit) { Image(systemName: "arrow.uturn.forward") }
-                .disabled(!model.canRedoTimelineEdit || model.isWorking)
+                .disabled(!model.canRedoTimelineEdit || model.isTimelineInteractionBlocked)
                 .help("Повторить правку (⇧⌘Z)")
 
             Divider().frame(height: 18)
 
             Button(action: model.splitSelectedTimelineItem) { Image(systemName: "scissors") }
-                .disabled(!model.canSplitTimelineSelectionAtPlayhead || model.isWorking)
+                .disabled(!model.canSplitTimelineSelectionAtPlayhead || model.isTimelineInteractionBlocked)
                 .help("Разделить выбранный объект в позиции playhead")
             Button(action: model.deleteSelectedTimelineItem) { Image(systemName: "trash") }
-                .disabled(!model.hasTimelineSelection || model.isWorking)
+                .disabled(!model.hasTimelineSelection || model.isTimelineInteractionBlocked)
                 .help("Удалить выбранный объект")
             transitionMenu
             effectMenu
@@ -335,7 +367,7 @@ struct MagneticTimelineView: View {
             Image(systemName: "rectangle.2.swap")
         }
         .menuIndicator(.hidden)
-        .disabled(model.selectedTimelineItem == nil || model.isWorking)
+        .disabled(model.selectedTimelineItem == nil || model.isTimelineInteractionBlocked)
         .help("Переход между клипами")
     }
 
@@ -352,7 +384,7 @@ struct MagneticTimelineView: View {
             Image(systemName: "wand.and.rays")
         }
         .menuIndicator(.hidden)
-        .disabled(timeline.items.isEmpty || model.isWorking)
+        .disabled(timeline.items.isEmpty || model.isTimelineInteractionBlocked)
         .help("Добавить отдельный редактируемый эффект")
     }
 
@@ -384,10 +416,15 @@ struct MagneticTimelineView: View {
                         .zIndex(18)
                 }
 
-                playheadLine(time: model.timelinePlayheadTime, color: .white, isHover: false)
-                if let hoverTime, let hoverX {
-                    playheadLine(time: hoverTime, color: .yellow, isHover: true, exactX: hoverX)
-                }
+                TimelinePlayheadOverlay(
+                    clock: playbackClock,
+                    primaryItems: primaryItems,
+                    timelineDuration: timeline.duration,
+                    pointsPerSecond: pointsPerSecond,
+                    clipSpacing: clipSpacing,
+                    canvasHeight: canvasHeight
+                )
+                TimelineHoverOverlay(state: hoverState, timeline: timeline, canvasHeight: canvasHeight)
             }
             .frame(width: totalTimelineWidth, height: canvasHeight, alignment: .topLeading)
             .coordinateSpace(name: "timelineCanvas")
@@ -409,11 +446,9 @@ struct MagneticTimelineView: View {
                     guard draggedItemID == nil, draggedConnectedID == nil, draggedAudioID == nil, draggedTelemetryID == nil,
                           draggedEffectID == nil, draggedTitleID == nil,
                           trimPreview == nil, let time = timelineTime(at: location.x) else { return }
-                    hoverTime = time
-                    hoverX = location.x
+                    hoverState.update(time: time, x: location.x)
                 case .ended:
-                    hoverTime = nil
-                    hoverX = nil
+                    hoverState.clear()
                 }
             }
             .simultaneousGesture(
@@ -1401,7 +1436,7 @@ struct MagneticTimelineView: View {
                 if case .active = phase { NSCursor.resizeLeftRight.set() }
                 else { NSCursor.arrow.set() }
             }
-            .allowsHitTesting(!model.isWorking && !brushEnabled)
+            .allowsHitTesting(!model.isTimelineInteractionBlocked && !brushEnabled)
             .help(edge == .leading ? "Обрезать начало" : "Обрезать конец")
     }
 
@@ -1420,7 +1455,7 @@ struct MagneticTimelineView: View {
                 if case .active = phase { NSCursor.resizeLeftRight.set() }
                 else { NSCursor.arrow.set() }
             }
-            .allowsHitTesting(!model.isWorking && !brushEnabled)
+            .allowsHitTesting(!model.isTimelineInteractionBlocked && !brushEnabled)
             .help(edge == .leading ? "Обрезать или увеличить начало" : "Обрезать или увеличить конец")
     }
 
@@ -1561,7 +1596,7 @@ struct MagneticTimelineView: View {
     }
 
     private func handleLibraryDrop(_ values: [String], at point: CGPoint) -> Bool {
-        guard !model.isWorking, let raw = values.first else { return false }
+        guard !model.isTimelineInteractionBlocked, let raw = values.first else { return false }
         let time = timelineTime(at: point.x).map(snapped) ?? 0
 
         if raw.hasPrefix("background:"),
@@ -1833,19 +1868,93 @@ private struct MontageTimelineThumbnail: View {
     let kind: MediaKind
 
     var body: some View {
-        Group {
-            if let url, let image = NSImage(contentsOf: url) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+        CachedThumbnailImage(url: url, kind: kind, contentMode: .fill)
+        .clipped()
+    }
+}
+
+/// A small independently-observed playhead prevents every playback tick from
+/// invalidating all clips, waveforms, menus and lane-layout calculations.
+private struct TimelinePlayheadOverlay: View {
+    @ObservedObject var clock: TimelinePlaybackClock
+    let primaryItems: [TimelineItem]
+    let timelineDuration: Double
+    let pointsPerSecond: Double
+    let clipSpacing: CGFloat
+    let canvasHeight: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color.white.opacity(0.82))
+                .frame(width: 1, height: max(80, canvasHeight - 2))
+            Circle()
+                .fill(Color.white)
+                .frame(width: 7, height: 7)
+                .offset(x: -3, y: -3)
+        }
+        .frame(width: 1, alignment: .leading)
+        .offset(x: xPosition(for: clock.time))
+        .allowsHitTesting(false)
+        .zIndex(19)
+    }
+
+    private func xPosition(for time: Double) -> CGFloat {
+        let clamped = min(max(0, time), timelineDuration)
+        let epsilon = 0.000_001
+        var completedBoundaries = 0
+        var isOnBoundary = false
+        for item in primaryItems.dropLast() {
+            let boundary = item.timelineStart + item.timelineDuration
+            if clamped > boundary + epsilon {
+                completedBoundaries += 1
+            } else if abs(clamped - boundary) <= epsilon {
+                isOnBoundary = true
+                break
             } else {
-                ZStack {
-                    Color.secondary.opacity(0.18)
-                    Image(systemName: kind == .video ? "video.fill" : "photo.fill")
-                        .foregroundStyle(.secondary)
-                }
+                break
             }
         }
-        .clipped()
+        let gapOffset = CGFloat(completedBoundaries) * clipSpacing + (isOnBoundary ? clipSpacing / 2 : 0)
+        return CGFloat(clamped * pointsPerSecond) + gapOffset
+    }
+}
+
+private struct TimelineHoverOverlay: View {
+    @ObservedObject var state: TimelineHoverState
+    let timeline: Timeline
+    let canvasHeight: CGFloat
+
+    var body: some View {
+        if let time = state.time, let x = state.x {
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color.yellow.opacity(0.95))
+                    .frame(width: 1.5, height: max(80, canvasHeight - 2))
+                Circle()
+                    .fill(Color.yellow)
+                    .frame(width: 8, height: 8)
+                    .offset(x: -3.25, y: -3)
+                Text(frameClock(time))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.yellow, in: RoundedRectangle(cornerRadius: 3))
+                    .fixedSize()
+                    .offset(x: 7, y: 1)
+            }
+            .frame(width: 1.5, alignment: .leading)
+            .offset(x: x)
+            .allowsHitTesting(false)
+            .zIndex(20)
+        }
+    }
+
+    private func frameClock(_ seconds: Double) -> String {
+        let fps = max(1, Int(timeline.frameRate.rounded()))
+        let totalFrames = max(0, Int((seconds * Double(fps)).rounded()))
+        let wholeSeconds = totalFrames / fps
+        return String(format: "%02d:%02d:%02d", wholeSeconds / 60, wholeSeconds % 60, totalFrames % fps)
     }
 }

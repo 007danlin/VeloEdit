@@ -226,9 +226,14 @@ public struct FCPXMLExporter: Sendable {
                 (audio.noiseReduction ?? 0) > 0.0001 || (audio.eqPreset ?? .flat) != .flat ||
                 (audio.normalize ?? false) || (audio.duckOthers ?? false) ||
                 (audio.effect ?? AudioEffect.none) != AudioEffect.none
+            let hasDynamicSubjectReframe = video.subjectReframe.map { reframe in
+                abs(reframe.startCenterX - reframe.endCenterX) > 0.0001 ||
+                    abs(reframe.startCenterY - reframe.endCenterY) > 0.0001 ||
+                    abs(reframe.startScale - reframe.endScale) > 0.0001
+            } ?? false
             return item.effect != nil || item.transition != nil || item.overlay != nil || item.telemetryOverlay != nil ||
                 (item.kind == .title && item.titleStyle != nil) ||
-                hasUnsupportedImage || hasUnsupportedAudio
+                hasUnsupportedImage || hasUnsupportedAudio || hasDynamicSubjectReframe
         }
     }
 

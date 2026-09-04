@@ -97,13 +97,13 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
 @Test func autonomousDirectorBuildsSemanticArcAndMakesRealDecisions() {
     let (assets, analyses) = directorFixture()
     var constraints = PromptInterpreter().interpret(
-        prompt: "Сделай динамичный фильм, поездка на багги — кульминация",
+        prompt: "Сделай динамичный фильм, поездка на багги — кульминация, покажи скорость на экране",
         preset: .adventure
     )
     constraints.targetDuration = 55
     constraints.targetClipCount = 12
     let plan = StoryEngine().createPlan(
-        prompt: "Сделай динамичный фильм, поездка на багги — кульминация",
+        prompt: "Сделай динамичный фильм, поездка на багги — кульминация, покажи скорость на экране",
         preset: .adventure,
         constraints: constraints,
         assets: assets,
@@ -333,6 +333,35 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
     #expect(!result.committed)
     #expect(result.timeline == original)
     #expect(result.review == review)
+}
+
+@Test func directorRuntimeQualityGateRepairsGeneratedTitlesBeforeReturningTimeline() {
+    let (assets, analyses) = directorFixture()
+    let plan = StoryEngine().createPlan(
+        prompt: "Короткий фильм без выдуманных титров",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 12, targetClipCount: 2),
+        assets: assets,
+        analyses: analyses
+    )
+    var initial = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    initial.titleItems = initial.effectiveTitleItems + [TitleTimelineItem(
+        kind: .title,
+        text: "Ключевой момент",
+        startTime: 0,
+        duration: 3,
+        explanation: ["Автоматический титр режиссёра"]
+    )]
+
+    let directed = AIDirectorEngine(maximumReviewIterations: 0).direct(
+        plan: plan,
+        initialTimeline: initial,
+        assets: assets,
+        analyses: analyses
+    )
+
+    #expect(!directed.effectiveTitleItems.contains { SmartTitleEngine.isMeaningless($0.text) })
+    #expect(directed.directorRun?.decisionReasons.contains { $0.contains("Title quality gate [unconfirmed-text]") } == true)
 }
 
 @Test func globalVariantSelectorChoosesTheStrongerCompleteMontage() throws {

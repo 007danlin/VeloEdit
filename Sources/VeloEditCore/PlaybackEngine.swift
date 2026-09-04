@@ -67,6 +67,7 @@ public actor PlaybackEngine {
         sourceWarnings: [String] = [],
         derivedMediaCacheURL: URL? = nil,
         forceVideoComposition: Bool = false,
+        preferStableRealtimePreview: Bool = false,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> TimelinePlayback {
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
@@ -98,13 +99,31 @@ public actor PlaybackEngine {
         // compositor is attached to a 5K composition. Timeline transition
         // intents remain stored and exported, but live playback favors a
         // stable image unless the user explicitly adds a motion effect.
-        let usesNativeCameraPath = timeline.effectiveTelemetryItems.isEmpty && timeline.effectiveEffects.isEmpty && timeline.effectiveTitleItems.isEmpty && timeline.effectiveTransitionItems.isEmpty && !forceVideoComposition && Self.shouldUseNativeCameraPath(items: playableItems, assets: assetByID)
+        let realtimeTitles = preferStableRealtimePreview ? [] : timeline.effectiveTitleItems
+        let realtimeTelemetryItems = preferStableRealtimePreview ? [] : timeline.effectiveTelemetryItems
+        let realtimeEffects = preferStableRealtimePreview ? [] : timeline.effectiveEffects
+        let realtimeTransitionItems = preferStableRealtimePreview ? [] : timeline.effectiveTransitionItems
+        let targetAspectRatio = Double(max(1, timeline.width)) / Double(max(1, timeline.height))
+        let usesNativeCameraPath = realtimeTelemetryItems.isEmpty && realtimeEffects.isEmpty && realtimeTitles.isEmpty && realtimeTransitionItems.isEmpty && !forceVideoComposition && Self.shouldUseNativeCameraPath(
+            items: playableItems,
+            assets: assetByID,
+            targetAspectRatio: targetAspectRatio,
+            ignoringDecorations: preferStableRealtimePreview
+        )
+        let usesSafeFitBackground = playableItems.contains { item in
+            guard item.kind == .video,
+                  item.overlay == nil,
+                  item.effectiveVideoAdjustments.crop == .fit,
+                  let assetID = item.assetID,
+                  let sourceAspectRatio = assetByID[assetID]?.displayAspectRatio,
+                  sourceAspectRatio > 0 else { return false }
+            return abs(log(sourceAspectRatio / targetAspectRatio)) > 0.015
+        }
         let usesColorCompositor = playableItems.contains {
             AdjustedClipGenerator.needsRender($0.effectiveVideoAdjustments) ||
             $0.overlay?.style == .greenScreen ||
-            $0.telemetryOverlay != nil ||
-            $0.transition != nil
-        } || !timeline.effectiveTelemetryItems.isEmpty || !timeline.effectiveEffects.isEmpty || !timeline.effectiveTitleItems.isEmpty || !timeline.effectiveTransitionItems.isEmpty
+            (!preferStableRealtimePreview && ($0.telemetryOverlay != nil || $0.transition != nil))
+        } || usesSafeFitBackground || !realtimeTelemetryItems.isEmpty || !realtimeEffects.isEmpty || !realtimeTitles.isEmpty || !realtimeTransitionItems.isEmpty
         var temporaryFiles: [URL] = []
         var placements: [Placement] = []
         var skippedItemIDs: [UUID] = []
@@ -162,6 +181,9 @@ public actor PlaybackEngine {
                 if derivedMediaCacheURL == nil { temporaryFiles.append(sourceURL) }
             } else if item.kind == .photo, let media {
                 let backgroundPreset = BackgroundPreset.preset(for: media)
+                let bakedMotion = item.effect.flatMap(ClipEffect.init(rawValue:))
+                    ?? backgroundPreset?.animationMotion
+                    ?? .kenBurns
                 let identity = Self.photoCacheIdentity(item: item, asset: media, timeline: timeline, preset: backgroundPreset)
                 let isPersistent = derivedMediaCacheURL != nil
                 let destination = derivedMediaCacheURL?.appendingPathComponent("photo-\(identity).mov")
@@ -178,7 +200,9 @@ public actor PlaybackEngine {
                             height: timeline.height,
                             frameRate: Int32(timeline.frameRate.rounded()),
                             destination: temporary,
-                            motion: backgroundPreset?.animationMotion,
+                            motion: bakedMotion,
+                            subjectReframe: item.effectiveVideoAdjustments.subjectReframe,
+                            cropStyle: item.effectiveVideoAdjustments.crop,
                             backgroundAnimationStyle: backgroundPreset?.animationStyle
                         )
                     }
@@ -311,8 +335,18 @@ public actor PlaybackEngine {
             }
 
             var placedItem = item
-            if placedItem.kind == .photo && placedItem.effect == nil {
-                placedItem.effect = ClipEffect.kenBurns.rawValue
+            if placedItem.kind == .photo {
+                // Photo framing is baked from the full EXIF-oriented image.
+                // Applying the same normalized camera move again to the
+                // generated target-sized movie would double-crop it.
+                var adjustments = placedItem.effectiveVideoAdjustments
+                adjustments.subjectReframe = nil
+                placedItem.videoAdjustments = adjustments.isNeutral ? nil : adjustments
+                let backgroundPreset = media.flatMap { BackgroundPreset.preset(for: $0) }
+                if backgroundPreset?.animationStyle == nil,
+                   placedItem.effect != ClipEffect.mirror.rawValue {
+                    placedItem.effect = nil
+                }
             }
             placements.append(Placement(
                 index: placements.count,
@@ -340,10 +374,10 @@ public actor PlaybackEngine {
         } else if usesColorCompositor {
             videoComposition = makeColorVideoComposition(
                 placements: placements,
-                telemetryItems: timeline.effectiveTelemetryItems,
-                effects: timeline.effectiveEffects,
-                titles: timeline.effectiveTitleItems,
-                transitionItems: timeline.effectiveTransitionItems,
+                telemetryItems: realtimeTelemetryItems,
+                effects: realtimeEffects,
+                titles: realtimeTitles,
+                transitionItems: realtimeTransitionItems,
                 telemetry: telemetry,
                 renderSize: renderSize,
                 frameRate: timeline.frameRate
@@ -437,8 +471,12 @@ public actor PlaybackEngine {
         preset: BackgroundPreset?
     ) -> String {
         ProductionCacheIdentity.hash([
-            "photo-v2", asset.contentHash, item.effect ?? "ken-burns",
+            "photo-v3", asset.contentHash, item.effect ?? "ken-burns",
+            item.effectiveVideoAdjustments.crop.rawValue,
             preset?.rawValue ?? "photo", preset?.animationStyle?.rawValue ?? "none",
+            item.effectiveVideoAdjustments.subjectReframe.map {
+                "\($0.startCenterX),\($0.startCenterY),\($0.endCenterX),\($0.endCenterY),\($0.startScale),\($0.endScale)"
+            } ?? "no-reframe",
             String(Int((item.timelineDuration * 1_000).rounded())),
             "\(timeline.width)x\(timeline.height)@\(Int(timeline.frameRate.rounded()))"
         ])
@@ -462,10 +500,16 @@ public actor PlaybackEngine {
         }
     }
 
-    private static func shouldUseNativeCameraPath(items: [TimelineItem], assets: [UUID: MediaAsset]) -> Bool {
+    private static func shouldUseNativeCameraPath(
+        items: [TimelineItem],
+        assets: [UUID: MediaAsset],
+        targetAspectRatio: Double,
+        ignoringDecorations: Bool = false
+    ) -> Bool {
         guard !items.isEmpty, items.allSatisfy({
-            $0.kind == .video && $0.effect == nil && $0.transition == nil && $0.overlay == nil &&
-            $0.telemetryOverlay == nil && $0.effectiveVideoAdjustments.isNeutral
+            $0.kind == .video && $0.effect == nil &&
+            (ignoringDecorations || $0.transition == nil) && $0.overlay == nil &&
+            (ignoringDecorations || $0.telemetryOverlay == nil) && $0.effectiveVideoAdjustments.isNeutral
         }) else { return false }
         let descriptors = items.compactMap { item -> String? in
             guard let id = item.assetID, let metadata = assets[id]?.metadata,
@@ -473,7 +517,11 @@ public actor PlaybackEngine {
             return "\(width)x\(height)@\(metadata.orientationDegrees)"
         }
         guard descriptors.count == items.count, Set(descriptors).count == 1,
-              let firstID = items.first?.assetID, let metadata = assets[firstID]?.metadata,
+              let firstID = items.first?.assetID, let asset = assets[firstID],
+              let sourceAspectRatio = asset.displayAspectRatio,
+              sourceAspectRatio > 0, targetAspectRatio > 0,
+              abs(log(sourceAspectRatio / targetAspectRatio)) <= 0.015,
+              let metadata = assets[firstID]?.metadata,
               let width = metadata.width, let height = metadata.height else { return false }
         return max(width, height) >= 3840
     }

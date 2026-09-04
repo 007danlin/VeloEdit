@@ -599,14 +599,25 @@ public struct SourceTimelineAnalyzer: Sendable {
     private func activityTitle(tags: Set<String>, memberCount: Int) -> (title: String, confidence: Double, explanation: String) {
         let text = tags.joined(separator: " ").lowercased()
         func has(_ values: [String]) -> Bool { values.contains(where: text.contains) }
-        // Some vision models label a small off-road buggy as bicycle/machine.
-        // Require a multi-file road + machine + safety-gear combination before
-        // exposing that conservative inference to the user.
-        if memberCount >= 3,
-           has(["road", "dirt_road", "off-road", "trail"]),
-           has(["machine", "vehicle"]),
-           has(["helmet", "headgear", "tire"]) {
-            return ("Багги", 0.68, "Дорога, транспорт, экипировка и непрерывность нескольких файлов указывают на поездку на багги")
+        // Small off-road buggies are often mislabeled as `bicycle` or the very
+        // broad `machine`. Fuse independent evidence across an adjacent
+        // two-camera/two-file block instead of requiring three literal
+        // `buggy` labels. A real cycling signal still wins over a stray car in
+        // the background.
+        let explicitBuggy = has(["buggy", "багги", "utv", "side-by-side", "side by side"])
+        let offRoad = has(["dirt_road", "off-road", "offroad", "trail", "road"])
+        // `vehicle` is intentionally not motor-specific: vision commonly tags
+        // a bicycle as both `vehicle` and `machine`. Require evidence that
+        // cannot be satisfied by an ordinary mountain-bike ride.
+        let motorVehicle = has(["car", "automobile", "motor_vehicle", "motor vehicle", "off-road vehicle"])
+        let mechanics = has(["machine", "wheel", "tire", "tyre"])
+        let safetyGear = has(["helmet", "headgear"])
+        let strongCycling = has(["cycling", "cyclist", "велосипедист"])
+        if explicitBuggy || (
+            memberCount >= 2 && offRoad && motorVehicle && mechanics && safetyGear && !strongCycling
+        ) {
+            let confidence = explicitBuggy ? 0.96 : 0.84
+            return ("Багги", confidence, "Грунтовая дорога, автомобиль, колёса и защитная экипировка совместно подтверждают поездку на багги")
         }
         if let decision = SmartTitleEngine().decide(SmartTitleContext(purpose: .shortLabel, tags: tags)) {
             return (decision.primaryText, decision.confidence, decision.explanation.first ?? "Название следует распознанному содержанию")

@@ -103,7 +103,12 @@ import Testing
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try ProjectStore(createAt: root, name: "Лето")
     let asset = MediaAsset(originalURL: URL(fileURLWithPath: "/tmp/a.mov"), kind: .video, byteSize: 42, contentHash: "abc", metadata: MediaMetadata(duration: 12))
-    let result = AnalysisResult(assetID: asset.id, analyzedContentHash: "abc", candidates: [])
+    let result = AnalysisResult(
+        assetID: asset.id,
+        analyzedContentHash: "abc",
+        candidates: [],
+        deepMediaVersion: DeepAnalysisCache.version
+    )
     try await store.update { project in
         project.assets.append(asset)
         project.analyses.append(result)
@@ -114,6 +119,86 @@ import Testing
     #expect(manifest.assets.first?.contentHash == "abc")
     let cached = await reopened.cachedAnalysis(for: asset)
     #expect(cached?.assetID == asset.id)
+}
+
+@Test func projectSummaryTracksTheActualTimelineCoverAndAssetCount() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "До переименования")
+    let unusedFirstAsset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/first.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "first-asset-hash",
+        metadata: MediaMetadata(duration: 8)
+    )
+    let coverAsset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/cover.jpg"),
+        kind: .photo,
+        byteSize: 1,
+        contentHash: "cover-asset-hash",
+        metadata: MediaMetadata(duration: 5)
+    )
+    let laterItem = TimelineItem(
+        assetID: unusedFirstAsset.id,
+        kind: .video,
+        sourceStart: 0,
+        sourceDuration: 4,
+        timelineStart: 4,
+        timelineDuration: 4
+    )
+    let coverItem = TimelineItem(
+        assetID: coverAsset.id,
+        kind: .photo,
+        sourceStart: 0,
+        sourceDuration: 4,
+        timelineStart: 0,
+        timelineDuration: 4
+    )
+    try await store.update { project in
+        project.name = "Правильное имя"
+        project.assets = [unusedFirstAsset, coverAsset]
+        // Deliberately keep array order different from timeline order.
+        project.timelines = [Timeline(storyPlanID: UUID(), items: [laterItem, coverItem])]
+    }
+
+    let summary = try #require(ProjectSummary.load(from: root))
+    #expect(summary.name == "Правильное имя")
+    #expect(summary.assetCount == 2)
+    #expect(summary.previewKind == .photo)
+
+    let paths = CachePaths(root: root.appendingPathComponent("Cache", isDirectory: true))
+    let expectedTimelinePath = paths.timelineThumbnail(for: coverItem, asset: coverAsset)
+        .path.replacingOccurrences(of: root.path + "/", with: "")
+    let expectedSourcePath = paths.thumbnail(for: coverAsset)
+        .path.replacingOccurrences(of: root.path + "/", with: "")
+    #expect(summary.previewRelativePaths == [expectedTimelinePath, expectedSourcePath])
+}
+
+@Test func projectCacheRejectsAnOutdatedDeepAnalysisContract() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Versioned analysis")
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/stale.mov"),
+        kind: .video,
+        byteSize: 42,
+        contentHash: "stale",
+        metadata: MediaMetadata(duration: 12)
+    )
+    let stale = AnalysisResult(
+        assetID: asset.id,
+        analyzedContentHash: asset.contentHash,
+        candidates: [],
+        deepMediaVersion: max(0, DeepAnalysisCache.version - 1)
+    )
+    try await store.update { project in
+        project.assets = [asset]
+        project.analyses = [stale]
+    }
+
+    let cached = await store.cachedAnalysis(for: asset)
+    #expect(cached == nil)
 }
 
 @Test func builtInBackgroundBecomesReusableTimelineMedia() async throws {

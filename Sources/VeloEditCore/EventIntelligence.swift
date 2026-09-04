@@ -169,6 +169,17 @@ public struct EventIntelligenceEngine: Sendable {
     private func shouldMerge(_ metrics: PairMetrics, first: Observation, second: Observation) -> Bool {
         if metrics.hardSplit { return false }
         let gap = dateGap(first.normalizedDate, second.normalizedDate)
+        if metrics.activityCompatibility == .incompatible && !metrics.decisiveSameTakeEvidence {
+            // Different activities may be consecutive chapters of one outing.
+            // Keep that macro event only when archive evidence independently
+            // confirms continuity; a shared semanticEventID is never enough.
+            let sameDeviceContinuity = first.device == second.device
+                && gap <= 15 * 60
+                && metrics.temporal >= 0.82
+            let sourceContinuity = (metrics.filename ?? 0) >= 0.78 && gap <= 12 * 3_600
+            let spatialContinuity = metrics.temporal >= 0.78 && (metrics.gps ?? 0) >= 0.68
+            guard sameDeviceContinuity || sourceContinuity || spatialContinuity else { return false }
+        }
         if (metrics.filename ?? 0) >= 0.95, first.device == second.device, gap <= 12 * 3_600 {
             return true
         }
@@ -191,7 +202,7 @@ public struct EventIntelligenceEngine: Sendable {
             // "action" or "people". With no trustworthy capture clock or GPS,
             // require a precise P2 semantic-event match plus an independent
             // visual/subject/audio confirmation.
-            let preciseSemanticMatch = !first.semanticEventIDs.isDisjoint(with: second.semanticEventIDs)
+            let preciseSemanticMatch = metrics.corroboratedSemanticEventID
             let corroboration = max(metrics.visual ?? 0, metrics.people ?? 0, metrics.audio ?? 0)
             guard preciseSemanticMatch && corroboration >= 0.62 else { return false }
         }
@@ -223,14 +234,36 @@ public struct EventIntelligenceEngine: Sendable {
         let temporal = rawTemporal * (0.35 + min(first.dateConfidence, second.dateConfidence) * 0.65)
         let gps = gpsSimilarity(first.coordinate, second.coordinate)
         let visual = visualSimilarity(first, second)
+        let filename = filenameSimilarity(first.filenameIdentity, second.filenameIdentity)
+        let activityCompatibility = first.activityEvidence.compatibility(with: second.activityEvidence)
+        let activity: Double? = switch activityCompatibility {
+        case .compatible: 1
+        case .incompatible: 0
+        case .insufficientEvidence: nil
+        }
         var semantic = optionalJaccard(first.semanticTokens, second.semanticTokens)
-        if !first.semanticEventIDs.isDisjoint(with: second.semanticEventIDs) {
+        let sharedSemanticEventID = !first.semanticEventIDs.isDisjoint(with: second.semanticEventIDs)
+        // A persisted ID is a hint, never proof by itself. It can strengthen a
+        // compatible pair only after current GPS, visual, filename or canonical
+        // activity evidence corroborates it; conflicting activities veto it.
+        let legacyIDCorroboration = max(gps ?? 0, visual ?? 0, filename ?? 0, activity ?? 0)
+        let corroboratedSemanticEventID = sharedSemanticEventID
+            && activityCompatibility != .incompatible
+            && !first.activityEvidence.isAmbiguous
+            && !second.activityEvidence.isAmbiguous
+            && legacyIDCorroboration >= 0.62
+        if corroboratedSemanticEventID {
             semantic = max(semantic ?? 0, 1)
         }
-        let activity = optionalJaccard(first.activityTokens, second.activityTokens)
         let people = optionalJaccard(first.peopleTokens, second.peopleTokens)
         let audio = optionalJaccard(first.audioTokens, second.audioTokens)
-        let filename = filenameSimilarity(first.filenameIdentity, second.filenameIdentity)
+        let sameRecordingIdentity = first.filenameIdentity.recordingGroup != nil
+            && first.filenameIdentity.recordingGroup == second.filenameIdentity.recordingGroup
+            && (filename ?? 0) >= 0.95
+        let exactSameMoment = (visual ?? 0) >= 0.995
+            && gap <= 90
+            && max(gps ?? 0, semantic ?? 0, people ?? 0, audio ?? 0) >= 0.72
+        let decisiveSameTakeEvidence = sameRecordingIdentity || exactSameMoment
         let deviceTimeline = first.device != second.device && gap <= 15 * 60 ? 1.0 : gap <= 4 * 60 ? 0.62 : 0.20
         let values: [(Double?, Double)] = [
             (temporal, 0.25), (gps, 0.18), (visual, 0.12), (semantic, 0.15),
@@ -261,7 +294,10 @@ public struct EventIntelligenceEngine: Sendable {
             filename: filename,
             deviceTimeline: deviceTimeline,
             gap: gap,
-            hardSplit: hardSplit
+            hardSplit: hardSplit,
+            activityCompatibility: activityCompatibility,
+            decisiveSameTakeEvidence: decisiveSameTakeEvidence,
+            corroboratedSemanticEventID: corroboratedSemanticEventID
         )
     }
 
@@ -390,17 +426,186 @@ public struct EventIntelligenceEngine: Sendable {
     }
 
     private func makeActivityGroupScenes(groups: [SourceActivityGroup], members: [Observation], eventID: UUID) -> [EventScene] {
+        struct CandidateUnit {
+            var candidate: Candidate
+            var assetRank: Int
+            var tags: Set<String>
+            var summaries: [String]
+            var activity: ActivityEvidence
+        }
+        struct ActivityRun {
+            var family: ActivityFamily
+            var unitIndices: [Int]
+        }
+        struct SceneSlice {
+            var stableComponents: [String]
+            var title: String
+            var assetIDs: [UUID]
+            var candidates: [Candidate]
+            var tags: Set<String>
+            var startDate: Date?
+            var endDate: Date?
+            var confidence: Double
+            var energy: Double
+        }
+
         let memberIDs = Set(members.map(\.asset.id))
         let membersByID = Dictionary(uniqueKeysWithValues: members.map { ($0.asset.id, $0) })
-        let energies = groups.map { group -> Double in
-            let candidates = group.assetIDs.compactMap { membersByID[$0] }.flatMap(\.candidates)
+
+        func semanticEvidence(for candidate: Candidate) -> (Set<String>, [String], ActivityEvidence) {
+            var tags = Set(candidate.tags.map { $0.lowercased() })
+            let summaries = candidate.insights?.sceneSummary.map { [$0] } ?? []
+            for summary in summaries {
+                let words = summary.lowercased()
+                    .split { !$0.isLetter && !$0.isNumber }
+                    .map(String.init)
+                tags.formUnion(words)
+                if words.count >= 2 {
+                    for index in 0..<(words.count - 1) {
+                        tags.insert("\(words[index]) \(words[index + 1])")
+                    }
+                }
+            }
+            return (tags, summaries, ActivityCompatibilityContract.evidence(in: tags))
+        }
+
+        func meanEnergy(_ candidates: [Candidate]) -> Double {
             guard !candidates.isEmpty else { return 0.35 }
             return candidates.reduce(0) {
                 $0 + ($1.insights?.dynamics ?? $1.scores.action) * 0.72 + $1.scores.quality * 0.28
             } / Double(candidates.count)
         }
-        let peakIndex = energies.indices.max(by: { energies[$0] < energies[$1] }) ?? 0
-        return groups.enumerated().map { index, group in
+
+        func dateRange(for candidates: [Candidate]) -> (Date?, Date?) {
+            let starts = candidates.compactMap { candidate in
+                membersByID[candidate.assetID]?.normalizedDate?.addingTimeInterval(candidate.sourceStart)
+            }
+            let ends = candidates.compactMap { candidate in
+                membersByID[candidate.assetID]?.normalizedDate?
+                    .addingTimeInterval(candidate.sourceStart + candidate.sourceDuration)
+            }
+            return (starts.min(), ends.max())
+        }
+
+        func unsplitSlice(for group: SourceActivityGroup, groupMembers: [Observation], candidates: [Candidate]) -> SceneSlice {
+            let tags = groupMembers.reduce(into: Set<String>()) { $0.formUnion($1.semanticTokens) }
+            let dates = groupMembers.compactMap(\.normalizedDate)
+            return SceneSlice(
+                stableComponents: [group.id.uuidString],
+                title: group.title,
+                assetIDs: group.assetIDs.filter(memberIDs.contains),
+                candidates: candidates,
+                tags: tags,
+                startDate: dates.min(),
+                endDate: groupMembers.compactMap { member in
+                    member.normalizedDate.map { $0.addingTimeInterval(member.asset.metadata.duration ?? 0) }
+                }.max() ?? dates.max(),
+                confidence: group.confidence,
+                energy: meanEnergy(candidates)
+            )
+        }
+
+        func supported(_ run: ActivityRun, units: [CandidateUnit]) -> Bool {
+            let evidence = run.unitIndices.map { units[$0].activity }
+            let duration = run.unitIndices.reduce(0) { $0 + units[$1].candidate.sourceDuration }
+            let confidence = evidence.reduce(0) { $0 + $1.confidence } / Double(max(1, evidence.count))
+            let markers = evidence.reduce(into: Set<String>()) { $0.formUnion($1.matchedMarkers) }
+            // Two independently detected moments are enough only when their
+            // shared family is confidently specific. A single moment needs a
+            // longer range and at least two corroborating activity markers.
+            return (run.unitIndices.count >= 2 && duration >= 4 && confidence >= 0.62)
+                || (duration >= 6 && confidence >= 0.82 && markers.count >= 2)
+        }
+
+        func splitSlices(
+            for group: SourceActivityGroup,
+            groupMembers: [Observation],
+            candidates: [Candidate]
+        ) -> [SceneSlice]? {
+            guard candidates.count >= 2 else { return nil }
+            let assetRank = Dictionary(uniqueKeysWithValues: group.assetIDs.enumerated().map { ($0.element, $0.offset) })
+            let units = candidates.map { candidate -> CandidateUnit in
+                let semantic = semanticEvidence(for: candidate)
+                return CandidateUnit(
+                    candidate: candidate,
+                    assetRank: assetRank[candidate.assetID] ?? Int.max,
+                    tags: semantic.0,
+                    summaries: semantic.1,
+                    activity: semantic.2
+                )
+            }.sorted {
+                if $0.assetRank != $1.assetRank { return $0.assetRank < $1.assetRank }
+                if $0.candidate.sourceStart != $1.candidate.sourceStart {
+                    return $0.candidate.sourceStart < $1.candidate.sourceStart
+                }
+                return $0.candidate.id.uuidString < $1.candidate.id.uuidString
+            }
+
+            var runs: [ActivityRun] = []
+            for (index, unit) in units.enumerated() {
+                guard let family = unit.activity.family, unit.activity.confidence >= 0.58 else { continue }
+                if runs.last?.family == family {
+                    runs[runs.count - 1].unitIndices.append(index)
+                } else {
+                    runs.append(ActivityRun(family: family, unitIndices: [index]))
+                }
+            }
+            let supportedRuns = runs.filter { supported($0, units: units) }
+            guard supportedRuns.count >= 2 else { return nil }
+
+            // Ignore isolated classifier flicker between two supported runs of
+            // the same activity. It must not manufacture a new chapter or a
+            // transition boundary by itself.
+            var anchors: [ActivityRun] = []
+            for run in supportedRuns {
+                if anchors.last?.family == run.family {
+                    anchors[anchors.count - 1].unitIndices.append(contentsOf: run.unitIndices)
+                } else {
+                    anchors.append(run)
+                }
+            }
+            guard anchors.count >= 2 else { return nil }
+
+            var labels: [SmartTitleDecision] = []
+            for anchor in anchors {
+                let anchorUnits = anchor.unitIndices.map { units[$0] }
+                let tags = anchorUnits.reduce(into: Set<String>()) { $0.formUnion($1.tags) }
+                let summaries = anchorUnits.flatMap(\.summaries)
+                guard let label = SmartTitleEngine().contentConfirmedActivityTitle(tags: tags, summaries: summaries) else {
+                    return nil
+                }
+                labels.append(label)
+            }
+
+            return anchors.indices.map { anchorIndex in
+                let lower = anchorIndex == 0 ? 0 : anchors[anchorIndex].unitIndices.min() ?? 0
+                let upper = anchorIndex + 1 < anchors.count
+                    ? (anchors[anchorIndex + 1].unitIndices.min() ?? units.count)
+                    : units.count
+                let sliceUnits = Array(units[lower..<max(lower + 1, upper)])
+                let sliceCandidates = sliceUnits.map(\.candidate)
+                let sliceAssetSet = Set(sliceCandidates.map(\.assetID))
+                let sliceTags = sliceUnits.reduce(into: Set<String>()) { $0.formUnion($1.tags) }
+                let evidence = anchors[anchorIndex].unitIndices.map { units[$0].activity.confidence }
+                let evidenceConfidence = evidence.reduce(0, +) / Double(max(1, evidence.count))
+                let range = dateRange(for: sliceCandidates)
+                return SceneSlice(
+                    stableComponents: [group.id.uuidString, "candidate-activity-run", anchors[anchorIndex].family.rawValue]
+                        + sliceCandidates.map { $0.id.uuidString },
+                    title: labels[anchorIndex].primaryText,
+                    assetIDs: group.assetIDs.filter(sliceAssetSet.contains),
+                    candidates: sliceCandidates,
+                    tags: sliceTags,
+                    startDate: range.0,
+                    endDate: range.1,
+                    confidence: (group.confidence * 0.46 + evidenceConfidence * 0.34 + labels[anchorIndex].confidence * 0.20).clamped01,
+                    energy: meanEnergy(sliceCandidates)
+                )
+            }
+        }
+
+        var slices: [SceneSlice] = []
+        for group in groups {
             let groupMembers = group.assetIDs.compactMap { membersByID[$0] }
             let candidates = groupMembers.flatMap(\.candidates).sorted {
                 let lhsAsset = group.assetIDs.firstIndex(of: $0.assetID) ?? Int.max
@@ -408,28 +613,33 @@ public struct EventIntelligenceEngine: Sendable {
                 if lhsAsset != rhsAsset { return lhsAsset < rhsAsset }
                 return $0.sourceStart < $1.sourceStart
             }
-            let tags = groupMembers.reduce(into: Set<String>()) { $0.formUnion($1.semanticTokens) }
+            if let split = splitSlices(for: group, groupMembers: groupMembers, candidates: candidates) {
+                slices.append(contentsOf: split)
+            } else {
+                slices.append(unsplitSlice(for: group, groupMembers: groupMembers, candidates: candidates))
+            }
+        }
+
+        let peakIndex = slices.indices.max(by: { slices[$0].energy < slices[$1].energy }) ?? 0
+        return slices.enumerated().map { index, slice in
             let phase: EventScenePhase
-            if groups.count == 1 { phase = .peak }
+            if slices.count == 1 { phase = .peak }
             else if index == peakIndex { phase = .peak }
             else if index == 0 { phase = .setup }
             else if index < peakIndex { phase = index + 1 == peakIndex ? .preparation : .action }
             else if index == peakIndex + 1 { phase = .reaction }
-            else if index == groups.count - 1 { phase = .conclusion }
+            else if index == slices.count - 1 { phase = .conclusion }
             else { phase = .reaction }
-            let dates = groupMembers.compactMap(\.normalizedDate)
             return EventScene(
-                id: stableUUID(namespace: "event-scene:\(eventID.uuidString)", components: [group.id.uuidString]),
-                title: group.title,
-                startDate: dates.min(),
-                endDate: groupMembers.compactMap { member in
-                    member.normalizedDate.map { $0.addingTimeInterval(member.asset.metadata.duration ?? 0) }
-                }.max() ?? dates.max(),
-                assetIDs: group.assetIDs.filter(memberIDs.contains),
-                candidateIDs: candidates.map(\.id),
-                tags: tags,
+                id: stableUUID(namespace: "event-scene:\(eventID.uuidString)", components: slice.stableComponents),
+                title: slice.title,
+                startDate: slice.startDate,
+                endDate: slice.endDate,
+                assetIDs: slice.assetIDs,
+                candidateIDs: slice.candidates.map(\.id),
+                tags: slice.tags,
                 phase: phase,
-                confidence: group.confidence
+                confidence: slice.confidence
             )
         }
     }
@@ -620,7 +830,8 @@ public struct EventDurationAllocator: Sendable {
         events: [Event],
         totalDuration: Double,
         strategy: String,
-        personalAdjustments: [String: Double] = [:]
+        personalAdjustments: [String: Double] = [:],
+        requiresExactTotal: Bool = false
     ) -> [UUID: Double] {
         guard !events.isEmpty else { return [:] }
         let target = max(5, totalDuration)
@@ -637,6 +848,17 @@ public struct EventDurationAllocator: Sendable {
             return max(0.05, value)
         }
         let sum = weights.reduce(0, +)
+        if requiresExactTotal {
+            // Quality still controls each event's share, but it must not turn
+            // a user-selected runtime into a shorter creative suggestion.
+            // TimelineComposer performs a second, source-capacity-aware pass
+            // when one event cannot consume its complete share.
+            let base = min(minimum, target / Double(events.count))
+            let remaining = max(0, target - base * Double(events.count))
+            return Dictionary(uniqueKeysWithValues: zip(events, weights).map { event, weight in
+                (event.id, base + remaining * weight / max(0.000_001, sum))
+            })
+        }
         func maximumDuration(for event: Event) -> Double {
             // When the archive is one continuous event, its activity/scene
             // groups are the story structure. Do not discard most of the
@@ -723,7 +945,7 @@ fileprivate struct Observation: Sendable {
     var device: String
     var semanticTokens: Set<String>
     var semanticEventIDs: Set<String>
-    var activityTokens: Set<String>
+    var activityEvidence: ActivityEvidence
     var peopleTokens: Set<String>
     var audioTokens: Set<String>
     var filenameIdentity: FilenameIdentity
@@ -770,8 +992,7 @@ fileprivate struct Observation: Sendable {
         }
         semantic.formUnion(Self.words(asset.displayName))
         self.semanticTokens = semantic.filter { $0.count >= 3 }
-        let activities = ["action", "sport", "cycling", "bike", "bicycle", "cyclist", "fishing", "rafting", "kayak", "hiking", "running", "swimming", "driving", "travel", "boat", "ski", "snowboard", "сплав", "рыбалка", "велосипед", "поход", "плавание", "дорога"]
-        self.activityTokens = Set(semantic.filter { token in activities.contains(where: token.contains) })
+        self.activityEvidence = ActivityCompatibilityContract.evidence(in: self.semanticTokens)
         var people = Set((analysis?.scenes ?? []).flatMap(\.people).map { $0.lowercased() })
         if semantic.contains("people") || semantic.contains("person") { people.insert("people") }
         for candidate in candidates {
@@ -809,6 +1030,9 @@ private struct PairMetrics: Sendable {
     var deviceTimeline: Double
     var gap: TimeInterval
     var hardSplit: Bool
+    var activityCompatibility: ActivityCompatibility
+    var decisiveSameTakeEvidence: Bool
+    var corroboratedSemanticEventID: Bool
 }
 
 fileprivate struct FilenameIdentity: Sendable {
@@ -937,12 +1161,21 @@ private struct UnionFind {
         return parents[value]
     }
 
-    mutating func join(_ first: Int, _ second: Int) {
+    @discardableResult
+    mutating func join(_ first: Int, _ second: Int) -> Int {
         let lhs = root(first)
         let rhs = root(second)
-        guard lhs != rhs else { return }
-        if ranks[lhs] < ranks[rhs] { parents[lhs] = rhs }
-        else if ranks[lhs] > ranks[rhs] { parents[rhs] = lhs }
-        else { parents[rhs] = lhs; ranks[lhs] += 1 }
+        guard lhs != rhs else { return lhs }
+        if ranks[lhs] < ranks[rhs] {
+            parents[lhs] = rhs
+            return rhs
+        }
+        if ranks[lhs] > ranks[rhs] {
+            parents[rhs] = lhs
+            return lhs
+        }
+        parents[rhs] = lhs
+        ranks[lhs] += 1
+        return lhs
     }
 }

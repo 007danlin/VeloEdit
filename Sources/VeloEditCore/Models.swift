@@ -126,6 +126,27 @@ public struct MediaAsset: Codable, Identifiable, Hashable, Sendable {
         self.excluded = excluded
         self.missing = missing
     }
+
+    /// Display-oriented dimensions used by framing and rendering decisions.
+    /// Video metadata is normalized by `MediaImporter` with the preferred
+    /// transform already applied. Photo metadata keeps the raw pixel size and
+    /// stores EXIF orientation separately, so only photos need a 90/270 swap.
+    public var displayDimensions: (width: Int, height: Int)? {
+        guard let width = metadata.width,
+              let height = metadata.height,
+              width > 0,
+              height > 0 else { return nil }
+        let normalizedOrientation = ((metadata.orientationDegrees % 360) + 360) % 360
+        if kind == .photo, normalizedOrientation == 90 || normalizedOrientation == 270 {
+            return (height, width)
+        }
+        return (width, height)
+    }
+
+    public var displayAspectRatio: Double? {
+        guard let dimensions = displayDimensions else { return nil }
+        return Double(dimensions.width) / Double(dimensions.height)
+    }
 }
 
 public struct ClipScores: Codable, Hashable, Sendable {
@@ -845,6 +866,101 @@ public enum FilmPreset: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+public enum DirectorNarrativeMood: String, Codable, CaseIterable, Identifiable, Sendable {
+    case calm
+    case cinematic
+    case dynamic
+
+    public var id: String { rawValue }
+    public var pacing: Double {
+        switch self {
+        case .calm: return 0.30
+        case .cinematic: return 0.52
+        case .dynamic: return 0.86
+        }
+    }
+}
+
+public enum DirectorMusicPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case matchVideo = "match-video"
+    case soft
+    case none
+    case specificTrack = "specific-track"
+
+    public var id: String { rawValue }
+}
+
+public enum DirectorSourceAudioPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case preserve
+    case duck
+    case mute
+
+    public var id: String { rawValue }
+    public var volume: Double {
+        switch self {
+        case .preserve: return 1
+        case .duck: return 0.28
+        case .mute: return 0
+        }
+    }
+}
+
+public enum DirectorTitlePolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case minimal
+    case keyOnly = "key-only"
+    case none
+
+    public var id: String { rawValue }
+}
+
+public struct DirectorBrief: Codable, Hashable, Sendable {
+    public var canvasFormat: DirectorCanvasFormat
+    /// The user's requested final runtime. It remains separate from any
+    /// optimizer-resolved duration so an impossible request cannot pass as met.
+    public var requestedDuration: Double
+    public var mood: DirectorNarrativeMood
+    public var musicPolicy: DirectorMusicPolicy
+    public var musicTrackID: UUID?
+    public var sourceAudioPolicy: DirectorSourceAudioPolicy
+    public var titlePolicy: DirectorTitlePolicy
+
+    public init(
+        canvasFormat: DirectorCanvasFormat = .landscape16x9,
+        requestedDuration: Double = 120,
+        mood: DirectorNarrativeMood = .cinematic,
+        musicPolicy: DirectorMusicPolicy = .matchVideo,
+        musicTrackID: UUID? = nil,
+        sourceAudioPolicy: DirectorSourceAudioPolicy = .preserve,
+        titlePolicy: DirectorTitlePolicy = .minimal
+    ) {
+        self.canvasFormat = canvasFormat
+        self.requestedDuration = min(3_600, max(5, requestedDuration))
+        self.mood = mood
+        self.musicPolicy = musicPolicy
+        self.musicTrackID = musicPolicy == .specificTrack ? musicTrackID : nil
+        self.sourceAudioPolicy = sourceAudioPolicy
+        self.titlePolicy = titlePolicy
+    }
+
+    public static let legacyDefault = DirectorBrief()
+}
+
+/// Exact constraints stated by the user must survive creative variant search.
+/// Unlocked values may still vary so the selector can compare meaningfully
+/// different edits of the same material.
+public struct StoryConstraintLocks: OptionSet, Hashable, Sendable {
+    public let rawValue: Int
+
+    public init(rawValue: Int) {
+        self.rawValue = rawValue
+    }
+
+    public static let targetDuration = StoryConstraintLocks(rawValue: 1 << 0)
+    public static let pacing = StoryConstraintLocks(rawValue: 1 << 1)
+    public static let transitionFrequency = StoryConstraintLocks(rawValue: 1 << 2)
+    public static let allowSlowMotion = StoryConstraintLocks(rawValue: 1 << 3)
+}
+
 public struct StoryConstraints: Codable, Hashable, Sendable {
     public var targetDuration: Double
     public var targetClipCount: Int?
@@ -1128,9 +1244,12 @@ public struct StoryPlan: Codable, Identifiable, Hashable, Sendable {
     public var autonomousDecision: AutonomousDirectorDecision?
     public var eventStory: EventStoryPlan?
     public var beatGraph: NarrativeBeatGraph?
+    /// Exact opening-questionnaire choices. Optional keeps older project
+    /// packages decodable; consumers use `legacyDefault` when it is absent.
+    public var directorBrief: DirectorBrief?
     public var createdAt: Date
 
-    public init(id: UUID = UUID(), version: Int = 1, prompt: String, preset: FilmPreset, constraints: StoryConstraints, chapters: [StoryChapter], autonomousDecision: AutonomousDirectorDecision? = nil, eventStory: EventStoryPlan? = nil, beatGraph: NarrativeBeatGraph? = nil, createdAt: Date = Date()) {
+    public init(id: UUID = UUID(), version: Int = 1, prompt: String, preset: FilmPreset, constraints: StoryConstraints, chapters: [StoryChapter], autonomousDecision: AutonomousDirectorDecision? = nil, eventStory: EventStoryPlan? = nil, beatGraph: NarrativeBeatGraph? = nil, directorBrief: DirectorBrief? = nil, createdAt: Date = Date()) {
         self.id = id
         self.version = version
         self.prompt = prompt
@@ -1140,7 +1259,15 @@ public struct StoryPlan: Codable, Identifiable, Hashable, Sendable {
         self.autonomousDecision = autonomousDecision
         self.eventStory = eventStory
         self.beatGraph = beatGraph ?? NarrativeBeatGraph.inferred(from: chapters)
+        self.directorBrief = directorBrief
         self.createdAt = createdAt
+    }
+
+    /// A typed opening brief is just as explicit as a duration written in the
+    /// free-form prompt. Keeping the predicate on StoryPlan prevents later
+    /// editing and review stages from disagreeing about that contract.
+    public var requiresExactDuration: Bool {
+        directorBrief != nil || AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt)
     }
 }
 
@@ -2256,6 +2383,9 @@ public struct ProjectWorkspaceState: Codable, Hashable, Sendable {
     /// A user-imported track explicitly chosen for the next director build.
     /// Optional keeps older project packages source-compatible.
     public var directorMusicTrackID: UUID?
+    /// Structured mandatory AI Director choices. Optional for project packages
+    /// saved before the opening questionnaire became a production contract.
+    public var directorBrief: DirectorBrief?
     public var directorDraft: String
     public var feedbackDraft: String
     public var pendingDirectorInstructions: [String]
@@ -2269,6 +2399,7 @@ public struct ProjectWorkspaceState: Codable, Hashable, Sendable {
         preset: FilmPreset,
         targetMinutes: Double,
         directorMusicTrackID: UUID? = nil,
+        directorBrief: DirectorBrief? = nil,
         directorDraft: String = "",
         feedbackDraft: String = "",
         pendingDirectorInstructions: [String] = [],
@@ -2279,6 +2410,7 @@ public struct ProjectWorkspaceState: Codable, Hashable, Sendable {
         self.preset = preset
         self.targetMinutes = min(60, max(0.5, targetMinutes))
         self.directorMusicTrackID = directorMusicTrackID
+        self.directorBrief = directorBrief
         self.directorDraft = directorDraft
         self.feedbackDraft = feedbackDraft
         self.pendingDirectorInstructions = pendingDirectorInstructions

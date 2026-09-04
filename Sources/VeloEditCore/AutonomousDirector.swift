@@ -712,7 +712,8 @@ public struct AutonomousDurationOptimizer: Sendable {
         analyses: [AnalysisResult],
         requestedDuration: Double? = nil,
         requestIsExplicit: Bool = false,
-        events: [Event] = []
+        events: [Event] = [],
+        assets: [MediaAsset] = []
     ) -> OptimalDurationDecision {
         let candidates = analyses.flatMap(\.directorCandidates).filter { !$0.excluded }
         let sceneScopeByCandidate = events.reduce(into: [UUID: UUID]()) { index, event in
@@ -745,28 +746,66 @@ public struct AutonomousDurationOptimizer: Sendable {
         // A low-confidence decision stays on the shorter safe side.
         let confidence = (min(1, Double(strong.count) / 12) * 0.48 + project.sceneVariety * 0.24 + project.confidence * 0.28).clamped01
         if confidence < 0.42 { optimal *= 0.82 }
-        let contentCeiling = max(5, candidates.reduce(0) { $0 + min($1.sourceDuration, averageShot * 1.45) })
-        optimal = min(optimal, contentCeiling)
-        if requestIsExplicit, let requestedDuration {
-            // Explicit natural-language intent is a real objective, but the
-            // material ceiling still prevents padding with weak repetitions.
-            optimal = min(contentCeiling, optimal * 0.42 + max(5, requestedDuration) * 0.58)
+        let analyzedMomentCeiling = max(5, candidates.reduce(0) { $0 + min($1.sourceDuration, averageShot * 1.45) })
+        let candidateAssetIDs = Set(candidates.map(\.assetID))
+        let sourceMaterialCeiling = assets.reduce(0) { partial, asset in
+            guard candidateAssetIDs.contains(asset.id), !asset.excluded, !asset.missing else { return partial }
+            switch asset.kind {
+            case .video:
+                return partial + max(0, asset.metadata.duration ?? 0)
+            case .photo:
+                return partial + 8
+            }
         }
-        let lower = max(5, optimal * (confidence < 0.45 ? 0.78 : 0.86))
-        let upper = max(lower, min(contentCeiling, optimal * (confidence < 0.45 ? 1.08 : 1.18)))
+        // Candidate windows locate the best editorial moments; they are not a
+        // declaration that the rest of a long camera take does not exist. For
+        // a duration explicitly chosen by the user, Story/Timeline may extend
+        // those selected moments into adjacent source material, without reuse.
+        let contentCeiling = requestIsExplicit && sourceMaterialCeiling > 0
+            ? max(analyzedMomentCeiling, sourceMaterialCeiling)
+            : analyzedMomentCeiling
+        optimal = min(optimal, contentCeiling)
+        let explicitTarget = requestIsExplicit ? requestedDuration.map { max(5, $0) } : nil
+        if let explicitTarget {
+            // A duration explicitly chosen by the user is a hard target when
+            // the analyzed candidate pool can cover it. Only a genuine
+            // material ceiling may shorten the film; creative optimization
+            // must not silently blend five requested minutes into a shorter
+            // "preferred" duration.
+            optimal = min(contentCeiling, explicitTarget)
+        }
+        let lower: Double
+        let upper: Double
+        if let explicitTarget, contentCeiling + 0.001 >= explicitTarget {
+            lower = explicitTarget
+            upper = explicitTarget
+        } else {
+            lower = max(5, optimal * (confidence < 0.45 ? 0.78 : 0.86))
+            upper = max(lower, min(contentCeiling, optimal * (confidence < 0.45 ? 1.08 : 1.18)))
+        }
         return OptimalDurationDecision(
             seconds: optimal, confidence: confidence, safeRange: lower...upper, strongMomentCount: strong.count,
             reasons: [
                 "сильных уникальных моментов: \(strong.count)",
                 "usable editorial duration: \(Int(usableSeconds.rounded())) с",
-                optimal + 0.5 < (requestedDuration ?? optimal) ? "заданная длина сокращена, чтобы не заполнять фильм повторами" : "длина покрывает сильные моменты без искусственного растягивания"
+                explicitTarget.map { target in
+                    optimal + 0.5 < target
+                        ? "заданная длина сокращена: пригодного материала недостаточно"
+                        : "явно заданная длительность обеспечена пригодным материалом"
+                } ?? "длина покрывает сильные моменты без искусственного растягивания"
             ]
         )
     }
 
     public static func requestContainsExplicitDuration(_ prompt: String) -> Bool {
         let lower = prompt.lowercased()
-        let patterns = [#"\d+(?:[\.,]\d+)?\s*(?:минут|мин\b|min\b)"#, #"\d+(?:[\.,]\d+)?\s*(?:секунд|сек\b|sec\b)"#]
+        // Do not rely on `\b` after Cyrillic abbreviations: ICU treats that
+        // boundary inconsistently before punctuation, so the questionnaire
+        // answer “5 мин.” was previously lost as a soft preference.
+        let patterns = [
+            #"\d+(?:[\.,]\d+)?\s*(?:минут(?:а|ы)?|мин\.?|min\.?)"#,
+            #"\d+(?:[\.,]\d+)?\s*(?:секунд(?:а|ы)?|сек\.?|sec\.?)"#
+        ]
         return patterns.contains { (try? NSRegularExpression(pattern: $0))?.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)) != nil }
     }
 
@@ -787,7 +826,10 @@ public struct AutonomousDirectorEngine: Sendable {
         assets: [MediaAsset],
         analyses: [AnalysisResult],
         personalProfile: PersonalTasteProfile,
-        events: [Event] = []
+        events: [Event] = [],
+        /// The opening questionnaire is a typed source of truth and may mark
+        /// duration as exact even when no number is repeated in free-form text.
+        requestIsExplicit: Bool? = nil
     ) -> AutonomousDirectorDecision {
         let project = AutonomousProjectStyleEngine().infer(assets: assets, analyses: analyses, fallbackPreset: fallbackPreset, events: events)
         let tasteContext = TasteContextResolver().resolve(projectStyle: project, assets: assets, analyses: analyses)
@@ -808,12 +850,18 @@ public struct AutonomousDirectorEngine: Sendable {
         let fingerprint = assets.map(\.contentHash).sorted().joined(separator: "|") + "|" + project.internalLabel
         let explorationApplied = TasteExplorationPolicy().shouldExplore(profile: personalProfile, projectFingerprint: fingerprint)
         if explorationApplied { final = TasteExplorationPolicy().exploratoryStyle(from: final, profile: personalProfile) }
+        let durationIsExplicit = requestIsExplicit
+            ?? AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt)
+        let resolvedRequestedDuration = requestedDuration ?? (durationIsExplicit
+            ? PromptInterpreter().interpret(prompt: prompt, preset: fallbackPreset).targetDuration
+            : nil)
         var duration = AutonomousDurationOptimizer().decide(
-            project: project, style: final, analyses: analyses, requestedDuration: requestedDuration,
-            requestIsExplicit: AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt),
-            events: events
+            project: project, style: final, analyses: analyses, requestedDuration: resolvedRequestedDuration,
+            requestIsExplicit: durationIsExplicit,
+            events: events,
+            assets: assets
         )
-        if !AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt),
+        if !durationIsExplicit,
            let learned = personalProfile.durationPreferences?.preferredFilmDuration,
            learned.confidence >= 0.18 {
             let learnedSeconds = max(5, (learned.value + 1) * 90)

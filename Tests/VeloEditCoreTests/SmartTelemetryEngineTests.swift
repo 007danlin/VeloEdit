@@ -62,6 +62,117 @@ import Testing
     #expect(SmartTelemetryEngine().decide(SmartTelemetryContext(telemetry: summary, clip: clip)) == nil)
 }
 
+@Test func telemetryOverlayRequiresAnActualDisplayRequest() {
+    #expect(!TelemetryOverlayRequestPolicy.requestsOverlay(in: "Сделай монтаж быстрее и увеличь скорость клипов"))
+    #expect(!TelemetryOverlayRequestPolicy.requestsOverlay(in: "Выбирай моменты по данным GPS, но без телеметрии"))
+    #expect(!TelemetryOverlayRequestPolicy.requestsOverlay(in: "В исходниках есть GPS и данные о скорости"))
+    #expect(TelemetryOverlayRequestPolicy.requestsOverlay(in: "Покажи скорость на экране"))
+    #expect(TelemetryOverlayRequestPolicy.requestsOverlay(in: "Сделай ролик с телеметрией"))
+}
+
+@Test func timelineComposerNeverAddsTelemetryWithoutAnExplicitRequest() {
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/telemetry-source.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "telemetry-source",
+        metadata: MediaMetadata(duration: 8, width: 1_920, height: 1_080, frameRate: 30)
+    )
+    let candidate = Candidate(
+        assetID: asset.id,
+        sourceStart: 0,
+        sourceDuration: 8,
+        scores: ClipScores(quality: 0.9, interest: 0.9, action: 1, stability: 0.9),
+        tags: ["cycling", "action", "high-speed"]
+    )
+    let samples = (0...8).map { second in
+        TelemetrySample(
+            timestamp: Double(second),
+            speedMetersPerSecond: second == 4 ? 28 : Double(second)
+        )
+    }
+    let analysis = AnalysisResult(
+        assetID: asset.id,
+        analyzedContentHash: "telemetry-analysis",
+        candidates: [candidate],
+        telemetry: TelemetrySummary(
+            sampleCount: samples.count,
+            maxSpeedMetersPerSecond: 28,
+            timedSamples: samples,
+            streams: ["SPEED"]
+        )
+    )
+    let chapter = StoryChapter(
+        title: "Заезд",
+        candidateIDs: [candidate.id],
+        role: .action,
+        purpose: "Показать динамику"
+    )
+    let ordinaryPlan = StoryPlan(
+        prompt: "Собери динамичный ролик из лучших моментов",
+        preset: .adventure,
+        constraints: StoryConstraints(targetDuration: 8),
+        chapters: [chapter]
+    )
+    let requestedPlan = StoryPlan(
+        prompt: "Добавь телеметрию и покажи максимальную скорость",
+        preset: .adventure,
+        constraints: StoryConstraints(targetDuration: 8),
+        chapters: [chapter]
+    )
+
+    let ordinary = TimelineComposer().compose(plan: ordinaryPlan, assets: [asset], analyses: [analysis])
+    let requested = TimelineComposer().compose(plan: requestedPlan, assets: [asset], analyses: [analysis])
+
+    #expect(ordinary.effectiveTelemetryItems.isEmpty)
+    #expect(ordinary.items.allSatisfy { $0.telemetryOverlay == nil })
+    #expect(!requested.effectiveTelemetryItems.isEmpty)
+}
+
+@Test func storyRegenerationDoesNotRestoreALegacyAutomaticTelemetryHUD() {
+    let candidateID = UUID()
+    let assetID = UUID()
+    let previous = TimelineItem(
+        candidateID: candidateID,
+        assetID: assetID,
+        kind: .video,
+        sourceDuration: 4,
+        timelineStart: 0,
+        timelineDuration: 4,
+        telemetryOverlay: TelemetryOverlaySettings(metrics: [.speed])
+    )
+    let regenerated = TimelineItem(
+        candidateID: candidateID,
+        assetID: assetID,
+        kind: .video,
+        sourceDuration: 4,
+        timelineStart: 0,
+        timelineDuration: 4
+    )
+    let explicitSettings = TelemetryOverlaySettings(metrics: [.route])
+    let explicitlyRegenerated = TimelineItem(
+        candidateID: candidateID,
+        assetID: assetID,
+        kind: .video,
+        sourceDuration: 4,
+        timelineStart: 0,
+        timelineDuration: 4,
+        telemetryOverlay: explicitSettings
+    )
+
+    let withoutRequest = VeloEditPipeline.carryEditorAdjustments(
+        from: Timeline(storyPlanID: UUID(), items: [previous]),
+        to: Timeline(storyPlanID: UUID(), items: [regenerated])
+    )
+    let withCurrentRequest = VeloEditPipeline.carryEditorAdjustments(
+        from: Timeline(storyPlanID: UUID(), items: [previous]),
+        to: Timeline(storyPlanID: UUID(), items: [explicitlyRegenerated])
+    )
+
+    #expect(withoutRequest.items.first?.telemetryOverlay == nil)
+    #expect(withCurrentRequest.items.first?.telemetryOverlay == explicitSettings)
+}
+
 @Test func telemetrySourceSelectionUsesGPMFForMotionAndFITForSportSensors() throws {
     let assetID = UUID()
     let embedded = TelemetrySource(

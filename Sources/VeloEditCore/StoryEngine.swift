@@ -23,28 +23,94 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
             ("telemetry-event", ["телеметри"]),
             ("action", ["экшен", "трюк", "action"])
         ]
-        for (tag, words) in tags where words.contains(where: lower.contains) { result.includeTags.insert(tag) }
-        let introAnchors = ["начал", "вступлен", "откры", "intro"]
+        func lastNegativePosition(for words: [String], in text: String) -> Int? {
+            words.compactMap { word -> Int? in
+                let escaped = NSRegularExpression.escapedPattern(for: word)
+                let pattern = "(?:без|не\\s+показывай|не\\s+показывать|исключи|убери)[^,;.!?\\n]{0,48}\(escaped)"
+                guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+                return regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+                    .compactMap { Range($0.range, in: text) }
+                    .map { text.distance(from: text.startIndex, to: $0.upperBound) }
+                    .max()
+            }.max()
+        }
+        func lastReductionPosition(for words: [String], in text: String) -> Int? {
+            words.compactMap { word -> Int? in
+                let escaped = NSRegularExpression.escapedPattern(for: word)
+                let pattern = "(?:меньше|поменьше|less)[^,;.!?\\n]{0,32}\(escaped)"
+                guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+                return regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+                    .compactMap { Range($0.range, in: text) }
+                    .map { text.distance(from: text.startIndex, to: $0.upperBound) }
+                    .max()
+            }.max()
+        }
+        var explicitlyExcludedTags = Set<String>()
+        var explicitlyIncludedTags = Set<String>()
+        var explicitlyReducedTags = Set<String>()
+        for (tag, words) in tags {
+            let positivePosition = Self.lastPosition(of: words, in: lower)
+            let negativePosition = lastNegativePosition(for: words, in: lower)
+            let reductionPosition = lastReductionPosition(for: words, in: lower)
+            guard positivePosition != nil || negativePosition != nil || reductionPosition != nil else { continue }
+            if let negativePosition, negativePosition >= (positivePosition ?? -1) {
+                explicitlyExcludedTags.insert(tag)
+            } else if let reductionPosition, reductionPosition >= (positivePosition ?? -1) {
+                explicitlyReducedTags.insert(tag)
+            } else {
+                explicitlyIncludedTags.insert(tag)
+            }
+        }
+        result.excludeTags.formUnion(explicitlyExcludedTags)
+        result.excludeTags.subtract(explicitlyIncludedTags)
+        result.includeTags.formUnion(explicitlyIncludedTags)
+        result.includeTags.subtract(explicitlyExcludedTags)
+        result.includeTags.subtract(explicitlyReducedTags)
+        for tag in explicitlyReducedTags {
+            result.maximumTagShares[tag] = min(result.maximumTagShares[tag] ?? 1, 0.25)
+        }
+        let introAnchors = ["начал", "начни", "начать", "сначала", "вступлен", "откры", "intro"]
         let climaxAnchors = ["кульминац", "пик", "главным момент", "climax"]
         let outroAnchors = ["финал", "концов", "заверши", "outro"]
-        for (tag, words) in tags where words.contains(where: lower.contains) {
-            if introAnchors.contains(where: lower.contains) {
-                result.preferredIntroTags = (result.preferredIntroTags ?? []).union([tag])
+        let clauseText = lower
+            .replacingOccurrences(of: " а ", with: ";")
+            .replacingOccurrences(of: " затем ", with: ";")
+            .replacingOccurrences(of: " потом ", with: ";")
+            .replacingOccurrences(of: " but ", with: ";")
+            .replacingOccurrences(of: " then ", with: ";")
+        let clauses = clauseText.split { character in
+            character == "." || character == "!" || character == "?"
+                || character == "," || character == ";" || character == "\n"
+        }.map(String.init)
+        for clause in clauses {
+            let clauseTags = Set(tags.compactMap { tag, words -> String? in
+                !explicitlyExcludedTags.contains(tag)
+                    && !explicitlyReducedTags.contains(tag)
+                    && words.contains(where: clause.contains)
+                    && lastNegativePosition(for: words, in: clause) == nil
+                    ? tag : nil
+            })
+            guard !clauseTags.isEmpty else { continue }
+            if introAnchors.contains(where: clause.contains) {
+                result.preferredIntroTags = (result.preferredIntroTags ?? []).union(clauseTags)
             }
-            if climaxAnchors.contains(where: lower.contains) {
-                result.preferredClimaxTags = (result.preferredClimaxTags ?? []).union([tag])
+            if climaxAnchors.contains(where: clause.contains) {
+                result.preferredClimaxTags = (result.preferredClimaxTags ?? []).union(clauseTags)
             }
-            if outroAnchors.contains(where: lower.contains) {
-                result.preferredOutroTags = (result.preferredOutroTags ?? []).union([tag])
+            if outroAnchors.contains(where: clause.contains) {
+                result.preferredOutroTags = (result.preferredOutroTags ?? []).union(clauseTags)
             }
         }
         if lower.contains("больше фото") || lower.contains("больше фотограф") { result.preferPhotos = true }
-        if lower.contains("без slow motion") || lower.contains("не используй slow motion") || lower.contains("без слоу") { result.allowSlowMotion = false }
-        let energeticPosition = Self.lastPosition(of: ["динамич", "энергич", "быстрый темп"], in: lower)
-        let calmPosition = Self.lastPosition(of: ["спокой", "медлен"], in: lower)
-        if let energeticPosition, energeticPosition > (calmPosition ?? -1) {
+        if [
+            "без slow motion", "не используй slow motion", "убери slow motion", "отключи slow motion",
+            "не добавляй slow motion", "никакого slow motion", "не нужен slow motion",
+            "без слоу", "без замедления", "не замедляй"
+        ].contains(where: lower.contains) { result.allowSlowMotion = false }
+        let pacingDirection = Self.requestedPacingDirection(in: lower)
+        if pacingDirection > 0 {
             result.pacing = min(1, result.pacing + 0.2)
-        } else if calmPosition != nil {
+        } else if pacingDirection < 0 {
             result.pacing = max(0, result.pacing - 0.2)
         }
         if lower.contains("меньше переход") { result.transitionFrequency = max(0, result.transitionFrequency - 0.15) }
@@ -52,9 +118,15 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
         for (tag, words) in tags {
             for word in words {
                 if let share = Self.maximumShare(in: lower, near: word) { result.maximumTagShares[tag] = share }
-                if lower.contains("без \(word)") || lower.contains("не показывай \(word)") { result.excludeTags.insert(tag) }
             }
         }
+        // Explicit negative instructions dominate both fresh parsing and any
+        // positive preferences inherited from the previous edit.
+        result.includeTags.subtract(explicitlyExcludedTags)
+        result.includeTags.subtract(explicitlyReducedTags)
+        result.preferredIntroTags = result.preferredIntroTags.map { $0.subtracting(explicitlyExcludedTags) }
+        result.preferredClimaxTags = result.preferredClimaxTags.map { $0.subtracting(explicitlyExcludedTags) }
+        result.preferredOutroTags = result.preferredOutroTags.map { $0.subtracting(explicitlyExcludedTags) }
         return result
     }
 
@@ -97,6 +169,36 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
         needles.compactMap { needle in
             text.range(of: needle, options: .backwards).map { text.distance(from: text.startIndex, to: $0.lowerBound) }
         }.max()
+    }
+
+    private static func requestedPacingDirection(in text: String) -> Int {
+        let groups: [([String], Int)] = [
+            (["динамич", "энергич", "быстрый темп"], 1),
+            (["спокой", "медлен"], -1)
+        ]
+        var latest: (position: Int, direction: Int)?
+        for (needles, positiveDirection) in groups {
+            for needle in needles {
+                guard let regex = try? NSRegularExpression(
+                    pattern: NSRegularExpression.escapedPattern(for: needle),
+                    options: [.caseInsensitive]
+                ) else { continue }
+                for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                    let prefixStart = max(0, match.range.location - 48)
+                    let prefixRange = NSRange(location: prefixStart, length: match.range.location - prefixStart)
+                    let prefix = (text as NSString).substring(with: prefixRange)
+                    let isNegated = prefix.range(
+                        of: #"(?:\bне\b|\bбез\b|никак\w*|избег\w*)[^,;.!?\n]{0,44}$"#,
+                        options: [.regularExpression, .caseInsensitive]
+                    ) != nil
+                    let direction = isNegated ? -positiveDirection : positiveDirection
+                    if latest.map({ match.range.location >= $0.position }) ?? true {
+                        latest = (match.range.location, direction)
+                    }
+                }
+            }
+        }
+        return latest?.direction ?? 0
     }
 
     private static func maximumShare(in text: String, near word: String) -> Double? {
@@ -202,6 +304,255 @@ public struct StoryPlanVariant: Sendable {
     }
 }
 
+public struct StoryHierarchyQualityDiagnostic: Hashable, Sendable {
+    public var code: String
+    public var chapterID: UUID
+    public var message: String
+
+    public init(code: String, chapterID: UUID, message: String) {
+        self.code = code
+        self.chapterID = chapterID
+        self.message = message
+    }
+}
+
+public struct StoryHierarchyQualityResult: Sendable {
+    public var chapters: [StoryChapter]
+    public var diagnostics: [StoryHierarchyQualityDiagnostic]
+
+    public init(chapters: [StoryChapter], diagnostics: [StoryHierarchyQualityDiagnostic]) {
+        self.chapters = chapters
+        self.diagnostics = diagnostics
+    }
+}
+
+/// Final invariant check between editorial normalization and timeline
+/// composition. Candidate identity is the source of truth for scene ownership;
+/// dramatic-role normalization may split a scene, but may not flatten two
+/// distinct source scenes into one anonymous chapter.
+public struct StoryHierarchyQualityGate: Sendable {
+    private struct Assignment {
+        var eventID: UUID
+        var scene: EventScene
+        var confirmedTitle: String?
+    }
+
+    private struct Boundary: Equatable {
+        var eventID: UUID?
+        var sceneID: UUID?
+    }
+
+    public init() {}
+
+    public func repair(
+        chapters source: [StoryChapter],
+        events: [Event],
+        candidates: [UUID: Candidate],
+        chapterCardsEnabled: Bool
+    ) -> StoryHierarchyQualityResult {
+        let titleEngine = SmartTitleEngine()
+        var assignmentByCandidate: [UUID: Assignment] = [:]
+        var eventTitleByID: [UUID: String] = [:]
+
+        for event in events {
+            var eventTags = event.tags
+            for candidate in candidates.values where event.assetIDs.contains(candidate.assetID) {
+                eventTags.formUnion(candidate.tags)
+            }
+            eventTitleByID[event.id] = titleEngine.contentConfirmedActivityTitle(tags: eventTags)?.primaryText
+            for scene in event.effectiveScenes {
+                var sceneTags = scene.tags
+                var sceneSummaries: [String] = []
+                for candidateID in scene.candidateIDs {
+                    if let candidate = candidates[candidateID] {
+                        sceneTags.formUnion(candidate.tags)
+                        if let summary = candidate.insights?.sceneSummary { sceneSummaries.append(summary) }
+                    }
+                }
+                let confirmed = scene.confidence >= 0.42
+                    ? titleEngine.contentConfirmedActivityTitle(
+                        tags: sceneTags,
+                        summaries: sceneSummaries,
+                        proposedTitle: scene.title,
+                        provenanceConfidence: scene.confidence
+                    )?.primaryText
+                    : nil
+                let assignment = Assignment(eventID: event.id, scene: scene, confirmedTitle: confirmed)
+                for candidateID in scene.candidateIDs where assignmentByCandidate[candidateID] == nil {
+                    assignmentByCandidate[candidateID] = assignment
+                }
+            }
+        }
+
+        let selectedIDs = Set(source.flatMap(\.candidateIDs))
+        let confirmedActivityKeys = Set(selectedIDs.compactMap { candidateID in
+            assignmentByCandidate[candidateID]?.confirmedTitle.map(Self.titleKey)
+        })
+        let usesActivityCards = chapterCardsEnabled && confirmedActivityKeys.count > 1
+        var emittedActivityCards = Set<String>()
+        var emittedEventCards = Set<UUID>()
+        var repaired: [StoryChapter] = []
+        var diagnostics: [StoryHierarchyQualityDiagnostic] = []
+
+        for original in source {
+            var runs: [[UUID]] = []
+            var runBoundaries: [Boundary] = []
+            for candidateID in original.candidateIDs {
+                let assignment = assignmentByCandidate[candidateID]
+                let boundary = Boundary(
+                    eventID: assignment?.eventID ?? original.eventID,
+                    sceneID: assignment?.scene.id ?? original.eventSceneID
+                )
+                if runBoundaries.last == boundary {
+                    runs[runs.count - 1].append(candidateID)
+                } else {
+                    runs.append([candidateID])
+                    runBoundaries.append(boundary)
+                }
+            }
+            if runs.isEmpty {
+                runs = [[]]
+                runBoundaries = [Boundary(eventID: original.eventID, sceneID: original.eventSceneID)]
+            }
+            if runs.count > 1 {
+                diagnostics.append(.init(
+                    code: "restored-scene-boundary",
+                    chapterID: original.id,
+                    message: "Глава «\(original.title)» разделена на \(runs.count) подтверждённых scene blocks"
+                ))
+            }
+
+            for runIndex in runs.indices {
+                let candidateIDs = runs[runIndex]
+                let assignment = candidateIDs.compactMap { assignmentByCandidate[$0] }.first
+                var chapter = original
+                if runIndex > 0 { chapter.id = UUID() }
+                chapter.candidateIDs = candidateIDs
+                chapter.chapterCardTitle = nil
+                chapter.allocatedDuration = runIndex == 0 ? original.allocatedDuration : nil
+
+                if let assignment {
+                    if original.eventID != assignment.eventID || original.eventSceneID != assignment.scene.id {
+                        diagnostics.append(.init(
+                            code: "repaired-scene-ownership",
+                            chapterID: chapter.id,
+                            message: "Восстановлена принадлежность главы к сцене «\(assignment.scene.title)»"
+                        ))
+                    }
+                    chapter.title = assignment.scene.title
+                    chapter.eventID = assignment.eventID
+                    chapter.eventSceneID = assignment.scene.id
+                    if var coverage = chapter.coveragePlan {
+                        coverage.eventID = assignment.eventID
+                        coverage.sceneID = assignment.scene.id
+                        chapter.coveragePlan = coverage
+                    }
+                }
+
+                if original.isColdOpen != true, chapterCardsEnabled {
+                    if usesActivityCards,
+                       let assignment,
+                       let confirmedTitle = assignment.confirmedTitle {
+                        let identity = "\(assignment.eventID.uuidString)|\(Self.titleKey(confirmedTitle))"
+                        if emittedActivityCards.insert(identity).inserted {
+                            chapter.chapterCardTitle = confirmedTitle
+                        }
+                    } else if let eventID = chapter.eventID,
+                              let confirmedTitle = assignment?.confirmedTitle ?? eventTitleByID[eventID],
+                              emittedEventCards.insert(eventID).inserted {
+                        chapter.chapterCardTitle = confirmedTitle
+                    }
+                }
+
+                if original.chapterCardTitle != nil, chapter.chapterCardTitle == nil, runIndex == 0 {
+                    diagnostics.append(.init(
+                        code: "suppressed-unconfirmed-title",
+                        chapterID: chapter.id,
+                        message: "Автотитр «\(original.chapterCardTitle ?? "")» удалён: текст не подтверждён содержанием или повторяет соседний block"
+                    ))
+                } else if let before = original.chapterCardTitle,
+                          let after = chapter.chapterCardTitle,
+                          Self.titleKey(before) != Self.titleKey(after),
+                          runIndex == 0 {
+                    diagnostics.append(.init(
+                        code: "repaired-title-provenance",
+                        chapterID: chapter.id,
+                        message: "Автотитр «\(before)» заменён подтверждённым содержанием «\(after)»"
+                    ))
+                }
+                repaired.append(chapter)
+            }
+        }
+        return StoryHierarchyQualityResult(chapters: repaired, diagnostics: diagnostics)
+    }
+
+    private static func titleKey(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: "ё", with: "е")
+    }
+}
+
+/// Applies the questionnaire's title density as a deterministic editorial
+/// policy. Captions are a separate accessibility layer and do not count as
+/// opening/chapter titles; the `.none` choice intentionally removes both.
+public enum DirectorTitlePolicyEngine {
+    public static func applying(
+        _ policy: DirectorTitlePolicy,
+        to source: [TitleTimelineItem],
+        timelineDuration: Double
+    ) -> [TitleTimelineItem] {
+        guard policy != .none else { return [] }
+
+        let captions = source.filter { isCaption($0.kind) }
+        var editorial = source.filter { !isCaption($0.kind) }.filter {
+            !SmartTitleEngine.isMeaningless($0.text)
+                && !SmartTitleEngine.isStructuralPlaceholder($0.text)
+        }.sorted(by: titleOrder)
+
+        let duration = max(1, timelineDuration)
+        let maximumCount: Int
+        let minimumGap: Double
+        switch policy {
+        case .none:
+            return []
+        case .minimal:
+            maximumCount = max(1, Int(ceil(duration / 45)))
+            minimumGap = 18
+        case .keyOnly:
+            let keyKinds: Set<TitleTimelineKind> = [
+                .cinematicTitle, .location, .date, .chapter, .titleCard, .endCard
+            ]
+            editorial = editorial.filter { keyKinds.contains($0.kind) }
+            maximumCount = max(1, Int(ceil(duration / 60)))
+            minimumGap = 30
+        }
+
+        var selected: [TitleTimelineItem] = []
+        for item in editorial {
+            guard selected.count < maximumCount else { break }
+            guard let previous = selected.last else {
+                selected.append(item)
+                continue
+            }
+            if item.startTime - previous.startTime >= minimumGap {
+                selected.append(item)
+            }
+        }
+        return (selected + captions).sorted(by: titleOrder)
+    }
+
+    private static func isCaption(_ kind: TitleTimelineKind) -> Bool {
+        [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains(kind)
+    }
+
+    private static func titleOrder(_ lhs: TitleTimelineItem, _ rhs: TitleTimelineItem) -> Bool {
+        if lhs.startTime != rhs.startTime { return lhs.startTime < rhs.startTime }
+        if lhs.track != rhs.track { return lhs.track < rhs.track }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+}
+
 public struct StoryEngine: Sendable {
     private let ranker: any HighlightRanking
 
@@ -209,14 +560,28 @@ public struct StoryEngine: Sendable {
         self.ranker = ranker
     }
 
-    public func createPlan(prompt: String, preset: FilmPreset, constraints: StoryConstraints, assets: [MediaAsset], analyses: [AnalysisResult], events: [Event] = [], eventDiagnostics: EventRunDiagnostics? = nil, autonomousDecision: AutonomousDirectorDecision? = nil) -> StoryPlan {
-        createPlanVariants(prompt: prompt, preset: preset, constraints: constraints, assets: assets, analyses: analyses, events: events, eventDiagnostics: eventDiagnostics, autonomousDecision: autonomousDecision).first?.plan
-            ?? StoryPlan(prompt: prompt, preset: preset, constraints: constraints, chapters: [], autonomousDecision: autonomousDecision)
+    public func createPlan(prompt: String, preset: FilmPreset, constraints: StoryConstraints, assets: [MediaAsset], analyses: [AnalysisResult], events: [Event] = [], eventDiagnostics: EventRunDiagnostics? = nil, autonomousDecision: AutonomousDirectorDecision? = nil, directorBrief: DirectorBrief? = nil) -> StoryPlan {
+        if let plan = createPlanVariants(prompt: prompt, preset: preset, constraints: constraints, assets: assets, analyses: analyses, events: events, eventDiagnostics: eventDiagnostics, autonomousDecision: autonomousDecision, directorBrief: directorBrief).first?.plan {
+            return plan
+        }
+        var fallbackConstraints = constraints
+        if let directorBrief {
+            fallbackConstraints.targetDuration = directorBrief.requestedDuration
+            fallbackConstraints.pacing = directorBrief.mood.pacing
+        }
+        return StoryPlan(
+            prompt: prompt,
+            preset: preset,
+            constraints: fallbackConstraints,
+            chapters: [],
+            autonomousDecision: autonomousDecision,
+            directorBrief: directorBrief
+        )
     }
 
     /// Produces complete alternative stories. The pipeline composes and directs
     /// every variant before global scoring; no partial variant reaches the UI.
-    public func createPlanVariants(prompt: String, preset: FilmPreset, constraints: StoryConstraints, assets: [MediaAsset], analyses: [AnalysisResult], events: [Event] = [], eventDiagnostics: EventRunDiagnostics? = nil, limit: Int = 10, autonomousDecision: AutonomousDirectorDecision? = nil) -> [StoryPlanVariant] {
+    public func createPlanVariants(prompt: String, preset: FilmPreset, constraints: StoryConstraints, assets: [MediaAsset], analyses: [AnalysisResult], events: [Event] = [], eventDiagnostics: EventRunDiagnostics? = nil, limit: Int = 10, autonomousDecision: AutonomousDirectorDecision? = nil, directorBrief: DirectorBrief? = nil, lockedConstraints: StoryConstraintLocks = []) -> [StoryPlanVariant] {
         createPlanVariantSearch(
             prompt: prompt,
             preset: preset,
@@ -226,7 +591,9 @@ public struct StoryEngine: Sendable {
             events: events,
             eventDiagnostics: eventDiagnostics,
             limit: limit,
-            autonomousDecision: autonomousDecision
+            autonomousDecision: autonomousDecision,
+            directorBrief: directorBrief,
+            lockedConstraints: lockedConstraints
         ).variants
     }
 
@@ -240,15 +607,18 @@ public struct StoryEngine: Sendable {
         eventDiagnostics: EventRunDiagnostics? = nil,
         limit: Int = 10,
         minimumDistance: Double = 0.16,
-        autonomousDecision: AutonomousDirectorDecision? = nil
+        autonomousDecision: AutonomousDirectorDecision? = nil,
+        directorBrief: DirectorBrief? = nil,
+        lockedConstraints: StoryConstraintLocks = []
     ) -> StoryVariantSearchResult {
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
         // Story selection and Director review intentionally share the same
         // scene-enriched evidence. Candidate IDs and source ranges remain stable.
-        let candidates = analyses.flatMap(\.directorCandidates).filter { candidate in
+        let filteredCandidates = analyses.flatMap(\.directorCandidates).filter { candidate in
             guard !candidate.excluded, let asset = assetByID[candidate.assetID], !asset.excluded, !asset.missing else { return false }
             return constraints.excludeTags.isDisjoint(with: candidate.tags)
         }
+        let candidates = deduplicatedSourceRanges(filteredCandidates)
         let baseStrategies = [
             "contextual", "story", "action", "technical", "emotional",
             "scenic", "original-audio", "novelty", "contrast", "chronology",
@@ -291,12 +661,31 @@ public struct StoryEngine: Sendable {
                 variantConstraints.transitionFrequency = variantDecision.grammar.transitionDensity
                 variantConstraints.allowSlowMotion = variantDecision.grammar.slowMotionDensity > 0.025
             }
+            // Opening questionnaire choices are delivery requirements, not
+            // suggestions for variant search. A creative variant may change
+            // structure, but never the requested runtime or pacing mood.
+            if let directorBrief {
+                variantConstraints.targetDuration = directorBrief.requestedDuration
+                variantConstraints.pacing = directorBrief.mood.pacing
+            }
+            if lockedConstraints.contains(.targetDuration) {
+                variantConstraints.targetDuration = constraints.targetDuration
+            }
+            if lockedConstraints.contains(.pacing) {
+                variantConstraints.pacing = constraints.pacing
+            }
+            if lockedConstraints.contains(.transitionFrequency) {
+                variantConstraints.transitionFrequency = constraints.transitionFrequency
+            }
+            if lockedConstraints.contains(.allowSlowMotion) {
+                variantConstraints.allowSlowMotion = constraints.allowSlowMotion
+            }
             let context = HighlightRankingContext(prompt: prompt, preset: preset, constraints: variantConstraints, autonomousStyle: variantDecision?.finalStyle)
             let ranked = candidates.sorted { lhs, rhs in
                 let leftPenalty = lhs.locked ? 0 : Double(usageCounts[lhs.id, default: 0]) * 0.16
                 let rightPenalty = rhs.locked ? 0 : Double(usageCounts[rhs.id, default: 0]) * 0.16
-                return variantRank(lhs, strategy: strategy, context: context, asset: assetByID[lhs.assetID]) - leftPenalty
-                    > variantRank(rhs, strategy: strategy, context: context, asset: assetByID[rhs.assetID]) - rightPenalty
+                return variantRank(lhs, strategy: strategy, context: context, asset: assetByID[lhs.assetID], directorBrief: directorBrief) - leftPenalty
+                    > variantRank(rhs, strategy: strategy, context: context, asset: assetByID[rhs.assetID], directorBrief: directorBrief) - rightPenalty
             }
             let eventAware = events.isEmpty ? nil : makeEventAwarePlan(
                 prompt: prompt,
@@ -308,7 +697,8 @@ public struct StoryEngine: Sendable {
                 allCandidates: candidates,
                 assets: assetByID,
                 strategy: strategy,
-                autonomousDecision: variantDecision
+                autonomousDecision: variantDecision,
+                directorBrief: directorBrief
             )
             let selected = eventAware?.selectedCandidates ?? select(ranked, constraints: variantConstraints)
             let ordered = eventAware?.orderedCandidates
@@ -324,7 +714,8 @@ public struct StoryEngine: Sendable {
                 constraints: variantConstraints,
                 chapters: chapters,
                 autonomousDecision: variantDecision,
-                eventStory: eventAware?.story
+                eventStory: eventAware?.story,
+                directorBrief: directorBrief
             )
             let rough = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
             let nearest = roughTimelines.indices.map { index in
@@ -400,7 +791,8 @@ public struct StoryEngine: Sendable {
         allCandidates: [Candidate],
         assets: [UUID: MediaAsset],
         strategy: String,
-        autonomousDecision: AutonomousDirectorDecision?
+        autonomousDecision: AutonomousDirectorDecision?,
+        directorBrief: DirectorBrief?
     ) -> EventAwarePlanBuild? {
         let candidateByID = Dictionary(uniqueKeysWithValues: allCandidates.map { ($0.id, $0) })
         let availableCandidateIDs = Set(candidateByID.keys)
@@ -435,12 +827,51 @@ public struct StoryEngine: Sendable {
         }
 
         let chapterPreference = autonomousDecision?.personalSignalAdjustments?["chapterTitles"] ?? 0
-        let chapterCardsEnabled = selectedEvents.count > 1 && chapterPreference > -0.60
+        let normalizedPrompt = prompt.lowercased()
+        let titlesExplicitlyDisabled = ["без титров", "убери титры", "никаких титров", "no titles"].contains {
+            normalizedPrompt.contains($0)
+        }
+        func activityTitleKey(_ value: String) -> String {
+            value.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .replacingOccurrences(of: "ё", with: "е")
+        }
+        func confirmedActivityTitle(_ scene: EventScene) -> String? {
+            guard scene.confidence >= 0.42 else { return nil }
+            var evidenceTags = scene.tags
+            var summaries: [String] = []
+            for candidateID in scene.candidateIDs {
+                if let candidate = candidateByID[candidateID] {
+                    evidenceTags.formUnion(candidate.tags)
+                    if let summary = candidate.insights?.sceneSummary { summaries.append(summary) }
+                }
+            }
+            return SmartTitleEngine().contentConfirmedActivityTitle(
+                tags: evidenceTags,
+                summaries: summaries,
+                proposedTitle: scene.title,
+                provenanceConfidence: scene.confidence
+            )?.primaryText
+        }
+        let hasMultipleNamedActivities = selectedEvents.contains { event in
+            Set(event.effectiveScenes.compactMap { scene -> String? in
+                confirmedActivityTitle(scene).map(activityTitleKey)
+            }).count > 1
+        }
+        let titlePolicyAllowsChapterCards = directorBrief?.titlePolicy != DirectorTitlePolicy.none
+        let chapterCardsEnabled = titlePolicyAllowsChapterCards
+            && !titlesExplicitlyDisabled
+            && chapterPreference > -0.60
+            && (selectedEvents.count > 1 || (constraints.targetDuration >= 20 && hasMultipleNamedActivities))
         let projectTitle: String?
-        switch preset {
-        case .summerFilm: projectTitle = "Моё лето"
-        case .memories: projectTitle = "Воспоминания"
-        default: projectTitle = nil
+        if directorBrief?.titlePolicy == DirectorTitlePolicy.none {
+            projectTitle = nil
+        } else {
+            switch preset {
+            case .summerFilm: projectTitle = "Моё лето"
+            case .memories: projectTitle = "Воспоминания"
+            default: projectTitle = nil
+            }
         }
         // Template titles are overlays on the existing storyline and no longer
         // consume separate black-card duration.
@@ -449,9 +880,11 @@ public struct StoryEngine: Sendable {
             events: selectedEvents,
             totalDuration: max(5, constraints.targetDuration - titleOverhead),
             strategy: strategy,
-            personalAdjustments: autonomousDecision?.personalSignalAdjustments ?? [:]
+            personalAdjustments: autonomousDecision?.personalSignalAdjustments ?? [:],
+            requiresExactTotal: directorBrief != nil || AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt)
         )
         let selectionScale: Double = {
+            if directorBrief != nil || AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt) { return 1 }
             let lower = strategy.lowercased()
             if lower.contains("quiet-observational") { return 0.62 }
             if ["scenic", "cinematic-motion", "technical"].contains(where: lower.contains) { return 0.72 }
@@ -518,16 +951,30 @@ public struct StoryEngine: Sendable {
             let chosen = selectedByEvent[event.id] ?? []
             guard !chosen.isEmpty else { continue }
             let scenes = event.effectiveScenes
-            let eventCardTitle = chapterCardsEnabled
-                && (event.titleConfidence ?? 0) >= 0.42
-                && !SmartTitleEngine.isMeaningless(event.title)
-                ? event.title
+            let distinctSceneTitleKeys = Set(scenes.compactMap { scene -> String? in
+                confirmedActivityTitle(scene).map(activityTitleKey)
+            })
+            let usesActivityCards = chapterCardsEnabled && distinctSceneTitleKeys.count > 1
+            var emittedActivityTitleKeys = Set<String>()
+            var eventEvidenceTags = event.tags
+            chosen.forEach { eventEvidenceTags.formUnion($0.tags) }
+            let eventCardTitle = chapterCardsEnabled && (event.titleConfidence ?? 0) >= 0.42
+                ? SmartTitleEngine().contentConfirmedActivityTitle(tags: eventEvidenceTags)?.primaryText
                 : nil
             var firstChapter = true
             var consumed = Set<UUID>()
             for scene in scenes {
                 let ids = scene.candidateIDs.filter { id in chosen.contains(where: { $0.id == id }) }
+                    .filter { !consumed.contains($0) }
                 guard !ids.isEmpty else { continue }
+                let sceneCardTitle: String? = {
+                    if usesActivityCards,
+                       let confirmedTitle = confirmedActivityTitle(scene) {
+                        let key = activityTitleKey(confirmedTitle)
+                        return emittedActivityTitleKeys.insert(key).inserted ? confirmedTitle : nil
+                    }
+                    return firstChapter ? eventCardTitle : nil
+                }()
                 chapters.append(StoryChapter(
                     title: scene.title,
                     candidateIDs: ids,
@@ -535,7 +982,7 @@ public struct StoryEngine: Sendable {
                     purpose: "Сцена \(scene.title) внутри события \(event.title)",
                     eventID: event.id,
                     eventSceneID: scene.id,
-                    chapterCardTitle: firstChapter ? eventCardTitle : nil,
+                    chapterCardTitle: sceneCardTitle,
                     allocatedDuration: firstChapter ? editorialAllocations[event.id] : nil,
                     coveragePlan: coveragePlan(for: scene, eventID: event.id)
                 ))
@@ -566,6 +1013,14 @@ public struct StoryEngine: Sendable {
                 }
             }
         }
+        chapters = normalizedStoryArc(chapters, candidates: candidateByID, constraints: constraints)
+        let hierarchyReview = StoryHierarchyQualityGate().repair(
+            chapters: chapters,
+            events: selectedEvents,
+            candidates: candidateByID,
+            chapterCardsEnabled: chapterCardsEnabled
+        )
+        chapters = hierarchyReview.chapters
         let ordered = chapters.flatMap(\.candidateIDs).compactMap { candidateByID[$0] }
         guard !ordered.isEmpty else { return nil }
         let entries = selectedEvents.compactMap { event -> EventStoryEntry? in
@@ -580,8 +1035,21 @@ public struct StoryEngine: Sendable {
                 sceneIDs: event.effectiveScenes.map(\.id)
             )
         }
-        var effectiveDiagnostics = diagnostics
-        effectiveDiagnostics?.eventOrder = entries.map(\.eventID)
+        var effectiveDiagnostics = diagnostics ?? EventRunDiagnostics(
+            eventsDetected: selectedEvents.count,
+            eventConfidence: Dictionary(uniqueKeysWithValues: selectedEvents.map { ($0.id.uuidString, $0.effectiveConfidence) }),
+            eventTitles: selectedEvents.map(\.title),
+            eventDateRanges: selectedEvents.map {
+                EventDateRangeSummary(eventID: $0.id, title: $0.title, startDate: $0.startDate, endDate: $0.endDate)
+            },
+            eventOrder: selectedEvents.map(\.id),
+            sceneCount: selectedEvents.reduce(0) { $0 + $1.effectiveScenes.count },
+            crossDeviceMatches: selectedEvents.reduce(0) { $0 + $1.effectiveCrossDeviceMatchCount }
+        )
+        effectiveDiagnostics.eventOrder = entries.map(\.eventID)
+        effectiveDiagnostics.clusteringReasons["story-hierarchy-quality-gate"] = [
+            "Проверено глав: \(chapters.count); repairs: \(hierarchyReview.diagnostics.count)"
+        ] + hierarchyReview.diagnostics.map(\.message)
         return EventAwarePlanBuild(
             selectedCandidates: ordered,
             orderedCandidates: ordered,
@@ -595,6 +1063,266 @@ public struct StoryEngine: Sendable {
                 diagnostics: effectiveDiagnostics
             )
         )
+    }
+
+    private func deduplicatedSourceRanges(_ candidates: [Candidate]) -> [Candidate] {
+        var result: [Candidate] = []
+        for candidate in candidates.sorted(by: {
+            if $0.assetID != $1.assetID { return $0.assetID.uuidString < $1.assetID.uuidString }
+            if $0.sourceStart != $1.sourceStart { return $0.sourceStart < $1.sourceStart }
+            return $0.id.uuidString < $1.id.uuidString
+        }) {
+            if let index = result.firstIndex(where: {
+                $0.assetID == candidate.assetID
+                    && abs($0.sourceStart - candidate.sourceStart) < 0.25
+                    && abs($0.sourceDuration - candidate.sourceDuration) < 0.25
+            }) {
+                let existing = result[index]
+                let existingValue = (existing.locked ? 2 : 0) + existing.scores.composite
+                let incomingValue = (candidate.locked ? 2 : 0) + candidate.scores.composite
+                if incomingValue > existingValue { result[index] = candidate }
+            } else {
+                result.append(candidate)
+            }
+        }
+        return result
+    }
+
+    private func normalizedStoryArc(
+        _ source: [StoryChapter],
+        candidates: [UUID: Candidate],
+        constraints: StoryConstraints
+    ) -> [StoryChapter] {
+        guard source.filter({ $0.isColdOpen != true }).count >= 3 else { return source }
+        let originalBody = source.filter { $0.isColdOpen != true }
+        let originalIDs = originalBody.flatMap(\.candidateIDs)
+        let eventIDs = Set(originalBody.compactMap(\.eventID))
+        if originalIDs.count >= 12, eventIDs.count == 1, let eventID = eventIDs.first {
+            // One long action-camera event often arrives with scene phases such
+            // as climax → reaction → outro simply because every source is
+            // energetic. Recut its selected moments into a canonical dramatic
+            // progression so the climax lands late and bookends stay concise.
+            let weightedRoles: [(StoryRole, Double)] = [
+                (.intro, 0.08), (.setup, 0.14), (.buildup, 0.18),
+                (.action, 0.30), (.climax, 0.14), (.reaction, 0.09)
+            ]
+            var counts = weightedRoles.map { max(1, Int((Double(originalIDs.count) * $0.1).rounded())) }
+            while counts.reduce(0, +) > originalIDs.count - 1,
+                  let index = counts.indices.dropFirst().max(by: { counts[$0] < counts[$1] }), counts[index] > 1 {
+                counts[index] -= 1
+            }
+            let outroCount = max(1, originalIDs.count - counts.reduce(0, +))
+            let rolesAndCounts = Array(zip(weightedRoles.map(\.0) + [.outro], counts + [outroCount]))
+            var roleSequence: [StoryRole] = []
+            for (role, count) in rolesAndCounts {
+                roleSequence.append(contentsOf: repeatElement(role, count: count))
+            }
+            if roleSequence.count < originalIDs.count {
+                roleSequence.append(contentsOf: repeatElement(.outro, count: originalIDs.count - roleSequence.count))
+            }
+            var templateByCandidate: [UUID: StoryChapter] = [:]
+            for chapter in originalBody {
+                for candidateID in chapter.candidateIDs where templateByCandidate[candidateID] == nil {
+                    templateByCandidate[candidateID] = chapter
+                }
+            }
+            let sceneOrder = originalIDs.compactMap { templateByCandidate[$0]?.eventSceneID }.reduce(into: [UUID]()) { result, id in
+                if result.last != id { result.append(id) }
+            }
+            if let finalSceneID = sceneOrder.last {
+                let finalPositions = originalIDs.indices.filter { templateByCandidate[originalIDs[$0]]?.eventSceneID == finalSceneID }
+                // Put the strongest late action beat at the real climax of the
+                // final activity block. Positional slicing alone previously
+                // labelled the best buggy acceleration as `outro`.
+                if finalPositions.count >= 4,
+                   let peakPosition = finalPositions.dropLast().max(by: { lhs, rhs in
+                       let left = candidates[originalIDs[lhs]].map { roleScore($0, role: .climax, constraints: constraints) } ?? 0
+                       let right = candidates[originalIDs[rhs]].map { roleScore($0, role: .climax, constraints: constraints) } ?? 0
+                       return left < right
+                   }) {
+                    // The global proportional arc may already have placed a
+                    // climax in the preceding activity. Once the final scene
+                    // supplies a stronger late peak, demote those earlier
+                    // labels so the finished story has one decisive climax.
+                    for position in roleSequence.indices
+                    where roleSequence[position] == .climax && !finalPositions.contains(position) {
+                        roleSequence[position] = position < peakPosition ? .action : .reaction
+                    }
+                    for position in finalPositions {
+                        if position < peakPosition {
+                            roleSequence[position] = .action
+                        } else if position == peakPosition {
+                            roleSequence[position] = .climax
+                        } else if position == finalPositions.last {
+                            roleSequence[position] = .outro
+                        } else {
+                            roleSequence[position] = .reaction
+                        }
+                    }
+                }
+            }
+            var cursor = 0
+            var arc: [StoryChapter] = []
+            var emittedCardTitles = Set<String>()
+            while cursor < originalIDs.count {
+                let role = roleSequence[min(cursor, roleSequence.count - 1)]
+                let template = templateByCandidate[originalIDs[cursor]] ?? originalBody[0]
+                let sceneID = template.eventSceneID
+                var end = cursor + 1
+                while end < originalIDs.count,
+                      roleSequence[min(end, roleSequence.count - 1)] == role,
+                      (templateByCandidate[originalIDs[end]] ?? originalBody[0]).eventSceneID == sceneID {
+                    end += 1
+                }
+                let ids = Array(originalIDs[cursor..<end])
+                var chapter = template
+                chapter.id = UUID()
+                chapter.title = sceneID == nil ? role.localizedTitle : template.title
+                chapter.candidateIDs = ids
+                chapter.role = role
+                let rolePurpose = self.chapter(role: role, ids: ids).purpose ?? role.localizedTitle
+                chapter.purpose = sceneID == nil ? rolePurpose : "\(template.title): \(rolePurpose)"
+                chapter.eventID = eventID
+                chapter.eventSceneID = sceneID
+                if let card = template.chapterCardTitle {
+                    let key = card.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                    chapter.chapterCardTitle = emittedCardTitles.insert(key).inserted ? card : nil
+                } else {
+                    chapter.chapterCardTitle = nil
+                }
+                chapter.allocatedDuration = arc.isEmpty ? originalBody.compactMap(\.allocatedDuration).first : nil
+                var roleCoverage = coveragePlan(for: role, eventID: eventID)
+                roleCoverage.sceneID = sceneID
+                if let originalCoverage = template.coveragePlan {
+                    roleCoverage.maximumNearDuplicates = originalCoverage.maximumNearDuplicates
+                    roleCoverage.preserveChronology = originalCoverage.preserveChronology
+                }
+                chapter.coveragePlan = roleCoverage
+                arc.append(chapter)
+                cursor = end
+            }
+            return source.filter { $0.isColdOpen == true } + arc
+        }
+        var chapters = source
+        func bodyIndices() -> [Int] { chapters.indices.filter { chapters[$0].isColdOpen != true } }
+
+        if !bodyIndices().contains(where: { [.intro, .setup].contains(chapters[$0].role) }), let first = bodyIndices().first {
+            if chapters[first].candidateIDs.count > 3 {
+                var intro = chapters[first]
+                intro.id = UUID()
+                intro.candidateIDs = Array(chapters[first].candidateIDs.prefix(2))
+                intro.role = .intro
+                intro.purpose = "Сначала обозначить пространство, героя и направление действия"
+                chapters[first].candidateIDs.removeFirst(intro.candidateIDs.count)
+                chapters[first].chapterCardTitle = nil
+                chapters[first].allocatedDuration = nil
+                chapters.insert(intro, at: first)
+            } else {
+                chapters[first].role = .intro
+                chapters[first].purpose = "Сначала обозначить пространство, героя и направление действия"
+            }
+        }
+
+        // Opening and closing functions should be concise bookends, not whole
+        // camera blocks. Preserve the rest as setup/reaction so the middle of
+        // an action film still has room to develop and breathe.
+        if let introIndex = bodyIndices().first(where: { chapters[$0].role == .intro }),
+           chapters[introIndex].candidateIDs.count > 3 {
+            var setup = chapters[introIndex]
+            setup.id = UUID()
+            setup.candidateIDs = Array(chapters[introIndex].candidateIDs.dropFirst(2))
+            setup.role = .setup
+            setup.purpose = "Развить контекст после короткого вступления"
+            setup.chapterCardTitle = nil
+            setup.allocatedDuration = nil
+            chapters[introIndex].candidateIDs = Array(chapters[introIndex].candidateIDs.prefix(2))
+            chapters.insert(setup, at: introIndex + 1)
+        }
+
+        if !bodyIndices().contains(where: { chapters[$0].role == .outro }), let last = bodyIndices().last {
+            if chapters[last].candidateIDs.count > 3 {
+                var outro = chapters[last]
+                outro.id = UUID()
+                outro.candidateIDs = Array(chapters[last].candidateIDs.suffix(2))
+                outro.role = .outro
+                outro.purpose = "Завершить действие и дать зрителю осмысленную точку"
+                outro.chapterCardTitle = nil
+                outro.allocatedDuration = nil
+                chapters[last].candidateIDs.removeLast(outro.candidateIDs.count)
+                chapters.insert(outro, at: last + 1)
+            } else {
+                chapters[last].role = .outro
+                chapters[last].purpose = "Завершить действие и дать зрителю осмысленную точку"
+            }
+        }
+        if let outroIndex = bodyIndices().last(where: { chapters[$0].role == .outro }),
+           chapters[outroIndex].candidateIDs.count > 3 {
+            var reaction = chapters[outroIndex]
+            reaction.id = UUID()
+            reaction.candidateIDs = Array(chapters[outroIndex].candidateIDs.dropLast(2))
+            reaction.role = .reaction
+            reaction.purpose = "Дать последствиям действия раскрыться перед финальной точкой"
+            chapters[outroIndex].candidateIDs = Array(chapters[outroIndex].candidateIDs.suffix(2))
+            chapters[outroIndex].chapterCardTitle = nil
+            chapters[outroIndex].allocatedDuration = nil
+            chapters.insert(reaction, at: outroIndex)
+        }
+
+        if !bodyIndices().contains(where: { chapters[$0].role == .climax }) {
+            let interior = Array(bodyIndices().dropFirst().dropLast())
+            if let strongest = interior.max(by: { lhs, rhs in
+                let left = chapters[lhs].candidateIDs.compactMap { candidates[$0] }
+                    .map { roleScore($0, role: .climax, constraints: constraints) }.max() ?? 0
+                let right = chapters[rhs].candidateIDs.compactMap { candidates[$0] }
+                    .map { roleScore($0, role: .climax, constraints: constraints) }.max() ?? 0
+                return left < right
+            }) {
+                chapters[strongest].role = .climax
+                chapters[strongest].purpose = "Кульминация отдаёт самый сильный подтверждённый момент истории"
+            }
+        }
+
+        // Role phrases in the prompt are delivery constraints, not a soft
+        // scoring hint. Normalizing the generic arc above can otherwise keep
+        // an already-labelled climax on an unrelated chapter and leave an
+        // explicitly requested subject (for example, “buggy — climax”) in an
+        // action block. Bind each requested role to the strongest matching
+        // chapter while keeping the selected material and its order intact.
+        var reservedAnchorIndices = Set<Int>()
+        func bindPreferredRole(_ role: StoryRole, tags: Set<String>?) {
+            guard let tags, !tags.isEmpty else { return }
+            let eligible = bodyIndices().filter { index in
+                !reservedAnchorIndices.contains(index) && chapters[index].candidateIDs.contains { id in
+                    candidates[id].map { !tags.isDisjoint(with: $0.tags) } ?? false
+                }
+            }
+            guard let target = eligible.max(by: { lhs, rhs in
+                let left = chapters[lhs].candidateIDs.compactMap { candidates[$0] }
+                    .filter { !tags.isDisjoint(with: $0.tags) }
+                    .map { roleScore($0, role: role, constraints: constraints) }.max() ?? 0
+                let right = chapters[rhs].candidateIDs.compactMap { candidates[$0] }
+                    .filter { !tags.isDisjoint(with: $0.tags) }
+                    .map { roleScore($0, role: role, constraints: constraints) }.max() ?? 0
+                return left < right
+            }) else { return }
+
+            for index in bodyIndices() where chapters[index].role == role && index != target {
+                switch role {
+                case .intro: chapters[index].role = .setup
+                case .climax: chapters[index].role = index < target ? .action : .reaction
+                case .outro: chapters[index].role = .reaction
+                default: break
+                }
+            }
+            chapters[target].role = role
+            chapters[target].purpose = "Явный запрос связывает роль «\(role.localizedTitle)» с подтверждённой темой: \(tags.sorted().joined(separator: ", "))"
+            reservedAnchorIndices.insert(target)
+        }
+        bindPreferredRole(.intro, tags: constraints.preferredIntroTags)
+        bindPreferredRole(.outro, tags: constraints.preferredOutroTags)
+        bindPreferredRole(.climax, tags: constraints.preferredClimaxTags)
+        return chapters
     }
 
     private func eventRank(_ event: Event, strategy: String, constraints: StoryConstraints) -> Double {
@@ -815,9 +1543,16 @@ public struct StoryEngine: Sendable {
         return selected
     }
 
-    private func variantRank(_ candidate: Candidate, strategy: String, context: HighlightRankingContext, asset: MediaAsset?) -> Double {
+    private func variantRank(
+        _ candidate: Candidate,
+        strategy: String,
+        context: HighlightRankingContext,
+        asset: MediaAsset?,
+        directorBrief: DirectorBrief?
+    ) -> Double {
         let contextual = ranker.score(candidate, asset: asset, context: context)
-        switch strategy {
+        let creativeScore: Double = {
+            switch strategy {
         case "story": return contextual * 0.62 + (candidate.insights?.storyValue ?? candidate.scores.interest) * 0.38
         case "action": return contextual * 0.56 + candidate.scores.action * 0.34 + (candidate.insights?.speedRampSuitability ?? candidate.scores.action) * 0.10
         case "technical": return contextual * 0.60 + candidate.scores.quality * 0.24 + candidate.scores.stability * 0.16
@@ -856,8 +1591,52 @@ public struct StoryEngine: Sendable {
             return contextual * 0.30 + (candidate.insights?.originalAudioUsefulness ?? 0) * 0.26 + (candidate.insights?.storyValue ?? candidate.scores.interest) * 0.26 + candidate.scores.stability * 0.18
         case "cinematic-motion":
             return contextual * 0.30 + (candidate.insights?.composition ?? candidate.scores.quality) * 0.26 + (candidate.insights?.dynamics ?? candidate.scores.action) * 0.22 + candidate.scores.stability * 0.22
-        default: return contextual
+            default: return contextual
+            }
+        }()
+        return creativeScore + framingFeasibilityAdjustment(
+            candidate: candidate,
+            asset: asset,
+            format: directorBrief?.canvasFormat
+        )
+    }
+
+    private func framingFeasibilityAdjustment(
+        candidate: Candidate,
+        asset: MediaAsset?,
+        format: DirectorCanvasFormat?
+    ) -> Double {
+        guard format == .portrait9x16 else { return 0 }
+        guard let asset, let sourceAspect = asset.displayAspectRatio else { return -0.12 }
+        let targetAspect = DirectorCanvasFormat.portrait9x16.aspectRatio
+        let proportionalDifference = abs(log(sourceAspect / targetAspect))
+
+        // Native portrait and close-to-portrait sources preserve the authored
+        // composition without crop or letterboxing, so this is deliberately a
+        // stronger signal than a small generic quality-score difference.
+        if proportionalDifference <= log(1.20) {
+            return 0.34
         }
+
+        let safePlan = candidate.insights?.subjectTracking.flatMap {
+            SubjectAwareReframeEngine().plan(
+                tracking: $0,
+                sourceAspectRatio: sourceAspect,
+                targetAspectRatio: targetAspect,
+                isPhoto: asset.kind == .photo
+            )
+        }
+        if let safePlan, safePlan.confidence >= 0.42 {
+            // A tracked landscape shot remains usable in 9:16 because the
+            // subject-aware crop was proven safe across the whole moment.
+            return 0.16 + safePlan.confidence * 0.12
+        }
+
+        // Mismatched footage without a safe plan would have to use fit bars;
+        // keep it available when story evidence is unique, but make it lose a
+        // tie against genuinely deliverable portrait material.
+        if sourceAspect >= 1 { return -0.32 }
+        return -0.18
     }
 
     private func clipDuration(_ candidate: Candidate, pacing: Double) -> Double {

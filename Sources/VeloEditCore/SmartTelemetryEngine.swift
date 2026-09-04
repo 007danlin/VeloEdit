@@ -1,5 +1,40 @@
 import Foundation
 
+/// A mention of speed or sensor data is not automatically permission to draw
+/// over the movie. This policy requires an overlay/display intent and rejects
+/// explicit opt-outs before TimelineComposer may create a telemetry layer.
+enum TelemetryOverlayRequestPolicy {
+    static func requestsOverlay(in prompt: String) -> Bool {
+        let text = prompt.lowercased()
+            .replacingOccurrences(of: "ё", with: "е")
+            .replacingOccurrences(of: "–", with: "-")
+        let forbidden = [
+            "без телеметри", "не добавляй телеметри", "не показывай телеметри",
+            "убери телеметри", "скрой телеметри", "no telemetry", "without telemetry"
+        ]
+        guard !forbidden.contains(where: text.contains) else { return false }
+
+        let directPhrases = [
+            "с телеметри", "телеметрия:", "telemetry overlay", "telemetry hud",
+            "наложение телеметри", "виджет телеметри", "индикатор телеметри"
+        ]
+        if directPhrases.contains(where: text.contains) { return true }
+
+        let displayIntent = [
+            "покажи", "показать", "добавь", "добавить", "выведи", "вывести",
+            "отобрази", "отобразить", "наложи", "наложить", "на экране",
+            "виджет", "индикатор", "спидометр", "show", "display", "overlay", "add"
+        ].contains(where: text.contains)
+        let telemetrySubject = [
+            "телеметри", "gps", "маршрут", "скорост", "высот", "альтит",
+            "g-force", "g force", "перегруз", "дистанц", "расстоян", "пульс",
+            "каденс", "мощност", "telemetry", "speed", "route", "altitude",
+            "distance", "heart rate", "cadence", "power"
+        ].contains(where: text.contains)
+        return displayIntent && telemetrySubject
+    }
+}
+
 /// Editorial context for one video fragment. The engine can only select
 /// existing OVRLEY widgets and layouts; it never invents a visualisation.
 public struct SmartTelemetryContext: Sendable {

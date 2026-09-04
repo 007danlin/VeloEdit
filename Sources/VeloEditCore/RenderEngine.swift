@@ -14,6 +14,44 @@ public struct RenderReport: Sendable {
     }
 }
 
+/// Resolves delivery dimensions without changing the canvas aspect ratio.
+/// Landscape-named AVFoundation presets are deliberately not used as geometry:
+/// a 9:16 timeline must become 1080x1920, never a 1920x1080 surface containing
+/// a squeezed or tiny portrait image.
+enum RenderGeometryPolicy {
+    static func timeline(_ source: Timeline, for quality: RenderQuality) -> Timeline {
+        guard source.width > 0, source.height > 0 else { return source }
+        let landscapeBounds: (width: Int, height: Int)?
+        switch quality {
+        case .preview720p:
+            landscapeBounds = (1_280, 720)
+        case .preview1080p, .final1080p:
+            landscapeBounds = (1_920, 1_080)
+        case .final4K:
+            landscapeBounds = (3_840, 2_160)
+        case .maximum:
+            landscapeBounds = nil
+        }
+        guard let landscapeBounds else { return source }
+
+        let bounds: (width: Int, height: Int) = source.width >= source.height
+            ? landscapeBounds
+            : (width: landscapeBounds.height, height: landscapeBounds.width)
+        let scale = min(
+            Double(bounds.width) / Double(source.width),
+            Double(bounds.height) / Double(source.height)
+        )
+        var result = source
+        result.width = evenPixelSize(Double(source.width) * scale)
+        result.height = evenPixelSize(Double(source.height) * scale)
+        return result
+    }
+
+    private static func evenPixelSize(_ value: Double) -> Int {
+        max(2, Int((value / 2).rounded()) * 2)
+    }
+}
+
 public actor RenderEngine {
     public init() {}
 
@@ -28,8 +66,9 @@ public actor RenderEngine {
     ) async throws -> RenderReport {
         // Preview and export intentionally share one builder. This guarantees
         // that transitions, motion effects and soundtrack look/sound the same.
+        let renderTimeline = RenderGeometryPolicy.timeline(timeline, for: quality)
         let playback = try await PlaybackEngine().build(
-            timeline: timeline,
+            timeline: renderTimeline,
             assets: assets,
             musicTracks: musicTracks,
             telemetry: telemetry,
@@ -39,14 +78,11 @@ public actor RenderEngine {
         progress?(ImportProgress(completed: timeline.items.count, total: timeline.items.count, currentName: "Монтаж собран"))
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let preset: String
-        switch quality {
-        case .preview720p: preset = AVAssetExportPreset1280x720
-        case .preview1080p, .final1080p: preset = AVAssetExportPreset1920x1080
-        case .final4K: preset = AVAssetExportPreset3840x2160
-        case .maximum: preset = AVAssetExportPresetHighestQuality
-        }
-        guard let session = AVAssetExportSession(asset: playback.composition, presetName: preset) else {
+        // The video composition above already has the exact requested size.
+        // Fixed 1280x720/1920x1080/3840x2160 presets are landscape presets and
+        // may reinterpret a portrait composition. HighestQuality encodes the
+        // composition's own geometry instead of silently changing its shape.
+        guard let session = AVAssetExportSession(asset: playback.composition, presetName: AVAssetExportPresetHighestQuality) else {
             throw DerivedMediaError.exportUnavailable
         }
         session.outputURL = destination

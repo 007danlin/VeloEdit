@@ -15,7 +15,14 @@ import Testing
         (["hiking", "trail"], "Поход"),
         (["walk", "embankment"], "Прогулка по набережной"),
         (["birthday", "family"], "День рождения"),
-        (["campfire", "night"], "Вечер у костра")
+        (["campfire", "night"], "Вечер у костра"),
+        (["motorcycle"], "Мотопоездка"),
+        (["running"], "Пробежка"),
+        (["swimming"], "Плавание"),
+        (["skiing"], "На склоне"),
+        (["surfing"], "Сёрфинг"),
+        (["climbing"], "Скалолазание"),
+        (["horse riding"], "Конная прогулка")
     ]
     let decisions = scenarios.compactMap { tags, _ in
         SmartTitleEngine().decide(SmartTitleContext(purpose: .activity, tags: tags))
@@ -78,6 +85,64 @@ import Testing
         #expect(decision.primaryText == "Велопрогулка")
     }
     #expect(SmartTitleEngine().decide(SmartTitleContext(purpose: .activity, requestedText: "Ключевой момент")) == nil)
+}
+
+@Test func contentConfirmedActivityTitleIgnoresStructuralOrInventedSceneNames() throws {
+    #expect(SmartTitleEngine.isStructuralPlaceholder("Пик маршрута"))
+    #expect(SmartTitleEngine.isStructuralPlaceholder("В движении"))
+    #expect(SmartTitleEngine().contentConfirmedActivityTitle(tags: ["outdoor", "land"]) == nil)
+
+    let buggy = try #require(SmartTitleEngine().contentConfirmedActivityTitle(
+        tags: ["buggy", "dirt_road", "helmet"]
+    ))
+    #expect(buggy.primaryText == "Багги")
+
+    let sourceGroupBuggy = try #require(SmartTitleEngine().contentConfirmedActivityTitle(
+        tags: ["bicycle", "vehicle", "car", "dirt_road", "wheel", "helmet"],
+        proposedTitle: "Багги",
+        provenanceConfidence: 0.82
+    ))
+    #expect(sourceGroupBuggy.primaryText == "Багги")
+    let uncorroborated = SmartTitleEngine().contentConfirmedActivityTitle(
+        tags: ["bicycle", "outdoor"],
+        proposedTitle: "Багги",
+        provenanceConfidence: 0.82
+    )
+    #expect(uncorroborated?.primaryText == "Велопрогулка")
+}
+
+@Test func automatedTitleQualityGateEnforcesProvenanceContainmentAndOneTrack() {
+    func automatic(_ text: String, start: Double, duration: Double) -> TitleTimelineItem {
+        TitleTimelineItem(
+            kind: .title,
+            text: text,
+            startTime: start,
+            duration: duration,
+            explanation: ["Автоматическая глава события использует существующий шаблон"]
+        )
+    }
+    let cycling = automatic("Велопрогулка", start: 0, duration: 4)
+    let duplicate = automatic("Велопрогулка", start: 1, duration: 3)
+    let buggy = automatic("Багги", start: 1.5, duration: 4)
+    let structural = automatic("Кульминация", start: 5, duration: 2)
+    let review = AutomatedTitlePolicy.reviewed(
+        [cycling, duplicate, buggy, structural],
+        timelineDuration: 7,
+        containmentByTitleID: [
+            cycling.id: 0...2,
+            duplicate.id: 0...2,
+            buggy.id: 2...5,
+            structural.id: 5...7
+        ]
+    )
+
+    #expect(review.titles.map(\.text) == ["Велопрогулка", "Багги"])
+    #expect(review.titles[0].startTime >= 0 && review.titles[0].endTime <= 2)
+    #expect(review.titles[1].startTime >= 2 && review.titles[1].endTime <= 5)
+    #expect(review.titles[0].endTime <= review.titles[1].startTime)
+    #expect(review.diagnostics.contains { $0.code == "adjacent-duplicate" })
+    #expect(review.diagnostics.contains { $0.code == "unconfirmed-text" })
+    #expect(review.diagnostics.contains { $0.code == "repaired-placement" })
 }
 
 @Test func smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() throws {

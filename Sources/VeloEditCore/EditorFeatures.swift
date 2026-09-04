@@ -71,8 +71,9 @@ public struct MusicPromptInterpreter: Sendable {
 public struct OriginalAudioPromptInterpreter: Sendable {
     public init() {}
 
-    /// Returns `nil` when a prompt does not mention source sound, `0` for mute
-    /// and `1` when the latest instruction explicitly restores it.
+    /// Returns `nil` when a prompt does not mention source sound, `0` for mute,
+    /// a restrained documentary level for "quieter", and `1` when the latest
+    /// instruction explicitly restores it.
     public func volume(prompt: String) -> Double? {
         let text = prompt.lowercased()
         let mute = lastPosition(of: [
@@ -85,8 +86,19 @@ public struct OriginalAudioPromptInterpreter: Sendable {
             "верни звук исход", "оставь звук исход", "включи звук исход",
             "верни оригинальный звук", "не убирай звук", "original audio on"
         ], in: text)
-        guard mute != nil || restore != nil else { return nil }
-        return (restore ?? -1) > (mute ?? -1) ? 1 : 0
+        let quieter = lastPosition(of: [
+            "приглуши звук исход", "приглушить звук исход", "приглушить. сколько титров",
+            "звук исходников? приглуш", "звук исходников: приглуш", "звук исходников приглуш",
+            "звуком исходников? приглуш", "звуком исходников: приглуш", "звуком исходников приглуш",
+            "сделай звук исходников тише", "исходный звук тише", "оригинальный звук тише",
+            "убавь звук исходников", "lower original audio", "original audio quieter"
+        ], in: text)
+        let decisions: [(position: Int, volume: Double)] = [
+            mute.map { ($0, 0) },
+            quieter.map { ($0, 0.30) },
+            restore.map { ($0, 1) }
+        ].compactMap { $0 }
+        return decisions.max(by: { $0.position < $1.position })?.volume
     }
 
     private func lastPosition(of needles: [String], in text: String) -> Int? {

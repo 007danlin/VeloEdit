@@ -217,6 +217,526 @@ private func p4Quality(
     #expect(Set(timeline.items.compactMap(\.eventSceneID)).count == 3)
 }
 
+@Test func twoCameraBuggyBlockBeatsAStrayBicycleLabel() throws {
+    let cycling = p4Asset("GX010513", date: p4BaseDate, duration: 360, dateSource: .fileCreationDate)
+    let buggySide = p4Asset("GX010524", date: p4BaseDate.addingTimeInterval(120), duration: 360, dateSource: .fileCreationDate)
+    let buggyFront = p4Asset("GX010526", date: p4BaseDate.addingTimeInterval(240), duration: 360, dateSource: .fileCreationDate)
+    let analyses = [
+        p4Analysis(asset: cycling, tags: ["cycling", "cyclist", "bicycle", "trail"]),
+        p4Analysis(asset: buggySide, tags: ["bicycle", "dirt_road", "road", "machine", "vehicle", "car", "automobile"]),
+        p4Analysis(asset: buggyFront, tags: ["machine", "wheel", "tire", "helmet", "headgear", "people"])
+    ]
+
+    let map = SourceTimelineAnalyzer().analyze(assets: [buggyFront, cycling, buggySide], analyses: analyses)
+    let buggy = try #require(map.activityGroups.last)
+
+    #expect(buggy.assetIDs == [buggySide.id, buggyFront.id])
+    #expect(buggy.title == "Багги")
+    #expect(buggy.confidence >= 0.55)
+}
+
+@Test func twoMountainBikeFilesDoNotBecomeBuggyFromGenericVehicleTags() throws {
+    let first = p4Asset("GX010700", date: p4BaseDate, duration: 360, dateSource: .fileCreationDate)
+    let second = p4Asset("GX010702", date: p4BaseDate.addingTimeInterval(120), duration: 360, dateSource: .fileCreationDate)
+    let mountainBikeTags: Set<String> = [
+        "bicycle", "bike", "trail", "road", "vehicle",
+        "machine", "wheel", "tire", "helmet"
+    ]
+    let analyses = [
+        p4Analysis(asset: first, tags: mountainBikeTags),
+        p4Analysis(asset: second, tags: mountainBikeTags)
+    ]
+
+    let map = SourceTimelineAnalyzer().analyze(assets: [second, first], analyses: analyses)
+    let group = try #require(map.activityGroups.first)
+
+    #expect(map.activityGroups.count == 1)
+    #expect(group.assetIDs == [first.id, second.id])
+    #expect(group.title == "Велопрогулка")
+}
+
+@Test func oneLongSourceSplitsConfirmedCyclingAndBuggyRunsIntoEventScenes() throws {
+    let asset = p4Asset("single-source-two-activities", date: p4BaseDate, duration: 120)
+    func candidate(_ start: Double, tags: Set<String>, action: Double) -> Candidate {
+        Candidate(
+            assetID: asset.id,
+            sourceStart: start,
+            sourceDuration: 8,
+            scores: ClipScores(
+                quality: 0.84,
+                interest: 0.86,
+                action: action,
+                stability: 0.80,
+                uniqueness: 0.82
+            ),
+            tags: tags,
+            insights: CandidateInsights(
+                sceneSummary: tags.sorted().joined(separator: " "),
+                dynamics: action,
+                visualAppeal: 0.84,
+                storyValue: 0.86
+            )
+        )
+    }
+    let cycling = [
+        candidate(4, tags: ["cycling", "bicycle", "forest trail"], action: 0.64),
+        candidate(18, tags: ["cyclist", "mountain bike", "trail"], action: 0.70)
+    ]
+    let buggy = [
+        candidate(66, tags: ["buggy", "utv", "dirt road"], action: 0.88),
+        candidate(82, tags: ["buggy", "side by side", "helmet"], action: 0.91)
+    ]
+    let analysis = AnalysisResult(
+        assetID: asset.id,
+        schemaVersion: 4,
+        analyzedContentHash: asset.contentHash,
+        sceneTags: ["outdoor", "road"],
+        candidates: cycling + buggy,
+        completedDepth: .deep,
+        deepMediaVersion: 2
+    )
+    let sourceGroup = SourceActivityGroup(
+        id: UUID(),
+        order: 0,
+        title: "Активный день",
+        assetIDs: [asset.id],
+        confidence: 0.88,
+        evidence: []
+    )
+    let sourceMap = SourceMap(entries: [], activityGroups: [sourceGroup])
+
+    let firstRun = EventIntelligenceEngine().discover(
+        assets: [asset], analyses: [analysis], sourceMap: sourceMap
+    )
+    var reorderedAnalysis = analysis
+    reorderedAnalysis.candidates.reverse()
+    let secondRun = EventIntelligenceEngine().discover(
+        assets: [asset], analyses: [reorderedAnalysis], sourceMap: sourceMap
+    )
+    let event = try #require(firstRun.events.first)
+    let repeatedEvent = try #require(secondRun.events.first)
+
+    #expect(firstRun.events.count == 1)
+    #expect(event.assetIDs == [asset.id])
+    #expect(event.effectiveScenes.map(\.title) == ["Велопрогулка", "Багги"])
+    #expect(event.effectiveScenes.map(\.candidateIDs) == [cycling.map(\.id), buggy.map(\.id)])
+    #expect(event.effectiveScenes.map(\.id) == repeatedEvent.effectiveScenes.map(\.id))
+    #expect(event.effectiveScenes[0].endDate! <= event.effectiveScenes[1].startDate!)
+}
+
+@Test func oneLongSourceDoesNotSplitGenericOrIsolatedActivityLabels() throws {
+    let asset = p4Asset("single-source-ambiguous", date: p4BaseDate, duration: 120)
+    func candidate(_ start: Double, tags: Set<String>) -> Candidate {
+        Candidate(
+            assetID: asset.id,
+            sourceStart: start,
+            sourceDuration: 5,
+            scores: ClipScores(quality: 0.80, interest: 0.78, action: 0.62, stability: 0.82, uniqueness: 0.74),
+            tags: tags,
+            insights: CandidateInsights(sceneSummary: tags.sorted().joined(separator: " "))
+        )
+    }
+    let candidates = [
+        candidate(4, tags: ["outdoor", "road", "helmet"]),
+        candidate(20, tags: ["bicycle", "trail"]),
+        candidate(62, tags: ["vehicle", "machine", "wheel"]),
+        candidate(78, tags: ["road", "helmet", "people"])
+    ]
+    let analysis = AnalysisResult(
+        assetID: asset.id,
+        schemaVersion: 4,
+        analyzedContentHash: asset.contentHash,
+        sceneTags: ["outdoor", "road"],
+        candidates: candidates,
+        completedDepth: .deep,
+        deepMediaVersion: 2
+    )
+    let sourceMap = SourceMap(entries: [], activityGroups: [
+        SourceActivityGroup(
+            id: UUID(),
+            order: 0,
+            title: "Прогулка",
+            assetIDs: [asset.id],
+            confidence: 0.72,
+            evidence: []
+        )
+    ])
+
+    let result = EventIntelligenceEngine().discover(
+        assets: [asset], analyses: [analysis], sourceMap: sourceMap
+    )
+    let event = try #require(result.events.first)
+
+    #expect(event.effectiveScenes.count == 1)
+    #expect(event.effectiveScenes[0].title == "Прогулка")
+    #expect(event.effectiveScenes[0].candidateIDs == candidates.map(\.id))
+}
+
+@Test func longSingleEventKeepsActivityBlocksAndCreatesDistinctKeyTitles() throws {
+    var assets: [MediaAsset] = []
+    var analyses: [AnalysisResult] = []
+    for index in 0..<18 {
+        let isBuggy = index >= 14
+        let asset = p4Asset(
+            String(format: "GX01%04d", 600 + index),
+            date: p4BaseDate.addingTimeInterval(Double(index) * 31),
+            duration: 30
+        )
+        assets.append(asset)
+        analyses.append(p4Analysis(
+            asset: asset,
+            tags: isBuggy
+                ? ["buggy", "vehicle", "dirt_road", "helmet", "tire"]
+                : ["cycling", "cyclist", "bicycle", "trail"],
+            action: isBuggy ? 0.86 : 0.62,
+            sourceStart: 2,
+            sourceDuration: 5
+        ))
+    }
+    let candidateIDs = analyses.compactMap { $0.candidates.first?.id }
+    #expect(candidateIDs.count == 18)
+    let cyclingA = EventScene(
+        title: "Велопрогулка",
+        assetIDs: Array(assets[0..<7]).map(\.id),
+        candidateIDs: Array(candidateIDs[0..<7]),
+        tags: ["cycling"],
+        phase: .peak,
+        confidence: 0.90
+    )
+    let cyclingB = EventScene(
+        title: "Велопрогулка",
+        assetIDs: Array(assets[7..<14]).map(\.id),
+        candidateIDs: Array(candidateIDs[7..<14]),
+        tags: ["cycling"],
+        phase: .reaction,
+        confidence: 0.88
+    )
+    let buggy = EventScene(
+        title: "Багги",
+        assetIDs: Array(assets[14..<18]).map(\.id),
+        candidateIDs: Array(candidateIDs[14..<18]),
+        tags: ["buggy"],
+        phase: .conclusion,
+        confidence: 0.92
+    )
+    let event = Event(
+        title: "Активный день",
+        assetIDs: assets.map(\.id),
+        confidence: 0.90,
+        titleConfidence: 0.88,
+        scenes: [cyclingA, cyclingB, buggy],
+        quality: p4Quality(total: 0.84, usable: 0.92, story: 0.86, action: 0.82, diversity: 0.78)
+    )
+    var constraints = PromptInterpreter.defaults(for: .story)
+    constraints.targetDuration = 90
+    constraints.targetClipCount = 18
+    let plan = StoryEngine().createPlan(
+        prompt: "Собери фильм на 90 секунд. Титры только для ключевых активностей.",
+        preset: .story,
+        constraints: constraints,
+        assets: assets,
+        analyses: analyses,
+        events: [event]
+    )
+    let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let titles = timeline.effectiveTitleItems.sorted { $0.startTime < $1.startTime }
+    let buggyStart = try #require(timeline.items.filter { $0.eventSceneID == buggy.id }.map(\.timelineStart).min())
+
+    #expect(plan.eventStory?.chapterCardsEnabled == true)
+    #expect(Set(plan.chapters.compactMap(\.eventSceneID)) == Set([cyclingA.id, cyclingB.id, buggy.id]))
+    #expect(titles.map(\.text) == ["Велопрогулка", "Багги"])
+    #expect(abs((titles.last?.startTime ?? -1) - buggyStart) < 0.001)
+    #expect(zip(titles, titles.dropFirst()).allSatisfy { pair in pair.0.endTime <= pair.1.startTime })
+    let climaxItems = timeline.items.filter { $0.storyRole == .climax }
+    #expect(climaxItems.count == 1)
+    #expect(climaxItems.allSatisfy { $0.eventSceneID == buggy.id })
+    #expect(plan.chapters.filter { $0.role == .climax }.allSatisfy {
+        $0.coveragePlan?.sceneID == buggy.id
+            && $0.coveragePlan?.requirements.map(\.purpose) == [.peak]
+    })
+}
+
+@Test func shortActivityBlockOmitsUnreadableTitleAndKeepsNeighborsInsideTheirScenes() throws {
+    let cycling = p4Asset("short-card-cycling", date: p4BaseDate)
+    let buggy = p4Asset("short-card-buggy", date: p4BaseDate.addingTimeInterval(31))
+    let rafting = p4Asset("short-card-rafting", date: p4BaseDate.addingTimeInterval(62))
+    let assets = [cycling, buggy, rafting]
+    let analyses = [
+        p4Analysis(asset: cycling, tags: ["cycling", "bicycle"], sourceDuration: 10),
+        p4Analysis(asset: buggy, tags: ["buggy", "dirt_road", "car"], sourceDuration: 1),
+        p4Analysis(asset: rafting, tags: ["rafting", "kayak"], sourceDuration: 10)
+    ]
+    let scenes = [
+        EventScene(
+            title: "Велопрогулка",
+            assetIDs: [cycling.id],
+            candidateIDs: analyses[0].candidates.map(\.id),
+            phase: .setup,
+            confidence: 0.92
+        ),
+        EventScene(
+            title: "Багги",
+            assetIDs: [buggy.id],
+            candidateIDs: analyses[1].candidates.map(\.id),
+            phase: .action,
+            confidence: 0.94
+        ),
+        EventScene(
+            title: "Сплав",
+            assetIDs: [rafting.id],
+            candidateIDs: analyses[2].candidates.map(\.id),
+            phase: .conclusion,
+            confidence: 0.93
+        )
+    ]
+    let event = Event(
+        title: "Активный день",
+        assetIDs: assets.map(\.id),
+        confidence: 0.92,
+        titleConfidence: 0.90,
+        scenes: scenes,
+        quality: p4Quality(total: 0.82, usable: 0.90, story: 0.80, action: 0.78, diversity: 0.86)
+    )
+    var constraints = PromptInterpreter.defaults(for: .story)
+    constraints.targetDuration = 21
+    constraints.targetClipCount = 3
+
+    let plan = StoryEngine().createPlan(
+        prompt: "Собери фильм на 21 секунду. Титры только для активностей.",
+        preset: .story,
+        constraints: constraints,
+        assets: assets,
+        analyses: analyses,
+        events: [event]
+    )
+    let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let titles = timeline.effectiveTitleItems
+
+    #expect(plan.eventStory?.chapterCardsEnabled == true)
+    #expect(titles.sorted { $0.startTime < $1.startTime }.map(\.text) == ["Велопрогулка", "Сплав"])
+    let titledSceneIDs = ["Велопрогулка": scenes[0].id, "Сплав": scenes[2].id]
+    for title in titles {
+        guard let sceneID = titledSceneIDs[title.text] else { continue }
+        let blockItems = timeline.items.filter { $0.eventSceneID == sceneID }
+        let blockStart = try #require(blockItems.map(\.timelineStart).min())
+        let blockEnd = try #require(blockItems.map { $0.timelineStart + $0.timelineDuration }.max())
+        #expect(title.startTime >= blockStart - 0.001)
+        #expect(title.endTime <= blockEnd + 0.001)
+    }
+}
+
+@Test func structuralScenePhasesDoNotBecomeActivityTitles() {
+    let definitions: [(String, EventScenePhase)] = [
+        ("Знакомство с местом", .setup),
+        ("Подготовка", .preparation),
+        ("В движении", .action),
+        ("Пик маршрута", .peak),
+        ("Реакция", .reaction),
+        ("Дорога домой", .conclusion)
+    ]
+    let assets = definitions.indices.map { index in
+        p4Asset("unknown-phase-\(index)", date: p4BaseDate.addingTimeInterval(Double(index) * 31))
+    }
+    let analyses = assets.map { asset in
+        p4Analysis(asset: asset, tags: ["outdoor", "land"], sourceStart: 2, sourceDuration: 5)
+    }
+    let scenes = definitions.enumerated().map { index, definition in
+        EventScene(
+            title: definition.0,
+            assetIDs: [assets[index].id],
+            candidateIDs: analyses[index].candidates.map(\.id),
+            phase: definition.1,
+            confidence: 0.82
+        )
+    }
+    let event = Event(
+        title: "Съёмка",
+        assetIDs: assets.map(\.id),
+        confidence: 0.82,
+        titleConfidence: 0.72,
+        scenes: scenes,
+        quality: p4Quality(total: 0.72, usable: 0.82, story: 0.68)
+    )
+    var constraints = PromptInterpreter.defaults(for: .story)
+    constraints.targetDuration = 30
+    constraints.targetClipCount = 6
+
+    let plan = StoryEngine().createPlan(
+        prompt: "Собери фильм на 30 секунд. Титры только для ключевых активностей.",
+        preset: .story,
+        constraints: constraints,
+        assets: assets,
+        analyses: analyses,
+        events: [event]
+    )
+    let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+
+    #expect(plan.eventStory?.chapterCardsEnabled == false)
+    #expect(plan.chapters.allSatisfy { $0.chapterCardTitle == nil })
+    #expect(timeline.effectiveTitleItems.isEmpty)
+}
+
+@Test func storyHierarchyQualityGateRestoresFlattenedActivityBoundaries() throws {
+    let cyclingAsset = p4Asset("quality-gate-cycling", date: p4BaseDate)
+    let buggyAsset = p4Asset("quality-gate-buggy", date: p4BaseDate.addingTimeInterval(31))
+    let analyses = [
+        p4Analysis(asset: cyclingAsset, tags: ["cycling", "bicycle"], sourceDuration: 5),
+        p4Analysis(asset: buggyAsset, tags: ["buggy", "dirt_road", "helmet"], sourceDuration: 5)
+    ]
+    let cyclingID = try #require(analyses[0].candidates.first?.id)
+    let buggyID = try #require(analyses[1].candidates.first?.id)
+    let cycling = EventScene(
+        title: "Велопрогулка",
+        assetIDs: [cyclingAsset.id],
+        candidateIDs: [cyclingID],
+        tags: ["cycling"],
+        phase: .setup,
+        confidence: 0.92
+    )
+    let buggy = EventScene(
+        title: "Багги",
+        assetIDs: [buggyAsset.id],
+        candidateIDs: [buggyID],
+        tags: ["buggy"],
+        phase: .action,
+        confidence: 0.94
+    )
+    let event = Event(
+        title: "Съёмка",
+        assetIDs: [cyclingAsset.id, buggyAsset.id],
+        scenes: [cycling, buggy]
+    )
+    let flattened = StoryChapter(
+        title: "Кульминация",
+        candidateIDs: [cyclingID, buggyID],
+        role: .climax,
+        eventID: event.id,
+        eventSceneID: cycling.id,
+        chapterCardTitle: "Ключевой момент",
+        allocatedDuration: 10,
+        coveragePlan: SceneCoveragePlan(
+            eventID: event.id,
+            sceneID: cycling.id,
+            requirements: [],
+            explanation: "legacy flattened chapter"
+        )
+    )
+    let candidateByID = Dictionary(uniqueKeysWithValues: analyses.flatMap(\.candidates).map { ($0.id, $0) })
+    let review = StoryHierarchyQualityGate().repair(
+        chapters: [flattened],
+        events: [event],
+        candidates: candidateByID,
+        chapterCardsEnabled: true
+    )
+
+    #expect(review.chapters.count == 2)
+    #expect(review.chapters.map(\.eventSceneID) == [cycling.id, buggy.id])
+    #expect(review.chapters.map(\.chapterCardTitle) == ["Велопрогулка", "Багги"])
+    #expect(review.chapters.map { $0.coveragePlan?.sceneID } == [cycling.id, buggy.id])
+    #expect(review.chapters[0].allocatedDuration == 10)
+    #expect(review.chapters[1].allocatedDuration == nil)
+    #expect(review.diagnostics.contains { $0.code == "restored-scene-boundary" })
+    #expect(review.diagnostics.contains { $0.code == "repaired-title-provenance" })
+}
+
+@Test func timelineSafetyRejectsDirectorRepairThatDropsAPlannedSceneBlock() {
+    let eventID = UUID()
+    let cyclingSceneID = UUID()
+    let buggySceneID = UUID()
+    let cycling = TimelineItem(
+        candidateID: UUID(),
+        kind: .video,
+        sourceStart: 0,
+        sourceDuration: 3,
+        timelineStart: 0,
+        timelineDuration: 3,
+        eventID: eventID,
+        eventSceneID: cyclingSceneID
+    )
+    let buggy = TimelineItem(
+        candidateID: UUID(),
+        kind: .video,
+        sourceStart: 0,
+        sourceDuration: 3,
+        timelineStart: 3,
+        timelineDuration: 3,
+        eventID: eventID,
+        eventSceneID: buggySceneID
+    )
+    let plan = StoryPlan(
+        prompt: "Фильм из двух активностей",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 6),
+        chapters: [
+            StoryChapter(title: "Велопрогулка", candidateIDs: [cycling.candidateID!], eventID: eventID, eventSceneID: cyclingSceneID),
+            StoryChapter(title: "Багги", candidateIDs: [buggy.candidateID!], eventID: eventID, eventSceneID: buggySceneID)
+        ],
+        eventStory: EventStoryPlan(
+            entries: [EventStoryEntry(eventID: eventID, title: "Активный день", startDate: nil, endDate: nil, allocatedDuration: 6, quality: 0.8, sceneIDs: [cyclingSceneID, buggySceneID])]
+        )
+    )
+    let original = Timeline(storyPlanID: plan.id, items: [cycling, buggy])
+    let repair = Timeline(storyPlanID: plan.id, items: [cycling])
+    let issues = TimelineSafetyValidator().violations(
+        candidate: repair,
+        comparedTo: original,
+        plan: plan,
+        analyses: []
+    )
+
+    #expect(issues.contains("Repair удаляет подтверждённый scene block"))
+}
+
+@Test func overlappingEventScenesConsumeEachCandidateOnlyOnce() {
+    let first = p4Asset("overlap-scene-a", date: p4BaseDate)
+    let second = p4Asset("overlap-scene-b", date: p4BaseDate.addingTimeInterval(31))
+    let analyses = [
+        p4Analysis(asset: first, tags: ["cycling", "bicycle"], sourceDuration: 5),
+        p4Analysis(asset: second, tags: ["cycling", "bicycle"], sourceDuration: 5)
+    ]
+    let firstID = analyses[0].candidates[0].id
+    let secondID = analyses[1].candidates[0].id
+    let firstScene = EventScene(
+        title: "Велопрогулка",
+        assetIDs: [first.id],
+        candidateIDs: [firstID],
+        phase: .setup,
+        confidence: 0.9
+    )
+    let overlappingScene = EventScene(
+        title: "Велопрогулка",
+        assetIDs: [first.id, second.id],
+        candidateIDs: [firstID, secondID],
+        phase: .action,
+        confidence: 0.9
+    )
+    let event = Event(
+        title: "Велопрогулка",
+        assetIDs: [first.id, second.id],
+        scenes: [firstScene, overlappingScene],
+        quality: p4Quality(total: 0.78, usable: 0.86, story: 0.74)
+    )
+    var constraints = PromptInterpreter.defaults(for: .story)
+    constraints.targetDuration = 10
+    constraints.targetClipCount = 2
+
+    let plan = StoryEngine().createPlan(
+        prompt: "Собери фильм на 10 секунд",
+        preset: .story,
+        constraints: constraints,
+        assets: [first, second],
+        analyses: analyses,
+        events: [event]
+    )
+    let plannedIDs = plan.chapters.flatMap(\.candidateIDs)
+    let timeline = TimelineComposer().compose(plan: plan, assets: [first, second], analyses: analyses)
+
+    #expect(plannedIDs.filter { $0 == firstID }.count == 1)
+    #expect(plannedIDs.filter { $0 == secondID }.count == 1)
+    #expect(timeline.items.compactMap(\.candidateID).filter { $0 == firstID }.count == 1)
+    #expect(timeline.items.compactMap(\.candidateID).filter { $0 == secondID }.count == 1)
+}
+
 @Test func eventDiscoveryMergesOneCrossDeviceMomentAndEstimatesClockOffset() throws {
     let goPro = p4Asset("gopro-rafting", date: p4BaseDate, latitude: 55.75, longitude: 37.61, device: "GoPro HERO12")
     let phone = p4Asset("iphone-rafting", date: p4BaseDate.addingTimeInterval(42), latitude: 55.7501, longitude: 37.6101, device: "Apple iPhone 15")
@@ -234,6 +754,56 @@ private func p4Quality(
     #expect(result.diagnostics.crossDeviceMatches >= 1)
     #expect(result.diagnostics.deviceTimeOffsets.values.contains { abs($0) >= 40 })
     #expect(event.evidence?.contains { $0.kind == "cross-device" } == true)
+}
+
+@Test func oneContinuousOutingKeepsDifferentActivitiesAsScenesInsideOneMacroEvent() throws {
+    let cycling = p4Asset("GOPR0456", date: p4BaseDate)
+    let buggy = p4Asset("GP010456", date: p4BaseDate.addingTimeInterval(120))
+    let analyses = [
+        p4Analysis(asset: cycling, tags: ["cycling", "cyclist", "bicycle", "forest"]),
+        p4Analysis(asset: buggy, tags: ["buggy", "utv", "dirt_road", "helmet"])
+    ]
+
+    let result = EventIntelligenceEngine().discover(assets: [buggy, cycling], analyses: analyses)
+    let event = try #require(result.events.first)
+
+    #expect(result.events.count == 1)
+    #expect(event.assetIDs.count == 2)
+    #expect(event.effectiveScenes.count == 2)
+    #expect(Set(event.effectiveScenes.map(\.title)) == Set(["Велопрогулка", "Багги"]))
+}
+
+@Test func incompatibleActivitiesRejectUncorroboratedLegacyIDWithWeakClockAndNoGPS() {
+    var cycling = p4Asset("legacy-weak-cycling", date: p4BaseDate)
+    var buggy = p4Asset("legacy-weak-buggy", date: p4BaseDate.addingTimeInterval(5))
+    cycling.metadata.creationDate = nil
+    cycling.metadata.modificationDate = nil
+    cycling.metadata.dateSource = .importDate
+    cycling.metadata.dateConfidence = 0.12
+    cycling.importedAt = p4BaseDate
+    buggy.metadata.creationDate = nil
+    buggy.metadata.modificationDate = nil
+    buggy.metadata.dateSource = .importDate
+    buggy.metadata.dateConfidence = 0.12
+    buggy.importedAt = p4BaseDate.addingTimeInterval(5)
+    let embedding = VisualEmbedding(
+        modelIdentifier: "legacy-fixture",
+        values: [1] + Array(repeating: 0, count: 63),
+        confidence: 0.99
+    )
+    var analyses = [
+        p4Analysis(asset: cycling, tags: ["cycling", "bicycle", "outdoor"]),
+        p4Analysis(asset: buggy, tags: ["buggy", "utv", "outdoor"])
+    ]
+    for index in analyses.indices {
+        analyses[index].candidates[0].insights?.semanticEventID = "legacy-mixed-outdoor-event"
+        analyses[index].candidates[0].insights?.visualEmbedding = embedding
+    }
+
+    let result = EventIntelligenceEngine().discover(assets: [cycling, buggy], analyses: analyses)
+
+    #expect(result.events.count == 2)
+    #expect(result.events.allSatisfy { $0.assetIDs.count == 1 })
 }
 
 @Test func eventDiscoverySplitsFourDifferentEventsRecordedOnOneDay() {
@@ -501,6 +1071,28 @@ private func p4Quality(
     let values = EventDurationAllocator().allocate(events: [event], totalDuration: 15, strategy: "story")
 
     #expect(abs(values[event.id, default: 0] - 15) < 0.001)
+}
+
+@Test func exactEventDurationAllocationPreservesTheRequestedTotalDespiteQualityCaps() {
+    let first = Event(
+        title: "First",
+        assetIDs: [UUID()],
+        quality: p4Quality(total: 0.82, usable: 0.80, story: 0.84)
+    )
+    let second = Event(
+        title: "Second",
+        assetIDs: [UUID()],
+        quality: p4Quality(total: 0.82, usable: 0.82, story: 0.84)
+    )
+
+    let values = EventDurationAllocator().allocate(
+        events: [first, second],
+        totalDuration: 300,
+        strategy: "cinematic-motion",
+        requiresExactTotal: true
+    )
+
+    #expect(abs(values.values.reduce(0, +) - 300) < 0.001)
 }
 
 private func p4ProductionFixture() -> ([MediaAsset], [AnalysisResult]) {

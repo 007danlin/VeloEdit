@@ -50,7 +50,48 @@ import Testing
     #expect(interpreter.volume(prompt: "убери звук исходный у видео") == 0)
     #expect(interpreter.volume(prompt: "без звука исходников") == 0)
     #expect(interpreter.volume(prompt: "убери звук исходный у видео, потом верни звук исходников") == 1)
+    #expect(interpreter.volume(prompt: "Что делать со звуком исходников? Приглушить.") == 0.30)
     #expect(interpreter.volume(prompt: "сделай монтаж динамичнее") == nil)
+}
+
+@Test func sourceAudioQuestionnaireAnswerAndPlaceholderTitlesAreHandledLiterally() {
+    let commands = EditorCommandParser().parse("Что делать со звуком исходников? Приглушить.")
+    #expect(commands.contains(.setOriginalAudioVolume(0.30)))
+
+    let video = TimelineItem(kind: .video, sourceDuration: 12, timelineStart: 0, timelineDuration: 12)
+    let timeline = Timeline(storyPlanID: UUID(), items: [video])
+    let result = EditorCommandExecutor().apply([
+        .addTitle("Ключевой момент", .beginning),
+        .addTitle("Велопрогулка", .beginning),
+        .addTitle("Велопрогулка", .beginning)
+    ], to: timeline)
+
+    #expect(result.timeline.effectiveTitleItems.map(\.text) == ["Велопрогулка"])
+    #expect(result.report.ignored.contains { $0.contains("не является текстом титра") })
+    #expect(result.report.ignored.contains { $0.contains("уже есть") })
+}
+
+@Test func automatedTitlePolicyRepairsOldGeneratedOverlapWithoutTouchingManualLayers() {
+    let automatic = TitleTimelineItem(
+        kind: .title,
+        text: "Велопрогулка",
+        startTime: 0,
+        duration: 4,
+        explanation: ["Название фильма создано из event hierarchy"]
+    )
+    let placeholder = TitleTimelineItem(
+        kind: .title,
+        text: "Ключевой момент",
+        startTime: 0,
+        duration: 3.2,
+        explanation: ["Титр добавлен по запросу режиссёру"]
+    )
+    let manual = TitleTimelineItem(kind: .lowerThird, text: "Иван", startTime: 0, duration: 2)
+    let repaired = AutomatedTitlePolicy.sanitized([automatic, placeholder, placeholder, manual], timelineDuration: 12)
+
+    #expect(repaired.contains { $0.id == automatic.id })
+    #expect(repaired.contains { $0.id == manual.id })
+    #expect(!repaired.contains { SmartTitleEngine.isMeaningless($0.text) })
 }
 
 @Test func editorCatalogValuesSurviveProjectEncoding() throws {

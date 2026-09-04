@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import CoreImage
+import ImageIO
 
 public enum TransitionEffectRenderQuality: String, Sendable {
     case draft
@@ -13,6 +14,21 @@ public enum TransitionEffectRenderQuality: String, Sendable {
 public enum TransitionEffectRenderer {
     private static let previewContext = CIContext(options: [.cacheIntermediates: true])
     private static let previewCache = TransitionEffectPreviewCache()
+    private static let effectPreviewPhoto: CIImage? = {
+        guard let resources = Bundle.main.resourceURL?.appendingPathComponent("TransitionPreviews", isDirectory: true),
+              let source = CGImageSourceCreateWithURL(
+                resources.appendingPathComponent("effect-field.jpg") as CFURL,
+                nil
+              ),
+              let image = CGImageSourceCreateImageAtIndex(
+                source,
+                0,
+                [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+              ) else {
+            return nil
+        }
+        return CIImage(cgImage: image)
+    }()
     private static let transitionPreviewPhotos: (CIImage, CIImage)? = {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("TransitionPreviews", isDirectory: true),
               let outgoing = CIImage(
@@ -240,6 +256,8 @@ public enum TransitionEffectRenderer {
             default:
                 break
             }
+            let preset = EffectPresetRegistry.preset(for: effect.effectType)
+            guard preset.parameter(named: "scaleX") != nil else { continue }
             let positionX = effect.parameterValue("positionX", at: timelineTime)
             let positionY = effect.parameterValue("positionY", at: timelineTime)
             let scaleX = effect.parameterValue("scaleX", at: timelineTime)
@@ -425,7 +443,7 @@ public enum TransitionEffectRenderer {
         let key = "effect:\(type.rawValue):\(Int(size.width))x\(Int(size.height)):\(bucket):\(quality.rawValue)"
         if let cached = previewCache.image(for: key) { return cached }
         let bounds = CGRect(origin: .zero, size: size)
-        var source = previewSources(bounds: bounds).0
+        var source = previewEffectSource(bounds: bounds)
         let preset = EffectPresetRegistry.preset(for: type)
         let parameters = preset.parameters.filter { $0.key != "intensity" }.map { EffectParameter(name: $0.key, value: $0.defaultValue) }
         let effect = EffectTimelineItem(
@@ -468,6 +486,24 @@ public enum TransitionEffectRenderer {
         let incomingAccent = CIImage(color: CIColor(red: 0.38, green: 1, blue: 0.72, alpha: 0.82))
             .cropped(to: CGRect(x: bounds.width * 0.58, y: bounds.height * 0.16, width: bounds.width * 0.27, height: bounds.height * 0.64))
         return (outgoingAccent.composited(over: outgoing).cropped(to: bounds), incomingAccent.composited(over: incoming).cropped(to: bounds))
+    }
+
+    private static func previewEffectSource(bounds: CGRect) -> CIImage {
+        guard let effectPreviewPhoto else {
+            // Keep previews functional in test hosts and damaged app bundles
+            // where Bundle.main cannot provide the packaged photograph.
+            let base = CIImage(color: CIColor(red: 0.12, green: 0.42, blue: 0.78, alpha: 1))
+                .cropped(to: bounds)
+            let accent = CIImage(color: CIColor(red: 0.34, green: 0.82, blue: 0.38, alpha: 1))
+                .cropped(to: CGRect(
+                    x: bounds.minX,
+                    y: bounds.minY,
+                    width: bounds.width,
+                    height: bounds.height * 0.36
+                ))
+            return accent.composited(over: base).cropped(to: bounds)
+        }
+        return aspectFilled(effectPreviewPhoto, into: bounds)
     }
 
     private static func previewTransitionSources(bounds: CGRect) -> (CIImage, CIImage) {

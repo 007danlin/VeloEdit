@@ -25,6 +25,62 @@ private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
     #expect(!c.allowSlowMotion)
 }
 
+@Test func explicitTagNegationOverridesPositiveMentionsAndInheritedAnchors() {
+    var base = PromptInterpreter.defaults(for: .story)
+    base.includeTags = ["fishing", "buggy"]
+    base.preferredIntroTags = ["fishing"]
+    base.preferredClimaxTags = ["fishing", "buggy"]
+    base.preferredOutroTags = ["buggy"]
+
+    let constraints = PromptInterpreter().interpret(
+        prompt: "Рыбалка как кульминация, но без рыбалки. Не показывай buggy.",
+        preset: .story,
+        base: base
+    )
+
+    #expect(constraints.excludeTags.isSuperset(of: ["fishing", "buggy"]))
+    #expect(constraints.includeTags.isDisjoint(with: ["fishing", "buggy"]))
+    #expect(constraints.preferredIntroTags?.isDisjoint(with: ["fishing", "buggy"]) == true)
+    #expect(constraints.preferredClimaxTags?.isDisjoint(with: ["fishing", "buggy"]) == true)
+    #expect(constraints.preferredOutroTags?.isDisjoint(with: ["fishing", "buggy"]) == true)
+
+    let phrased = PromptInterpreter().interpret(
+        prompt: "Не показывай поездку на багги; без кадров с велосипедами.",
+        preset: .story
+    )
+    #expect(phrased.excludeTags.isSuperset(of: ["buggy", "bike"]))
+    #expect(phrased.includeTags.isDisjoint(with: ["buggy", "bike"]))
+}
+
+@Test func roleAnchorsBindOnlyToTagsInTheirLocalClause() {
+    let constraints = PromptInterpreter().interpret(
+        prompt: "Начни с природы, багги — кульминация, заверши закатом.",
+        preset: .story
+    )
+
+    #expect(constraints.preferredIntroTags == ["nature"])
+    #expect(constraints.preferredClimaxTags == ["buggy"])
+    #expect(constraints.preferredOutroTags == ["sunset"])
+}
+
+@Test func latestPositiveOrNegativeTagInstructionWins() {
+    let restored = PromptInterpreter().interpret(
+        prompt: "Без багги. Теперь всё же багги — кульминация.",
+        preset: .story
+    )
+    #expect(restored.includeTags.contains("buggy"))
+    #expect(!restored.excludeTags.contains("buggy"))
+    #expect(restored.preferredClimaxTags?.contains("buggy") == true)
+
+    let excluded = PromptInterpreter().interpret(
+        prompt: "Багги — кульминация. Теперь без кадров с багги.",
+        preset: .story
+    )
+    #expect(excluded.excludeTags.contains("buggy"))
+    #expect(!excluded.includeTags.contains("buggy"))
+    #expect(excluded.preferredClimaxTags?.contains("buggy") != true)
+}
+
 @Test func naturalRussianPacingFormsAreUnderstood() {
     let energetic = PromptInterpreter().interpret(prompt: "Сделай динамично и энергично", preset: .story)
     let calm = PromptInterpreter().interpret(prompt: "Хочу спокойный медленный фильм", preset: .adventure)
@@ -366,6 +422,149 @@ private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
     #expect(variants.count <= 10)
     #expect(variants.allSatisfy { $0.plan.chapters.flatMap(\.candidateIDs).count == 3 })
     #expect(variants.allSatisfy { !$0.strategy.isEmpty })
+}
+
+@Test func directorBriefOverridesEveryStoryVariantAndComposerDeliveryChoices() throws {
+    let (assets, analyses) = storyFixture()
+    let brief = DirectorBrief(
+        canvasFormat: .portrait9x16,
+        requestedDuration: 37,
+        mood: .dynamic,
+        musicPolicy: .none,
+        sourceAudioPolicy: .duck,
+        titlePolicy: .none
+    )
+    let variants = StoryEngine().createPlanVariants(
+        prompt: "Сделай фильм",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 12, pacing: 0.1),
+        assets: assets,
+        analyses: analyses,
+        limit: 3,
+        directorBrief: brief
+    )
+    let plan = try #require(variants.first?.plan)
+    let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+
+    #expect(variants.allSatisfy { $0.plan.directorBrief == brief })
+    #expect(variants.allSatisfy { abs($0.plan.constraints.targetDuration - 37) < 0.000_1 })
+    #expect(variants.allSatisfy { abs($0.plan.constraints.pacing - DirectorNarrativeMood.dynamic.pacing) < 0.000_1 })
+    #expect(timeline.width == 1080)
+    #expect(timeline.height == 1920)
+    #expect(abs(timeline.effectiveOriginalAudioVolume - 0.28) < 0.000_1)
+    #expect(timeline.music == nil)
+    #expect(timeline.effectiveTitleItems.isEmpty)
+}
+
+@Test func composerPreservesSpecificTrackFromDirectorBrief() throws {
+    let (assets, analyses) = storyFixture()
+    let trackID = UUID()
+    let brief = DirectorBrief(
+        requestedDuration: 20,
+        musicPolicy: .specificTrack,
+        musicTrackID: trackID
+    )
+    let plan = StoryEngine().createPlan(
+        prompt: "История поездки",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 20),
+        assets: assets,
+        analyses: analyses,
+        directorBrief: brief
+    )
+    let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let music = try #require(timeline.music)
+
+    #expect(music.trackID == trackID)
+}
+
+@Test func portraitBriefRanksNativeAndSafelyReframedFootageAheadOfUnsafeLandscape() throws {
+    func asset(_ name: String, width: Int, height: Int) -> MediaAsset {
+        MediaAsset(
+            originalURL: URL(fileURLWithPath: "/tmp/\(name).mov"),
+            kind: .video,
+            byteSize: 1,
+            contentHash: name,
+            metadata: MediaMetadata(duration: 20, width: width, height: height)
+        )
+    }
+    func tracking() -> SubjectTrackingSummary {
+        let track = SubjectTrack(
+            kind: .person,
+            label: "person",
+            observations: [
+                SubjectTrackObservation(
+                    timestamp: 0,
+                    region: NormalizedRegion(x: 0.42, y: 0.30, width: 0.12, height: 0.28),
+                    confidence: 0.92
+                ),
+                SubjectTrackObservation(
+                    timestamp: 5,
+                    region: NormalizedRegion(x: 0.45, y: 0.30, width: 0.12, height: 0.28),
+                    confidence: 0.92
+                )
+            ],
+            meanConfidence: 0.92,
+            visibility: 0.9,
+            compositionQuality: 0.9,
+            movementX: 0.03
+        )
+        return SubjectTrackingSummary(
+            tracks: [track],
+            mainSubjectID: track.id,
+            confidence: 0.92,
+            analyzedFrameCount: 2
+        )
+    }
+    let portrait = asset("portrait", width: 1080, height: 1920)
+    let safeLandscape = asset("safe-landscape", width: 1920, height: 1080)
+    let unsafeLandscape = asset("unsafe-landscape", width: 1920, height: 1080)
+    let scores = ClipScores(quality: 0.8, interest: 0.8, action: 0.7, stability: 0.8)
+    let portraitCandidate = Candidate(assetID: portrait.id, sourceStart: 0, sourceDuration: 6, scores: scores)
+    let safeCandidate = Candidate(
+        assetID: safeLandscape.id,
+        sourceStart: 0,
+        sourceDuration: 6,
+        scores: scores,
+        insights: CandidateInsights(subjectTracking: tracking())
+    )
+    let unsafeCandidate = Candidate(assetID: unsafeLandscape.id, sourceStart: 0, sourceDuration: 6, scores: scores)
+    let analyses = [
+        AnalysisResult(assetID: portrait.id, analyzedContentHash: portrait.contentHash, candidates: [portraitCandidate]),
+        AnalysisResult(assetID: safeLandscape.id, analyzedContentHash: safeLandscape.contentHash, candidates: [safeCandidate]),
+        AnalysisResult(assetID: unsafeLandscape.id, analyzedContentHash: unsafeLandscape.contentHash, candidates: [unsafeCandidate])
+    ]
+    let brief = DirectorBrief(
+        canvasFormat: .portrait9x16,
+        requestedDuration: 6,
+        musicPolicy: .none,
+        titlePolicy: .none
+    )
+    let constraints = StoryConstraints(targetDuration: 6, targetClipCount: 1)
+
+    let nativeFirst = StoryEngine().createPlanVariants(
+        prompt: "Лучший кадр",
+        preset: .story,
+        constraints: constraints,
+        assets: [portrait, safeLandscape, unsafeLandscape],
+        analyses: analyses,
+        limit: 1,
+        directorBrief: brief
+    )
+    let nativePlan = try #require(nativeFirst.first?.plan)
+    #expect(nativePlan.chapters.flatMap(\.candidateIDs) == [portraitCandidate.id])
+
+    let safeFirst = StoryEngine().createPlanVariants(
+        prompt: "Лучший кадр",
+        preset: .story,
+        constraints: constraints,
+        assets: [safeLandscape, unsafeLandscape],
+        analyses: Array(analyses.dropFirst()),
+        limit: 1,
+        directorBrief: brief
+    )
+    let safePlan = try #require(safeFirst.first?.plan)
+    #expect(safePlan.chapters.flatMap(\.candidateIDs) == [safeCandidate.id])
 }
 
 @Test func legacyCandidateDecodesWithoutMomentBoundaryEvidence() throws {

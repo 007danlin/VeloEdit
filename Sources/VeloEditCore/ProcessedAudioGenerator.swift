@@ -75,7 +75,7 @@ public actor ProcessedAudioGenerator {
         ) else { throw DerivedMediaError.cannotCreateDestination }
 
         try engine.start()
-        player.scheduleFile(input, at: nil, completionHandler: nil)
+        scheduleForOfflineRendering(input, on: player)
         player.play()
         var stalledRenderAttempts = 0
         while engine.manualRenderingSampleTime < input.length {
@@ -106,6 +106,13 @@ public actor ProcessedAudioGenerator {
         engine.stop()
         engine.disableManualRenderingMode()
         return destination
+    }
+
+    /// The async AVAudioPlayerNode overload completes only after playback.
+    /// Offline rendering must schedule synchronously before `play()` and then
+    /// drive the engine with `renderOffline` below.
+    private func scheduleForOfflineRendering(_ file: AVAudioFile, on player: AVAudioPlayerNode) {
+        player.scheduleFile(file, at: nil, completionHandler: nil)
     }
 
     private func extractAudio(sourceURL: URL, sourceStart: Double, sourceDuration: Double, destination: URL) async throws {

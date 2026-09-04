@@ -123,6 +123,214 @@ public struct SemanticSceneCluster: Hashable, Sendable {
     public var meanSimilarity: Double
 }
 
+enum ActivityFamily: String, CaseIterable, Hashable, Sendable {
+    case cycling
+    case motorized
+    case paddling
+    case fishing
+    case hiking
+    case running
+    case swimming
+    case winterSports
+    case surfing
+    case climbing
+    case equestrian
+}
+
+enum ActivityCompatibility: Hashable, Sendable {
+    case compatible
+    case incompatible
+    case insufficientEvidence
+}
+
+struct ActivityEvidence: Hashable, Sendable {
+    var family: ActivityFamily?
+    var confidence: Double
+    var matchedMarkers: Set<String>
+
+    func compatibility(with other: ActivityEvidence) -> ActivityCompatibility {
+        guard let family, let otherFamily = other.family else { return .insufficientEvidence }
+        return family == otherFamily ? .compatible : .incompatible
+    }
+
+    var clusterFamilies: Set<ActivityFamily> {
+        family.map { [$0] } ?? []
+    }
+
+    var isAmbiguous: Bool {
+        family == nil && !matchedMarkers.isEmpty
+    }
+}
+
+/// One conservative vocabulary and compatibility rule shared by duplicate
+/// detection and archive-level event discovery. Generic context (`outdoor`,
+/// `road`, `helmet`, `sport`) deliberately produces no activity evidence.
+/// Specific aliases collapse to a family, while conflicting or ambiguous
+/// labels stay unresolved and therefore cannot act as a semantic bridge.
+enum ActivityCompatibilityContract {
+    private struct Marker: Sendable {
+        var phrase: String
+        var weight: Double
+        var prefix: Bool
+    }
+
+    private static let markers: [ActivityFamily: [Marker]] = [
+        .cycling: [
+            Marker(phrase: "cycling", weight: 1.15, prefix: false),
+            Marker(phrase: "cyclist", weight: 1.05, prefix: false),
+            Marker(phrase: "bicycle", weight: 1.05, prefix: false),
+            Marker(phrase: "mountain bike", weight: 1.20, prefix: false),
+            Marker(phrase: "mtb", weight: 1.20, prefix: false),
+            Marker(phrase: "bike", weight: 0.72, prefix: false),
+            Marker(phrase: "велосип", weight: 1.10, prefix: true)
+        ],
+        .motorized: [
+            Marker(phrase: "buggy", weight: 1.30, prefix: false),
+            Marker(phrase: "utv", weight: 1.30, prefix: false),
+            Marker(phrase: "atv", weight: 1.20, prefix: false),
+            Marker(phrase: "quadbike", weight: 1.20, prefix: false),
+            Marker(phrase: "quad bike", weight: 1.20, prefix: false),
+            Marker(phrase: "side by side", weight: 1.20, prefix: false),
+            Marker(phrase: "motocross", weight: 1.20, prefix: false),
+            Marker(phrase: "motorcycle", weight: 1.10, prefix: false),
+            Marker(phrase: "motorbike", weight: 1.10, prefix: false),
+            Marker(phrase: "driving", weight: 1.00, prefix: false),
+            Marker(phrase: "motor vehicle", weight: 0.80, prefix: false),
+            Marker(phrase: "automobile", weight: 0.65, prefix: false),
+            Marker(phrase: "car", weight: 0.55, prefix: false),
+            Marker(phrase: "багги", weight: 1.30, prefix: false),
+            Marker(phrase: "квадроцикл", weight: 1.30, prefix: true),
+            Marker(phrase: "мотоцикл", weight: 1.10, prefix: true),
+            Marker(phrase: "вождени", weight: 1.00, prefix: true)
+        ],
+        .paddling: [
+            Marker(phrase: "rafting", weight: 1.20, prefix: false),
+            Marker(phrase: "whitewater", weight: 1.10, prefix: false),
+            Marker(phrase: "kayak", weight: 1.10, prefix: true),
+            Marker(phrase: "canoe", weight: 1.10, prefix: true),
+            Marker(phrase: "paddling", weight: 1.00, prefix: false),
+            Marker(phrase: "сплав", weight: 1.20, prefix: true),
+            Marker(phrase: "каяк", weight: 1.10, prefix: true),
+            Marker(phrase: "каноэ", weight: 1.10, prefix: false)
+        ],
+        .fishing: [
+            Marker(phrase: "fishing", weight: 1.20, prefix: false),
+            Marker(phrase: "angler", weight: 1.05, prefix: true),
+            Marker(phrase: "рыбал", weight: 1.20, prefix: true),
+            Marker(phrase: "рыбак", weight: 1.05, prefix: true)
+        ],
+        .hiking: [
+            Marker(phrase: "hiking", weight: 1.20, prefix: false),
+            Marker(phrase: "trekking", weight: 1.15, prefix: false),
+            Marker(phrase: "hiker", weight: 1.05, prefix: true),
+            Marker(phrase: "поход", weight: 1.15, prefix: true),
+            Marker(phrase: "треккинг", weight: 1.15, prefix: false)
+        ],
+        .running: [
+            Marker(phrase: "running", weight: 1.20, prefix: false),
+            Marker(phrase: "runner", weight: 1.05, prefix: true),
+            Marker(phrase: "jogging", weight: 1.10, prefix: false),
+            Marker(phrase: "бег", weight: 1.10, prefix: true)
+        ],
+        .swimming: [
+            Marker(phrase: "swimming", weight: 1.20, prefix: false),
+            Marker(phrase: "swimmer", weight: 1.05, prefix: true),
+            Marker(phrase: "плаван", weight: 1.15, prefix: true),
+            Marker(phrase: "пловец", weight: 1.05, prefix: true)
+        ],
+        .winterSports: [
+            Marker(phrase: "skiing", weight: 1.20, prefix: false),
+            Marker(phrase: "skier", weight: 1.05, prefix: true),
+            Marker(phrase: "snowboard", weight: 1.20, prefix: true),
+            Marker(phrase: "лыж", weight: 1.15, prefix: true),
+            Marker(phrase: "сноуборд", weight: 1.20, prefix: true)
+        ],
+        .surfing: [
+            Marker(phrase: "surfing", weight: 1.20, prefix: false),
+            Marker(phrase: "surfer", weight: 1.05, prefix: true),
+            Marker(phrase: "серфинг", weight: 1.20, prefix: true)
+        ],
+        .climbing: [
+            Marker(phrase: "climbing", weight: 1.20, prefix: false),
+            Marker(phrase: "climber", weight: 1.05, prefix: true),
+            Marker(phrase: "bouldering", weight: 1.15, prefix: false),
+            Marker(phrase: "скалолазан", weight: 1.20, prefix: true)
+        ],
+        .equestrian: [
+            Marker(phrase: "horse riding", weight: 1.20, prefix: false),
+            Marker(phrase: "horseback", weight: 1.20, prefix: false),
+            Marker(phrase: "equestrian", weight: 1.15, prefix: false),
+            Marker(phrase: "верховая езда", weight: 1.20, prefix: false),
+            Marker(phrase: "конный", weight: 1.10, prefix: true)
+        ]
+    ]
+
+    static func evidence(in tokens: Set<String>) -> ActivityEvidence {
+        let phrases = Set(tokens.map(normalize).filter { !$0.isEmpty })
+        let words = Set(phrases.flatMap { $0.split(separator: " ").map(String.init) })
+        var scores: [ActivityFamily: Double] = [:]
+        var matched: [ActivityFamily: Set<String>] = [:]
+        for (family, familyMarkers) in markers {
+            for marker in familyMarkers where matches(marker, phrases: phrases, words: words) {
+                scores[family, default: 0] += marker.weight
+                matched[family, default: []].insert(marker.phrase)
+            }
+        }
+        let ranked = scores.sorted {
+            if abs($0.value - $1.value) > 0.000_001 { return $0.value > $1.value }
+            return $0.key.rawValue < $1.key.rawValue
+        }
+        guard let strongest = ranked.first, strongest.value >= 0.90 else {
+            return ActivityEvidence(family: nil, confidence: 0, matchedMarkers: [])
+        }
+        if ranked.count > 1 {
+            let runnerUp = ranked[1]
+            if runnerUp.value >= 0.90 && strongest.value - runnerUp.value < 0.45 {
+                return ActivityEvidence(
+                    family: nil,
+                    confidence: min(0.49, strongest.value / max(0.001, strongest.value + runnerUp.value)),
+                    matchedMarkers: matched.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+                )
+            }
+        }
+        return ActivityEvidence(
+            family: strongest.key,
+            confidence: min(1, strongest.value / 1.80),
+            matchedMarkers: matched[strongest.key] ?? []
+        )
+    }
+
+    static func canMergeClusterFamilies(_ first: Set<ActivityFamily>, _ second: Set<ActivityFamily>) -> Bool {
+        // Defensive invariant: a mixed component must never absorb another
+        // generic edge even if future callers introduce a different seed path.
+        guard first.count <= 1, second.count <= 1 else { return false }
+        return first.isEmpty || second.isEmpty || first == second
+    }
+
+    static func isSpecificActivityVocabulary(_ token: String) -> Bool {
+        let phrases = Set([normalize(token)])
+        let words = Set(phrases.flatMap { $0.split(separator: " ").map(String.init) })
+        return markers.values.joined().contains { matches($0, phrases: phrases, words: words) }
+    }
+
+    private static func matches(_ marker: Marker, phrases: Set<String>, words: Set<String>) -> Bool {
+        if marker.prefix {
+            return words.contains { $0.hasPrefix(marker.phrase) }
+        }
+        if marker.phrase.contains(" ") { return phrases.contains(marker.phrase) }
+        return words.contains(marker.phrase)
+    }
+
+    private static func normalize(_ value: String) -> String {
+        value.lowercased()
+            .folding(options: [.diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+}
+
 public struct SemanticSceneIndex: Sendable {
     private struct IndexPair: Hashable {
         var first: Int
@@ -134,9 +342,21 @@ public struct SemanticSceneIndex: Sendable {
     }
 
     private var candidates: [UUID: Candidate]
+    private var semanticTokensByCandidateID: [UUID: Set<String>]
+    private var activityEvidenceByCandidateID: [UUID: ActivityEvidence]
+    private var identityTokensByCandidateID: [UUID: Set<String>]
 
     public init(candidates: [Candidate]) {
-        self.candidates = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+        let indexed = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+        let semanticTokens = Dictionary(uniqueKeysWithValues: indexed.values.map { candidate in
+            (candidate.id, Self.makeSemanticTokens(candidate))
+        })
+        self.candidates = indexed
+        self.semanticTokensByCandidateID = semanticTokens
+        self.activityEvidenceByCandidateID = semanticTokens.mapValues {
+            ActivityCompatibilityContract.evidence(in: $0)
+        }
+        self.identityTokensByCandidateID = semanticTokens.mapValues(Self.makeIdentityTokens)
     }
 
     public func similarity(between first: Candidate, and second: Candidate) -> Double {
@@ -154,6 +374,67 @@ public struct SemanticSceneIndex: Sendable {
         return (jaccard * 0.72 + max(0, 1 - scoreDistance / 3) * 0.28).clamped01
     }
 
+    /// Near-duplicate detection needs stronger evidence than general visual
+    /// continuity. Action-camera embeddings share a large positive outdoor
+    /// baseline, so raw cosine alone can incorrectly merge a bicycle ride,
+    /// scenery and a buggy ride into one transitive cluster.
+    public func nearDuplicateSimilarity(between first: Candidate, and second: Candidate) -> Double {
+        let visual = similarity(between: first, and: second)
+        let leftTokens = semanticTokens(first)
+        let rightTokens = semanticTokens(second)
+        let leftActivity = activityEvidence(first)
+        let rightActivity = activityEvidence(second)
+        let activityCompatibility = leftActivity.compatibility(with: rightActivity)
+        if activityCompatibility == .incompatible {
+            return min(0.54, visual * 0.56)
+        }
+        if leftActivity.isAmbiguous || rightActivity.isAmbiguous {
+            // A frame carrying two equally strong activity labels is useful to
+            // the editor, but unsafe as a cross-video duplicate bridge.
+            return min(0.84, visual * 0.76)
+        }
+
+        let fullSemantic = jaccard(leftTokens, rightTokens)
+        if first.assetID == second.assetID {
+            if fullSemantic >= 0.34 || visual >= 0.975 {
+                return (visual * 0.90 + fullSemantic * 0.10).clamped01
+            }
+            return min(0.84, visual * 0.78 + fullSemantic * 0.08)
+        }
+
+        let exactVisual = visualEmbeddingSimilarity(between: first, and: second)
+        // Across cameras, an almost pixel-identical image remains a valid
+        // duplicate even when it has only generic labels. The semantic bar is
+        // deliberately high: one shared contextual word such as `blue_sky`
+        // must not become a bridge between unrelated activities.
+        if let exactVisual, exactVisual >= 0.992, fullSemantic >= 0.72 {
+            return (exactVisual * 0.94 + fullSemantic * 0.06).clamped01
+        }
+
+        // A recognized activity is independent corroboration of a strong
+        // visual match. Aliases such as `cycling` and `bicycle` intentionally
+        // collapse to the same family; broad object labels such as `vehicle`
+        // remain generic and cannot corroborate a duplicate by themselves.
+        if activityCompatibility == .compatible,
+           let exactVisual,
+           exactVisual >= 0.975,
+           fullSemantic >= 0.30 {
+            return (visual * 0.92 + min(1, fullSemantic + 0.28) * 0.08).clamped01
+        }
+
+        let leftIdentity = identityTokens(first)
+        let rightIdentity = identityTokens(second)
+        let sharedIdentity = leftIdentity.intersection(rightIdentity)
+        let identitySemantic = jaccard(leftIdentity, rightIdentity)
+        // Non-activity material needs at least two mutually consistent,
+        // content-specific signals. This prevents union-find transitivity from
+        // joining a whole outdoor archive through one recurring context tag.
+        if sharedIdentity.count >= 2, identitySemantic >= 0.50, visual >= 0.96 {
+            return (visual * 0.88 + identitySemantic * 0.12).clamped01
+        }
+        return min(0.84, visual * 0.74 + fullSemantic * 0.10)
+    }
+
     public func nearest(to candidate: Candidate, limit: Int = 8, excludingSameAsset: Bool = false) -> [SemanticSimilarityMatch] {
         candidates.values
             .filter { $0.id != candidate.id && (!excludingSameAsset || $0.assetID != candidate.assetID) }
@@ -163,33 +444,61 @@ public struct SemanticSceneIndex: Sendable {
             .map { $0 }
     }
 
+    public func nearestDuplicate(to candidate: Candidate, limit: Int = 8, excludingSameAsset: Bool = false) -> [SemanticSimilarityMatch] {
+        candidates.values
+            .filter { $0.id != candidate.id && (!excludingSameAsset || $0.assetID != candidate.assetID) }
+            .map { SemanticSimilarityMatch(candidateID: $0.id, similarity: nearDuplicateSimilarity(between: candidate, and: $0)) }
+            .sorted { $0.similarity > $1.similarity }
+            .prefix(max(0, limit))
+            .map { $0 }
+    }
+
     public func clusters(threshold: Double = 0.88) -> [SemanticSceneCluster] {
         let threshold = threshold.clamped01
-        let values = Array(candidates.values)
+        let values = candidates.values.sorted { $0.id.uuidString < $1.id.uuidString }
         var parent = Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0.id) })
+        var clusterFamilies = Dictionary(uniqueKeysWithValues: values.map { candidate in
+            let evidence = activityEvidence(candidate)
+            return (candidate.id, evidence.clusterFamilies)
+        })
         func root(_ id: UUID, in parent: [UUID: UUID]) -> UUID {
             var value = id
             while let next = parent[value], next != value { value = next }
             return value
         }
-        for pair in comparisonPairs(values) {
-                guard similarity(between: values[pair.first], and: values[pair.second]) >= threshold else { continue }
-                let lhs = root(values[pair.first].id, in: parent)
-                let rhs = root(values[pair.second].id, in: parent)
-                if lhs != rhs { parent[rhs] = lhs }
+        let pairs = comparisonPairs(values).sorted {
+            $0.first == $1.first ? $0.second < $1.second : $0.first < $1.first
+        }
+        for pair in pairs {
+            guard nearDuplicateSimilarity(between: values[pair.first], and: values[pair.second]) >= threshold else { continue }
+            let lhs = root(values[pair.first].id, in: parent)
+            let rhs = root(values[pair.second].id, in: parent)
+            guard lhs != rhs else { continue }
+            let leftFamilies = clusterFamilies[lhs, default: []]
+            let rightFamilies = clusterFamilies[rhs, default: []]
+            guard ActivityCompatibilityContract.canMergeClusterFamilies(leftFamilies, rightFamilies) else { continue }
+            parent[rhs] = lhs
+            clusterFamilies[lhs] = leftFamilies.union(rightFamilies)
+            clusterFamilies.removeValue(forKey: rhs)
         }
         let grouped = Dictionary(grouping: values) { root($0.id, in: parent) }
-        return grouped.values.filter { $0.count > 1 }.map { group in
+        return grouped.values.filter { group in
+            guard group.count > 1 else { return false }
+            let families = Set(group.compactMap { candidate in
+                activityEvidence(candidate).family
+            })
+            return families.count <= 1
+        }.map { group in
             let ordered = group.sorted { Self.bestTakeScore($0) > Self.bestTakeScore($1) }
             var similarities: [Double] = []
             if group.count <= 128 {
                 for first in group.indices {
                     for second in group.indices where second > first {
-                        similarities.append(similarity(between: group[first], and: group[second]))
+                        similarities.append(nearDuplicateSimilarity(between: group[first], and: group[second]))
                     }
                 }
             } else if let anchor = ordered.first {
-                similarities = ordered.dropFirst().map { similarity(between: anchor, and: $0) }
+                similarities = ordered.dropFirst().map { nearDuplicateSimilarity(between: anchor, and: $0) }
             }
             let stableID = ordered.map(\.id.uuidString).sorted().joined(separator: "|")
             return SemanticSceneCluster(
@@ -211,11 +520,56 @@ public struct SemanticSceneIndex: Sendable {
     }
 
     private func semanticTokens(_ candidate: Candidate) -> Set<String> {
+        semanticTokensByCandidateID[candidate.id] ?? Self.makeSemanticTokens(candidate)
+    }
+
+    private func activityEvidence(_ candidate: Candidate) -> ActivityEvidence {
+        activityEvidenceByCandidateID[candidate.id]
+            ?? ActivityCompatibilityContract.evidence(in: semanticTokens(candidate))
+    }
+
+    private func identityTokens(_ candidate: Candidate) -> Set<String> {
+        identityTokensByCandidateID[candidate.id] ?? Self.makeIdentityTokens(semanticTokens(candidate))
+    }
+
+    private static func makeSemanticTokens(_ candidate: Candidate) -> Set<String> {
         var result = Set(candidate.tags.map { $0.lowercased() })
         if let summary = candidate.insights?.sceneSummary {
             result.formUnion(summary.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { $0.count > 2 })
         }
         return result
+    }
+
+    private static func makeIdentityTokens(_ tokens: Set<String>) -> Set<String> {
+        let contextual: Set<String> = [
+            "4k", "action", "atmosphere", "blue", "blue_sky", "cloudy", "daytime",
+            "dirt", "dirt_road", "fence", "foliage", "forest", "g-force", "grass",
+            "headgear", "helmet", "horizontal", "land", "machine", "material", "outdoor",
+            "path", "people", "person", "plant", "road", "salient-object", "sky", "sport",
+            "structure", "telemetry-event", "tire", "trail", "vehicle", "wheel", "adult",
+            "automobile", "car", "clothing", "recreation", "bike", "bicycle", "buggy",
+            "cycling", "cyclist", "fishing", "kayak", "rafting", "utv", "side-by-side",
+            "велосипед", "велосипедист", "багги", "рыбалка", "сплав", "каяк"
+        ]
+        return tokens.filter { token in
+            token.count >= 3
+                && !contextual.contains(token)
+                && !token.hasPrefix("audio:")
+                && !ActivityCompatibilityContract.isSpecificActivityVocabulary(token)
+        }
+    }
+
+    private func visualEmbeddingSimilarity(between first: Candidate, and second: Candidate) -> Double? {
+        guard let lhs = first.insights?.visualEmbedding,
+              let rhs = second.insights?.visualEmbedding,
+              !lhs.values.isEmpty,
+              lhs.values.count == rhs.values.count else { return nil }
+        return lhs.cosineSimilarity(to: rhs)
+    }
+
+    private func jaccard(_ first: Set<String>, _ second: Set<String>) -> Double {
+        let union = first.union(second)
+        return union.isEmpty ? 0 : Double(first.intersection(second).count) / Double(union.count)
     }
 
     /// Exhaustive comparison is more accurate for the small candidate sets
@@ -482,44 +836,85 @@ public struct SubjectAwareReframeEngine: Sendable {
 
     public func plan(tracking: SubjectTrackingSummary, sourceAspectRatio: Double, targetAspectRatio: Double, isPhoto: Bool = false) -> SubjectReframePlan? {
         guard let subject = tracking.mainSubject,
-              let first = subject.observations.first?.region,
-              let last = subject.observations.last?.region,
+              sourceAspectRatio.isFinite, sourceAspectRatio > 0,
+              targetAspectRatio.isFinite, targetAspectRatio > 0,
               tracking.confidence >= 0.24 else { return nil }
+        let observations = subject.observations.filter { $0.confidence >= 0.24 }
+        guard let firstObservation = observations.first,
+              let lastObservation = observations.last else { return nil }
+        let first = firstObservation.region
+        let last = lastObservation.region
         let aspectDifference = abs(sourceAspectRatio - targetAspectRatio)
         // A video that already matches the timeline format needs neither a
         // format conversion nor a digital camera move. Reframing such clips
         // made ordinary 16:9 footage look accidentally cropped in Preview and
         // Export. Photos may still receive a deliberate Ken Burns treatment.
         guard isPhoto || aspectDifference > 0.04 else { return nil }
-        let lead = min(0.12, max(-0.12, subject.movementX * 0.42))
-        func safeCenter(_ region: NormalizedRegion, lead: Double) -> (Double, Double) {
-            let marginX = min(0.22, max(0.04, region.width * 0.60))
-            let marginY = min(0.18, max(0.04, region.height * 0.45))
-            return (
-                min(1 - marginX, max(marginX, region.centerX + lead)),
-                min(1 - marginY, max(marginY, region.centerY))
-            )
-        }
-        let start = safeCenter(first, lead: lead)
-        let end = safeCenter(last, lead: lead)
         // Aspect fill already supplies the format conversion. Additional zoom
         // is useful only when the subject is genuinely small, never when a
         // large face/object is already close to a crop edge.
         let meanArea = max(0.001, (first.area + last.area) / 2)
         let subjectScale = isPhoto && meanArea < 0.075 ? min(1.24, sqrt(0.075 / meanArea)) : 1
         let baseScale = subjectScale
+        let endScale = isPhoto ? min(3.5, baseScale * 1.06) : baseScale
+
+        // The aspect-fill viewport expressed in normalized source space. If
+        // the tracked subject cannot fit in that viewport with a small safety
+        // margin, decline the reframe so the caller can use `.fit` instead of
+        // a destructive crop.
+        let fillWidth = min(1, targetAspectRatio / sourceAspectRatio) / endScale
+        let fillHeight = min(1, sourceAspectRatio / targetAspectRatio) / endScale
+        let marginX = min(0.025, fillWidth * 0.06)
+        let marginY = min(0.025, fillHeight * 0.06)
+        guard observations.allSatisfy({ observation in
+            observation.region.width + marginX * 2 <= fillWidth + 0.000_001 &&
+                observation.region.height + marginY * 2 <= fillHeight + 0.000_001
+        }) else { return nil }
+
+        func safeCenter(_ region: NormalizedRegion, desiredX: Double, desiredY: Double) -> (Double, Double)? {
+            let lowerX = max(fillWidth / 2, region.x + region.width + marginX - fillWidth / 2)
+            let upperX = min(1 - fillWidth / 2, region.x - marginX + fillWidth / 2)
+            let lowerY = max(fillHeight / 2, region.y + region.height + marginY - fillHeight / 2)
+            let upperY = min(1 - fillHeight / 2, region.y - marginY + fillHeight / 2)
+            guard lowerX <= upperX, lowerY <= upperY else { return nil }
+            return (
+                min(upperX, max(lowerX, desiredX)),
+                min(upperY, max(lowerY, desiredY))
+            )
+        }
+
+        let lead = min(0.12, max(-0.12, subject.movementX * 0.42))
+        guard let start = safeCenter(first, desiredX: first.centerX + lead, desiredY: first.centerY) else { return nil }
+        let photoDrift = isPhoto ? min(0.07, max(0.025, abs(last.centerX - first.centerX) + 0.025)) : 0
+        let driftedEndX = last.centerX + lead + (subject.movementX >= 0 ? photoDrift : -photoDrift)
+        guard let end = safeCenter(last, desiredX: driftedEndX, desiredY: last.centerY) else { return nil }
+
+        // A two-keyframe plan must also protect the subject between its
+        // endpoints. Non-linear tracks fall back to `.fit` rather than letting
+        // a face leave the crop halfway through the shot.
+        let timeSpan = max(0.000_001, lastObservation.timestamp - firstObservation.timestamp)
+        guard observations.allSatisfy({ observation in
+            let progress = min(1, max(0, (observation.timestamp - firstObservation.timestamp) / timeSpan))
+            let centerX = start.0 + (end.0 - start.0) * progress
+            let centerY = start.1 + (end.1 - start.1) * progress
+            let region = observation.region
+            return region.x - marginX >= centerX - fillWidth / 2 - 0.000_001 &&
+                region.x + region.width + marginX <= centerX + fillWidth / 2 + 0.000_001 &&
+                region.y - marginY >= centerY - fillHeight / 2 - 0.000_001 &&
+                region.y + region.height + marginY <= centerY + fillHeight / 2 + 0.000_001
+        }) else { return nil }
+
         var reasons = ["Главный объект \(subject.label) удерживается в safe area"]
         if abs(subject.movementX) > 0.04 { reasons.append("Оставлено пространство по направлению движения") }
         if subject.kind == .face || subject.kind == .person { reasons.append("Защита лица/человека от crop") }
         if abs(sourceAspectRatio - targetAspectRatio) > 0.15 { reasons.append("Reframe \(String(format: "%.2f", sourceAspectRatio)):1 → \(String(format: "%.2f", targetAspectRatio)):1") }
-        let photoDrift = isPhoto ? min(0.07, max(0.025, abs(end.0 - start.0) + 0.025)) : 0
         return SubjectReframePlan(
             startCenterX: start.0,
             startCenterY: start.1,
-            endCenterX: min(0.96, max(0.04, end.0 + (subject.movementX >= 0 ? photoDrift : -photoDrift))),
+            endCenterX: end.0,
             endCenterY: end.1,
             startScale: baseScale,
-            endScale: isPhoto ? min(3.5, baseScale * 1.06) : baseScale,
+            endScale: endScale,
             targetAspectRatio: targetAspectRatio,
             confidence: tracking.confidence * 0.72 + subject.compositionQuality * 0.28,
             reasons: reasons
@@ -868,7 +1263,7 @@ public struct DeepMediaCacheRecord: Codable, Hashable, Sendable {
     public var audioEvents: [AudioEventObservation]
     public var audioAnalysis: AudioAnalysisSummary?
 
-    public init(contentHash: String, version: Int = 1, candidates: [String: CachedCandidateDeepEvidence] = [:], transcript: SpeechTranscript? = nil, audioEvents: [AudioEventObservation] = [], audioAnalysis: AudioAnalysisSummary? = nil) {
+    public init(contentHash: String, version: Int = DeepAnalysisCache.version, candidates: [String: CachedCandidateDeepEvidence] = [:], transcript: SpeechTranscript? = nil, audioEvents: [AudioEventObservation] = [], audioAnalysis: AudioAnalysisSummary? = nil) {
         self.contentHash = contentHash
         self.version = version
         self.candidates = candidates
@@ -879,7 +1274,7 @@ public struct DeepMediaCacheRecord: Codable, Hashable, Sendable {
 }
 
 public actor DeepAnalysisCache {
-    public static let version = 1
+    public static let version = 2
     private let rootURL: URL
     private let maximumMemoryEntries: Int
     private var memory: [String: DeepMediaCacheRecord] = [:]

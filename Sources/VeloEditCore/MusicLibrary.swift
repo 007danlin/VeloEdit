@@ -542,10 +542,13 @@ public struct LocalMusicSelector: Sendable {
         for directive: MusicDirective,
         from tracks: [LocalMusicTrack],
         excluding excludedID: UUID? = nil,
+        excludingIdentities: Set<String> = [],
         minimumScore: Double? = nil
     ) -> LocalMusicTrack? {
         let available = tracks.filter {
-            $0.id != excludedID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
+            $0.id != excludedID &&
+                !excludingIdentities.contains($0.selectionIdentity) &&
+                FileManager.default.fileExists(atPath: $0.localFileURL.path)
         }
         if let requestedID = directive.trackID,
            let requested = available.first(where: { $0.id == requestedID }) {

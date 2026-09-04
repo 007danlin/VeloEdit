@@ -65,6 +65,11 @@ enum ActivityPresentation {
     case silentEditor
 }
 
+@MainActor
+final class TimelinePlaybackClock: ObservableObject {
+    @Published fileprivate(set) var time: Double = 0
+}
+
 private extension DirectorMessage {
     init(projectMessage: ProjectDirectorMessage) {
         self.init(
@@ -121,9 +126,47 @@ private struct TimelineClipboard {
 
 @MainActor
 final class AppModel: ObservableObject {
+    private struct DirectorBriefFieldChanges: OptionSet {
+        let rawValue: Int
+
+        static let duration = DirectorBriefFieldChanges(rawValue: 1 << 0)
+        static let mood = DirectorBriefFieldChanges(rawValue: 1 << 1)
+        static let music = DirectorBriefFieldChanges(rawValue: 1 << 2)
+        static let sourceAudio = DirectorBriefFieldChanges(rawValue: 1 << 3)
+        static let titles = DirectorBriefFieldChanges(rawValue: 1 << 4)
+    }
+
+    private struct TimelineAIAnchor: Equatable {
+        struct Item: Equatable {
+            let id: UUID
+            let timelineStart: Double
+            let timelineDuration: Double
+        }
+
+        let timelineID: UUID
+        let primaryItems: [Item]
+
+        init(_ timeline: Timeline) {
+            timelineID = timeline.id
+            primaryItems = timeline.items
+                .filter { $0.overlay == nil && $0.kind != .title }
+                .map { Item(id: $0.id, timelineStart: $0.timelineStart, timelineDuration: $0.timelineDuration) }
+        }
+    }
+
     private struct PendingTimelineAIEdit {
         let instruction: String
         let range: ClosedRange<Double>?
+        let timelineAnchor: TimelineAIAnchor?
+        let selectedItemID: UUID?
+        let selectedCandidateID: UUID?
+        let playheadTime: Double
+        let preset: FilmPreset
+        let targetDuration: Double
+        let preferredMusicTrackID: UUID?
+        let directorBrief: DirectorBrief
+        let briefChanges: DirectorBriefFieldChanges
+        var retryCount: Int = 0
     }
 
     private static let recentProjectsKey = "recentProjectPaths.v1"
@@ -146,7 +189,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var selectedTitleTimelineItemIDs: Set<UUID> = []
     @Published private(set) var selectedTransitionTimelineItemIDs: Set<UUID> = []
     @Published var selectedSoundtrack = false
-    @Published private(set) var timelinePlayheadTime: Double = 0
+    let playbackClock = TimelinePlaybackClock()
+    private(set) var timelinePlayheadTime: Double {
+        get { playbackClock.time }
+        set { playbackClock.time = newValue }
+    }
     @Published var section: WorkspaceSection = .home
     @Published var prompt = AppModel.defaultDirectorBrief { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorInput = "" { didSet { scheduleWorkspaceAutosave() } }
@@ -166,6 +213,7 @@ final class AppModel: ObservableObject {
     @Published var feedback = "" { didSet { scheduleWorkspaceAutosave() } }
     @Published var preset: FilmPreset = .adventure { didSet { scheduleWorkspaceAutosave() } }
     @Published var targetMinutes = 2.0 { didSet { scheduleWorkspaceAutosave() } }
+    @Published var directorBrief: DirectorBrief = .legacyDefault { didSet { scheduleWorkspaceAutosave() } }
     @Published private(set) var directorMusicTrackID: UUID? { didSet { scheduleWorkspaceAutosave() } }
     @Published var status = "Создайте или откройте проект"
     @Published var progress = 0.0
@@ -210,13 +258,19 @@ final class AppModel: ObservableObject {
     private var pendingPlaybackSeekTimelineTime: Double?
     private var activeTask: Task<Void, Never>?
     private var pendingTimelineAIEdits: [PendingTimelineAIEdit] = []
+    private var activeTimelineAIEdit: PendingTimelineAIEdit?
+    private var needsTimelineAIRetryAfterManualEdit = false
     private var activityDismissTask: Task<Void, Never>?
     private var projectRestoreTask: Task<Void, Never>?
+    private var projectOpenTask: Task<Void, Never>?
     private var directorTask: Task<Void, Never>?
     private var workspaceAutosaveTask: Task<Void, Never>?
     private var timelineCommitTask: Task<Void, Never>?
     private var previewRebuildTask: Task<Void, Never>?
+    private var previewSeekTask: Task<Void, Never>?
+    private var lastPreviewSeekUptime: TimeInterval = 0
     private var timelineEditRevision: UInt64 = 0
+    private var operationGeneration: UInt64 = 0
     private let interactionLatencyRecorder = InteractionLatencyRecorder()
     private var isRestoringWorkspaceState = false
     private var directorRevision = 0
@@ -233,6 +287,12 @@ final class AppModel: ObservableObject {
     private let directorAgent = LocalDirectorAgent()
 
     var timeline: Timeline? { project?.timelines.last }
+    /// Long AI editor work is optimistic background work, not a reason to
+    /// freeze direct manipulation. Import/export and destructive jobs remain
+    /// exclusive, while timeline gestures stay available during editor AI.
+    var isTimelineInteractionBlocked: Bool {
+        isWorking && activityPresentation != .editorAI
+    }
     var selectedAsset: MediaAsset? { project?.assets.first { $0.id == selectedAssetID } }
     var selectedMusicTrack: LocalMusicTrack? { musicTracks.first { $0.id == selectedMusicTrackID } }
     var userMusicTracks: [LocalMusicTrack] {
@@ -245,10 +305,16 @@ final class AppModel: ObservableObject {
         musicTracks.filter { $0.sourceProvider.isOnline }
     }
     var directorMusicTrack: LocalMusicTrack? {
-        userMusicTracks.first { $0.id == directorMusicTrackID }
+        musicTracks.first { $0.id == directorMusicTrackID }
     }
     var directorMusicSelectionTitle: String {
-        directorMusicTrack.map { "Мой трек: \($0.title)" } ?? "Музыка: автоподбор"
+        if let directorMusicTrack { return "Трек: \(directorMusicTrack.title)" }
+        switch directorBrief.musicPolicy {
+        case .matchVideo: return "Музыка: автоподбор"
+        case .soft: return "Музыка: мягкая"
+        case .none: return "Музыка: выключена"
+        case .specificTrack: return "Музыка: трек недоступен"
+        }
     }
     var selectedTimelineItem: TimelineItem? { timeline?.items.first { $0.id == selectedTimelineItemID } }
     var selectedTimelineAudioClip: TimelineAudioClip? {
@@ -394,7 +460,9 @@ final class AppModel: ObservableObject {
         let currentAnalysisCount = project.assets.filter { asset in
             project.analyses.contains {
                 $0.assetID == asset.id && $0.analyzedContentHash == asset.contentHash &&
-                $0.schemaVersion == project.analysisSchemaVersion && analysis($0, satisfies: aiProfile)
+                $0.schemaVersion == project.analysisSchemaVersion &&
+                $0.deepMediaVersion == DeepAnalysisCache.version &&
+                analysis($0, satisfies: aiProfile)
             }
         }.count
         return FilmReadinessCalculator.value(
@@ -425,6 +493,7 @@ final class AppModel: ObservableObject {
                 $0.assetID == asset.id &&
                 $0.analyzedContentHash == asset.contentHash &&
                 $0.schemaVersion == project.analysisSchemaVersion &&
+                $0.deepMediaVersion == DeepAnalysisCache.version &&
                 analysis($0, satisfies: aiProfile)
             }
         }
@@ -437,8 +506,27 @@ final class AppModel: ObservableObject {
     init() {
         let paths = UserDefaults.standard.stringArray(forKey: Self.recentProjectsKey) ?? []
         recentProjectURLs = paths.map { URL(fileURLWithPath: $0) }
-        Task { await refreshDirectorRuntimeStatus() }
-        Task { await refreshLocalVisionModelStatus() }
+        migrateRecentProjectSummaries(at: recentProjectURLs)
+        Task(priority: .utility) { await refreshDirectorRuntimeStatus() }
+        Task(priority: .utility) { await refreshLocalVisionModelStatus(startService: false) }
+    }
+
+    private func migrateRecentProjectSummaries(at urls: [URL]) {
+        let legacyURLs = urls.filter {
+            FileManager.default.fileExists(atPath: $0.path) && ProjectSummary.load(from: $0) == nil
+        }
+        guard !legacyURLs.isEmpty else { return }
+        Task(priority: .utility) { @MainActor [weak self] in
+            await Task.detached(priority: .utility) {
+                for url in legacyURLs {
+                    _ = try? ProjectStore(open: url)
+                }
+            }.value
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            // Republish after migration so SwiftUI reconstructs card info.
+            self.recentProjectURLs = self.recentProjectURLs
+        }
     }
 
     func createProject() {
@@ -581,20 +669,46 @@ final class AppModel: ObservableObject {
     }
 
     private func performProjectOpen(at url: URL, destination: WorkspaceSection) {
-        Task {
+        projectOpenTask?.cancel()
+        status = "Открываю проект…"
+        projectOpenTask = Task { [weak self] in
+            guard let self else { return }
             await flushAutosave()
             do {
-                let store = try ProjectStore(open: url)
+                try Task.checkCancellation()
+                // A 30–80 MB manifest must never be decoded on MainActor.
+                let store = try await Task.detached(priority: .userInitiated) {
+                    try ProjectStore(open: url)
+                }.value
+                let loadedProject = await store.manifest
+                try Task.checkCancellation()
                 resetProjectUI()
-                pipeline = VeloEditPipeline(store: store)
+                let openedPipeline = VeloEditPipeline(store: store)
+                pipeline = openedPipeline
+                project = loadedProject
                 projectURL = url
                 rememberProject(url)
-                section = .media
-                await refresh()
-                await refreshLocalVisionModelStatus()
-                prepareOpenedProject()
+                let preferences = loadedProject.preferences
+                aiPowerMode = preferences.effectiveAIPowerMode
+                advancedAISettings = preferences.effectiveAdvancedAISettings
                 section = destination
+                status = "Проект открыт"
+                prepareOpenedProject()
+                projectOpenTask = nil
+
+                // Cached artwork appears independently; missing frames are
+                // regenerated later by prepareOpenedProject().
+                Task(priority: .utility) { [weak self] in
+                    async let thumbnails = openedPipeline.thumbnailURLs()
+                    async let timelineThumbnails = openedPipeline.cachedTimelineThumbnailURLs()
+                    let values = await (thumbnails, timelineThumbnails)
+                    guard let self, self.pipeline === openedPipeline else { return }
+                    self.thumbnailURLs = values.0
+                    self.timelineThumbnailURLs = values.1
+                }
             } catch {
+                guard !Task.isCancelled else { return }
+                projectOpenTask = nil
                 errorMessage = error.localizedDescription
             }
         }
@@ -694,8 +808,12 @@ final class AppModel: ObservableObject {
             musicTracks = if let pipeline { try await pipeline.musicTracks() } else { [] }
             musicLibraryStatus = if let pipeline { await pipeline.musicLibraryStatus() } else { MusicLibraryStatus() }
             if let directorMusicTrackID,
-               !userMusicTracks.contains(where: { $0.id == directorMusicTrackID }) {
+               !musicTracks.contains(where: { $0.id == directorMusicTrackID }) {
                 self.directorMusicTrackID = nil
+                if directorBrief.musicPolicy == .specificTrack {
+                    directorBrief.musicPolicy = .matchVideo
+                    directorBrief.musicTrackID = nil
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -801,7 +919,7 @@ final class AppModel: ObservableObject {
         Task { await refreshAIModelAvailability() }
     }
 
-    func refreshLocalVisionModelStatus() async {
+    func refreshLocalVisionModelStatus(startService: Bool = true) async {
         let profile = aiProfile
         guard profile.runtime != .mlx else {
             aiVisionModelInstalled = false
@@ -809,7 +927,10 @@ final class AppModel: ObservableObject {
             return
         }
         aiVisionModelStatus = "Проверяю \(profile.ollamaModelID)…"
-        let availability = await LocalAIModelManager.shared.availability(model: profile.ollamaModelID)
+        let availability = await LocalAIModelManager.shared.availability(
+            model: profile.ollamaModelID,
+            startService: startService
+        )
         guard profile.ollamaModelID == aiProfile.ollamaModelID else { return }
         aiVisionModelInstalled = availability.installed
         aiModelAvailability[aiPowerMode] = availability.installed
@@ -885,18 +1006,71 @@ final class AppModel: ObservableObject {
     }
 
     func setTargetMinutes(_ value: Double) {
-        let normalized = min(60, max(0.5, value))
-        guard abs(targetMinutes - normalized) > 0.001 else { return }
+        let normalized = min(60, max(5.0 / 60.0, value))
+        let duration = normalized * 60
+        let changed = abs(targetMinutes - normalized) > 0.001 ||
+            abs(directorBrief.requestedDuration - duration) > 0.001
+        guard changed else { return }
         targetMinutes = normalized
+        directorBrief.requestedDuration = duration
         markFilmNeedsRebuild("Длительность изменена — примените правки к фильму")
+    }
+
+    func setDirectorCanvasFormat(_ format: DirectorCanvasFormat) {
+        guard directorBrief.canvasFormat != format else { return }
+        directorBrief.canvasFormat = format
+        markFilmNeedsRebuild("Формат кадра изменён — примените правки к фильму")
+    }
+
+    func setDirectorNarrativeMood(_ mood: DirectorNarrativeMood) {
+        guard directorBrief.mood != mood else { return }
+        directorBrief.mood = mood
+        markFilmNeedsRebuild("Настроение фильма изменено — примените правки к фильму")
+    }
+
+    func setDirectorMusicPolicy(_ policy: DirectorMusicPolicy) {
+        var updated = directorBrief
+        updated.musicPolicy = policy
+        if policy == .specificTrack {
+            updated.musicTrackID = directorMusicTrackID
+            if updated.musicTrackID == nil { updated.musicPolicy = .matchVideo }
+        } else {
+            updated.musicTrackID = nil
+        }
+        let nextTrackID = updated.musicPolicy == .specificTrack ? updated.musicTrackID : nil
+        guard updated != directorBrief || nextTrackID != directorMusicTrackID else { return }
+        directorBrief = updated
+        directorMusicTrackID = nextTrackID
+        markFilmNeedsRebuild("Настройка музыки изменена — примените правки к фильму")
+    }
+
+    func setDirectorSourceAudioPolicy(_ policy: DirectorSourceAudioPolicy) {
+        guard directorBrief.sourceAudioPolicy != policy else { return }
+        directorBrief.sourceAudioPolicy = policy
+        markFilmNeedsRebuild("Звук исходников изменён — примените правки к фильму")
+    }
+
+    func setDirectorTitlePolicy(_ policy: DirectorTitlePolicy) {
+        guard directorBrief.titlePolicy != policy else { return }
+        directorBrief.titlePolicy = policy
+        markFilmNeedsRebuild("Количество титров изменено — примените правки к фильму")
     }
 
     func selectDirectorMusicTrack(_ trackID: UUID?) {
         let validatedID = trackID.flatMap { id in
             userMusicTracks.contains(where: { $0.id == id }) ? id : nil
         }
-        guard directorMusicTrackID != validatedID else { return }
+        var updated = directorBrief
+        if let validatedID {
+            updated.musicPolicy = .specificTrack
+            updated.musicTrackID = validatedID
+        } else {
+            updated.musicPolicy = .matchVideo
+            updated.musicTrackID = nil
+        }
+        guard directorMusicTrackID != validatedID || directorBrief != updated else { return }
         directorMusicTrackID = validatedID
+        directorBrief = updated
         if timeline != nil {
             let message = validatedID == nil
                 ? "Включён автоподбор музыки — примените правки к фильму"
@@ -934,7 +1108,7 @@ final class AppModel: ObservableObject {
             let naturalLanguageBaseline = self.timeline
             var naturalExecution: NaturalLanguageEditResult?
             var naturalLanguageApplied = false
-            if requestMode == .edit, let pipeline, self.timeline != nil {
+            if requestMode == .edit, let pipeline, self.timeline != nil, !self.isWorking {
                 do {
                     self.directorStatus = "Применяю минимальную правку к Timeline"
                     let execution = try await pipeline.applyNaturalLanguageEdit(
@@ -1026,7 +1200,12 @@ final class AppModel: ObservableObject {
                             feedback: reply.normalizedBrief?.isEmpty == false ? reply.normalizedBrief! : exchange.text,
                             selectedCandidateID: selectedCandidateID,
                             preset: self.preset,
-                            targetDuration: self.targetMinutes * 60
+                            targetDuration: self.directorBrief.requestedDuration,
+                            directorBrief: self.directorBrief,
+                            ignoredFeedbackConstraints: Self.ignoredStoryConstraints(
+                                for: exchange.text,
+                                commandCategories: Set(execution.plan.commands.map(\.semanticCategory))
+                            )
                         )
                         let refined = try await pipeline.applyNaturalLanguageEdit(
                             exchange.text,
@@ -1098,6 +1277,7 @@ final class AppModel: ObservableObject {
                self.project?.assets.isEmpty == false {
                 self.createFilm()
             }
+            self.startNextQueuedTimelineAIEdit()
         }
     }
 
@@ -1106,12 +1286,14 @@ final class AppModel: ObservableObject {
         directorRuntimeStatus = await directorAgent.runtimeStatus()
     }
 
-    func createFilm() {
+    func createFilm(forceFullRemake: Bool = false) {
         guard let pipeline, !isWorking, !isDirectorResponding else { return }
         let isRebuildingFilm = timeline != nil
+        let timelineToAvoid = forceFullRemake ? timeline : nil
         let selectedDirectorTrack = directorMusicTrack
         let musicRequest = ([prompt] + pendingDirectorInstructions).joined(separator: "\n")
-        if selectedDirectorTrack == nil,
+        if directorBrief.musicPolicy != .none,
+           selectedDirectorTrack == nil,
            MusicPromptInterpreter().interpret(
             prompt: musicRequest,
             preset: preset,
@@ -1135,6 +1317,8 @@ final class AppModel: ObservableObject {
                     self.isDirectorResponding = false
                 } else if !isRebuildingFilm {
                     self.appendDirectorNote("Начинаю монтаж по текущему описанию. Сначала проверю анализ исходников, затем соберу историю и сразу подготовлю просмотр.")
+                } else if forceFullRemake {
+                    self.appendDirectorNote("Начинаю заново: сохраню готовый анализ исходников, но построю новую историю и выберу другую режиссёрскую трактовку.")
                 }
                 try Task.checkCancellation()
                 self.progress = 0.10
@@ -1143,10 +1327,11 @@ final class AppModel: ObservableObject {
                 let pendingInstructionCount = self.pendingDirectorInstructions.count
                 let pendingInstructions = self.pendingDirectorInstructions
                 let pendingCommandGroups = self.pendingDirectorCommandGroups
-                let shouldReviseExistingFilm = self.timeline != nil && self.hasPendingFilmChanges
+                let shouldReviseExistingFilm = !forceFullRemake && self.timeline != nil && self.hasPendingFilmChanges
                 let prompt = self.prompt
                 let preset = self.preset
-                let targetDuration = self.targetMinutes * 60
+                let directorBrief = self.directorBrief
+                let targetDuration = directorBrief.requestedDuration
                 let previousTimeline = self.timeline
                 let selectedCandidateID = previousTimeline?.items.first(where: { $0.id == self.selectedTimelineItemID })?.candidateID
                 let editorCommands = Self.resolvedEditorCommands(
@@ -1182,6 +1367,8 @@ final class AppModel: ObservableObject {
                 let baseTimeline: Timeline
                 let canEditExistingTimelineInPlace = shouldReviseExistingFilm &&
                     previousTimeline != nil &&
+                    previousTimeline?.width == directorBrief.canvasFormat.width &&
+                    previousTimeline?.height == directorBrief.canvasFormat.height &&
                     !pendingInstructions.isEmpty &&
                     !editorCommands.isEmpty
                 if canEditExistingTimelineInPlace, let previousTimeline {
@@ -1198,14 +1385,17 @@ final class AppModel: ObservableObject {
                         feedback: feedback,
                         preset: preset,
                         targetDuration: targetDuration,
-                        preferredMusicTrackID: selectedDirectorTrack?.id
+                        preferredMusicTrackID: selectedDirectorTrack?.id,
+                        directorBrief: directorBrief
                     )
                 } else {
                     baseTimeline = try await pipeline.createFilm(
                         prompt: prompt,
                         preset: preset,
                         targetDuration: targetDuration,
-                        preferredMusicTrackID: selectedDirectorTrack?.id
+                        preferredMusicTrackID: selectedDirectorTrack?.id,
+                        directorBrief: directorBrief,
+                        avoidingTimeline: timelineToAvoid
                     )
                 }
                 self.progress = 0.73
@@ -1227,6 +1417,7 @@ final class AppModel: ObservableObject {
                         trackTitle: selectedDirectorTrack.title
                     ))
                 }
+                _ = try await pipeline.enforceDirectorBrief(directorBrief)
                 await self.refresh()
                 let timeline = self.timeline ?? baseTimeline
                 self.progress = 0.78
@@ -1258,71 +1449,15 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func remakeFilmFromScratch() {
+        guard timeline != nil, !isWorking, !isDirectorResponding else { return }
+        createFilm(forceFullRemake: true)
+    }
+
     func regenerate() {
         let requestedFeedback = feedback.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let pipeline, !isWorking, !requestedFeedback.isEmpty else { return }
-        markFilmNeedsRebuild("Правка принята — пересобираю фильм", instruction: requestedFeedback)
-        let revision = directorRevision
-        let pendingInstructionCount = pendingDirectorInstructions.count
-        let previousTimeline = timeline
-        progress = 0
-        isCreatingFilm = true
-        run("Пересобираю без повторного анализа", presentation: .editorAI) {
-            defer { self.isCreatingFilm = false }
-            let selectedCandidate = previousTimeline?.items.first(where: { $0.id == self.selectedTimelineItemID })?.candidateID
-            let commandPrompt = self.selectedTimelineItemID == nil
-                ? requestedFeedback
-                : "выбранный фрагмент, \(requestedFeedback)"
-            let editorCommands = EditorCommandParser().parse(commandPrompt, preset: self.preset)
-            self.progress = 0.12
-            let baseTimeline: Timeline
-            if !editorCommands.isEmpty, let previousTimeline {
-                self.status = "Сохраняю текущий монтаж и применяю локальные параметры"
-                baseTimeline = previousTimeline
-            } else {
-                self.status = "Применяю правку к режиссёрскому плану"
-                baseTimeline = try await pipeline.regenerate(
-                    feedback: requestedFeedback,
-                    selectedCandidateID: selectedCandidate,
-                    preset: self.preset,
-                    targetDuration: self.targetMinutes * 60
-                )
-            }
-            self.progress = 0.62
-            self.status = "Исполняю команды видеоредактора из правки"
-            let commandReport = try await pipeline.applyEditorCommands(
-                editorCommands,
-                selectedItemID: self.selectedTimelineItemID,
-                selectedCandidateID: selectedCandidate,
-                createCheckpoint: true
-            )
-            await self.refresh()
-            let timeline = self.timeline ?? baseTimeline
-            self.progress = 0.72
-            self.activityTitle = "Обновляю просмотр"
-            self.status = "Соединяю обновлённый монтаж"
-            let playback = try await pipeline.makePlayback { [weak self] item in
-                Task { @MainActor in self?.setProgress(item, base: 0.72, span: 0.27, phase: "Просмотр") }
-            }
-            self.setPlayback(playback)
-            self.recordTimelineChange(from: previousTimeline)
-            if let previousTimeline, let current = self.timeline {
-                _ = try? await pipeline.recordPreferenceSignals(before: previousTimeline, after: current, source: .regenerate)
-            }
-            self.feedback = ""
-            if !self.prompt.localizedCaseInsensitiveContains(requestedFeedback) {
-                self.prompt += "\n\(requestedFeedback)"
-            }
-            self.progress = 1
-            self.status = "Фильм обновлён: \(timeline.items.count) фрагментов"
-            self.completeFilmBuild(
-                revision: revision,
-                consumedInstructionCount: pendingInstructionCount,
-                previousTimeline: previousTimeline,
-                timeline: timeline,
-                commandReport: commandReport
-            )
-        }
+        guard !isWorking, !requestedFeedback.isEmpty else { return }
+        submitTimelineAIEdit(requestedFeedback)
     }
 
     /// Accept an edit from the timeline composer even while another pipeline
@@ -1331,9 +1466,86 @@ final class AppModel: ObservableObject {
     func submitTimelineAIEdit(_ instruction: String, range: ClosedRange<Double>? = nil) {
         let clean = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+
+        let parsedCommands = EditorCommandParser().parse(clean, preset: preset)
+        let requestsDownloadableMusic = range == nil && parsedCommands.contains { command in
+            if case .setMusic(let directive?) = command { return directive.trackID == nil }
+            return false
+        }
+        guard !requestsDownloadableMusic || confirmFreeToUseLicenseIfNeeded() else { return }
+
+        // A whole-film duration belongs to the director brief. A command such
+        // as “сделай этот клип 5 секунд” is deliberately kept clip-local.
+        let hasClipDurationCommand = parsedCommands.contains { command in
+            if case .setDuration = command { return true }
+            return false
+        }
+        let requestedFilmDuration: Double? = if range == nil,
+                                               !hasClipDurationCommand,
+                                               AutonomousDurationOptimizer.requestContainsExplicitDuration(clean) {
+            min(3_600, max(5, PromptInterpreter().interpret(prompt: clean, preset: preset).targetDuration))
+        } else {
+            nil
+        }
+        var requestedDirectorBrief = directorBrief
+        var requestedPreferredMusicTrackID = directorMusicTrack?.id
+        var briefChanges: DirectorBriefFieldChanges = []
+        if range == nil {
+            for command in parsedCommands {
+                switch command {
+                case .setMusic(nil):
+                    briefChanges.insert(.music)
+                    requestedDirectorBrief.musicPolicy = .none
+                    requestedDirectorBrief.musicTrackID = nil
+                    requestedPreferredMusicTrackID = nil
+                case .setMusic(let directive?):
+                    briefChanges.insert(.music)
+                    requestedDirectorBrief.musicPolicy = .matchVideo
+                    requestedDirectorBrief.musicTrackID = nil
+                    requestedPreferredMusicTrackID = directive.trackID
+                case .setOriginalAudioVolume(let volume):
+                    briefChanges.insert(.sourceAudio)
+                    requestedDirectorBrief.sourceAudioPolicy = volume < 0.01 ? .mute : volume < 0.75 ? .duck : .preserve
+                case .removeTitles:
+                    briefChanges.insert(.titles)
+                    requestedDirectorBrief.titlePolicy = .none
+                case .addTitle:
+                    briefChanges.insert(.titles)
+                    if requestedDirectorBrief.titlePolicy == .none { requestedDirectorBrief.titlePolicy = .minimal }
+                default:
+                    break
+                }
+            }
+
+            if let requestedMood = Self.narrativeMood(requestedBy: clean) {
+                briefChanges.insert(.mood)
+                requestedDirectorBrief.mood = requestedMood
+            }
+            if let requestedFilmDuration {
+                // The setup slider deliberately starts at 30 seconds, but a
+                // Montage comment may request any engine-supported duration
+                // down to five seconds.
+                briefChanges.insert(.duration)
+                requestedDirectorBrief.requestedDuration = requestedFilmDuration
+            }
+        }
+
         feedback = ""
-        let edit = PendingTimelineAIEdit(instruction: clean, range: range)
-        guard !isWorking else {
+        let selectedItem = timeline?.items.first { $0.id == selectedTimelineItemID }
+        let edit = PendingTimelineAIEdit(
+            instruction: clean,
+            range: range,
+            timelineAnchor: timeline.map(TimelineAIAnchor.init),
+            selectedItemID: selectedItem?.id,
+            selectedCandidateID: selectedItem?.candidateID,
+            playheadTime: timelinePlayheadTime,
+            preset: preset,
+            targetDuration: requestedFilmDuration ?? requestedDirectorBrief.requestedDuration,
+            preferredMusicTrackID: requestedPreferredMusicTrackID,
+            directorBrief: requestedDirectorBrief,
+            briefChanges: briefChanges
+        )
+        guard !isWorking, !isDirectorResponding else {
             pendingTimelineAIEdits.append(edit)
             queuedTimelineAIEditCount = pendingTimelineAIEdits.count
             status = "Правка монтажа поставлена в очередь"
@@ -2857,7 +3069,35 @@ final class AppModel: ObservableObject {
            !Self.isActivelyPlaying(player) {
             preparePreviewPoster(for: playback, playerItem: playerItem, at: playbackTime)
         }
-        previewPlayer?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        schedulePreviewSeek(to: target, frameRate: timeline.frameRate)
+    }
+
+    /// Coalesces dense drag/slider events to the display cadence. The playhead
+    /// state still updates immediately, while AVFoundation avoids starting and
+    /// cancelling dozens of exact decoder seeks for one pointer movement.
+    private func schedulePreviewSeek(to target: CMTime, frameRate: Double) {
+        previewSeekTask?.cancel()
+        let now = ProcessInfo.processInfo.systemUptime
+        let cadence = 1.0 / 60.0
+        let elapsed = now - lastPreviewSeekUptime
+        if elapsed >= cadence {
+            performPreviewSeek(to: target, frameRate: frameRate)
+            return
+        }
+
+        let delay = max(0, cadence - elapsed)
+        previewSeekTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.performPreviewSeek(to: target, frameRate: frameRate)
+        }
+    }
+
+    private func performPreviewSeek(to target: CMTime, frameRate: Double) {
+        previewSeekTask = nil
+        lastPreviewSeekUptime = ProcessInfo.processInfo.systemUptime
+        let tolerance = CMTime(seconds: 1 / max(15, frameRate), preferredTimescale: 600)
+        previewPlayer?.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
     var shouldHandleTimelineShortcuts: Bool {
@@ -2940,11 +3180,197 @@ final class AppModel: ObservableObject {
     /// The magic brush is intentionally a local operation. The pipeline slices
     /// boundary clips before applying commands, then rebuilds the Player without
     /// moving away from the frame where the user invoked the change.
-    func applyMagicBrush(_ instruction: String, to range: ClosedRange<Double>) {
-        let clean = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func applyTimelineAIComment(_ edit: PendingTimelineAIEdit) {
+        let clean = edit.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let pipeline, !clean.isEmpty, !isWorking else { return }
+
+        let previousTimeline = timeline
+        let preservedTimelineTime = edit.playheadTime
+        let shouldResumePlayback = previewPlayer.map(Self.isActivelyPlaying) ?? false
+        let normalizedInstruction = clean.lowercased().replacingOccurrences(of: "ё", with: "е")
+        let explicitlyUsesSelection = [
+            "выбранн", "этот клип", "этого клипа", "этом клипе",
+            "этот фрагмент", "этого фрагмента", "этом фрагменте",
+            "этот момент", "этого момента", "у него", "на нем", "сделай его"
+        ].contains(where: normalizedInstruction.contains)
+        let selectedItemID: UUID? = {
+            guard explicitlyUsesSelection else { return nil }
+            if let id = edit.selectedItemID,
+               previousTimeline?.items.contains(where: { $0.id == id }) == true {
+                return id
+            }
+            if let candidateID = edit.selectedCandidateID {
+                return previousTimeline?.items.first(where: { $0.candidateID == candidateID })?.id
+            }
+            return nil
+        }()
+
+        progress = 0
+        isCreatingFilm = true
+        run("ИИ применяет комментарий к монтажу", presentation: .editorAI) {
+            defer { self.isCreatingFilm = false }
+            self.activityTitle = "Понимаю монтажную правку"
+            self.status = "Локальный ИИ переводит пожелание в безопасный план действий"
+            var context = self.directorContext()
+            if !explicitlyUsesSelection {
+                context.selectedItemSummary = nil
+                context.neighboringItemSummaries = []
+            }
+            let reply = await self.directorAgent.respond(
+                to: clean,
+                context: context,
+                mode: .edit,
+                recordInHistory: false
+            )
+            try Task.checkCancellation()
+            self.directorRuntimeStatus = reply.runtimeLabel
+            self.progress = 0.16
+            let deterministicCommands = EditorCommandParser().parse(clean, preset: edit.preset)
+            let deterministicCategories = Set(deterministicCommands.map(\.semanticCategory))
+            let requestsWholeFilmDuration = AutonomousDurationOptimizer.requestContainsExplicitDuration(clean)
+                && !deterministicCommands.contains(where: { $0.semanticCategory == "duration" })
+            let supplementalCommands = reply.commands.filter {
+                !deterministicCategories.contains($0.semanticCategory)
+                    && !(requestsWholeFilmDuration && $0.semanticCategory == "duration")
+            }
+
+            let planningPlan: NaturalLanguageEditingPlan? = if let currentProject = self.project,
+                                                               let currentTimeline = previousTimeline {
+                NaturalLanguageDirector().plan(
+                    input: NaturalLanguageDirectorInput(
+                        userRequest: clean,
+                        currentProject: currentProject,
+                        timeline: currentTimeline,
+                        selectedItemID: selectedItemID,
+                        playheadTime: edit.playheadTime
+                    ),
+                    supplementalCommands: supplementalCommands
+                )
+            } else {
+                nil
+            }
+
+            var finalExecution: NaturalLanguageEditResult?
+            var didRebuild = false
+            var refinementFailure: String?
+
+            if planningPlan?.requiresBackgroundRefinement == true {
+                self.progress = 0.36
+                self.activityTitle = "Уточняю режиссёрское решение"
+                self.status = "Пересобираю историю без повторного анализа исходников"
+                let normalized = reply.normalizedBrief?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let feedback = if let normalized,
+                                  !normalized.isEmpty,
+                                  normalized.localizedCaseInsensitiveCompare(clean) != .orderedSame {
+                    "Режиссёрская интерпретация: \(normalized)\nТочный запрос пользователя: \(clean)"
+                } else {
+                    clean
+                }
+                _ = try await pipeline.regenerate(
+                    feedback: feedback,
+                    preset: edit.preset,
+                    targetDuration: edit.targetDuration,
+                    preferredMusicTrackID: edit.preferredMusicTrackID,
+                    directorBrief: edit.directorBrief,
+                    ignoredFeedbackConstraints: Self.ignoredStoryConstraints(
+                        for: clean,
+                        commandCategories: deterministicCategories
+                    )
+                )
+                didRebuild = true
+                await self.refresh()
+                let refinedSelectedItemID = explicitlyUsesSelection
+                    ? edit.selectedCandidateID.flatMap { candidateID in
+                        self.timeline?.items.first(where: { $0.candidateID == candidateID })?.id
+                    }
+                    : nil
+                self.progress = 0.76
+                self.activityTitle = "Применяю точные монтажные команды"
+                self.status = "Сохраняю фильтры, звук, титры, переходы и эффекты из комментария"
+                if Task.isCancelled {
+                    refinementFailure = "дополнительное уточнение отменено после основной пересборки"
+                } else {
+                    do {
+                        finalExecution = try await pipeline.applyNaturalLanguageEdit(
+                            clean,
+                            selectedItemID: refinedSelectedItemID,
+                            playheadTime: edit.playheadTime,
+                            supplementalCommands: supplementalCommands,
+                            createCheckpoint: false,
+                            recordHistory: true
+                        )
+                    } catch {
+                        refinementFailure = error.localizedDescription
+                    }
+                }
+            } else {
+                self.activityTitle = "Применяю правку"
+                self.status = "Обновляю только затронутые слои Timeline"
+                finalExecution = try await pipeline.applyNaturalLanguageEdit(
+                    clean,
+                    selectedItemID: selectedItemID,
+                    playheadTime: edit.playheadTime,
+                    supplementalCommands: supplementalCommands,
+                    createCheckpoint: true,
+                    recordHistory: true
+                )
+            }
+
+            await self.refresh()
+            // The pipeline checks cancellation before its atomic store commit.
+            // Once it returns, always reconcile AppModel with the durable state
+            // instead of reporting a cancellation against an already-saved edit.
+            self.directorBrief = edit.directorBrief
+            self.targetMinutes = edit.directorBrief.requestedDuration / 60
+            self.directorMusicTrackID = edit.directorBrief.musicPolicy == .specificTrack
+                ? edit.directorBrief.musicTrackID
+                : nil
+            let changed = previousTimeline != self.timeline
+            if changed {
+                self.recordTimelineChange(from: previousTimeline)
+                if let previousTimeline, let current = self.timeline {
+                    _ = try? await pipeline.recordPreferenceSignals(
+                        before: previousTimeline,
+                        after: current,
+                        source: didRebuild ? .regenerate : .acceptedEdit
+                    )
+                }
+                self.progress = 0.84
+                self.activityTitle = "Обновляю просмотр"
+                self.status = "Собираю Preview из изменённого Timeline"
+                await self.rebuildPlaybackIfPossible(
+                    show: false,
+                    restoringTimelineTime: preservedTimelineTime,
+                    resumePlayback: shouldResumePlayback
+                )
+                self.showViewer = true
+            }
+
+            if (changed || didRebuild),
+               !self.prompt.localizedCaseInsensitiveContains(clean) {
+                self.prompt += "\n\(clean)"
+            }
+            self.progress = 1
+            let pendingSuffix = self.hasPendingFilmChanges
+                ? " · другие отложенные пожелания сохранены"
+                : ""
+            if let refinementFailure {
+                self.status = "Основная правка применена; глубокое уточнение не завершено: \(refinementFailure)\(pendingSuffix)"
+            } else if didRebuild {
+                self.status = "Готово — режиссёрская правка применена, Timeline и Preview обновлены\(pendingSuffix)"
+            } else {
+                self.status = "\(finalExecution?.userSummary ?? "Запрос не потребовал изменений Timeline")\(pendingSuffix)"
+            }
+        }
+    }
+
+    private func applyMagicBrush(_ edit: PendingTimelineAIEdit) {
+        guard let range = edit.range else { return }
+        let clean = edit.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let pipeline, !clean.isEmpty, !isWorking else { return }
         let previousTimeline = timeline
-        let preservedTimelineTime = timelinePlayheadTime
+        let preservedTimelineTime = edit.playheadTime
         let shouldResumePlayback = previewPlayer.map(Self.isActivelyPlaying) ?? false
         run("Волшебная кисть изменяет выбранный диапазон", presentation: .editorAI) {
             var context = self.directorContext()
@@ -2952,12 +3378,20 @@ final class AppModel: ObservableObject {
             context.playheadTime = range.lowerBound
             let reply = await self.directorAgent.respond(
                 to: "Измени только выбранный диапазон Timeline: \(clean)",
-                context: context
+                context: context,
+                recordInHistory: false
             )
-            let deterministic = EditorCommandParser().parse("выбранный фрагмент, \(clean)", preset: self.preset)
-            let structuredCategories = Set(reply.commands.map(\.semanticCategory))
-            let commands = deterministic.filter { !structuredCategories.contains($0.semanticCategory) } + reply.commands
+            try Task.checkCancellation()
+            let deterministic = EditorCommandParser().parse("выбранный фрагмент, \(clean)", preset: edit.preset)
+            let deterministicCategories = Set(deterministic.map(\.semanticCategory))
+            let commands = deterministic + reply.commands.filter {
+                !deterministicCategories.contains($0.semanticCategory)
+            }
             let report = try await pipeline.applyEditorCommands(commands, timelineRange: range)
+            guard report.hasChanges else {
+                self.status = report.ignored.first ?? "Запрос не потребовал изменений в выделенном диапазоне"
+                return
+            }
             await self.refresh()
             self.recordTimelineChange(from: previousTimeline)
             if let previousTimeline, let current = self.timeline {
@@ -2976,7 +3410,7 @@ final class AppModel: ObservableObject {
     }
 
     func undoTimelineEdit() {
-        guard !isWorking, pipeline != nil, let current = timeline, let target = undoTimelineHistory.popLast() else { return }
+        guard !isTimelineInteractionBlocked, pipeline != nil, let current = timeline, let target = undoTimelineHistory.popLast() else { return }
         redoTimelineHistory.append(current)
         updateTimelineHistoryAvailability()
         editTimelineOptimistically(
@@ -2990,7 +3424,7 @@ final class AppModel: ObservableObject {
     }
 
     func redoTimelineEdit() {
-        guard !isWorking, pipeline != nil, let current = timeline, let target = redoTimelineHistory.popLast() else { return }
+        guard !isTimelineInteractionBlocked, pipeline != nil, let current = timeline, let target = redoTimelineHistory.popLast() else { return }
         undoTimelineHistory.append(current)
         updateTimelineHistoryAvailability()
         editTimelineOptimistically(
@@ -3656,6 +4090,16 @@ final class AppModel: ObservableObject {
         let directive = style.map { MusicDirective(style: $0, bpm: Self.defaultBPM(for: $0), volume: existingVolume) }
         editTimeline(style == nil ? "Убираю музыку" : "Добавляю музыку") {
             try await pipeline.updateMusic(directive)
+            if style == nil {
+                self.directorBrief.musicPolicy = .none
+                self.directorBrief.musicTrackID = nil
+                self.directorMusicTrackID = nil
+            } else {
+                let resolvedTrackID = await pipeline.snapshot().timelines.last?.music?.trackID
+                self.directorBrief.musicPolicy = resolvedTrackID == nil ? .matchVideo : .specificTrack
+                self.directorBrief.musicTrackID = resolvedTrackID
+                self.directorMusicTrackID = resolvedTrackID
+            }
         }
     }
 
@@ -3667,8 +4111,12 @@ final class AppModel: ObservableObject {
                 MusicDirective(style: $0.suggestedStyle, bpm: $0.bpm, volume: currentVolume, trackID: $0.id, trackTitle: $0.title)
             }
         }
+        let resolvedTrackID = directive?.trackID
         editTimeline(directive == nil ? "Убираю музыку" : "Выбираю локальный трек") {
             try await pipeline.updateMusic(directive)
+            self.directorBrief.musicPolicy = resolvedTrackID == nil ? .none : .specificTrack
+            self.directorBrief.musicTrackID = resolvedTrackID
+            self.directorMusicTrackID = resolvedTrackID
         }
     }
 
@@ -3681,7 +4129,12 @@ final class AppModel: ObservableObject {
     }
 
     func setOriginalAudioEnabled(_ enabled: Bool) {
-        editTimelineOptimistically(enabled ? "Включаю звук исходников" : "Убираю звук исходников") { timeline in
+        editTimelineOptimistically(
+            enabled ? "Включаю звук исходников" : "Убираю звук исходников",
+            didApply: {
+                self.directorBrief.sourceAudioPolicy = enabled ? .preserve : .mute
+            }
+        ) { timeline in
             let value = enabled ? 1.0 : 0.0
             guard abs(timeline.effectiveOriginalAudioVolume - value) > 0.0001 else { return false }
             timeline.originalAudioVolume = value
@@ -3694,6 +4147,8 @@ final class AppModel: ObservableObject {
     }
 
     func cancelOperation() {
+        pendingTimelineAIEdits.removeAll()
+        queuedTimelineAIEditCount = 0
         activeTask?.cancel()
         if let pipeline { Task { await pipeline.cancelAllAnalysis() } }
         status = "Отменяю операцию"
@@ -3805,6 +4260,12 @@ final class AppModel: ObservableObject {
     }
 
     private func resetProjectUI() {
+        operationGeneration &+= 1
+        activeTask?.cancel()
+        activeTask = nil
+        isWorking = false
+        pendingTimelineAIEdits.removeAll()
+        queuedTimelineAIEditCount = 0
         projectRestoreTask?.cancel()
         projectRestoreTask = nil
         workspaceAutosaveTask?.cancel()
@@ -3839,6 +4300,10 @@ final class AppModel: ObservableObject {
         directorStatus = "Готов выслушать ваш замысел"
         prompt = Self.defaultDirectorBrief
         directorInput = ""
+        feedback = ""
+        preset = .adventure
+        targetMinutes = DirectorBrief.legacyDefault.requestedDuration / 60
+        directorBrief = .legacyDefault
         if let playbackTimeObserver, let previewPlayer {
             previewPlayer.removeTimeObserver(playbackTimeObserver)
         }
@@ -3895,6 +4360,56 @@ final class AppModel: ObservableObject {
         isActivityComplete = false
     }
 
+    private static func restoredDirectorBrief(
+        workspaceState: ProjectWorkspaceState?,
+        storyPlan: StoryPlan?,
+        timeline: Timeline?
+    ) -> DirectorBrief {
+        if let brief = workspaceState?.directorBrief { return brief }
+        if let brief = storyPlan?.directorBrief { return brief }
+
+        var brief = DirectorBrief.legacyDefault
+        let inferredDuration = workspaceState.map { $0.targetMinutes * 60 }
+            ?? storyPlan?.constraints.targetDuration
+            ?? timeline?.duration
+            ?? brief.requestedDuration
+        brief.requestedDuration = min(3_600, max(5, inferredDuration))
+
+        if let timeline {
+            brief.canvasFormat = timeline.height > timeline.width ? .portrait9x16 : .landscape16x9
+            if let savedTrackID = workspaceState?.directorMusicTrackID {
+                brief.musicPolicy = .specificTrack
+                brief.musicTrackID = savedTrackID
+            } else {
+                brief.musicPolicy = timeline.music == nil ? .none : .matchVideo
+                brief.musicTrackID = nil
+            }
+
+            let sourceVolume = timeline.effectiveOriginalAudioVolume
+            if sourceVolume < 0.01 {
+                brief.sourceAudioPolicy = .mute
+            } else if sourceVolume < 0.75 {
+                brief.sourceAudioPolicy = .duck
+            } else {
+                brief.sourceAudioPolicy = .preserve
+            }
+
+            let hasTitles = timeline.items.contains { $0.kind == .title } ||
+                !timeline.effectiveTitleItems.isEmpty
+            brief.titlePolicy = hasTitles ? .minimal : .none
+        } else if let savedTrackID = workspaceState?.directorMusicTrackID {
+            brief.musicPolicy = .specificTrack
+            brief.musicTrackID = savedTrackID
+        }
+
+        if let pacing = storyPlan?.constraints.pacing {
+            if pacing < 0.42 { brief.mood = .calm }
+            else if pacing > 0.70 { brief.mood = .dynamic }
+            else { brief.mood = .cinematic }
+        }
+        return brief
+    }
+
     private func prepareOpenedProject() {
         guard let pipeline, project != nil else { return }
         isRestoringWorkspaceState = true
@@ -3906,8 +4421,15 @@ final class AppModel: ObservableObject {
             } ?? DirectorMessage.initial
             feedback = saved.feedbackDraft
             preset = saved.preset
-            targetMinutes = saved.targetMinutes
-            directorMusicTrackID = saved.directorMusicTrackID
+            directorBrief = Self.restoredDirectorBrief(
+                workspaceState: saved,
+                storyPlan: project?.storyPlans.last,
+                timeline: timeline
+            )
+            targetMinutes = directorBrief.requestedDuration / 60
+            directorMusicTrackID = directorBrief.musicPolicy == .specificTrack
+                ? directorBrief.musicTrackID
+                : nil
             pendingDirectorInstructions = saved.pendingDirectorInstructions
             pendingDirectorCommandGroups = Array(repeating: [], count: saved.pendingDirectorInstructions.count)
             hasPendingFilmChanges = saved.hasPendingFilmChanges
@@ -3916,11 +4438,28 @@ final class AppModel: ObservableObject {
             prompt = plan.prompt
             directorInput = ""
             preset = plan.preset
-            targetMinutes = plan.constraints.targetDuration / 60
-            directorMusicTrackID = nil
+            directorBrief = Self.restoredDirectorBrief(
+                workspaceState: nil,
+                storyPlan: plan,
+                timeline: timeline
+            )
+            targetMinutes = directorBrief.requestedDuration / 60
+            directorMusicTrackID = directorBrief.musicPolicy == .specificTrack
+                ? directorBrief.musicTrackID
+                : nil
             hasPendingFilmChanges = false
             pendingDirectorInstructions = []
             pendingDirectorCommandGroups = []
+        } else if let timeline {
+            directorBrief = Self.restoredDirectorBrief(
+                workspaceState: nil,
+                storyPlan: nil,
+                timeline: timeline
+            )
+            targetMinutes = directorBrief.requestedDuration / 60
+            directorMusicTrackID = directorBrief.musicPolicy == .specificTrack
+                ? directorBrief.musicTrackID
+                : nil
         }
         directorAgent.restoreConversation(directorMessages)
         undoTimelineHistory = (project?.timelineCheckpoints ?? [])
@@ -3961,17 +4500,23 @@ final class AppModel: ObservableObject {
                     }
                 }
 
-                _ = await pipeline.generateThumbnails()
-                let thumbnails = await pipeline.thumbnailURLs()
-                guard !Task.isCancelled, self.pipeline === pipeline else { return }
-                self.thumbnailURLs = thumbnails
-
                 if shouldPreparePlayback {
-                    let playback = try await pipeline.makePlayback()
+                    let playback = try await pipeline.makePlayback(interactiveLongEdge: 1_280)
                     guard !Task.isCancelled, self.pipeline === pipeline else { return }
                     self.setPlayback(playback, show: false, autoplay: false)
                     restoreWarning = restoreWarning ?? playback.warnings.first
                 }
+
+                // Media generation is useful but not part of opening a project.
+                // Run it only after the editor and preview are already usable.
+                _ = await pipeline.generateThumbnails()
+                async let thumbnails = pipeline.thumbnailURLs()
+                async let timelineThumbnails = pipeline.timelineThumbnailURLs()
+                let cachedImages = await (thumbnails, timelineThumbnails)
+                guard !Task.isCancelled, self.pipeline === pipeline else { return }
+                self.thumbnailURLs = cachedImages.0
+                self.timelineThumbnailURLs = cachedImages.1
+                await self.refreshMusicLibrary()
 
                 if let restoreWarning {
                     self.errorMessage = restoreWarning
@@ -4217,10 +4762,11 @@ final class AppModel: ObservableObject {
         _ initialStatus: String,
         recordHistory: Bool = true,
         preferenceSource: PreferenceSignalSource = .manualEdit,
+        didApply: (() -> Void)? = nil,
         mutation: (inout Timeline) -> Bool
     ) {
         let interactionStarted = ProcessInfo.processInfo.systemUptime
-        guard !isWorking, let pipeline, var manifest = project,
+        guard !isTimelineInteractionBlocked, let pipeline, var manifest = project,
               let timelineIndex = manifest.timelines.indices.last else { return }
         let previous = manifest.timelines[timelineIndex]
         var next = previous
@@ -4228,6 +4774,13 @@ final class AppModel: ObservableObject {
 
         manifest.timelines[timelineIndex] = next
         project = manifest
+        if isWorking, activityPresentation == .editorAI {
+            // The in-flight AI result was planned against an older snapshot.
+            // Let it finish, keep this manual edit authoritative, then rebase
+            // the AI request once onto the newest timeline.
+            needsTimelineAIRetryAfterManualEdit = true
+        }
+        didApply?()
         let stateLatency = (ProcessInfo.processInfo.systemUptime - interactionStarted) * 1_000
         Task {
             await interactionLatencyRecorder.record(InteractionLatencySample(
@@ -4387,6 +4940,7 @@ final class AppModel: ObservableObject {
             let presetDefault = PromptInterpreter.defaults(for: preset)
             if abs(interpreted.targetDuration - presetDefault.targetDuration) > 0.001 {
                 targetMinutes = interpreted.targetDuration / 60
+                directorBrief.requestedDuration = interpreted.targetDuration
             }
             if prompt == Self.defaultDirectorBrief { prompt = text }
             else { prompt += "\n\(text)" }
@@ -4486,22 +5040,27 @@ final class AppModel: ObservableObject {
         preset: FilmPreset
     ) -> [EditorCommand] {
         guard !instructions.isEmpty else {
-            // TimelineComposer has already resolved the soundtrack from the
-            // full brief. Applying the same setMusic command a second time
-            // interpreted it as “replace” and could switch back to an old track.
+            // TimelineComposer has already resolved the soundtrack and any
+            // explicitly requested telemetry accent from the full brief.
+            // Applying those commands a second time could switch music back
+            // to an old track or cover every clip with a duplicate full HUD.
             return EditorCommandParser().parse(fallbackPrompt, preset: preset).filter {
-                $0.semanticCategory != "music"
+                $0.semanticCategory != "music" && $0.semanticCategory != "telemetry"
             }
         }
-        return instructions.indices.flatMap { index in
+        let resolved = instructions.indices.flatMap { index in
             let deterministic = EditorCommandParser().parse(instructions[index], preset: preset)
             guard commandGroups.indices.contains(index), !commandGroups[index].isEmpty else {
                 return deterministic
             }
             let structured = commandGroups[index]
-            let structuredCategories = Set(structured.map(\.semanticCategory))
-            return deterministic.filter { !structuredCategories.contains($0.semanticCategory) } + structured
+            let deterministicCategories = Set(deterministic.map(\.semanticCategory))
+            return deterministic + structured.filter {
+                !deterministicCategories.contains($0.semanticCategory)
+            }
         }
+        var seen = Set<EditorCommand>()
+        return resolved.filter { seen.insert($0).inserted }
     }
 
     private func consumePendingDirectorInstruction(_ instruction: String) {
@@ -4570,6 +5129,7 @@ final class AppModel: ObservableObject {
             preset: preset,
             targetMinutes: targetMinutes,
             directorMusicTrackID: directorMusicTrackID,
+            directorBrief: directorBrief,
             directorDraft: directorInput,
             feedbackDraft: feedback,
             pendingDirectorInstructions: pendingDirectorInstructions,
@@ -4620,7 +5180,8 @@ final class AppModel: ObservableObject {
             assets.contains { asset in
                 analysis.assetID == asset.id &&
                 analysis.analyzedContentHash == asset.contentHash &&
-                analysis.schemaVersion == project?.analysisSchemaVersion
+                analysis.schemaVersion == project?.analysisSchemaVersion &&
+                analysis.deepMediaVersion == DeepAnalysisCache.version
             }
         }
         let currentTimeline = timeline
@@ -4786,16 +5347,54 @@ final class AppModel: ObservableObject {
         activityTimeRemaining = ""
         status = initialStatus
         progress = 0
+        operationGeneration &+= 1
+        let runGeneration = operationGeneration
         activeTask = Task {
             var completedSuccessfully = false
+            var retryAfterConflict = false
             do {
                 try await operation()
+                // Some AVFoundation and filesystem operations complete even
+                // after their surrounding Task has been cancelled. Never
+                // publish such a late completion as a successful operation.
+                try Task.checkCancellation()
                 completedSuccessfully = true
             } catch is CancellationError {
-                status = "Операция отменена"
+                if operationGeneration == runGeneration {
+                    status = "Операция отменена"
+                }
+            } catch let projectError as ProjectStoreError {
+                if case .staleRevision = projectError,
+                   presentation == .editorAI,
+                   var edit = activeTimelineAIEdit,
+                   edit.retryCount < 3 {
+                    edit.retryCount += 1
+                    pendingTimelineAIEdits.insert(edit, at: 0)
+                    queuedTimelineAIEditCount = pendingTimelineAIEdits.count
+                    status = "Timeline изменился — ИИ спокойно повторит правку в фоне"
+                    retryAfterConflict = true
+                } else if operationGeneration == runGeneration {
+                    errorMessage = projectError.localizedDescription
+                    status = "Ошибка"
+                }
             } catch {
-                errorMessage = error.localizedDescription
-                status = "Ошибка"
+                if operationGeneration == runGeneration {
+                    errorMessage = error.localizedDescription
+                    status = "Ошибка"
+                }
+            }
+            guard operationGeneration == runGeneration else { return }
+            if presentation == .editorAI,
+               needsTimelineAIRetryAfterManualEdit,
+               let edit = activeTimelineAIEdit,
+               !retryAfterConflict {
+                pendingTimelineAIEdits.insert(edit, at: 0)
+                queuedTimelineAIEditCount = pendingTimelineAIEdits.count
+                status = "Ручная правка сохранена — ИИ применит свою поверх неё"
+            }
+            if presentation == .editorAI {
+                activeTimelineAIEdit = nil
+                needsTimelineAIRetryAfterManualEdit = false
             }
             isWorking = false
             activeTask = nil
@@ -4818,23 +5417,121 @@ final class AppModel: ObservableObject {
                 }
             }
             Task { @MainActor [weak self] in
-                await Task.yield()
+                try? await Task.sleep(for: .milliseconds(retryAfterConflict ? 350 : 120))
                 self?.startNextQueuedTimelineAIEdit()
             }
         }
     }
 
-    private func startTimelineAIEdit(_ edit: PendingTimelineAIEdit) {
-        if let range = edit.range {
-            applyMagicBrush(edit.instruction, to: range)
+    private func startTimelineAIEdit(_ pendingEdit: PendingTimelineAIEdit) {
+        let edit = rebasedTimelineAIEdit(pendingEdit)
+        activeTimelineAIEdit = edit
+        if edit.range != nil {
+            guard let timeline,
+                  edit.timelineAnchor == TimelineAIAnchor(timeline) else {
+                activeTimelineAIEdit = nil
+                feedback = edit.instruction
+                status = "Timeline изменился — выделите диапазон кистью заново"
+                Task { @MainActor [weak self] in
+                    await Task.yield()
+                    self?.startNextQueuedTimelineAIEdit()
+                }
+                return
+            }
+            applyMagicBrush(edit)
         } else {
-            feedback = edit.instruction
-            regenerate()
+            applyTimelineAIComment(edit)
         }
     }
 
+    private func rebasedTimelineAIEdit(_ edit: PendingTimelineAIEdit) -> PendingTimelineAIEdit {
+        var brief = directorBrief
+        if edit.briefChanges.contains(.duration) {
+            brief.requestedDuration = edit.directorBrief.requestedDuration
+        }
+        if edit.briefChanges.contains(.mood) {
+            brief.mood = edit.directorBrief.mood
+        }
+        if edit.briefChanges.contains(.music) {
+            brief.musicPolicy = edit.directorBrief.musicPolicy
+            brief.musicTrackID = edit.directorBrief.musicTrackID
+        }
+        if edit.briefChanges.contains(.sourceAudio) {
+            brief.sourceAudioPolicy = edit.directorBrief.sourceAudioPolicy
+        }
+        if edit.briefChanges.contains(.titles) {
+            brief.titlePolicy = edit.directorBrief.titlePolicy
+        }
+        return PendingTimelineAIEdit(
+            instruction: edit.instruction,
+            range: edit.range,
+            timelineAnchor: edit.timelineAnchor,
+            selectedItemID: edit.selectedItemID,
+            selectedCandidateID: edit.selectedCandidateID,
+            playheadTime: edit.playheadTime,
+            preset: edit.preset,
+            targetDuration: brief.requestedDuration,
+            preferredMusicTrackID: edit.briefChanges.contains(.music)
+                ? edit.preferredMusicTrackID
+                : directorMusicTrack?.id,
+            directorBrief: brief,
+            briefChanges: edit.briefChanges,
+            retryCount: edit.retryCount
+        )
+    }
+
+    private static func narrativeMood(requestedBy instruction: String) -> DirectorNarrativeMood? {
+        let text = instruction.lowercased().replacingOccurrences(of: "ё", with: "е")
+        func moodEvent(
+            fragments: [String],
+            affirmed: DirectorNarrativeMood,
+            negated: DirectorNarrativeMood?
+        ) -> (DirectorNarrativeMood, String.Index)? {
+            fragments.compactMap { fragment -> (DirectorNarrativeMood, String.Index)? in
+                guard let range = text.range(of: fragment, options: .backwards) else { return nil }
+                let prefixStart = text.index(range.lowerBound, offsetBy: -min(48, text.distance(from: text.startIndex, to: range.lowerBound)))
+                let prefix = String(text[prefixStart..<range.lowerBound])
+                let isNegated = prefix.range(
+                    of: #"(?:\bне\b|\bбез\b|никак\w*|избег\w*)[^,;.!?\n]{0,44}$"#,
+                    options: [.regularExpression, .caseInsensitive]
+                ) != nil
+                if isNegated, let negated { return (negated, range.lowerBound) }
+                return isNegated ? nil : (affirmed, range.lowerBound)
+            }.max { $0.1 < $1.1 }
+        }
+
+        return [
+            moodEvent(fragments: ["динамич", "энергич", "быстрый темп", "dynamic", "energetic"], affirmed: .dynamic, negated: .calm),
+            moodEvent(fragments: ["спокой", "размеренн", "медленный темп", "calm", "slower"], affirmed: .calm, negated: .dynamic),
+            moodEvent(fragments: ["кинематограф", "атмосферн", "cinematic", "atmospheric"], affirmed: .cinematic, negated: nil)
+        ].compactMap { $0 }.max { $0.1 < $1.1 }?.0
+    }
+
+    private static func ignoredStoryConstraints(
+        for instruction: String,
+        commandCategories: Set<String>
+    ) -> StoryConstraintLocks {
+        var ignored: StoryConstraintLocks = []
+        if commandCategories.contains("duration") {
+            ignored.insert(.targetDuration)
+        }
+        if commandCategories.contains("transition") {
+            ignored.insert(.transitionFrequency)
+        }
+        if commandCategories.contains("speed") {
+            let text = instruction.lowercased().replacingOccurrences(of: "ё", with: "е")
+            let vaguePacing = [
+                "сделай быстрее", "чуть быстрее", "плотнее экшен", "экшен плотнее",
+                "кадры подышат", "пусть кадры подышат", "не так быстро",
+                "монтаж динамичнее", "сделай динамичнее"
+            ].contains(where: text.contains)
+            if !vaguePacing { ignored.insert(.pacing) }
+        }
+        return ignored
+    }
+
     private func startNextQueuedTimelineAIEdit() {
-        guard !isWorking, !pendingTimelineAIEdits.isEmpty else { return }
+        guard !isWorking, !isDirectorResponding, !pendingTimelineAIEdits.isEmpty else { return }
         let edit = pendingTimelineAIEdits.removeFirst()
         queuedTimelineAIEditCount = pendingTimelineAIEdits.count
         startTimelineAIEdit(edit)

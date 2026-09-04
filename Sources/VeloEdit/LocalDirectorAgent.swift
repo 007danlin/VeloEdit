@@ -159,7 +159,9 @@ final class LocalDirectorAgent {
     }
 
     func runtimeStatus() async -> String {
-        if await hasOllamaModel() { return Self.ollamaRuntimeLabel }
+        // Merely launching the app must not start Ollama and poll it for four
+        // seconds. The service is started lazily on the first actual AI request.
+        if await hasOllamaModel(startService: false) { return Self.ollamaRuntimeLabel }
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
             return "Apple Intelligence · локальная нейросеть"
@@ -191,17 +193,32 @@ final class LocalDirectorAgent {
     func respond(
         to userMessage: String,
         context: DirectorContext,
-        mode: DirectorRequestMode = .edit
+        mode: DirectorRequestMode = .edit,
+        recordInHistory: Bool = true
     ) async -> DirectorAIReply {
-        if let reply = try? await respondWithOllama(to: userMessage, context: context, mode: mode) {
-            return reply
+        do {
+            return try await respondWithOllama(
+                to: userMessage,
+                context: context,
+                mode: mode,
+                recordInHistory: recordInHistory
+            )
+        } catch {
+            guard !Task.isCancelled else {
+                return DirectorAIReply(text: "", runtimeLabel: Self.currentRuntimeLabel(), normalizedBrief: nil)
+            }
         }
 
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
             do {
-                let session = (appleSession as? LanguageModelSession) ?? makeAppleSession()
-                appleSession = session
+                let session: LanguageModelSession
+                if recordInHistory {
+                    session = (appleSession as? LanguageModelSession) ?? makeAppleSession()
+                    appleSession = session
+                } else {
+                    session = makeAppleSession()
+                }
                 let response = try await session.respond(to: """
                     \(context.modelPrompt)
 
@@ -215,7 +232,11 @@ final class LocalDirectorAgent {
                 if !text.isEmpty {
                     return DirectorAIReply(text: text, runtimeLabel: "Apple Intelligence · локальная нейросеть", normalizedBrief: nil)
                 }
-            } catch { /* Explicit fallback below. */ }
+            } catch {
+                guard !Task.isCancelled else {
+                    return DirectorAIReply(text: "", runtimeLabel: Self.currentRuntimeLabel(), normalizedBrief: nil)
+                }
+            }
         }
         #endif
 
@@ -229,9 +250,10 @@ final class LocalDirectorAgent {
     private func respondWithOllama(
         to userMessage: String,
         context: DirectorContext,
-        mode: DirectorRequestMode
+        mode: DirectorRequestMode,
+        recordInHistory: Bool
     ) async throws -> DirectorAIReply {
-        guard await hasOllamaModel() else { throw URLError(.cannotConnectToHost) }
+        guard await hasOllamaModel(startService: true) else { throw URLError(.cannotConnectToHost) }
         let requestModeInstruction = mode == .advisory
             ? "РЕЖИМ СОВЕТА: предложи музыку, название или объясни звук по данным анализа. Ничего не применяй, пиши в настоящем времени, верни commands: [] и пустой normalizedBrief. Обязательно скажи, что исходник и Timeline не изменены."
             : "РЕЖИМ МОНТАЖА: подготовь исполняемый план только для явно запрошенных изменений."
@@ -244,7 +266,7 @@ final class LocalDirectorAgent {
 
             Значения пиши только кодами движка. set_transition: cross-dissolve, fade, fade-through-black, blur-dissolve, light-flash, slide-left, slide-right, push, zoom, wipe-left, wipe-right или none. set_transition_pattern: список этих кодов через запятую. Переход хранится на входящем клипе: «после первого клипа» означает target number:2, «между вторым и третьим» — number:3. set_effect: ken-burns, zoom-in, zoom-out, push-in, pull-out, pan-left, pan-right, mirror или none. set_effect_pattern: список кодов через запятую. set_filter: none, monochrome, noir, sepia, vivid, warm, cool, dramatic. set_crop: fit или fill. set_eq: flat, voice, music, bass-reduction, presence. set_overlay: cutaway, picture-in-picture, split-screen, green-screen или none. set_telemetry: speed, route, altitude, distance, g-force через запятую или none. Числовые value передавай десятичным числом без единиц; true/false — буквально. set_clip_fades: два числа fade-in,fade-out. add_title: текст в value и beginning/end в target. move: beginning/end в value. set_music: energetic, cinematic, calm, joyful, electronic, acoustic, different или none.
 
-            Для set_sharpening, set_video_denoise, set_blur и set_stabilization value — 0...1. set_rolling_shutter, set_smooth_slow_motion и set_audio_ducking принимают true/false. detach_audio не использует value. «Приглуши музыку» означает set_music_volume, а «музыку тише под речь» — set_audio_ducking. «Убери шум» означает set_noise_reduction; отличай аудиошум от video denoise. «Сделай голос/речь тише» может уменьшить громкость исходной дорожки через set_clip_volume, но не обещай изоляцию голоса из уже смешанной фонограммы. Сохраняй все действия, точные числа и цели пользователя. Количество моментов, темп истории, предпочтения по содержанию и общую длительность сохраняй в normalizedBrief, но не выдумывай для них command, если такого action нет. При просьбе «сделай динамичнее» выбирай локальные монтажные решения по контексту: убрать слабое, укоротить затянутое, усилить action и кульминацию; не ускоряй автоматически все клипы. Полная пересборка разрешает Story Engine вернуть ранее неиспользованные фрагменты и изменить структуру, но commands должны содержать только доступные typed actions. VeloEdit сам ищет и скачивает разрешённые non-premium треки через официальный Free To Use API, даже если локальная библиотека сейчас пуста. Никогда не отвечай, что пользователь должен вручную добавить музыку или что локальный трек не найден: для монтажного музыкального запроса подтверди подбор, а приложение сообщит фактический результат загрузки. Музыку нельзя генерировать. Не добавляй действий, которых пользователь не просил, и не называй в reply эффекты, которых нет в commands.
+            Для set_sharpening, set_video_denoise, set_blur и set_stabilization value — 0...1. set_rolling_shutter, set_smooth_slow_motion и set_audio_ducking принимают true/false. detach_audio не использует value. «Приглуши музыку» означает set_music_volume, а «музыку тише под речь» — set_audio_ducking. «Приглуши звук исходников» означает set_original_audio_volume со значением 0.30. «Убери шум» означает set_noise_reduction; отличай аудиошум от video denoise. «Сделай голос/речь тише» может уменьшить громкость исходной дорожки через set_clip_volume, но не обещай изоляцию голоса из уже смешанной фонограммы. Фразы «только ключевые титры», «минимум титров» и ответы на вопрос о количестве титров задают частоту, а не текст: никогда не превращай слова «ключевой момент» или «важный момент» в add_title. add_title допустим только когда пользователь явно просит добавить надпись; текст должен быть дан пользователем или подтверждаться анализом содержания. Сохраняй все действия, точные числа и цели пользователя. Количество моментов, темп истории, предпочтения по содержанию и общую длительность сохраняй в normalizedBrief, но не выдумывай для них command, если такого action нет. При просьбе «сделай динамичнее» выбирай локальные монтажные решения по контексту: убрать слабое, укоротить затянутое, усилить action и кульминацию; не ускоряй автоматически все клипы. Полная пересборка разрешает Story Engine вернуть ранее неиспользованные фрагменты и изменить структуру, но commands должны содержать только доступные typed actions. VeloEdit сам ищет и скачивает разрешённые non-premium треки через официальный Free To Use API, даже если локальная библиотека сейчас пуста. Никогда не отвечай, что пользователь должен вручную добавить музыку или что локальный трек не найден: для монтажного музыкального запроса подтверди подбор, а приложение сообщит фактический результат загрузки. Музыку нельзя генерировать. Не добавляй действий, которых пользователь не просил, и не называй в reply эффекты, которых нет в commands.
             """)
         let hardConstraint: String
         if let count = PromptInterpreter.requestedClipCount(from: userMessage.lowercased()) {
@@ -259,7 +281,8 @@ final class LocalDirectorAgent {
             Сообщение пользователя:
             \(userMessage)
             """)
-        let messages = [system] + Array(ollamaHistory.suffix(8)) + [contextualUser]
+        let history = recordInHistory ? Array(ollamaHistory.suffix(8)) : []
+        let messages = [system] + history + [contextualUser]
         let payload = OllamaChatRequest(model: Self.ollamaModel, messages: messages)
         var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
@@ -277,15 +300,36 @@ final class LocalDirectorAgent {
         let reply = decoded.reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.isEmpty else { throw URLError(.cannotParseResponse) }
 
-        ollamaHistory.append(OllamaMessage(role: "user", content: userMessage))
-        ollamaHistory.append(OllamaMessage(role: "assistant", content: reply))
-        if ollamaHistory.count > 10 { ollamaHistory.removeFirst(ollamaHistory.count - 10) }
+        if recordInHistory {
+            ollamaHistory.append(OllamaMessage(role: "user", content: userMessage))
+            ollamaHistory.append(OllamaMessage(role: "assistant", content: reply))
+            if ollamaHistory.count > 10 { ollamaHistory.removeFirst(ollamaHistory.count - 10) }
+        }
         return DirectorAIReply(
             text: reply,
             runtimeLabel: Self.ollamaRuntimeLabel,
             normalizedBrief: decoded.normalizedBrief?.trimmingCharacters(in: .whitespacesAndNewlines),
-            commands: decoded.commands.compactMap(Self.editorCommand)
+            commands: Self.sanitizedCommands(
+                decoded.commands.compactMap(Self.editorCommand),
+                for: userMessage
+            )
         )
+    }
+
+    private static func sanitizedCommands(_ commands: [EditorCommand], for userMessage: String) -> [EditorCommand] {
+        let request = userMessage.lowercased().replacingOccurrences(of: "ё", with: "е")
+        let explicitlyRequestsTitle = [
+            "добавь титр", "добавить титр", "добавь надпись", "напиши на экране",
+            "сделай титр", "покажи текст", "title card"
+        ].contains(where: request.contains)
+        var seen = Set<EditorCommand>()
+        return commands.compactMap { command in
+            if case .addTitle(let text, _) = command {
+                guard explicitlyRequestsTitle, !SmartTitleEngine.isMeaningless(text) else { return nil }
+            }
+            guard seen.insert(command).inserted else { return nil }
+            return command
+        }
     }
 
     private static func editorCommand(_ command: OllamaDirectorCommand) -> EditorCommand? {
@@ -451,8 +495,8 @@ final class LocalDirectorAgent {
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func hasOllamaModel() async -> Bool {
-        _ = try? await LocalAIModelManager.shared.ensureService()
+    private func hasOllamaModel(startService: Bool) async -> Bool {
+        if startService { _ = try? await LocalAIModelManager.shared.ensureService() }
         var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/tags"))
         request.timeoutInterval = 1.5
         do {

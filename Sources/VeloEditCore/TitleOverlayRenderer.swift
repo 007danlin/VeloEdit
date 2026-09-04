@@ -20,7 +20,7 @@ public enum TitleOverlayRenderer {
         return result.cropped(to: frame.bounds)
     }
 
-    static func cgImage(item: TitleTimelineItem, timelineTime: Double, renderSize: CGSize) -> CGImage? {
+    public static func cgImage(item: TitleTimelineItem, timelineTime: Double, renderSize: CGSize) -> CGImage? {
         guard let frame = renderedFrame(item: item, timelineTime: timelineTime, renderSize: renderSize) else { return nil }
         guard frame.maximumBlur > 0.01 else { return frame.image }
         let blurred = CIImage(cgImage: frame.image)

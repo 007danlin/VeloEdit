@@ -13,6 +13,7 @@ private func p2Candidate(
     assetID: UUID,
     start: Double = 1,
     duration: Double = 6,
+    tags: Set<String> = ["action", "outdoor"],
     embedding: VisualEmbedding? = nil,
     tracking: SubjectTrackingSummary? = nil,
     speech: SpeechEditingEvidence? = nil,
@@ -25,9 +26,9 @@ private func p2Candidate(
         sourceStart: start,
         sourceDuration: duration,
         scores: ClipScores(quality: quality, interest: 0.82, action: 0.72, stability: 0.8, uniqueness: 0.82),
-        tags: ["action", "outdoor"],
+        tags: tags,
         insights: CandidateInsights(
-            sceneSummary: "outdoor action",
+            sceneSummary: tags.sorted().joined(separator: " "),
             dynamics: 0.72,
             visualAppeal: 0.82,
             composition: 0.78,
@@ -85,6 +86,199 @@ private func p2Candidate(
     #expect(clusters[0].candidateIDs.contains(strong.id))
     #expect(clusters[0].bestCandidateID == strong.id)
     #expect(!clusters[0].candidateIDs.contains(different.id))
+}
+
+@Test func activityCompatibilityContractIsFamilyBasedAndConservative() {
+    let compatibleAliases: [(Set<String>, Set<String>)] = [
+        (["cycling"], ["bicycle"]),
+        (["buggy"], ["utv"]),
+        (["rafting"], ["kayak"]),
+        (["hiking"], ["trekking"]),
+        (["running"], ["jogging"]),
+        (["swimming"], ["плавание"]),
+        (["skiing"], ["snowboard"]),
+        (["surfing"], ["surfer"]),
+        (["climbing"], ["bouldering"]),
+        (["horseback"], ["equestrian"])
+    ]
+    for (first, second) in compatibleAliases {
+        let lhs = ActivityCompatibilityContract.evidence(in: first)
+        let rhs = ActivityCompatibilityContract.evidence(in: second)
+        #expect(lhs.compatibility(with: rhs) == .compatible)
+    }
+
+    let incompatibleFamilies: [(Set<String>, Set<String>)] = [
+        (["cycling"], ["buggy"]),
+        (["fishing"], ["rafting"]),
+        (["hiking"], ["running"]),
+        (["swimming"], ["skiing"]),
+        (["surfing"], ["climbing"]),
+        (["equestrian"], ["cycling"])
+    ]
+    for (first, second) in incompatibleFamilies {
+        let lhs = ActivityCompatibilityContract.evidence(in: first)
+        let rhs = ActivityCompatibilityContract.evidence(in: second)
+        #expect(lhs.compatibility(with: rhs) == .incompatible)
+    }
+
+    // These words are intentionally unsupported: treating them as generic is
+    // safer than inventing a family from one ambiguous object or fitness label.
+    let deliberatelyInsufficient = [
+        "walking", "skating", "skateboard", "diving",
+        "sailing", "boating", "dancing", "fitness"
+    ]
+    for token in deliberatelyInsufficient {
+        #expect(ActivityCompatibilityContract.evidence(in: [token]).family == nil)
+        let first = p2Candidate(assetID: UUID(), tags: [token])
+        let second = p2Candidate(assetID: UUID(), tags: [token])
+        #expect(SemanticSceneIndex(candidates: [first, second]).clusters(threshold: 0.88).isEmpty)
+    }
+
+    let cyclingWithStrayCar = ActivityCompatibilityContract.evidence(
+        in: ["cycling", "cyclist", "bicycle", "car"]
+    )
+    #expect(cyclingWithStrayCar.family == .cycling)
+    #expect(cyclingWithStrayCar.compatibility(
+        with: ActivityCompatibilityContract.evidence(in: ["mountain_bike", "mtb"])
+    ) == .compatible)
+    let contradictoryLabels = ActivityCompatibilityContract.evidence(in: ["buggy", "bicycle"])
+    #expect(contradictoryLabels.family == nil)
+    #expect(contradictoryLabels.isAmbiguous)
+    let identicalEmbedding = p2Embedding([1] + Array(repeating: 0, count: 63))
+    let ambiguousTake = p2Candidate(
+        assetID: UUID(),
+        tags: ["buggy", "bicycle", "outdoor"],
+        embedding: identicalEmbedding
+    )
+    let cyclingTake = p2Candidate(
+        assetID: UUID(),
+        tags: ["cycling", "bicycle", "outdoor"],
+        embedding: identicalEmbedding
+    )
+    #expect(SemanticSceneIndex(candidates: [ambiguousTake, cyclingTake]).clusters(threshold: 0.88).isEmpty)
+}
+
+@Test func crossAssetNearDuplicatesRequireSemanticCorroborationAndRepairLegacyClusters() throws {
+    let vector = [Float(1)] + Array(repeating: Float(0), count: 63)
+    var cycling = p2Candidate(
+        assetID: UUID(),
+        tags: ["outdoor", "cycling", "cyclist", "bicycle"],
+        embedding: p2Embedding(vector)
+    )
+    var buggy = p2Candidate(
+        assetID: UUID(),
+        tags: ["outdoor", "buggy", "vehicle", "helmet", "tire"],
+        embedding: p2Embedding(vector)
+    )
+    cycling.scores.uniqueness = 0.10
+    buggy.scores.uniqueness = 0.10
+    cycling.insights?.semanticEventID = "legacy-outdoor-cluster"
+    buggy.insights?.semanticEventID = "legacy-outdoor-cluster"
+    cycling.explanation.append("Near-duplicate события; более сильный дубль доступен AI Director")
+    buggy.explanation.append("Embedding index: near-duplicate события в другом ролике; выбран более сильный дубль.")
+
+    #expect(SemanticSceneIndex(candidates: [cycling, buggy]).clusters(threshold: 0.88).isEmpty)
+
+    let refined = CrossVideoRelationshipAnalyzer().refine([
+        AnalysisResult(assetID: cycling.assetID, analyzedContentHash: "cycling", candidates: [cycling]),
+        AnalysisResult(assetID: buggy.assetID, analyzedContentHash: "buggy", candidates: [buggy])
+    ]).flatMap(\.candidates)
+    #expect(refined.allSatisfy { $0.insights?.semanticEventID == nil })
+    #expect(refined.allSatisfy { $0.scores.uniqueness > 0.50 })
+    #expect(refined.allSatisfy { candidate in
+        candidate.explanation.allSatisfy { !$0.lowercased().contains("near-duplicate") }
+    })
+}
+
+@Test func genericContextCannotTransitivelyBridgeDifferentActivityFamilies() {
+    let embedding = p2Embedding([1] + Array(repeating: 0, count: 63))
+    let familyPairs: [(Set<String>, Set<String>)] = [
+        (["cycling"], ["buggy"]),
+        (["fishing"], ["rafting"]),
+        (["hiking"], ["running"]),
+        (["swimming"], ["skiing"]),
+        (["surfing"], ["climbing"])
+    ]
+    for (leftActivity, rightActivity) in familyPairs {
+        let left = p2Candidate(
+            assetID: UUID(),
+            tags: leftActivity.union(["red_jacket", "marker_left"]),
+            embedding: embedding
+        )
+        let contextBridge = p2Candidate(
+            assetID: UUID(),
+            tags: ["outdoor", "red_jacket", "marker_left", "yellow_flag", "marker_right"],
+            embedding: embedding
+        )
+        let right = p2Candidate(
+            assetID: UUID(),
+            tags: rightActivity.union(["yellow_flag", "marker_right"]),
+            embedding: embedding
+        )
+        let permutations = [
+            [left, contextBridge, right], [left, right, contextBridge],
+            [contextBridge, left, right], [contextBridge, right, left],
+            [right, left, contextBridge], [right, contextBridge, left]
+        ]
+        for candidates in permutations {
+            let clusters = SemanticSceneIndex(candidates: candidates).clusters(threshold: 0.88)
+            #expect(!clusters.contains { cluster in
+                cluster.candidateIDs.contains(left.id) && cluster.candidateIDs.contains(right.id)
+            })
+        }
+    }
+}
+
+@Test func validCrossCameraSameTakeClustersAcrossActivityAliasesAndPreservesLegacyID() throws {
+    let embedding = p2Embedding([1] + Array(repeating: 0, count: 63))
+    var first = p2Candidate(
+        assetID: UUID(),
+        tags: ["cycling", "rider", "red_jacket", "forest_marker"],
+        embedding: embedding,
+        quality: 0.94
+    )
+    var second = p2Candidate(
+        assetID: UUID(),
+        tags: ["bicycle", "cyclist", "red_jacket", "forest_marker"],
+        embedding: embedding,
+        quality: 0.72
+    )
+    first.insights?.semanticEventID = "legacy-valid-same-take"
+    second.insights?.semanticEventID = "legacy-valid-same-take"
+
+    let cluster = try #require(SemanticSceneIndex(candidates: [first, second]).clusters(threshold: 0.88).first)
+    #expect(Set(cluster.candidateIDs) == Set([first.id, second.id]))
+
+    let refined = CrossVideoRelationshipAnalyzer().refine([
+        AnalysisResult(assetID: first.assetID, analyzedContentHash: "same-take-a", candidates: [first]),
+        AnalysisResult(assetID: second.assetID, analyzedContentHash: "same-take-b", candidates: [second])
+    ]).flatMap(\.candidates)
+    #expect(refined.count == 2)
+    #expect(refined.allSatisfy { $0.insights?.semanticEventID == "legacy-valid-same-take" })
+}
+
+@Test func crossVideoRefinementPreservesValidSameAssetSemanticGroup() {
+    let localAssetID = UUID()
+    let otherAssetID = UUID()
+    let localEmbedding = p2Embedding([1] + Array(repeating: 0, count: 63))
+    var firstLocal = p2Candidate(assetID: localAssetID, start: 1, embedding: localEmbedding)
+    var secondLocal = p2Candidate(assetID: localAssetID, start: 8, embedding: localEmbedding)
+    let unrelated = p2Candidate(
+        assetID: otherAssetID,
+        tags: ["buggy", "helmet"],
+        embedding: p2Embedding([0, 1] + Array(repeating: 0, count: 62))
+    )
+    firstLocal.insights?.semanticEventID = "local-take"
+    secondLocal.insights?.semanticEventID = "local-take"
+
+    let refined = CrossVideoRelationshipAnalyzer().refine([
+        AnalysisResult(assetID: localAssetID, analyzedContentHash: "local", candidates: [firstLocal, secondLocal]),
+        AnalysisResult(assetID: otherAssetID, analyzedContentHash: "other", candidates: [unrelated])
+    ])
+    let local = refined.first(where: { $0.assetID == localAssetID })?.candidates ?? []
+
+    #expect(local.count == 2)
+    #expect(local.allSatisfy { $0.insights?.semanticEventID == "local-take" })
 }
 
 @Test func crossVideoEmbeddingClusterBecomesOneStoryEventAndDiscardsTheWeakerTake() throws {

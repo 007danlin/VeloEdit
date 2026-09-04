@@ -16,6 +16,7 @@ public enum TimelineInsertionPosition: Hashable, Sendable {
 
 public enum EditorCommand: Hashable, Sendable {
     case setSpeed(Double, EditorCommandTarget)
+    case removeSlowMotion(EditorCommandTarget)
     case setSpeedRamp(SpeedRamp?, EditorCommandTarget)
     case setDuration(Double, EditorCommandTarget)
     case setFilter(VideoFilter, EditorCommandTarget)
@@ -71,7 +72,7 @@ public enum EditorCommand: Hashable, Sendable {
     /// destructive target cannot run before the structured command.
     public var semanticCategory: String {
         switch self {
-        case .setSpeed: return "speed"
+        case .setSpeed, .removeSlowMotion: return "speed"
         case .setSpeedRamp: return "speed-ramp"
         case .setDuration: return "duration"
         case .setFilter: return "filter"
@@ -153,16 +154,28 @@ public struct EditorCommandParser: Sendable {
 
     public func parse(_ prompt: String, preset: FilmPreset = .story) -> [EditorCommand] {
         let segments = commandSegments(prompt)
-        guard segments.count > 1 else {
-            return parseSegment(prompt, preset: preset, targetOverride: nil)
+        var result: [EditorCommand]
+        if segments.count <= 1 {
+            result = parseSegment(prompt, preset: preset, targetOverride: nil)
+        } else {
+            var inheritedTarget: EditorCommandTarget?
+            result = []
+            for segment in segments {
+                let explicit = explicitTarget(in: Self.normalized(segment))
+                let target = explicit ?? inheritedTarget
+                result.append(contentsOf: parseSegment(segment, preset: preset, targetOverride: target))
+                if let explicit { inheritedTarget = explicit }
+            }
         }
-        var inheritedTarget: EditorCommandTarget?
-        var result: [EditorCommand] = []
-        for segment in segments {
-            let explicit = explicitTarget(in: Self.normalized(segment))
-            let target = explicit ?? inheritedTarget
-            result.append(contentsOf: parseSegment(segment, preset: preset, targetOverride: target))
-            if let explicit { inheritedTarget = explicit }
+        // Questionnaire prompts split the question and its short answer into
+        // separate clauses. Resolve source-audio intent once from the complete
+        // exchange so «со звуком исходников?» is not mistaken for “restore”.
+        if let sourceVolume = OriginalAudioPromptInterpreter().volume(prompt: prompt) {
+            result.removeAll { command in
+                if case .setOriginalAudioVolume = command { return true }
+                return false
+            }
+            result.append(.setOriginalAudioVolume(sourceVolume))
         }
         return result
     }
@@ -178,6 +191,11 @@ public struct EditorCommandParser: Sendable {
         var result: [EditorCommand] = []
         let asksInstantReplay = containsAny(text, ["мгновенный повтор", "инстант реплей", "instant replay", "повтори этот момент замедленно"])
         let asksSpeedRamp = containsAny(text, ["speed ramp", "спид рамп", "рамп скорости", "плавно замедли и ускорь", "динамическая скорость"])
+        let forbidsSlowMotion = containsAny(text, [
+            "без slow motion", "не используй slow motion", "убери slow motion", "отключи slow motion",
+            "не добавляй slow motion", "никакого slow motion", "не нужен slow motion",
+            "без слоумо", "без слоу-мо", "без слоу мо", "без замедления", "не замедляй"
+        ])
 
         if containsAny(text, ["убери все титры", "удали все титры", "без титров"]) {
             result.append(.removeTitles)
@@ -216,6 +234,8 @@ public struct EditorCommandParser: Sendable {
         } else if !asksInstantReplay && containsAny(text, ["ускор", "быстрее", "скорость "]) {
             let factor = speedFactor(in: text) ?? 2
             result.append(.setSpeed(min(max(0.1, factor), 8), target))
+        } else if !asksInstantReplay && forbidsSlowMotion {
+            result.append(.removeSlowMotion(target))
         } else if !asksInstantReplay && containsAny(text, ["замедл", "медленнее", "слоумо", "slow motion"]) {
             let spoken = speedFactor(in: text)
             let factor = spoken.map { $0 > 1 ? 1 / $0 : $0 } ?? 0.5
@@ -236,9 +256,10 @@ public struct EditorCommandParser: Sendable {
             result.append(.setReverse(true, target))
         }
 
-        if containsAny(text, ["клип", "фрагмент", "момент"]),
+        if let durationTarget = targetOverride ?? explicitTarget(in: text),
+           containsAny(text, ["клип", "фрагмент", "момент"]),
            let duration = firstNumber(in: text, patterns: [#"(?:длительност\w*|по|до)\s*(\d+(?:[\.,]\d+)?)\s*(?:сек|с\b)"#]) {
-            result.append(.setDuration(min(max(0.25, duration), 600), target))
+            result.append(.setDuration(min(max(0.25, duration), 600), durationTarget))
         }
 
         if containsAny(text, ["без фильтр", "убери фильтр", "сбрось цвет", "верни цвет"]) {
@@ -346,7 +367,15 @@ public struct EditorCommandParser: Sendable {
             "звук музы", "громкость музы", "заглуши музыку", "приглуши музыку",
             "сделай музыку тише", "музыку потише", "убавь музыку"
         ])
-        if containsAny(text, ["убери звук", "убери у него звук", "выключи звук", "выключи у него звук", "без звука", "заглуши"]) && !explicitlyMusicAudio {
+        let quieterSourceAudio = containsAny(text, [
+            "приглуши звук исход", "приглушить звук исход", "звук исходников приглуш", "звук исходников? приглуш",
+            "звуком исходников приглуш", "звуком исходников? приглуш",
+            "сделай звук исходников тише", "исходный звук тише", "оригинальный звук тише",
+            "убавь звук исходников", "lower original audio", "original audio quieter"
+        ])
+        if quieterSourceAudio && !explicitlyMusicAudio {
+            result.append(selectedAudioTarget ? .setClipVolume(0.30, target) : .setOriginalAudioVolume(0.30))
+        } else if containsAny(text, ["убери звук", "убери у него звук", "выключи звук", "выключи у него звук", "без звука", "заглуши"]) && !explicitlyMusicAudio {
             result.append(selectedAudioTarget ? .setClipMuted(true, target) : .setOriginalAudioVolume(0))
         } else if containsAny(text, ["верни звук", "включи звук", "со звуком"]) && !explicitlyMusicAudio {
             result.append(selectedAudioTarget ? .setClipMuted(false, target) : .setOriginalAudioVolume(1))
@@ -730,12 +759,36 @@ public struct EditorCommandExecutor: Sendable {
             switch command {
             case .setSpeed(let speed, let target):
                 mutate(target, description: { "скорость \(Self.number(speed))× для \($0) фрагм." }) { item in
+                    guard !item.isFreezeFrame else { return }
                     item.speed = min(max(0.1, speed), 20)
                     item.speedRamp = nil
                     item.timelineDuration = max(0.05, item.sourceDuration / item.speed)
                 }
+            case .removeSlowMotion(let target):
+                mutate(target, description: { "slow motion убран у \($0) фрагм." }) { item in
+                    guard !item.isFreezeFrame else { return }
+                    if let ramp = item.speedRamp,
+                       ramp.normalizedPoints.contains(where: { $0.rate < 1 }) {
+                        let normalized = SpeedRamp(points: ramp.points.map {
+                            SpeedRampPoint(position: $0.position, rate: max(1, $0.rate))
+                        })
+                        if normalized.normalizedPoints.allSatisfy({ abs($0.rate - 1) < 0.000_1 }) {
+                            item.speedRamp = nil
+                            item.speed = 1
+                            item.timelineDuration = max(0.05, item.sourceDuration)
+                        } else {
+                            item.speed = 1
+                            item.speedRamp = normalized
+                            item.timelineDuration = max(0.05, normalized.outputDuration(sourceDuration: item.sourceDuration))
+                        }
+                    } else if item.speed < 1 {
+                        item.speed = 1
+                        item.timelineDuration = max(0.05, item.sourceDuration)
+                    }
+                }
             case .setSpeedRamp(let ramp, let target):
                 mutate(target, description: { ramp == nil ? "рамп скорости убран у \($0) фрагм." : "рамп скорости применён к \($0) фрагм." }) { item in
+                    guard !item.isFreezeFrame else { return }
                     item.speed = 1
                     item.speedRamp = ramp
                     item.timelineDuration = max(0.25, ramp?.outputDuration(sourceDuration: item.sourceDuration) ?? item.sourceDuration)
@@ -743,6 +796,7 @@ public struct EditorCommandExecutor: Sendable {
             case .setDuration(let duration, let target):
                 mutate(target, description: { "длительность \(Self.number(duration)) с для \($0) фрагм." }) { item in
                     item.timelineDuration = max(0.25, duration)
+                    guard !item.isFreezeFrame else { return }
                     let rampFactor = item.speedRamp?.outputDuration(sourceDuration: 1) ?? (1 / item.speed)
                     item.sourceDuration = item.timelineDuration / max(0.01, rampFactor)
                 }
@@ -887,6 +941,36 @@ public struct EditorCommandExecutor: Sendable {
                 timeline.audioDucking = enabled ? AudioDuckingSettings() : nil
                 applied.append(enabled ? "автоматический ducking включён" : "автоматический ducking выключен")
             case .setTransition(let transition, let target):
+                let targetIDs = Set(indexes(for: target).map { timeline.items[$0].id })
+                let previousObjects = timeline.effectiveTransitionItems
+                if let transition {
+                    timeline.transitionItems = previousObjects.map { item in
+                        guard targetIDs.contains(item.incomingClipID) else { return item }
+                        var copy = item
+                        copy.style = transition
+                        copy.intensity = TransitionPresetRegistry.preset(for: transition).defaultIntensity
+                        copy.parameters = TransitionPresetRegistry.preset(for: transition).defaultParameters
+                        return copy
+                    }
+                } else {
+                    timeline.transitionItems = previousObjects.filter { !targetIDs.contains($0.incomingClipID) }
+                }
+                let currentObjects = timeline.effectiveTransitionItems
+                var changedTransitionObjects = Set<UUID>()
+                for previous in previousObjects {
+                    if let current = currentObjects.first(where: { $0.id == previous.id }) {
+                        if current != previous { changedTransitionObjects.insert(current.id) }
+                    } else {
+                        changedTransitionObjects.insert(previous.id)
+                    }
+                }
+                for current in currentObjects where !previousObjects.contains(where: { $0.id == current.id }) {
+                    changedTransitionObjects.insert(current.id)
+                }
+                affected.formUnion(changedTransitionObjects)
+                if !changedTransitionObjects.isEmpty {
+                    applied.append("объекты переходов обновлены: \(changedTransitionObjects.count)")
+                }
                 mutate(target, description: { "переход «\(transition?.localizedTitle ?? "без перехода")» для \($0) фрагм." }) { $0.transition = transition?.rawValue }
             case .setTransitionPattern(let styles, let target):
                 let positions = indexes(for: target)
@@ -899,6 +983,25 @@ public struct EditorCommandExecutor: Sendable {
                         previous < index && timeline.items[previous].kind != .title && timeline.items[previous].overlay == nil
                     })
                 }
+                let styleByIncomingID = Dictionary(uniqueKeysWithValues: applicable.enumerated().map { offset, index in
+                    (timeline.items[index].id, styles[offset % styles.count])
+                })
+                let previousTransitions = timeline.effectiveTransitionItems
+                timeline.transitionItems = previousTransitions.map { transition in
+                    guard let style = styleByIncomingID[transition.incomingClipID] else { return transition }
+                    var copy = transition
+                    copy.style = style
+                    copy.intensity = TransitionPresetRegistry.preset(for: style).defaultIntensity
+                    copy.parameters = TransitionPresetRegistry.preset(for: style).defaultParameters
+                    return copy
+                }
+                var changedTransitionIDs = Set<UUID>()
+                for current in timeline.effectiveTransitionItems {
+                    if previousTransitions.first(where: { $0.id == current.id }) != current {
+                        changedTransitionIDs.insert(current.id)
+                    }
+                }
+                affected.formUnion(changedTransitionIDs)
                 var changed = 0
                 for (offset, index) in applicable.enumerated() {
                     let style = styles[offset % styles.count]
@@ -908,12 +1011,24 @@ public struct EditorCommandExecutor: Sendable {
                         changed += 1
                     }
                 }
-                if changed > 0 {
-                    applied.append("чередование \(styles.count) переходов для \(changed) фрагм.")
+                if changed > 0 || !changedTransitionIDs.isEmpty {
+                    applied.append("чередование \(styles.count) переходов для \(max(changed, changedTransitionIDs.count)) фрагм.")
                 } else {
                     ignored.append(applicable.isEmpty ? "для перехода нужен предыдущий фрагмент" : "чередование переходов уже установлено")
                 }
             case .setEffect(let effect, let target):
+                if effect == nil {
+                    let targetIDs = Set(indexes(for: target).map { timeline.items[$0].id })
+                    let removed = timeline.effectiveEffects.filter { item in
+                        item.targetClipID.map(targetIDs.contains) ?? false
+                    }
+                    if !removed.isEmpty {
+                        let removedIDs = Set(removed.map(\.id))
+                        timeline.effects = timeline.effectiveEffects.filter { !removedIDs.contains($0.id) }
+                        affected.formUnion(removedIDs)
+                        applied.append("объекты эффектов удалены: \(removed.count)")
+                    }
+                }
                 mutate(target, description: { "эффект «\(effect?.localizedTitle ?? "без эффекта")» для \($0) фрагм." }) { $0.effect = effect?.rawValue }
             case .setEffectPattern(let effects, let target):
                 let positions = indexes(for: target)
@@ -1048,28 +1163,66 @@ public struct EditorCommandExecutor: Sendable {
                     }
                 }
             case .addTitle(let text, let position):
+                let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !SmartTitleEngine.isMeaningless(cleanText) else {
+                    ignored.append("служебная формулировка «\(cleanText)» не является текстом титра")
+                    continue
+                }
+                let normalizedText = cleanText.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                guard !timeline.effectiveTitleItems.contains(where: {
+                    $0.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) == normalizedText
+                }) else {
+                    ignored.append("титр «\(cleanText)» уже есть в фильме")
+                    continue
+                }
                 let decision = SmartTitleEngine().decide(SmartTitleContext(
                     purpose: position == .beginning ? .filmOpening : .ending,
-                    requestedText: text,
+                    requestedText: cleanText,
                     usedTitles: timeline.effectiveTitleItems.map(\.text),
                     preferredTemplateID: position == .beginning ? "title.minimal-clean.v1" : "title.end-card.v1"
                 ))
-                let template = TitleTemplateRegistry.template(id: decision?.templateID)
+                guard let decision else {
+                    ignored.append("для титра «\(cleanText)» нет подтверждённого текста или подходящего шаблона")
+                    continue
+                }
+                let template = TitleTemplateRegistry.template(id: decision.templateID)
                     ?? TitleTemplateRegistry.defaultTemplate(for: position == .beginning ? .title : .endCard)
-                let duration = min(decision?.duration ?? template?.duration ?? 3.2, max(0.05, timeline.duration))
+                let duration = min(decision.duration, max(0.05, timeline.duration))
+                let occupied = timeline.effectiveTitleItems.filter {
+                    $0.enabled && $0.track == 0 && ![.automaticSubtitles, .wordLevelCaptions, .subtitle].contains($0.kind)
+                }
+                var start = position == .beginning ? 0 : max(0, timeline.duration - duration)
+                if position == .beginning {
+                    while let collision = occupied
+                        .filter({ $0.startTime < start + duration && $0.endTime > start })
+                        .max(by: { $0.endTime < $1.endTime }) {
+                        start = collision.endTime + 0.12
+                    }
+                } else {
+                    while let collision = occupied
+                        .filter({ $0.startTime < start + duration && $0.endTime > start })
+                        .min(by: { $0.startTime < $1.startTime }) {
+                        start = collision.startTime - duration - 0.12
+                    }
+                }
+                guard start >= 0, start + duration <= timeline.duration + 0.001 else {
+                    ignored.append("для титра «\(cleanText)» нет свободного места без наложения")
+                    continue
+                }
                 let title = TitleTimelineItem(
                     kind: template?.kind ?? .title,
                     templateID: template?.id,
-                    text: decision?.primaryText ?? text,
-                    additionalText: decision?.secondaryText,
-                    startTime: position == .beginning ? 0 : max(0, timeline.duration - duration),
+                    text: decision.primaryText,
+                    additionalText: decision.secondaryText,
+                    startTime: start,
                     duration: duration,
                     style: template?.defaultStyle ?? TitleStyle(),
-                    explanation: ["Титр добавлен по запросу режиссёру"] + (decision?.explanation ?? [])
+                    explanation: ["Титр добавлен по запросу режиссёру"] + decision.explanation
                 )
                 timeline.titleItems = timeline.effectiveTitleItems + [title]
                 affected.insert(title.id)
-                applied.append("титр «\(text)» добавлен \(position == .beginning ? "в начало" : "в конец")")
+                applied.append("титр «\(cleanText)» добавлен без наложения")
             case .setTitleStyle(let fontSize, let textColor, let backgroundColor, let alignment, let target):
                 let legacyPositions = titleIndexes(for: target)
                 let objectPositions = titleObjectIndexes(for: target)
@@ -1146,7 +1299,9 @@ public struct EditorCommandExecutor: Sendable {
                 applied.append("фрагмент перемещён \(position == .beginning ? "в начало" : "в конец")")
             case .setOriginalAudioVolume(let volume):
                 timeline.originalAudioVolume = min(max(0, volume), 1)
-                applied.append(volume < 0.001 ? "звук исходников отключён" : "звук исходников включён")
+                applied.append(volume < 0.001
+                    ? "звук исходников отключён"
+                    : "громкость звука исходников \(Int((min(max(0, volume), 1) * 100).rounded()))%")
             case .setMusic(let directive):
                 timeline.music = directive
                 applied.append(directive.map { "музыка «\($0.style.localizedTitle)» добавлена" } ?? "музыка удалена")

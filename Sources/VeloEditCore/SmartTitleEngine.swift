@@ -221,9 +221,57 @@ public struct SmartTitleEngine: Sendable {
         let forbidden: Set<String> = [
             "ключевой момент", "важный момент", "яркий момент", "незабываемый момент",
             "захватывающая сцена", "приключение", "эмоциональный момент", "главный момент",
-            "следующий этап путешествия", "событие", "сцена"
+            "следующий этап путешествия", "событие", "сцена", "съёмка", "материал"
         ]
         return normalized.isEmpty || forbidden.contains(normalized)
+    }
+
+    /// Structural beat names are useful inside the edit graph, but are not
+    /// audience-facing facts and therefore must never become automatic titles.
+    public static func isStructuralPlaceholder(_ value: String) -> Bool {
+        let structural: Set<String> = [
+            "начало", "подготовка", "действие", "кульминация", "реакция", "завершение",
+            "вступление", "завязка", "развитие", "финал", "b roll", "cold open", "intro", "outro",
+            "знакомство с местом", "в движении", "пик маршрута", "развитие действия", "дорога домой"
+        ]
+        return structural.contains(normalizePhrase(value))
+    }
+
+    /// Produces a label from analyzed content only. In particular, a proposed
+    /// scene title is deliberately not passed as evidence, so callers can use
+    /// this as a provenance check before exposing text to the viewer.
+    public func contentConfirmedActivityTitle(
+        tags: Set<String>,
+        summaries: [String] = [],
+        proposedTitle: String? = nil,
+        provenanceConfidence: Double = 0
+    ) -> SmartTitleDecision? {
+        let evidence = (Array(tags) + summaries).map(Self.normalizePhrase)
+        let proposed = proposedTitle.map(Self.normalizePhrase)
+        func has(_ values: [String]) -> Bool {
+            evidence.contains { item in values.contains(where: item.contains) }
+        }
+        // A SourceActivityGroup-labelled buggy block can still carry one stray
+        // `bicycle` classifier. Trust that provenance only when several
+        // independent visual families corroborate it; the title alone is not
+        // enough to manufacture an activity.
+        let buggyProvenance = proposed == "багги" || proposed == "поездка на багги"
+        let motorVehicle = has(["car", "automobile", "vehicle", "machine", "motor", "utv"])
+        let offRoad = has(["dirt road", "dirt_road", "off road", "off-road", "грунт", "бездорож"])
+        let mechanics = has(["wheel", "tire", "tyre", "колес", "шина"])
+        let safetyGear = has(["helmet", "headgear", "шлем"])
+        if buggyProvenance,
+           provenanceConfidence >= 0.55,
+           motorVehicle,
+           offRoad,
+           mechanics || safetyGear {
+            return decide(SmartTitleContext(
+                purpose: .shortLabel,
+                tags: tags.union(["buggy"]),
+                summaries: summaries
+            ))
+        }
+        return decide(SmartTitleContext(purpose: .shortLabel, tags: tags, summaries: summaries))
     }
 
     private struct Activity {
@@ -234,6 +282,41 @@ public struct SmartTitleEngine: Sendable {
     }
 
     private func recognizedActivity(in evidence: [String]) -> Activity? {
+        let sharedEvidence = ActivityCompatibilityContract.evidence(in: Set(evidence))
+        if let family = sharedEvidence.family {
+            let confidence = min(0.96, 0.76 + sharedEvidence.confidence * 0.20)
+            let markers = sharedEvidence.matchedMarkers
+            switch family {
+            case .cycling:
+                return .init(eventTitle: "Велопрогулка", shortTitle: "Велопрогулка", confidence: confidence, explanation: "Общий activity vocabulary распознал велосипедную прогулку")
+            case .motorized:
+                if !markers.isDisjoint(with: ["buggy", "багги", "utv", "atv", "quadbike", "quad bike", "side by side", "квадроцикл"]) {
+                    return .init(eventTitle: "Поездка на багги", shortTitle: "Багги", confidence: confidence, explanation: "Общий activity vocabulary распознал поездку на багги")
+                }
+                if !markers.isDisjoint(with: ["motocross", "motorcycle", "motorbike", "мотоцикл"]) {
+                    return .init(eventTitle: "Мотопоездка", shortTitle: "Мотопоездка", confidence: confidence, explanation: "Общий activity vocabulary распознал мотопоездку")
+                }
+                return .init(eventTitle: "В дороге", shortTitle: "В дороге", confidence: confidence, explanation: "Общий activity vocabulary распознал поездку")
+            case .paddling:
+                return .init(eventTitle: "Сплав", shortTitle: "Сплав", confidence: confidence, explanation: "Общий activity vocabulary распознал греблю или сплав")
+            case .fishing:
+                return .init(eventTitle: "Рыбалка", shortTitle: "Рыбалка", confidence: confidence, explanation: "Общий activity vocabulary распознал рыбалку")
+            case .hiking:
+                return .init(eventTitle: "Поход", shortTitle: "Поход", confidence: confidence, explanation: "Общий activity vocabulary распознал поход")
+            case .running:
+                return .init(eventTitle: "Пробежка", shortTitle: "Пробежка", confidence: confidence, explanation: "Общий activity vocabulary распознал пробежку")
+            case .swimming:
+                return .init(eventTitle: "Плавание", shortTitle: "Плавание", confidence: confidence, explanation: "Общий activity vocabulary распознал плавание")
+            case .winterSports:
+                return .init(eventTitle: "На склоне", shortTitle: "На склоне", confidence: confidence, explanation: "Общий activity vocabulary распознал зимний спорт")
+            case .surfing:
+                return .init(eventTitle: "Сёрфинг", shortTitle: "Сёрфинг", confidence: confidence, explanation: "Общий activity vocabulary распознал сёрфинг")
+            case .climbing:
+                return .init(eventTitle: "Скалолазание", shortTitle: "Скалолазание", confidence: confidence, explanation: "Общий activity vocabulary распознал скалолазание")
+            case .equestrian:
+                return .init(eventTitle: "Конная прогулка", shortTitle: "Конная прогулка", confidence: confidence, explanation: "Общий activity vocabulary распознал конную прогулку")
+            }
+        }
         let text = evidence.joined(separator: " ")
         func has(_ values: [String]) -> Bool { values.contains(where: text.contains) }
         if has(["buggy", "багги", "side by side", "utv"]) { return .init(eventTitle: "Поездка на багги", shortTitle: "Багги", confidence: 0.96, explanation: "Распознана поездка на багги") }
@@ -348,11 +431,7 @@ public struct SmartTitleEngine: Sendable {
 
     private func meaningfulRequestedText(_ value: String?) -> String? {
         guard let clean = value?.trimmingCharacters(in: .whitespacesAndNewlines), !Self.isMeaningless(clean) else { return nil }
-        let structural: Set<String> = [
-            "начало", "подготовка", "действие", "кульминация", "реакция", "завершение",
-            "вступление", "завязка", "развитие", "финал", "b roll", "cold open", "intro", "outro"
-        ]
-        return structural.contains(Self.normalizePhrase(clean)) ? nil : clean
+        return Self.isStructuralPlaceholder(clean) ? nil : clean
     }
 
     private func reliableLocation(_ value: String?, confidence: Double) -> String? {
@@ -405,5 +484,180 @@ public struct SmartTitleEngine: Sendable {
         let boundary = prefix.lastIndex(of: " ") ?? prefix.endIndex
         let shortened = prefix[..<boundary].trimmingCharacters(in: .whitespacesAndNewlines)
         return shortened.isEmpty ? String(prefix) : "\(shortened)…"
+    }
+}
+
+/// Repairs only titles known to have been generated by the director. Manual
+/// title layering stays untouched, while placeholder prose, exact duplicate
+/// commands and accidental same-track collisions are removed from old films.
+public struct AutomatedTitleQualityDiagnostic: Hashable, Sendable {
+    public var code: String
+    public var titleID: UUID
+    public var message: String
+
+    public init(code: String, titleID: UUID, message: String) {
+        self.code = code
+        self.titleID = titleID
+        self.message = message
+    }
+}
+
+public struct AutomatedTitleQualityResult: Sendable {
+    public var titles: [TitleTimelineItem]
+    public var diagnostics: [AutomatedTitleQualityDiagnostic]
+
+    public init(titles: [TitleTimelineItem], diagnostics: [AutomatedTitleQualityDiagnostic]) {
+        self.titles = titles
+        self.diagnostics = diagnostics
+    }
+}
+
+public enum AutomatedTitlePolicy {
+    /// Runs immediately before a generated timeline is returned or an older
+    /// timeline is migrated. Manual title layering and captions remain intact.
+    public static func reviewed(
+        _ source: [TitleTimelineItem],
+        timelineDuration: Double,
+        containmentByTitleID: [UUID: ClosedRange<Double>] = [:]
+    ) -> AutomatedTitleQualityResult {
+        let timelineEnd = max(0, timelineDuration)
+        let minimumReadableDuration = 1.25
+        let titleGap = 0.08
+        var seenGenerated = Set<String>()
+        var lastGeneratedTextByTrack: [Int: String] = [:]
+        var result: [TitleTimelineItem] = []
+        var diagnostics: [AutomatedTitleQualityDiagnostic] = []
+
+        func reject(_ item: TitleTimelineItem, code: String, message: String) {
+            diagnostics.append(.init(code: code, titleID: item.id, message: message))
+        }
+
+        for original in source.sorted(by: titleOrder) {
+            var item = original
+            let generated = isGenerated(item)
+            guard generated, !isCaption(item.kind) else {
+                result.append(item)
+                continue
+            }
+            let normalized = normalizedTitle(item.text)
+            if SmartTitleEngine.isMeaningless(item.text) || SmartTitleEngine.isStructuralPlaceholder(item.text) {
+                reject(item, code: "unconfirmed-text", message: "Автотитр «\(item.text)» удалён: это placeholder или структурное имя beat-а")
+                continue
+            }
+            let identity = "\(item.track)|\(normalized)|\(Int((item.startTime * 10).rounded()))"
+            if !seenGenerated.insert(identity).inserted {
+                reject(item, code: "exact-duplicate", message: "Повторная команда автотитра «\(item.text)» удалена")
+                continue
+            }
+            if lastGeneratedTextByTrack[item.track] == normalized {
+                reject(item, code: "adjacent-duplicate", message: "Соседний повтор автотитра «\(item.text)» удалён")
+                continue
+            }
+
+            let requestedScope = containmentByTitleID[item.id]
+            let lowerBound = max(0, requestedScope?.lowerBound ?? 0)
+            let upperBound = min(timelineEnd, requestedScope?.upperBound ?? timelineEnd)
+            guard lowerBound.isFinite, upperBound.isFinite, upperBound > lowerBound else {
+                reject(item, code: "empty-containment", message: "Автотитр «\(item.text)» удалён: его story block пуст")
+                continue
+            }
+
+            let originalStart = item.startTime
+            let originalEnd = item.endTime
+            item.startTime = min(max(item.startTime, lowerBound), upperBound)
+            var end = min(originalEnd, upperBound)
+
+            if let collision = result.last(where: {
+                $0.enabled && $0.track == item.track && isGenerated($0) && !isCaption($0.kind)
+                    && $0.startTime < end && $0.endTime > item.startTime
+            }) {
+                item.startTime = max(item.startTime, collision.endTime + titleGap)
+            }
+            end = min(end, upperBound)
+            let available = end - item.startTime
+            guard available + 0.000_001 >= minimumReadableDuration else {
+                reject(item, code: "unreadable-placement", message: "Автотитр «\(item.text)» удалён: в его story block нет 1,25 секунды без наложения")
+                continue
+            }
+            item.duration = available
+            if abs(item.startTime - originalStart) > 0.000_001 || abs(item.endTime - originalEnd) > 0.000_001 {
+                let message = "Quality gate ограничил автотитр границами story block и свободным участком дорожки"
+                item.explanation.append(message)
+                diagnostics.append(.init(code: "repaired-placement", titleID: item.id, message: message))
+            }
+            result.append(item)
+            lastGeneratedTextByTrack[item.track] = normalized
+        }
+        return AutomatedTitleQualityResult(titles: result.sorted(by: titleOrder), diagnostics: diagnostics)
+    }
+
+    public static func sanitized(_ source: [TitleTimelineItem], timelineDuration: Double) -> [TitleTimelineItem] {
+        reviewed(source, timelineDuration: timelineDuration).titles
+    }
+
+    /// Reconstructs a title's activity scope after Director tools have retimed
+    /// the timeline. Composer links generated chapter titles to their anchor
+    /// clip; legacy titles fall back to the block visible at their start time.
+    public static func inferredContainmentByTitleID(
+        _ source: [TitleTimelineItem],
+        timeline: Timeline
+    ) -> [UUID: ClosedRange<Double>] {
+        let primaries = timeline.items
+            .filter { $0.overlay == nil && $0.kind != .title }
+            .sorted { $0.timelineStart < $1.timelineStart }
+        guard !primaries.isEmpty else { return [:] }
+        var scopes: [UUID: ClosedRange<Double>] = [:]
+
+        for title in source where isGenerated(title) && !isCaption(title.kind) {
+            let anchorIndex = title.targetClipID.flatMap { targetID in
+                primaries.firstIndex { $0.id == targetID }
+            } ?? primaries.firstIndex {
+                title.startTime + 0.000_001 >= $0.timelineStart
+                    && title.startTime < $0.timelineStart + $0.timelineDuration
+            } ?? primaries.firstIndex { $0.timelineStart >= title.startTime }
+                ?? primaries.index(before: primaries.endIndex)
+            let anchor = primaries[anchorIndex]
+            let sameBlock: (TimelineItem) -> Bool = { item in
+                if let sceneID = anchor.eventSceneID { return item.eventSceneID == sceneID }
+                if let eventID = anchor.eventID { return item.eventID == eventID }
+                return item.id == anchor.id
+            }
+            var lower = anchorIndex
+            while lower > primaries.startIndex, sameBlock(primaries[primaries.index(before: lower)]) {
+                lower = primaries.index(before: lower)
+            }
+            var upper = anchorIndex
+            while primaries.index(after: upper) < primaries.endIndex,
+                  sameBlock(primaries[primaries.index(after: upper)]) {
+                upper = primaries.index(after: upper)
+            }
+            let start = primaries[lower].timelineStart
+            let end = primaries[upper].timelineStart + primaries[upper].timelineDuration
+            if end > start { scopes[title.id] = start...end }
+        }
+        return scopes
+    }
+
+    private static func normalizedTitle(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: "ё", with: "е")
+    }
+
+    private static func isGenerated(_ item: TitleTimelineItem) -> Bool {
+        item.explanation.contains { reason in
+            let value = reason.lowercased()
+            return value.contains("режисс") || value.contains("автомат") || value.contains("event hierarchy")
+        }
+    }
+
+    private static func isCaption(_ kind: TitleTimelineKind) -> Bool {
+        [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains(kind)
+    }
+
+    private static func titleOrder(_ lhs: TitleTimelineItem, _ rhs: TitleTimelineItem) -> Bool {
+        if lhs.startTime != rhs.startTime { return lhs.startTime < rhs.startTime }
+        if lhs.track != rhs.track { return lhs.track < rhs.track }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 }

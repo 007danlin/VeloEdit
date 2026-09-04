@@ -1022,7 +1022,15 @@ public struct PerceptualReviewEngine: Sendable {
         var attemptedCount = 0
 
         while iterations < budget.maximumIterations {
-            let calls = repairCalls(for: review, timeline: timeline, plan: plan, features: features, confidenceThreshold: budget.automaticRepairConfidence)
+            var calls = repairCalls(for: review, timeline: timeline, plan: plan, features: features, confidenceThreshold: budget.automaticRepairConfidence)
+            if plan.requiresExactDuration,
+               abs(timeline.duration - plan.constraints.targetDuration) <= 1 / max(1, timeline.frameRate) {
+                // Perceptual review may still repair styling, titles and audio,
+                // but it must not silently break a hard duration after the
+                // rough cut has already met it exactly.
+                let timingTools: Set<DirectorEditingTool> = [.trim, .replace, .syncToBeat]
+                calls.removeAll { timingTools.contains($0.tool) }
+            }
             let bounded = Array(calls.prefix(budget.maximumRepairsPerIteration))
             guard !bounded.isEmpty else { break }
             var beams = bounded.map { [$0] }

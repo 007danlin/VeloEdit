@@ -848,8 +848,45 @@ public struct TimelineSafetyValidator: Sendable {
            !Set([StoryRole.intro, .climax, .outro]).intersection(originalRoles).isSubset(of: repairedRoles) {
             issues.append("Repair разрушает существующий story arc")
         }
+        let originalPrimaries = original.items.filter { $0.kind != .title && $0.overlay == nil }
+        let explicitRoleAnchors: [(StoryRole, Set<String>)] = [
+            (.intro, plan.constraints.preferredIntroTags ?? []),
+            (.climax, plan.constraints.preferredClimaxTags ?? []),
+            (.outro, plan.constraints.preferredOutroTags ?? [])
+        ]
+        for (role, requestedTags) in explicitRoleAnchors where !requestedTags.isEmpty {
+            func satisfiesAnchor(_ item: TimelineItem) -> Bool {
+                guard item.storyRole == role,
+                      let candidateID = item.candidateID,
+                      let source = candidateByID[candidateID] else { return false }
+                return !requestedTags.isDisjoint(with: source.tags)
+            }
+            if originalPrimaries.contains(where: satisfiesAnchor),
+               !primaries.contains(where: satisfiesAnchor) {
+                issues.append("Repair нарушает явно заданный content anchor для роли «\(role.localizedTitle)»")
+            }
+        }
         if candidate.duration < min(3, original.duration * 0.5), plan.constraints.targetDuration >= 5 {
             issues.append("Repair чрезмерно сокращает фильм")
+        }
+        let titleReview = AutomatedTitlePolicy.reviewed(
+            candidate.effectiveTitleItems,
+            timelineDuration: candidate.duration,
+            containmentByTitleID: AutomatedTitlePolicy.inferredContainmentByTitleID(
+                candidate.effectiveTitleItems,
+                timeline: candidate
+            )
+        )
+        if titleReview.titles != candidate.effectiveTitleItems {
+            issues.append("Repair нарушает provenance, containment или single-track размещение автотитров")
+        }
+        if plan.requiresExactDuration {
+            let frame = 1 / max(1, candidate.frameRate)
+            let target = plan.constraints.targetDuration
+            if abs(original.duration - target) <= frame,
+               abs(candidate.duration - target) > frame {
+                issues.append("Repair нарушает явно заданную длительность")
+            }
         }
         if let eventStory = plan.eventStory, eventStory.chronologicalByDefault {
             let originalEvent = eventSafety(original, eventStory: eventStory)
@@ -859,6 +896,14 @@ public struct TimelineSafetyValidator: Sendable {
             }
             if candidateEvent.coverage + 0.001 < originalEvent.coverage {
                 issues.append("Repair удаляет покрытие события")
+            }
+            let plannedSceneIDs = Set(plan.chapters.compactMap(\.eventSceneID))
+            let originalSceneIDs = Set(original.items.compactMap { item in
+                item.overlay == nil && item.kind != .title ? item.eventSceneID : nil
+            }).intersection(plannedSceneIDs)
+            let candidateSceneIDs = Set(primaries.compactMap(\.eventSceneID))
+            if !originalSceneIDs.isSubset(of: candidateSceneIDs) {
+                issues.append("Repair удаляет подтверждённый scene block")
             }
         }
         return issues
@@ -1004,7 +1049,8 @@ public struct MontageVariantSelector: Sendable {
         analyses: [AnalysisResult],
         searchDiagnostics: VariantSelectionDiagnostics? = nil,
         personalTasteProfile: PersonalTasteProfile? = nil,
-        tasteContext: TasteContext? = nil
+        tasteContext: TasteContext? = nil,
+        avoidingTimeline: Timeline? = nil
     ) -> DirectedMontageVariant? {
         let features = MontageScoringFeatures(assets: assets, analyses: analyses)
         let candidates = features.candidates
@@ -1098,6 +1144,50 @@ public struct MontageVariantSelector: Sendable {
                 ))
             }
             viable = paretoFront
+        }
+
+        // A user-requested fresh cut must not silently return the same edit
+        // just because it still has the highest absolute score. Prefer a
+        // production-safe alternative with a materially different selection,
+        // order, source ranges or rhythm. If every viable cut is identical,
+        // retain the quality winner instead of deliberately degrading it.
+        var avoidedTimelineDistance: Double?
+        if let avoidingTimeline, viable.count > 1 {
+            let distances = viable.map { variant in
+                (variant, distanceCalculator.distance(
+                    between: variant.timeline,
+                    and: avoidingTimeline,
+                    candidates: candidates
+                ))
+            }
+            let substantiallyDifferent = distances.filter { $0.1.total + 0.000_001 >= requiredDistance }
+            if !substantiallyDifferent.isEmpty {
+                let retainedStrategies = Set(substantiallyDifferent.map { $0.0.story.strategy })
+                for (variant, distance) in distances where !retainedStrategies.contains(variant.story.strategy) {
+                    rejectionRecords.append(VariantRejectionRecord(
+                        strategy: variant.story.strategy,
+                        stage: "fresh-cut diversity gate",
+                        reason: "Вариант слишком похож на предыдущий монтаж для команды «Переделать заново»",
+                        distance: distance,
+                        absoluteScore: variant.score.total
+                    ))
+                }
+                viable = substantiallyDifferent.map(\.0)
+                avoidedTimelineDistance = substantiallyDifferent.map { $0.1.total }.min()
+            } else if let farthest = distances.max(by: { $0.1.total < $1.1.total }), farthest.1.total > 0.01 {
+                for (variant, distance) in distances where variant.story.strategy != farthest.0.story.strategy {
+                    rejectionRecords.append(VariantRejectionRecord(
+                        strategy: variant.story.strategy,
+                        stage: "fresh-cut diversity gate",
+                        reason: "Другой вариант меньше отличается от предыдущего монтажа",
+                        comparedToStrategy: farthest.0.story.strategy,
+                        distance: distance,
+                        absoluteScore: variant.score.total
+                    ))
+                }
+                viable = [farthest.0]
+                avoidedTimelineDistance = farthest.1.total
+            }
         }
 
         let comparator = MontagePairwiseComparator()
@@ -1206,6 +1296,11 @@ public struct MontageVariantSelector: Sendable {
             "Сильные стороны: \(winner.score.strongestReasons.joined(separator: ", "))"
         ]
         diagnostics.selectionReasons.append("Pareto-front: \(viable.map { $0.story.strategy }.joined(separator: ", "))")
+        if let avoidedTimelineDistance {
+            diagnostics.selectionReasons.append(
+                "Полная пересборка выбрала новую трактовку; дистанция от прошлого монтажа \(Int((avoidedTimelineDistance * 100).rounded()))%"
+            )
+        }
         if var run = winner.timeline.directorRun {
             run.evaluatedVariantCount = variants.count
             run.globalScore = winner.score.total

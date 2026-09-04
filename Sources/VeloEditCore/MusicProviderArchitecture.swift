@@ -214,6 +214,12 @@ public struct MusicLibraryStatus: Equatable, Sendable {
     }
 }
 
+private enum OnlineProviderAttempt: Sendable {
+    case success(provider: String, track: LocalMusicTrack)
+    case failure(MusicProviderFailure)
+    case cancelled
+}
+
 public actor MusicProviderHealthRegistry {
     private struct FailureState: Sendable {
         var count: Int
@@ -297,6 +303,7 @@ public actor MusicLibrary {
         _ intent: MusicIntent,
         requestedTrackID: UUID? = nil,
         excluding excludedID: UUID? = nil,
+        excludingIdentities: Set<String> = [],
         preferCachedOnline: Bool = false
     ) async -> MusicResolution {
         await prepareBundledCatalogIfNeeded()
@@ -312,54 +319,47 @@ public actor MusicLibrary {
             : [.bundled, .user, .openverse, .freeToUse, .pixabay, .other]
         for source in sourceOrder {
             let candidates = localTracks.filter { $0.sourceProvider == source }
-            if let selected = selector.select(for: directive, from: candidates, excluding: excludedID, minimumScore: 0.30) {
+            if let selected = selector.select(
+                for: directive,
+                from: candidates,
+                excluding: excludedID,
+                excludingIdentities: excludingIdentities,
+                minimumScore: 0.30
+            ) {
                 return MusicResolution(track: selected, catalog: localTracks)
             }
         }
 
-        var failures: [MusicProviderFailure] = []
-        for provider in providers where provider.priority >= 100 {
-            if case .coolingDown(let until) = await health.availability(for: provider.identifier) {
-                failures.append(MusicProviderFailure(provider: provider.identifier, reason: "временно недоступен до \(until.formatted())"))
-                continue
-            }
-            do {
-                guard case .available = await provider.availability() else {
-                    _ = await health.recordFailure(for: provider.identifier)
-                    failures.append(MusicProviderFailure(provider: provider.identifier, reason: "источник недоступен"))
-                    continue
-                }
-                let found = try await provider.search(intent)
-                guard let candidate = Self.best(found, for: intent) else {
-                    failures.append(MusicProviderFailure(provider: provider.identifier, reason: "подходящих треков нет"))
-                    continue
-                }
-                let downloaded = try await provider.download(candidate)
-                await health.recordSuccess(for: provider.identifier)
-                localTracks = ((try? await localLibrary.tracks()) ?? localTracks).filter(\.isPlayable)
-                return MusicResolution(track: downloaded, catalog: localTracks, failures: failures)
-            } catch {
-                _ = await health.recordFailure(for: provider.identifier)
-                failures.append(MusicProviderFailure(provider: provider.identifier, reason: error.localizedDescription))
-            }
+        let online = await firstOnlineTrack(
+            for: intent,
+            excludingIdentities: excludingIdentities
+        )
+        if let downloaded = online.track {
+            localTracks = ((try? await localLibrary.tracks()) ?? localTracks).filter(\.isPlayable)
+            return MusicResolution(track: downloaded, catalog: localTracks, failures: online.failures)
         }
 
         // Suitability is intentionally relaxed only after every provider has
         // been exhausted. Returning any playable local track is preferable to
         // failing the film because the network is unavailable.
-        let fallback = LocalMusicSelector().select(for: directive, from: localTracks, excluding: excludedID)
-        return MusicResolution(track: fallback, catalog: localTracks, failures: failures)
+        let fallback = LocalMusicSelector().select(
+            for: directive,
+            from: localTracks,
+            excluding: excludedID,
+            excludingIdentities: excludingIdentities
+        ) ?? LocalMusicSelector().select(for: directive, from: localTracks, excluding: excludedID)
+        return MusicResolution(track: fallback, catalog: localTracks, failures: online.failures)
     }
 
     /// Starts an optional network fetch without making film creation wait for
     /// DNS, a blocked provider, or a slow download. A completed track is kept
     /// in the project cache and can be selected by the current film if it is
     /// ready in time, or by the next film otherwise.
-    public func scheduleOnlineTrack(for intent: MusicIntent) {
+    public func scheduleOnlineTrack(for intent: MusicIntent, excludingIdentities: Set<String> = []) {
         let key = Self.prefetchKey(for: intent)
         guard onlinePrefetchTasks[key] == nil else { return }
         onlinePrefetchTasks[key] = Task { [weak self] in
-            await self?.prefetchOnlineTrack(for: intent, key: key)
+            await self?.prefetchOnlineTrack(for: intent, excludingIdentities: excludingIdentities, key: key)
         }
     }
 
@@ -368,24 +368,20 @@ public actor MusicLibrary {
     public func prepareOnlineCatalog(styles: [MusicStyle] = MusicStyle.allCases) async -> [LocalMusicTrack] {
         await prepareBundledCatalogIfNeeded()
         var downloaded: [LocalMusicTrack] = []
-        for provider in providers where provider.priority >= 100 {
-            guard case .available = await health.availability(for: provider.identifier) else { continue }
-            for style in styles {
-                let directive = MusicDirective(style: style, bpm: Self.defaultBPM(for: style))
-                let intent = MusicIntent(directive: directive)
-                do {
-                    let candidates = try await provider.search(intent)
-                    guard let candidate = Self.best(candidates, for: intent) else { continue }
-                    let track = try await provider.download(candidate)
-                    if !downloaded.contains(where: { $0.id == track.id }) { downloaded.append(track) }
-                    await health.recordSuccess(for: provider.identifier)
-                } catch MusicLibraryError.duplicateSource {
-                    continue
-                } catch {
-                    _ = await health.recordFailure(for: provider.identifier)
-                    break
-                }
-            }
+        var excludedIdentities = Set(
+            ((try? await localLibrary.tracks()) ?? [])
+                .filter { $0.sourceProvider.isOnline }
+                .map(\.selectionIdentity)
+        )
+        for style in styles {
+            let directive = MusicDirective(style: style, bpm: Self.defaultBPM(for: style))
+            let result = await firstOnlineTrack(
+                for: MusicIntent(directive: directive),
+                excludingIdentities: excludedIdentities
+            )
+            guard let track = result.track else { continue }
+            if !downloaded.contains(where: { $0.id == track.id }) { downloaded.append(track) }
+            excludedIdentities.insert(track.selectionIdentity)
         }
         return downloaded
     }
@@ -401,31 +397,106 @@ public actor MusicLibrary {
         }
     }
 
-    private func prefetchOnlineTrack(for intent: MusicIntent, key: String) async {
+    private func prefetchOnlineTrack(
+        for intent: MusicIntent,
+        excludingIdentities: Set<String>,
+        key: String
+    ) async {
         defer { onlinePrefetchTasks[key] = nil }
-        let existingIDs = Set(
+        let cachedIdentities = Set(
             ((try? await localLibrary.tracks()) ?? [])
                 .filter { $0.sourceProvider.isOnline }
-                .compactMap(\.providerTrackID)
+                .map(\.selectionIdentity)
         )
+        _ = await firstOnlineTrack(
+            for: intent,
+            excludingIdentities: excludingIdentities.union(cachedIdentities)
+        )
+    }
+
+    /// Starts every healthy online provider together and accepts the first
+    /// complete, playable download. A stalled service therefore cannot hold up
+    /// a healthy fallback; remaining URLSession work is cancelled immediately.
+    private func firstOnlineTrack(
+        for intent: MusicIntent,
+        excludingIdentities: Set<String>
+    ) async -> (track: LocalMusicTrack?, failures: [MusicProviderFailure]) {
+        var eligible: [any MusicProvider] = []
+        var failures: [MusicProviderFailure] = []
         for provider in providers where provider.priority >= 100 {
-            guard case .available = await health.availability(for: provider.identifier) else { continue }
-            do {
-                guard case .available = await provider.availability() else {
-                    _ = await health.recordFailure(for: provider.identifier)
-                    continue
-                }
-                let candidates = try await provider.search(intent).filter { !existingIDs.contains($0.id) }
-                guard let candidate = Self.best(candidates, for: intent) else { continue }
-                _ = try await provider.download(candidate)
-                await health.recordSuccess(for: provider.identifier)
-                return
-            } catch MusicLibraryError.duplicateSource {
-                continue
-            } catch {
-                _ = await health.recordFailure(for: provider.identifier)
+            if case .coolingDown(let until) = await health.availability(for: provider.identifier) {
+                failures.append(MusicProviderFailure(
+                    provider: provider.identifier,
+                    reason: "временно недоступен до \(until.formatted())"
+                ))
+            } else {
+                eligible.append(provider)
             }
         }
+        guard !eligible.isEmpty else { return (nil, failures) }
+
+        let health = self.health
+        let raced = await withTaskGroup(
+            of: OnlineProviderAttempt.self,
+            returning: (LocalMusicTrack?, [MusicProviderFailure]).self
+        ) { group in
+            for provider in eligible {
+                group.addTask {
+                    do {
+                        guard case .available = await provider.availability() else {
+                            _ = await health.recordFailure(for: provider.identifier)
+                            return .failure(MusicProviderFailure(
+                                provider: provider.identifier,
+                                reason: "источник недоступен"
+                            ))
+                        }
+                        let candidates = try await provider.search(intent).filter {
+                            !excludingIdentities.contains($0.selectionIdentity)
+                        }
+                        guard let candidate = Self.best(candidates, for: intent) else {
+                            return .failure(MusicProviderFailure(
+                                provider: provider.identifier,
+                                reason: "подходящих треков нет"
+                            ))
+                        }
+                        let track = try await provider.download(candidate)
+                        try Task.checkCancellation()
+                        await health.recordSuccess(for: provider.identifier)
+                        return .success(provider: provider.identifier, track: track)
+                    } catch {
+                        if Task.isCancelled || Self.isCancellation(error) { return .cancelled }
+                        _ = await health.recordFailure(for: provider.identifier)
+                        return .failure(MusicProviderFailure(
+                            provider: provider.identifier,
+                            reason: error.localizedDescription
+                        ))
+                    }
+                }
+            }
+
+            var attemptFailures: [MusicProviderFailure] = []
+            while let result = await group.next() {
+                switch result {
+                case .success(_, let track):
+                    group.cancelAll()
+                    return (track, attemptFailures)
+                case .failure(let failure):
+                    attemptFailures.append(failure)
+                case .cancelled:
+                    break
+                }
+            }
+            return (nil, attemptFailures)
+        }
+        failures.append(contentsOf: raced.1)
+        failures.sort { $0.provider < $1.provider }
+        return (raced.0, failures)
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        let error = error as NSError
+        return error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled
     }
 
     private static func prefetchKey(for intent: MusicIntent) -> String {

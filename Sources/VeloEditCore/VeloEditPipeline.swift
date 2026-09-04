@@ -1,11 +1,32 @@
 import Foundation
 
+public enum DirectorBriefFulfillmentError: LocalizedError, Sendable {
+    case unavailableMusicTrack(UUID)
+    case automaticMusicUnavailable
+    case specificMusicTrackNotSelected
+    case missingGeneratedTimeline
+
+    public var errorDescription: String? {
+        switch self {
+        case .unavailableMusicTrack:
+            return "Выбранный музыкальный трек недоступен. Верните файл трека или выберите другой — фильм не будет сохранён с подменой музыки."
+        case .automaticMusicUnavailable:
+            return "Не удалось получить подходящий музыкальный трек. Проверьте подключение или выберите свой трек — фильм не будет сохранён без обещанной музыки."
+        case .specificMusicTrackNotSelected:
+            return "В брифе указана конкретная музыка, но трек не выбран. Выберите трек или переключите способ подбора музыки."
+        case .missingGeneratedTimeline:
+            return "Не удалось проверить режиссёрский бриф: созданный фильм не найден."
+        }
+    }
+}
+
 public actor VeloEditPipeline {
     public let store: ProjectStore
     private let importer: MediaImporter
     private let analyzer: (any VisionModelProtocol)?
     private let musicLibrary: LocalMusicLibrary
     private let musicSystem: MusicLibrary
+    private let musicSelectionHistory: LocalMusicSelectionHistoryStore
     private let personalTasteStore: LocalPersonalTasteStore
     private var lastMusicResolutionError: String?
     private let analysisQueue = AnalysisBackgroundQueue()
@@ -19,6 +40,7 @@ public actor VeloEditPipeline {
         analyzer: (any VisionModelProtocol)? = nil,
         musicLibrary: LocalMusicLibrary? = nil,
         freeToUseProvider: FreeToUseMusicProvider? = nil,
+        musicSelectionHistory: LocalMusicSelectionHistoryStore = .shared,
         personalTasteStore: LocalPersonalTasteStore = LocalPersonalTasteStore()
     ) {
         self.store = store
@@ -34,6 +56,7 @@ public actor VeloEditPipeline {
             localLibrary: projectMusicLibrary,
             providers: [bundledProvider, localProvider, onlineFreeToUseProvider, openverseProvider]
         )
+        self.musicSelectionHistory = musicSelectionHistory
         self.personalTasteStore = personalTasteStore
     }
 
@@ -48,6 +71,87 @@ public actor VeloEditPipeline {
         try await store.update { project in
             project.workspaceState = state
         }
+    }
+
+    /// Re-runs the deterministic production contract after editor commands and
+    /// manual music assignment. This is intentionally public because AppModel
+    /// applies those mutations after automatic variant selection.
+    @discardableResult
+    public func enforceDirectorBrief(_ brief: DirectorBrief) async throws -> Timeline {
+        let snapshot = await store.snapshot()
+        let current = snapshot.manifest
+        guard var timeline = current.timelines.last,
+              var plan = current.storyPlans.last(where: { $0.id == timeline.storyPlanID }) else {
+            throw DirectorBriefFulfillmentError.missingGeneratedTimeline
+        }
+        plan.directorBrief = brief
+        plan.constraints.targetDuration = brief.requestedDuration
+        plan.constraints.pacing = brief.mood.pacing
+
+        let tracks = try await musicSystem.tracks()
+        if brief.musicPolicy == .specificTrack {
+            guard let trackID = brief.musicTrackID else {
+                throw DirectorBriefFulfillmentError.specificMusicTrackNotSelected
+            }
+            guard let track = tracks.first(where: {
+                $0.id == trackID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
+            }) else {
+                throw DirectorBriefFulfillmentError.unavailableMusicTrack(trackID)
+            }
+            timeline.music = MusicDirective(
+                style: track.suggestedStyle,
+                bpm: track.bpm,
+                volume: timeline.music?.volume ?? 0.22,
+                trackID: track.id,
+                trackTitle: track.title
+            )
+        }
+
+        timeline = try TimelineDeliveryContract().enforce(
+            timeline: timeline,
+            plan: plan,
+            assets: current.assets,
+            analyses: current.analyses
+        )
+        if brief.musicPolicy == .matchVideo || brief.musicPolicy == .soft {
+            if brief.musicPolicy == .soft {
+                // A late editor command may have attached an energetic track
+                // ID. Clear that identity so the calm directive is resolved
+                // again instead of preserving a musically incompatible file.
+                timeline.music?.trackID = nil
+                timeline.music?.trackTitle = nil
+                timeline.music?.structure = nil
+            }
+            timeline = await Self.resolvingMusic(
+                in: timeline,
+                tracks: tracks,
+                preserveDuration: true
+            )
+            guard let trackID = timeline.music?.trackID,
+                  tracks.contains(where: {
+                      $0.id == trackID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
+                  }) else {
+                throw DirectorBriefFulfillmentError.automaticMusicUnavailable
+            }
+            // Music resolution may refresh BPM/structure, but it must not
+            // relax the selected soft/content-aware policy.
+            timeline = try TimelineDeliveryContract().enforce(
+                timeline: timeline,
+                plan: plan,
+                assets: current.assets,
+                analyses: current.analyses
+            )
+        }
+        try await store.update(ifRevision: snapshot.revision) { project in
+            if let planIndex = project.storyPlans.lastIndex(where: { $0.id == plan.id }) {
+                project.storyPlans[planIndex] = plan
+            }
+            if let timelineIndex = project.timelines.lastIndex(where: { $0.id == timeline.id }) {
+                project.timelines[timelineIndex] = timeline
+            }
+            Self.recordMusicCredit(from: timeline, tracks: tracks, in: &project)
+        }
+        return timeline
     }
 
     public func save() async throws {
@@ -679,136 +783,32 @@ public actor VeloEditPipeline {
         _ commands: [EditorCommand],
         timelineRange: ClosedRange<Double>
     ) async throws -> EditorCommandReport {
-        let localCommands = commands.filter(\.canApplyInsideTimelineRange)
-        var report = EditorCommandReport(recognizedCount: commands.count)
-
-        guard !localCommands.isEmpty else {
-            report.ignored.append("Эта команда относится ко всему фильму и недоступна для локального диапазона")
-            return report
+        let snapshot = await store.snapshot()
+        guard let source = snapshot.manifest.timelines.last else {
+            return EditorCommandReport(
+                recognizedCount: commands.count,
+                ignored: ["Для локальной AI-правки сначала нужен Timeline"]
+            )
         }
+        let result = Self.applyingLocalizedEditorCommands(
+            commands,
+            to: source,
+            timelineRange: timelineRange,
+            assets: snapshot.manifest.assets
+        )
+        guard result.timeline != source else { return result.report }
 
-        try await store.update { project in
+        try Task.checkCancellation()
+        try await store.update(ifRevision: snapshot.revision) { project in
             guard let timelineIndex = project.timelines.indices.last else { return }
             Self.appendCheckpoint(
                 timeline: project.timelines[timelineIndex],
                 reason: "Перед локальной правкой Волшебной кистью",
                 to: &project
             )
-            let localized = Self.sliced(project.timelines[timelineIndex], for: timelineRange)
-            var timeline = localized.timeline
-            var applied: [String] = []
-            var ignored: [String] = []
-            var affected = Set<UUID>()
-
-            for itemID in localized.itemIDs {
-                let result = EditorCommandExecutor().apply(
-                    localCommands,
-                    to: timeline,
-                    selectedItemID: itemID
-                )
-                timeline = result.timeline
-                applied.append(contentsOf: result.report.applied)
-                ignored.append(contentsOf: result.report.ignored)
-                affected.formUnion(result.report.affectedItemIDs)
-            }
-
-            // Standalone objects share the same brushed interval. Apply the
-            // command kinds that are meaningful for each object type to the
-            // sliced IDs, so audio, titles, telemetry and effects cannot be
-            // visually selected yet silently ignored.
-            for command in localCommands {
-                switch command {
-                case .setClipVolume(let volume, _):
-                    timeline.audioClips = timeline.effectiveAudioClips.map { clip in
-                        guard localized.audioClipIDs.contains(clip.id) else { return clip }
-                        var copy = clip; copy.adjustments.volume = min(max(0, volume), 2); affected.insert(copy.id); return copy
-                    }
-                case .setClipMuted(let muted, _):
-                    timeline.audioClips = timeline.effectiveAudioClips.map { clip in
-                        guard localized.audioClipIDs.contains(clip.id) else { return clip }
-                        var copy = clip; copy.adjustments.muted = muted; affected.insert(copy.id); return copy
-                    }
-                case .setClipFades(let fadeIn, let fadeOut, _):
-                    timeline.audioClips = timeline.effectiveAudioClips.map { clip in
-                        guard localized.audioClipIDs.contains(clip.id) else { return clip }
-                        var copy = clip
-                        copy.adjustments.fadeIn = min(max(0, fadeIn), copy.timelineDuration)
-                        copy.adjustments.fadeOut = min(max(0, fadeOut), copy.timelineDuration)
-                        affected.insert(copy.id); return copy
-                    }
-                case .setNoiseReduction(let amount, _):
-                    timeline.audioClips = timeline.effectiveAudioClips.map { clip in
-                        guard localized.audioClipIDs.contains(clip.id) else { return clip }
-                        var copy = clip; copy.adjustments.noiseReduction = min(max(0, amount), 1); affected.insert(copy.id); return copy
-                    }
-                case .setEQ(let preset, _):
-                    timeline.audioClips = timeline.effectiveAudioClips.map { clip in
-                        guard localized.audioClipIDs.contains(clip.id) else { return clip }
-                        var copy = clip; copy.adjustments.eqPreset = preset; affected.insert(copy.id); return copy
-                    }
-                case .setTitleStyle(let size, let textColor, let backgroundColor, let alignment, _):
-                    timeline.titleItems = timeline.effectiveTitleItems.map { title in
-                        guard localized.titleItemIDs.contains(title.id) else { return title }
-                        var copy = title
-                        if let size { copy.style.fontSize = min(max(18, size), 220) }
-                        if let textColor { copy.style.textColorHex = textColor }
-                        if let backgroundColor { copy.style.backgroundColorHex = backgroundColor }
-                        if let alignment { copy.style.alignment = alignment }
-                        affected.insert(copy.id); return copy
-                    }
-                case .setOpacity(let opacity, _):
-                    timeline.titleItems = timeline.effectiveTitleItems.map { title in
-                        guard localized.titleItemIDs.contains(title.id) else { return title }
-                        var copy = title; copy.style.opacity = min(max(0, opacity), 1); affected.insert(copy.id); return copy
-                    }
-                    timeline.telemetryItems = timeline.effectiveTelemetryItems.map { item in
-                        guard localized.telemetryItemIDs.contains(item.id) else { return item }
-                        var copy = item; copy.settings.opacity = min(max(0, opacity), 1); affected.insert(copy.id); return copy
-                    }
-                    timeline.effects = timeline.effectiveEffects.map { item in
-                        guard localized.effectItemIDs.contains(item.id) else { return item }
-                        var copy = item; copy.intensity = min(max(0, opacity), 1); affected.insert(copy.id); return copy
-                    }
-                case .setDuration(let duration, _):
-                    timeline.audioClips = timeline.effectiveAudioClips.map { item in
-                        guard localized.audioClipIDs.contains(item.id) else { return item }
-                        var copy = item; copy.timelineDuration = min(copy.sourceDuration, max(0.05, duration)); affected.insert(copy.id); return copy
-                    }
-                    timeline.telemetryItems = timeline.effectiveTelemetryItems.map { item in
-                        guard localized.telemetryItemIDs.contains(item.id) else { return item }
-                        var copy = item; copy.timelineDuration = max(0.05, duration); affected.insert(copy.id); return copy
-                    }
-                    timeline.effects = timeline.effectiveEffects.map { item in
-                        guard localized.effectItemIDs.contains(item.id) else { return item }
-                        var copy = item; copy.duration = max(0.05, duration); affected.insert(copy.id); return copy
-                    }
-                    timeline.titleItems = timeline.effectiveTitleItems.map { item in
-                        guard localized.titleItemIDs.contains(item.id) else { return item }
-                        var copy = item; copy.duration = max(0.05, duration); affected.insert(copy.id); return copy
-                    }
-                case .removeTitles:
-                    timeline.titleItems = timeline.effectiveTitleItems.filter { !localized.titleItemIDs.contains($0.id) }
-                    affected.formUnion(localized.titleItemIDs)
-                case .delete:
-                    timeline.audioClips = timeline.effectiveAudioClips.filter { !localized.audioClipIDs.contains($0.id) }
-                    timeline.telemetryItems = timeline.effectiveTelemetryItems.filter { !localized.telemetryItemIDs.contains($0.id) }
-                    timeline.effects = timeline.effectiveEffects.filter { !localized.effectItemIDs.contains($0.id) }
-                    timeline.titleItems = timeline.effectiveTitleItems.filter { !localized.titleItemIDs.contains($0.id) }
-                    affected.formUnion(localized.audioClipIDs + localized.telemetryItemIDs + localized.effectItemIDs + localized.titleItemIDs)
-                default:
-                    break
-                }
-            }
-
-            project.timelines[timelineIndex] = Self.clampedToAvailableMedia(timeline, assets: project.assets)
-            if !affected.isEmpty, applied.isEmpty {
-                applied.append("изменены объекты внутри выделенного диапазона")
-            }
-            report.applied = applied
-            report.ignored = ignored
-            report.affectedItemIDs = Array(affected)
+            project.timelines[timelineIndex] = result.timeline
         }
-        return report
+        return result.report
     }
 
     public func updateMusic(_ directive: MusicDirective?) async throws {
@@ -990,68 +990,85 @@ public actor VeloEditPipeline {
         selectedCandidateID: UUID? = nil,
         createCheckpoint: Bool = false
     ) async throws -> EditorCommandReport {
-        var report = EditorCommandReport(recognizedCount: commands.count)
-        let current = await store.manifest
-        let previousTrackID = current.timelines.last?.music?.trackID
+        guard !commands.isEmpty else { return EditorCommandReport(recognizedCount: 0) }
+        let snapshot = await store.snapshot()
+        let current = snapshot.manifest
+        guard let source = current.timelines.last else {
+            return EditorCommandReport(
+                recognizedCount: commands.count,
+                ignored: ["Для применения монтажных команд сначала нужен Timeline"]
+            )
+        }
+        let previousTrackID = source.music?.trackID
         let parsedMusic = commands.reversed().compactMap { command -> MusicDirective? in
             if case .setMusic(let directive?) = command { return directive }
             return nil
         }.first
         let requestedMusic = Self.musicDirective(parsedMusic, replacing: previousTrackID)
         let tracks = try await tracksForResolving(requestedMusic)
-        try await store.update { project in
+        let result = EditorCommandExecutor().apply(
+            commands,
+            to: source,
+            selectedItemID: selectedItemID,
+            selectedCandidateID: selectedCandidateID
+        )
+        var timeline = Self.clampedToAvailableMedia(result.timeline, assets: current.assets)
+        if var directive = timeline.music, directive.trackID == nil {
+            if requestedMusic?.preferDifferentTrack == true {
+                directive.preferDifferentTrack = true
+            }
+            if let track = LocalMusicSelector().select(
+                for: directive,
+                from: tracks,
+                excluding: directive.preferDifferentTrack == true ? previousTrackID : nil
+            ) {
+                directive.trackID = track.id
+                directive.trackTitle = track.title
+                directive.bpm = track.bpm
+                directive.preferDifferentTrack = nil
+                timeline.music = directive
+            }
+        }
+        if timeline.music?.preferDifferentTrack == true, previousTrackID != nil {
+            timeline.music = source.music
+        }
+        if let trackID = timeline.music?.trackID,
+           trackID != previousTrackID,
+           let track = tracks.first(where: { $0.id == trackID }) {
+            timeline = MusicBeatSynchronizer().refreshingStructure(in: timeline, for: track)
+        }
+
+        var report = result.report
+        let replacementFailed = requestedMusic?.preferDifferentTrack == true
+            && previousTrackID != nil
+            && timeline.music?.trackID == previousTrackID
+        if requestedMusic != nil, timeline.music?.trackID == nil || replacementFailed {
+            report.applied.removeAll { $0.hasPrefix("музыка «") }
+            let reason = lastMusicResolutionError ?? "в локальной библиотеке нет доступного аудиофайла"
+            let action = replacementFailed ? "не изменён" : "не добавлен"
+            report.ignored.append("саундтрек \(action): \(reason)")
+        }
+        guard timeline != source else {
+            report.applied = []
+            if report.ignored.isEmpty {
+                report.ignored.append("Запрошенные параметры уже установлены")
+            }
+            report.affectedItemIDs = []
+            return report
+        }
+
+        try Task.checkCancellation()
+        try await store.update(ifRevision: snapshot.revision) { project in
             guard let timelineIndex = project.timelines.indices.last else { return }
-            if createCheckpoint, !commands.isEmpty {
+            if createCheckpoint {
                 Self.appendCheckpoint(
                     timeline: project.timelines[timelineIndex],
                     reason: "Перед применением AI editing tools",
                     to: &project
                 )
             }
-            let previousTrackID = project.timelines[timelineIndex].music?.trackID
-            let result = EditorCommandExecutor().apply(
-                commands,
-                to: project.timelines[timelineIndex],
-                selectedItemID: selectedItemID,
-                selectedCandidateID: selectedCandidateID
-            )
-            var timeline = Self.clampedToAvailableMedia(result.timeline, assets: project.assets)
-            if var directive = timeline.music, directive.trackID == nil {
-                if requestedMusic?.preferDifferentTrack == true {
-                    directive.preferDifferentTrack = true
-                }
-                if let track = LocalMusicSelector().select(
-                    for: directive,
-                    from: tracks,
-                    excluding: directive.preferDifferentTrack == true ? previousTrackID : nil
-                ) {
-                    directive.trackID = track.id
-                    directive.trackTitle = track.title
-                    directive.bpm = track.bpm
-                    directive.preferDifferentTrack = nil
-                    timeline.music = directive
-                }
-            }
-            if timeline.music?.preferDifferentTrack == true, previousTrackID != nil {
-                timeline.music = project.timelines[timelineIndex].music
-            }
-            if let trackID = timeline.music?.trackID,
-               trackID != previousTrackID,
-               let track = tracks.first(where: { $0.id == trackID }) {
-                timeline = MusicBeatSynchronizer().refreshingStructure(in: timeline, for: track)
-            }
             project.timelines[timelineIndex] = timeline
-            report = result.report
-            let replacementFailed = requestedMusic?.preferDifferentTrack == true
-                && previousTrackID != nil
-                && timeline.music?.trackID == previousTrackID
-            if requestedMusic != nil, timeline.music?.trackID == nil || replacementFailed {
-                report.applied.removeAll { $0.hasPrefix("музыка «") }
-                let reason = self.lastMusicResolutionError
-                    ?? "в локальной библиотеке нет доступного аудиофайла"
-                let action = replacementFailed ? "не изменён" : "не добавлен"
-                report.ignored.append("саундтрек \(action): \(reason)")
-            }
+            Self.recordMusicCredit(from: timeline, tracks: tracks, in: &project)
         }
         return report
     }
@@ -1127,6 +1144,7 @@ public actor VeloEditPipeline {
         }
 
         guard result.committed else { return result }
+        try Task.checkCancellation()
         try await store.update(ifRevision: snapshot.revision) { project in
             guard let index = project.timelines.indices.last else { return }
             if createCheckpoint {
@@ -1769,15 +1787,21 @@ public actor VeloEditPipeline {
                 thermalState: ProcessInfo.processInfo.thermalState
             )
             let heat = await scheduler.statusLabel()
-            let fallbackSeconds = max(12, (asset.metadata.duration ?? 5) * {
-                switch profile.mode { case .fast: return 0.18; case .balanced: return 0.42; case .quality: return 0.9; case .maximum: return 1.8 }
-            }())
+            let fallbackSeconds = Self.analysisFallbackSeconds(for: asset, mode: profile.mode)
+            let queueSnapshot = await analysisQueue.snapshot()
+            let queuedAssetIDs = Set(queueSnapshot.lazy.filter { $0.status == .queued }.map(\.assetID))
+            let queuedFallbackSeconds = pending.lazy
+                .filter { queuedAssetIDs.contains($0.id) }
+                .reduce(0.0) { partial, queuedAsset in
+                    partial + Self.analysisFallbackSeconds(for: queuedAsset, mode: profile.mode)
+                }
             let reporter = AnalysisProgressReporter(
                 callback: progress,
                 eta: eta,
                 fileIndex: fileIndex,
                 fileCount: pending.count,
-                fallbackSecondsPerFile: fallbackSeconds
+                fallbackSecondsPerFile: fallbackSeconds,
+                queuedFallbackSeconds: queuedFallbackSeconds
             )
             let metrics = AnalysisMetricsRecorder(mode: profile.mode, metadata: asset.metadata)
             if let startedAt = entry.startedAt {
@@ -1970,6 +1994,16 @@ public actor VeloEditPipeline {
         return analyzedCount
     }
 
+    private static func analysisFallbackSeconds(for asset: MediaAsset, mode: AIPowerMode) -> TimeInterval {
+        let durationMultiplier: Double = switch mode {
+        case .fast: 0.18
+        case .balanced: 0.42
+        case .quality: 0.9
+        case .maximum: 1.8
+        }
+        return max(12, (asset.metadata.duration ?? 5) * durationMultiplier)
+    }
+
     public func prioritizeAnalysis(assetID: UUID) async {
         await analysisQueue.promote(assetID: assetID)
     }
@@ -1994,39 +2028,98 @@ public actor VeloEditPipeline {
         prompt: String,
         preset: FilmPreset,
         targetDuration: Double? = nil,
-        preferredMusicTrackID: UUID? = nil
+        preferredMusicTrackID: UUID? = nil,
+        directorBrief: DirectorBrief? = nil,
+        avoidingTimeline: Timeline? = nil
     ) async throws -> Timeline {
         let projectSnapshot = await store.snapshot()
         let current = projectSnapshot.manifest
-        let analyses = Self.mergingTelemetrySources(into: current.analyses, sources: current.effectiveTelemetrySources)
+        var directorBrief = directorBrief
+        if let preferredMusicTrackID, directorBrief != nil {
+            // The explicit track parameter represents the latest user action
+            // and therefore overrides an older questionnaire-level opt-out.
+            directorBrief?.musicPolicy = .specificTrack
+            directorBrief?.musicTrackID = preferredMusicTrackID
+        }
+        let analyses = CrossVideoRelationshipAnalyzer().refine(
+            Self.mergingTelemetrySources(into: current.analyses, sources: current.effectiveTelemetrySources)
+        )
         let eventDiscovery = EventIntelligenceEngine().discover(assets: current.assets, analyses: analyses)
         let deviceTaste = await personalTasteStore.profile()
         let personalTaste = deviceTaste.totalSignalCount > 0 ? deviceTaste : (current.personalTasteProfile ?? deviceTaste)
-        let autonomous = AutonomousDirectorEngine().decide(
+        let requestedDuration = directorBrief?.requestedDuration ?? targetDuration
+        let resolvedMusicTrackID: UUID?
+        if directorBrief?.musicPolicy == DirectorMusicPolicy.none {
+            resolvedMusicTrackID = nil
+        } else if directorBrief?.musicPolicy == .specificTrack {
+            resolvedMusicTrackID = directorBrief?.musicTrackID ?? preferredMusicTrackID
+        } else {
+            resolvedMusicTrackID = preferredMusicTrackID
+        }
+        if directorBrief?.musicPolicy == .specificTrack, resolvedMusicTrackID == nil {
+            throw DirectorBriefFulfillmentError.specificMusicTrackNotSelected
+        }
+        var autonomous = AutonomousDirectorEngine().decide(
             prompt: prompt,
             fallbackPreset: preset,
-            requestedDuration: targetDuration,
+            requestedDuration: requestedDuration,
             assets: current.assets,
             analyses: analyses,
             personalProfile: personalTaste,
-            events: eventDiscovery.events
+            events: eventDiscovery.events,
+            requestIsExplicit: directorBrief == nil ? nil : true
         )
-        if preferredMusicTrackID == nil {
-            await musicSystem.scheduleOnlineTrack(for: Self.musicIntent(from: autonomous.music))
+        if let directorBrief {
+            autonomous = Self.applyingDirectorBrief(directorBrief, to: autonomous)
         }
-        var constraints = PromptInterpreter().interpret(prompt: prompt, preset: preset)
-        constraints.targetDuration = autonomous.duration.seconds
-        constraints.pacing = autonomous.finalStyle.pacing
+        let allowsAutomaticMusic = directorBrief?.musicPolicy != DirectorMusicPolicy.none
+            && directorBrief?.musicPolicy != .specificTrack
+        let isFirstAutomaticSoundtrack = allowsAutomaticMusic && resolvedMusicTrackID == nil && !current.timelines.contains {
+            $0.music?.trackID != nil
+        }
+        let recentMusicIdentities = isFirstAutomaticSoundtrack
+            ? await musicSelectionHistory.recentIdentities()
+            : []
+        if allowsAutomaticMusic && resolvedMusicTrackID == nil {
+            await musicSystem.scheduleOnlineTrack(
+                for: Self.musicIntent(from: autonomous.music),
+                excludingIdentities: recentMusicIdentities
+            )
+        }
+        let baseConstraints = PromptInterpreter.defaults(for: preset)
+        let explicitlyInterpretedConstraints = PromptInterpreter().interpret(
+            prompt: prompt,
+            preset: preset,
+            base: baseConstraints
+        )
+        var lockedConstraints = Self.storyConstraintLocks(
+            explicitIn: prompt,
+            from: baseConstraints,
+            to: explicitlyInterpretedConstraints
+        )
+        if directorBrief != nil {
+            // The opening questionnaire is structured source-of-truth. Its
+            // duration and mood must not be overridden by descriptive arc
+            // text such as “start calmly, then add dynamics”.
+            lockedConstraints.remove([.targetDuration, .pacing])
+        }
+        var constraints = explicitlyInterpretedConstraints
+        constraints.targetDuration = directorBrief?.requestedDuration ?? autonomous.duration.seconds
+        constraints.pacing = directorBrief?.mood.pacing ?? autonomous.finalStyle.pacing
         constraints.transitionFrequency = autonomous.grammar.transitionDensity
         constraints.allowSlowMotion = autonomous.grammar.slowMotionDensity > 0.025
-        let variantSearch = StoryEngine().createPlanVariantSearch(prompt: prompt, preset: preset, constraints: constraints, assets: current.assets, analyses: analyses, events: eventDiscovery.events, eventDiagnostics: eventDiscovery.diagnostics, limit: 10, autonomousDecision: autonomous)
+        if lockedConstraints.contains(.targetDuration) { constraints.targetDuration = explicitlyInterpretedConstraints.targetDuration }
+        if lockedConstraints.contains(.pacing) { constraints.pacing = explicitlyInterpretedConstraints.pacing }
+        if lockedConstraints.contains(.transitionFrequency) { constraints.transitionFrequency = explicitlyInterpretedConstraints.transitionFrequency }
+        if lockedConstraints.contains(.allowSlowMotion) { constraints.allowSlowMotion = explicitlyInterpretedConstraints.allowSlowMotion }
+        let variantSearch = StoryEngine().createPlanVariantSearch(prompt: prompt, preset: preset, constraints: constraints, assets: current.assets, analyses: analyses, events: eventDiscovery.events, eventDiagnostics: eventDiscovery.diagnostics, limit: 10, autonomousDecision: autonomous, directorBrief: directorBrief, lockedConstraints: lockedConstraints)
         let storyVariants = variantSearch.variants
-        let fallbackPlan = StoryPlan(prompt: prompt, preset: preset, constraints: constraints, chapters: [], autonomousDecision: autonomous)
+        let fallbackPlan = StoryPlan(prompt: prompt, preset: preset, constraints: constraints, chapters: [], autonomousDecision: autonomous, directorBrief: directorBrief)
         let effectiveStories = storyVariants.isEmpty ? [StoryPlanVariant(plan: fallbackPlan, strategy: "fallback", seedScore: 0)] : storyVariants
         var roughTimelines = effectiveStories.map { TimelineComposer().compose(plan: $0.plan, assets: current.assets, analyses: analyses) }
-        if let preferredMusicTrackID,
+        if let resolvedMusicTrackID,
            let preferredTrack = try await musicSystem.tracks().first(where: {
-               $0.id == preferredMusicTrackID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
+               $0.id == resolvedMusicTrackID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
            }) {
             for index in roughTimelines.indices {
                 roughTimelines[index].music = MusicDirective(
@@ -2037,7 +2130,9 @@ public actor VeloEditPipeline {
                     trackTitle: preferredTrack.title
                 )
             }
-        } else {
+        } else if directorBrief?.musicPolicy == .specificTrack, let resolvedMusicTrackID {
+            throw DirectorBriefFulfillmentError.unavailableMusicTrack(resolvedMusicTrackID)
+        } else if directorBrief?.musicPolicy != DirectorMusicPolicy.none {
             // Automatic mode intentionally looks for a fresh soundtrack. An
             // explicit local choice above is preserved and avoids a download.
             for index in roughTimelines.indices where roughTimelines[index].music != nil {
@@ -2046,10 +2141,22 @@ public actor VeloEditPipeline {
                 roughTimelines[index].music?.preferDifferentTrack = true
             }
         }
-        let tracks = try await tracksForResolving(roughTimelines.first?.music)
+        let tracks = try await tracksForResolving(
+            roughTimelines.first?.music,
+            excludingIdentities: recentMusicIdentities
+        )
         let directedTimelines = await Self.directingVariants(stories: effectiveStories, roughTimelines: roughTimelines, tracks: tracks, assets: current.assets, analyses: analyses)
         let tasteContext = TasteContextResolver().resolve(projectStyle: autonomous.projectStyle, assets: current.assets, analyses: analyses)
-        let winner = MontageVariantSelector().select(stories: effectiveStories, timelines: directedTimelines, assets: current.assets, analyses: analyses, searchDiagnostics: variantSearch.diagnostics, personalTasteProfile: personalTaste, tasteContext: tasteContext)
+        let winner = MontageVariantSelector().select(
+            stories: effectiveStories,
+            timelines: directedTimelines,
+            assets: current.assets,
+            analyses: analyses,
+            searchDiagnostics: variantSearch.diagnostics,
+            personalTasteProfile: personalTaste,
+            tasteContext: tasteContext,
+            avoidingTimeline: avoidingTimeline
+        )
         let plan = winner?.story.plan ?? effectiveStories[0].plan
         var timeline = winner?.timeline ?? directedTimelines[0]
         timeline = await Self.finalizePerceptualRenderReview(
@@ -2061,17 +2168,34 @@ public actor VeloEditPipeline {
             telemetry: Self.telemetryLookup(in: current),
             derivedMediaCacheURL: CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
         )
+        timeline = try TimelineDeliveryContract().enforce(
+            timeline: timeline,
+            plan: plan,
+            assets: current.assets,
+            analyses: analyses
+        )
+        if let resolvedMusicTrackID,
+           let explicitTrack = tracks.first(where: { $0.id == resolvedMusicTrackID }) {
+            timeline = await Self.attachingExplicitMusic(explicitTrack, to: timeline)
+        }
+        try Self.validateDirectorMusic(timeline, brief: directorBrief, tracks: tracks)
+        try Task.checkCancellation()
         try await store.update(ifRevision: projectSnapshot.revision) { project in
             if let previous = project.timelines.last {
                 Self.appendCheckpoint(timeline: previous, reason: "Перед полной режиссёрской пересборкой", to: &project)
             }
             timeline.versionName = Self.nextAIEditName(in: project)
             project.personalTasteProfile = personalTaste
+            project.analyses = analyses
             project.sourceMap = eventDiscovery.sourceMap
             project.events = eventDiscovery.events
             project.storyPlans.append(plan)
             project.timelines.append(timeline)
             Self.recordMusicCredit(from: timeline, tracks: tracks, in: &project)
+        }
+        if let trackID = timeline.music?.trackID,
+           let track = tracks.first(where: { $0.id == trackID }) {
+            try? await musicSelectionHistory.record(track)
         }
         return timeline
     }
@@ -2082,7 +2206,9 @@ public actor VeloEditPipeline {
         selectedCandidateID: UUID? = nil,
         preset: FilmPreset? = nil,
         targetDuration: Double? = nil,
-        preferredMusicTrackID: UUID? = nil
+        preferredMusicTrackID: UUID? = nil,
+        directorBrief: DirectorBrief? = nil,
+        ignoredFeedbackConstraints: StoryConstraintLocks = []
     ) async throws -> Timeline {
         let projectSnapshot = await store.snapshot()
         let current = projectSnapshot.manifest
@@ -2091,11 +2217,25 @@ public actor VeloEditPipeline {
                 prompt: feedback,
                 preset: preset ?? .story,
                 targetDuration: targetDuration,
-                preferredMusicTrackID: preferredMusicTrackID
+                preferredMusicTrackID: preferredMusicTrackID,
+                directorBrief: directorBrief
             )
         }
         var candidates = current.analyses.flatMap(\.candidates)
         var updatedSeed = FeedbackEngine().apply(feedback: feedback, to: oldPlan, candidates: &candidates, selectedCandidateID: selectedCandidateID)
+        let feedbackPreset = preset ?? oldPlan.preset
+        let explicitlyInterpretedConstraints = Self.interpretedFeedbackConstraints(
+            feedback,
+            preset: feedbackPreset,
+            base: oldPlan.constraints,
+            ignoredConstraints: ignoredFeedbackConstraints
+        )
+        var lockedConstraints = Self.storyConstraintLocks(
+            explicitIn: feedback,
+            from: oldPlan.constraints,
+            to: explicitlyInterpretedConstraints
+        )
+        lockedConstraints.subtract(ignoredFeedbackConstraints)
         if let preset, preset != updatedSeed.preset {
             updatedSeed.preset = preset
             updatedSeed.constraints = PromptInterpreter().interpret(
@@ -2104,42 +2244,70 @@ public actor VeloEditPipeline {
                 base: updatedSeed.constraints
             )
         }
-        if let targetDuration { updatedSeed.constraints.targetDuration = max(5, targetDuration) }
+        var effectiveBrief = directorBrief ?? updatedSeed.directorBrief
+        if let preferredMusicTrackID, effectiveBrief != nil {
+            effectiveBrief?.musicPolicy = .specificTrack
+            effectiveBrief?.musicTrackID = preferredMusicTrackID
+        }
+        let requestedDuration = effectiveBrief?.requestedDuration ?? targetDuration
+        if let requestedDuration { updatedSeed.constraints.targetDuration = max(5, requestedDuration) }
         var analyses = Self.mergingTelemetrySources(into: current.analyses, sources: current.effectiveTelemetrySources)
         let byID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
         for index in analyses.indices { analyses[index].candidates = analyses[index].candidates.compactMap { byID[$0.id] } }
+        analyses = CrossVideoRelationshipAnalyzer().refine(analyses)
         let eventDiscovery = EventIntelligenceEngine().discover(assets: current.assets, analyses: analyses)
         let deviceTaste = await personalTasteStore.profile()
         let personalTaste = deviceTaste.totalSignalCount > 0 ? deviceTaste : (current.personalTasteProfile ?? deviceTaste)
-        let autonomous = AutonomousDirectorEngine().decide(
+        var autonomous = AutonomousDirectorEngine().decide(
             prompt: updatedSeed.prompt,
             fallbackPreset: updatedSeed.preset,
-            requestedDuration: targetDuration,
+            requestedDuration: requestedDuration,
             assets: current.assets,
             analyses: analyses,
             personalProfile: personalTaste,
-            events: eventDiscovery.events
+            events: eventDiscovery.events,
+            requestIsExplicit: effectiveBrief == nil ? nil : true
         )
-        if preferredMusicTrackID == nil {
+        if let effectiveBrief {
+            autonomous = Self.applyingDirectorBrief(effectiveBrief, to: autonomous)
+        }
+        let resolvedMusicTrackID: UUID?
+        if effectiveBrief?.musicPolicy == DirectorMusicPolicy.none {
+            resolvedMusicTrackID = nil
+        } else if effectiveBrief?.musicPolicy == .specificTrack {
+            resolvedMusicTrackID = effectiveBrief?.musicTrackID ?? preferredMusicTrackID
+        } else {
+            resolvedMusicTrackID = preferredMusicTrackID
+        }
+        if effectiveBrief?.musicPolicy == .specificTrack, resolvedMusicTrackID == nil {
+            throw DirectorBriefFulfillmentError.specificMusicTrackNotSelected
+        }
+        let allowsAutomaticMusic = effectiveBrief?.musicPolicy != DirectorMusicPolicy.none
+            && effectiveBrief?.musicPolicy != .specificTrack
+        if allowsAutomaticMusic && resolvedMusicTrackID == nil {
             await musicSystem.scheduleOnlineTrack(for: Self.musicIntent(from: autonomous.music))
         }
-        updatedSeed.constraints.targetDuration = autonomous.duration.seconds
-        updatedSeed.constraints.pacing = autonomous.finalStyle.pacing
+        updatedSeed.constraints.targetDuration = effectiveBrief?.requestedDuration ?? autonomous.duration.seconds
+        updatedSeed.constraints.pacing = effectiveBrief?.mood.pacing ?? autonomous.finalStyle.pacing
         updatedSeed.constraints.transitionFrequency = autonomous.grammar.transitionDensity
         updatedSeed.constraints.allowSlowMotion = autonomous.grammar.slowMotionDensity > 0.025
-        let variantSearch = StoryEngine().createPlanVariantSearch(prompt: updatedSeed.prompt, preset: updatedSeed.preset, constraints: updatedSeed.constraints, assets: current.assets, analyses: analyses, events: eventDiscovery.events, eventDiagnostics: eventDiscovery.diagnostics, limit: 10, autonomousDecision: autonomous)
+        if lockedConstraints.contains(.targetDuration) { updatedSeed.constraints.targetDuration = explicitlyInterpretedConstraints.targetDuration }
+        if lockedConstraints.contains(.pacing) { updatedSeed.constraints.pacing = explicitlyInterpretedConstraints.pacing }
+        if lockedConstraints.contains(.transitionFrequency) { updatedSeed.constraints.transitionFrequency = explicitlyInterpretedConstraints.transitionFrequency }
+        if lockedConstraints.contains(.allowSlowMotion) { updatedSeed.constraints.allowSlowMotion = explicitlyInterpretedConstraints.allowSlowMotion }
+        let variantSearch = StoryEngine().createPlanVariantSearch(prompt: updatedSeed.prompt, preset: updatedSeed.preset, constraints: updatedSeed.constraints, assets: current.assets, analyses: analyses, events: eventDiscovery.events, eventDiagnostics: eventDiscovery.diagnostics, limit: 10, autonomousDecision: autonomous, directorBrief: effectiveBrief, lockedConstraints: lockedConstraints)
         let storyVariants = variantSearch.variants
-        let fallbackPlan = StoryPlan(prompt: updatedSeed.prompt, preset: updatedSeed.preset, constraints: updatedSeed.constraints, chapters: [], autonomousDecision: autonomous)
+        let fallbackPlan = StoryPlan(prompt: updatedSeed.prompt, preset: updatedSeed.preset, constraints: updatedSeed.constraints, chapters: [], autonomousDecision: autonomous, directorBrief: effectiveBrief)
         let effectiveStories = storyVariants.isEmpty ? [StoryPlanVariant(plan: fallbackPlan, strategy: "fallback", seedScore: 0)] : storyVariants
         var roughTimelines = effectiveStories.map { TimelineComposer().compose(plan: $0.plan, assets: current.assets, analyses: analyses) }
         if let previous = current.timelines.last {
             for index in roughTimelines.indices {
-                roughTimelines[index] = Self.carryEditorAdjustments(from: previous, to: roughTimelines[index])
+                roughTimelines[index] = Self.carryEditorAdjustments(from: previous, to: roughTimelines[index], directorBrief: effectiveBrief)
             }
         }
-        if let preferredMusicTrackID,
+        if let resolvedMusicTrackID,
            let preferredTrack = try await musicSystem.tracks().first(where: {
-               $0.id == preferredMusicTrackID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
+               $0.id == resolvedMusicTrackID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
            }) {
             for index in roughTimelines.indices {
                 roughTimelines[index].music = MusicDirective(
@@ -2150,6 +2318,8 @@ public actor VeloEditPipeline {
                     trackTitle: preferredTrack.title
                 )
             }
+        } else if effectiveBrief?.musicPolicy == .specificTrack, let resolvedMusicTrackID {
+            throw DirectorBriefFulfillmentError.unavailableMusicTrack(resolvedMusicTrackID)
         }
         let tracks = try await tracksForResolving(roughTimelines.first?.music)
         let directedTimelines = await Self.directingVariants(stories: effectiveStories, roughTimelines: roughTimelines, tracks: tracks, assets: current.assets, analyses: analyses)
@@ -2166,6 +2336,18 @@ public actor VeloEditPipeline {
             telemetry: Self.telemetryLookup(in: current),
             derivedMediaCacheURL: CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
         )
+        timeline = try TimelineDeliveryContract().enforce(
+            timeline: timeline,
+            plan: plan,
+            assets: current.assets,
+            analyses: analyses
+        )
+        if let resolvedMusicTrackID,
+           let explicitTrack = tracks.first(where: { $0.id == resolvedMusicTrackID }) {
+            timeline = await Self.attachingExplicitMusic(explicitTrack, to: timeline)
+        }
+        try Self.validateDirectorMusic(timeline, brief: effectiveBrief, tracks: tracks)
+        try Task.checkCancellation()
         try await store.update(ifRevision: projectSnapshot.revision) { project in
             if let previous = project.timelines.last {
                 Self.appendCheckpoint(timeline: previous, reason: "Перед AI re-edit", to: &project)
@@ -2345,6 +2527,24 @@ public actor VeloEditPipeline {
         return result
     }
 
+    /// Returns only already-generated timeline images. Project opening uses
+    /// this path so a visible editor is never held behind video frame decoding.
+    public func cachedTimelineThumbnailURLs() async -> [UUID: URL] {
+        let current = await store.manifest
+        guard let timeline = current.timelines.last else { return [:] }
+        let assets = Dictionary(uniqueKeysWithValues: current.assets.map { ($0.id, $0) })
+        let paths = CachePaths(root: await store.cacheURL)
+        return Dictionary(uniqueKeysWithValues: timeline.items.compactMap { item in
+            guard let assetID = item.assetID, let asset = assets[assetID] else { return nil }
+            let preferred = asset.kind == .photo
+                ? paths.thumbnail(for: asset)
+                : paths.timelineThumbnail(for: item, asset: asset)
+            if FileManager.default.fileExists(atPath: preferred.path) { return (item.id, preferred) }
+            let fallback = paths.thumbnail(for: asset)
+            return FileManager.default.fileExists(atPath: fallback.path) ? (item.id, fallback) : nil
+        })
+    }
+
     public func makePlayback(
         timeline timelineOverride: Timeline? = nil,
         interactiveLongEdge: Int? = nil,
@@ -2394,6 +2594,7 @@ public actor VeloEditPipeline {
             preferredVideoSources: playbackSources,
             sourceWarnings: sourceWarnings,
             derivedMediaCacheURL: paths.previewDerivedMediaDirectory,
+            preferStableRealtimePreview: true,
             progress: progress
         )
     }
@@ -2559,15 +2760,86 @@ public actor VeloEditPipeline {
                   assetDuration.isFinite,
                   assetDuration > 0 else { continue }
             var item = timeline.items[index]
+            let preservedTimelineDuration = item.timelineDuration
             item.sourceStart = min(max(0, item.sourceStart), max(0, assetDuration - frame))
             let available = max(frame, assetDuration - item.sourceStart)
             item.sourceDuration = min(max(frame, item.sourceDuration), available)
-            let durationFactor = item.speedRamp?.outputDuration(sourceDuration: 1) ?? (1 / max(0.1, item.speed))
-            item.timelineDuration = max(frame, item.sourceDuration * durationFactor)
+            if item.isFreezeFrame {
+                item.timelineDuration = max(frame, preservedTimelineDuration)
+            } else {
+                let durationFactor = item.speedRamp?.outputDuration(sourceDuration: 1) ?? (1 / max(0.1, item.speed))
+                item.timelineDuration = max(frame, item.sourceDuration * durationFactor)
+            }
             timeline.items[index] = item
         }
         timeline.items = retimed(timeline.items)
         return timeline
+    }
+
+    static func storyConstraintLocks(
+        explicitIn prompt: String,
+        from base: StoryConstraints,
+        to interpreted: StoryConstraints
+    ) -> StoryConstraintLocks {
+        var locks: StoryConstraintLocks = []
+        if abs(interpreted.targetDuration - base.targetDuration) > 0.000_1 {
+            locks.insert(.targetDuration)
+        }
+        if abs(interpreted.pacing - base.pacing) > 0.000_1 {
+            locks.insert(.pacing)
+        }
+        if abs(interpreted.transitionFrequency - base.transitionFrequency) > 0.000_1 {
+            locks.insert(.transitionFrequency)
+        }
+        if interpreted.allowSlowMotion != base.allowSlowMotion {
+            locks.insert(.allowSlowMotion)
+        }
+        let text = prompt.lowercased().replacingOccurrences(of: "ё", with: "е")
+        if AutonomousDurationOptimizer.requestContainsExplicitDuration(text) {
+            locks.insert(.targetDuration)
+        }
+        if ["динамич", "энергич", "быстрый темп", "спокой", "медлен"].contains(where: text.contains) {
+            locks.insert(.pacing)
+        }
+        if text.contains("меньше переход") || text.contains("больше переход") {
+            locks.insert(.transitionFrequency)
+        }
+        if [
+            "без slow motion", "не используй slow motion", "убери slow motion", "отключи slow motion",
+            "не добавляй slow motion", "никакого slow motion", "не нужен slow motion",
+            "без слоу", "без замедления", "не замедляй"
+        ].contains(where: text.contains) {
+            locks.insert(.allowSlowMotion)
+        }
+        return locks
+    }
+
+    static func interpretedFeedbackConstraints(
+        _ feedback: String,
+        preset: FilmPreset,
+        base: StoryConstraints,
+        ignoredConstraints: StoryConstraintLocks
+    ) -> StoryConstraints {
+        var constraints = PromptInterpreter().interpret(
+            prompt: feedback,
+            preset: preset,
+            base: base
+        )
+        if ignoredConstraints.contains(.targetDuration) {
+            // A phrase such as “selected clip for 3 seconds” is an exact
+            // editor command, not a request to compress the whole film.
+            constraints.targetDuration = base.targetDuration
+        }
+        if ignoredConstraints.contains(.pacing) {
+            constraints.pacing = base.pacing
+        }
+        if ignoredConstraints.contains(.transitionFrequency) {
+            constraints.transitionFrequency = base.transitionFrequency
+        }
+        if ignoredConstraints.contains(.allowSlowMotion) {
+            constraints.allowSlowMotion = base.allowSlowMotion
+        }
+        return constraints
     }
 
     private struct LocalizedTimelineSlice {
@@ -2577,6 +2849,469 @@ public actor VeloEditPipeline {
         var telemetryItemIDs: [UUID]
         var effectItemIDs: [UUID]
         var titleItemIDs: [UUID]
+    }
+
+    private static func applyingLocalizedEditorCommands(
+        _ commands: [EditorCommand],
+        to source: Timeline,
+        timelineRange: ClosedRange<Double>,
+        assets: [MediaAsset]
+    ) -> (timeline: Timeline, report: EditorCommandReport) {
+        let localCommands = commands.filter(\.canApplyInsideTimelineRange)
+        let rejected = commands.count - localCommands.count
+        var applied: [String] = []
+        var ignored: [String] = []
+        var affected = Set<UUID>()
+
+        if rejected > 0 {
+            ignored.append(rejected == 1
+                ? "Одна команда небезопасна внутри диапазона и не применена"
+                : "Небезопасных для локального диапазона команд не применено: \(rejected)")
+        }
+        guard !localCommands.isEmpty else {
+            return (source, EditorCommandReport(
+                recognizedCount: commands.count,
+                applied: applied,
+                ignored: ignored,
+                affectedItemIDs: []
+            ))
+        }
+
+        let localized = sliced(source, for: timelineRange)
+        let slicedBaseline = localized.timeline
+        var timeline = slicedBaseline
+        let localClipIDs = localized.itemIDs.filter { id in
+            timeline.items.first(where: { $0.id == id })?.kind != .title
+        }
+        let localLegacyTitleIDs = localized.itemIDs.filter { id in
+            timeline.items.first(where: { $0.id == id })?.kind == .title
+        }
+
+        func targetIDs(for command: EditorCommand, candidates: [UUID]) -> [UUID] {
+            guard !candidates.isEmpty else { return [] }
+            switch command.timelineRangeTarget ?? .all {
+            case .all, .selected:
+                return candidates
+            case .first:
+                return [candidates[0]]
+            case .last:
+                return [candidates[candidates.count - 1]]
+            case .number(let number):
+                return candidates.indices.contains(number - 1) ? [candidates[number - 1]] : []
+            }
+        }
+
+        func appendReport(_ report: EditorCommandReport) {
+            applied.append(contentsOf: report.applied)
+            ignored.append(contentsOf: report.ignored)
+            affected.formUnion(report.affectedItemIDs)
+        }
+
+        func appliesToAttachedTarget(_ targetID: UUID?, commandTargets: Set<UUID>) -> Bool {
+            guard let targetID else { return true }
+            return commandTargets.contains(targetID)
+        }
+
+        // Preserve command order. Each command is retargeted to exactly the
+        // clip IDs resolved inside the brushed slice; an LLM-provided `.all`
+        // can therefore never escape to the rest of the Timeline.
+        for command in localCommands {
+            let clipTargets = targetIDs(for: command, candidates: localClipIDs)
+            let clipTargetSet = Set(clipTargets)
+            let legacyTitleTargets = targetIDs(for: command, candidates: localLegacyTitleIDs)
+
+            if case .removeTitles = command {
+                let beforeLegacy = timeline.items.count
+                timeline.items.removeAll { localLegacyTitleIDs.contains($0.id) }
+                let removedModern = timeline.effectiveTitleItems.filter { localized.titleItemIDs.contains($0.id) }
+                timeline.titleItems = timeline.effectiveTitleItems.filter { !localized.titleItemIDs.contains($0.id) }
+                affected.formUnion(localLegacyTitleIDs)
+                affected.formUnion(removedModern.map(\.id))
+                if timeline.items.count != beforeLegacy || !removedModern.isEmpty {
+                    applied.append("титры удалены только внутри выделенного диапазона")
+                } else {
+                    ignored.append("в выделенном диапазоне нет титров")
+                }
+                continue
+            }
+
+            let executorTargets = command.targetsLegacyTitles ? legacyTitleTargets : clipTargets
+            if let localizedCommand = command.retargetedForTimelineRange() {
+                for (offset, itemID) in executorTargets.enumerated() {
+                    let commandForItem: EditorCommand
+                    switch localizedCommand {
+                    case .setTransitionPattern(let styles, let target) where !styles.isEmpty:
+                        commandForItem = .setTransition(styles[offset % styles.count], target)
+                    case .setEffectPattern(let effects, let target) where !effects.isEmpty:
+                        commandForItem = .setEffect(effects[offset % effects.count], target)
+                    default:
+                        commandForItem = localizedCommand
+                    }
+                    let result = EditorCommandExecutor().apply(
+                        [commandForItem],
+                        to: timeline,
+                        selectedItemID: itemID
+                    )
+                    timeline = result.timeline
+                    appendReport(result.report)
+                }
+            }
+
+            // Standalone objects share the same brushed interval. Apply only
+            // to sliced IDs (and, when attached, only to resolved local clips).
+            switch command {
+            case .setClipVolume(let volume, _):
+                timeline.audioClips = timeline.effectiveAudioClips.map { clip in
+                    guard localized.audioClipIDs.contains(clip.id),
+                          appliesToAttachedTarget(clip.attachedToItemID, commandTargets: clipTargetSet) else { return clip }
+                    var copy = clip
+                    copy.adjustments.volume = min(max(0, volume), 2)
+                    if copy != clip { affected.insert(copy.id) }
+                    return copy
+                }
+            case .setClipMuted(let muted, _):
+                timeline.audioClips = timeline.effectiveAudioClips.map { clip in
+                    guard localized.audioClipIDs.contains(clip.id),
+                          appliesToAttachedTarget(clip.attachedToItemID, commandTargets: clipTargetSet) else { return clip }
+                    var copy = clip
+                    copy.adjustments.muted = muted
+                    if copy != clip { affected.insert(copy.id) }
+                    return copy
+                }
+            case .setClipFades(let fadeIn, let fadeOut, _):
+                timeline.audioClips = timeline.effectiveAudioClips.map { clip in
+                    guard localized.audioClipIDs.contains(clip.id),
+                          appliesToAttachedTarget(clip.attachedToItemID, commandTargets: clipTargetSet) else { return clip }
+                    var copy = clip
+                    copy.adjustments.fadeIn = min(max(0, fadeIn), copy.timelineDuration)
+                    copy.adjustments.fadeOut = min(max(0, fadeOut), copy.timelineDuration)
+                    if copy != clip { affected.insert(copy.id) }
+                    return copy
+                }
+            case .setNoiseReduction(let amount, _):
+                timeline.audioClips = timeline.effectiveAudioClips.map { clip in
+                    guard localized.audioClipIDs.contains(clip.id),
+                          appliesToAttachedTarget(clip.attachedToItemID, commandTargets: clipTargetSet) else { return clip }
+                    var copy = clip
+                    copy.adjustments.noiseReduction = min(max(0, amount), 1)
+                    if copy != clip { affected.insert(copy.id) }
+                    return copy
+                }
+            case .setEQ(let preset, _):
+                timeline.audioClips = timeline.effectiveAudioClips.map { clip in
+                    guard localized.audioClipIDs.contains(clip.id),
+                          appliesToAttachedTarget(clip.attachedToItemID, commandTargets: clipTargetSet) else { return clip }
+                    var copy = clip
+                    copy.adjustments.eqPreset = preset
+                    if copy != clip { affected.insert(copy.id) }
+                    return copy
+                }
+            case .setTitleStyle(let size, let textColor, let backgroundColor, let alignment, _):
+                timeline.titleItems = timeline.effectiveTitleItems.map { title in
+                    guard localized.titleItemIDs.contains(title.id),
+                          appliesToAttachedTarget(title.targetClipID, commandTargets: clipTargetSet) else { return title }
+                    var copy = title
+                    if let size { copy.style.fontSize = min(max(18, size), 220) }
+                    if let textColor { copy.style.textColorHex = textColor }
+                    if let backgroundColor { copy.style.backgroundColorHex = backgroundColor }
+                    if let alignment { copy.style.alignment = alignment }
+                    if copy != title { affected.insert(copy.id) }
+                    return copy
+                }
+            case .setOpacity(let opacity, _):
+                timeline.titleItems = timeline.effectiveTitleItems.map { title in
+                    guard localized.titleItemIDs.contains(title.id),
+                          appliesToAttachedTarget(title.targetClipID, commandTargets: clipTargetSet) else { return title }
+                    var copy = title
+                    copy.style.opacity = min(max(0, opacity), 1)
+                    if copy != title { affected.insert(copy.id) }
+                    return copy
+                }
+                timeline.telemetryItems = timeline.effectiveTelemetryItems.map { item in
+                    guard localized.telemetryItemIDs.contains(item.id),
+                          appliesToAttachedTarget(item.targetClipID, commandTargets: clipTargetSet) else { return item }
+                    var copy = item
+                    copy.settings.opacity = min(max(0, opacity), 1)
+                    if copy != item { affected.insert(copy.id) }
+                    return copy
+                }
+                timeline.effects = timeline.effectiveEffects.map { item in
+                    guard localized.effectItemIDs.contains(item.id),
+                          appliesToAttachedTarget(item.targetClipID, commandTargets: clipTargetSet) else { return item }
+                    var copy = item
+                    copy.intensity = min(max(0, opacity), 1)
+                    if copy != item { affected.insert(copy.id) }
+                    return copy
+                }
+            case .setDuration(let duration, _):
+                timeline.audioClips = timeline.effectiveAudioClips.map { item in
+                    guard localized.audioClipIDs.contains(item.id),
+                          appliesToAttachedTarget(item.attachedToItemID, commandTargets: clipTargetSet) else { return item }
+                    var copy = item
+                    copy.timelineDuration = min(copy.sourceDuration, max(0.05, duration))
+                    if copy != item { affected.insert(copy.id) }
+                    return copy
+                }
+                timeline.telemetryItems = timeline.effectiveTelemetryItems.map { item in
+                    guard localized.telemetryItemIDs.contains(item.id),
+                          appliesToAttachedTarget(item.targetClipID, commandTargets: clipTargetSet) else { return item }
+                    var copy = item
+                    copy.timelineDuration = max(0.05, duration)
+                    if copy != item { affected.insert(copy.id) }
+                    return copy
+                }
+                timeline.effects = timeline.effectiveEffects.map { item in
+                    guard localized.effectItemIDs.contains(item.id),
+                          appliesToAttachedTarget(item.targetClipID, commandTargets: clipTargetSet) else { return item }
+                    var copy = item
+                    copy.duration = max(0.05, duration)
+                    if copy != item { affected.insert(copy.id) }
+                    return copy
+                }
+                timeline.titleItems = timeline.effectiveTitleItems.map { item in
+                    guard localized.titleItemIDs.contains(item.id),
+                          appliesToAttachedTarget(item.targetClipID, commandTargets: clipTargetSet) else { return item }
+                    var copy = item
+                    copy.duration = max(0.05, duration)
+                    if copy != item { affected.insert(copy.id) }
+                    return copy
+                }
+            case .delete:
+                let audio = timeline.effectiveAudioClips.filter {
+                    localized.audioClipIDs.contains($0.id) && appliesToAttachedTarget($0.attachedToItemID, commandTargets: clipTargetSet)
+                }
+                let telemetry = timeline.effectiveTelemetryItems.filter {
+                    localized.telemetryItemIDs.contains($0.id) && appliesToAttachedTarget($0.targetClipID, commandTargets: clipTargetSet)
+                }
+                let effects = timeline.effectiveEffects.filter {
+                    localized.effectItemIDs.contains($0.id) && appliesToAttachedTarget($0.targetClipID, commandTargets: clipTargetSet)
+                }
+                let titles = timeline.effectiveTitleItems.filter {
+                    localized.titleItemIDs.contains($0.id) && appliesToAttachedTarget($0.targetClipID, commandTargets: clipTargetSet)
+                }
+                let audioIDs = Set(audio.map(\.id)), telemetryIDs = Set(telemetry.map(\.id))
+                let effectIDs = Set(effects.map(\.id)), titleIDs = Set(titles.map(\.id))
+                timeline.audioClips = timeline.effectiveAudioClips.filter { !audioIDs.contains($0.id) }
+                timeline.telemetryItems = timeline.effectiveTelemetryItems.filter { !telemetryIDs.contains($0.id) }
+                timeline.effects = timeline.effectiveEffects.filter { !effectIDs.contains($0.id) }
+                timeline.titleItems = timeline.effectiveTitleItems.filter { !titleIDs.contains($0.id) }
+                affected.formUnion(audioIDs); affected.formUnion(telemetryIDs)
+                affected.formUnion(effectIDs); affected.formUnion(titleIDs)
+            case .setTransition(let style, _):
+                let matching = timeline.effectiveTransitionItems.filter { clipTargetSet.contains($0.incomingClipID) }
+                if let style {
+                    timeline.transitionItems = timeline.effectiveTransitionItems.map { transition in
+                        guard clipTargetSet.contains(transition.incomingClipID) else { return transition }
+                        var copy = transition
+                        copy.style = style
+                        copy.intensity = TransitionPresetRegistry.preset(for: style).defaultIntensity
+                        copy.parameters = TransitionPresetRegistry.preset(for: style).defaultParameters
+                        if copy != transition { affected.insert(copy.id) }
+                        return copy
+                    }
+                } else {
+                    let ids = Set(matching.map(\.id))
+                    timeline.transitionItems = timeline.effectiveTransitionItems.filter { !ids.contains($0.id) }
+                    affected.formUnion(ids)
+                }
+            case .setEffect(let effect, _):
+                if effect == nil {
+                    let ids = Set(timeline.effectiveEffects.filter {
+                        localized.effectItemIDs.contains($0.id) && appliesToAttachedTarget($0.targetClipID, commandTargets: clipTargetSet)
+                    }.map(\.id))
+                    timeline.effects = timeline.effectiveEffects.filter { !ids.contains($0.id) }
+                    affected.formUnion(ids)
+                }
+            default:
+                break
+            }
+        }
+
+        timeline = clampedToAvailableMedia(timeline, assets: assets)
+        timeline = alignLocalizedTimelineObjects(timeline, from: slicedBaseline)
+        guard timeline != slicedBaseline else {
+            if applied.isEmpty, ignored.isEmpty { ignored.append("Правка уже соответствует выделенному диапазону") }
+            return (source, EditorCommandReport(
+                recognizedCount: commands.count,
+                applied: [],
+                ignored: deduplicated(ignored),
+                affectedItemIDs: []
+            ))
+        }
+
+        if !affected.isEmpty, applied.isEmpty {
+            applied.append("изменены объекты внутри выделенного диапазона")
+        }
+        return (timeline, EditorCommandReport(
+            recognizedCount: commands.count,
+            applied: deduplicated(applied),
+            ignored: deduplicated(ignored),
+            affectedItemIDs: Array(affected)
+        ))
+    }
+
+    private static func deduplicated(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    /// Retiming a brushed clip must ripple every independent layer by the same
+    /// timeline mapping. Attached objects also disappear when their target was
+    /// deleted, so no dangling UUID can silently disable rendering later.
+    private static func alignLocalizedTimelineObjects(_ source: Timeline, from previous: Timeline) -> Timeline {
+        var timeline = source
+        let oldPrimaries = previous.items.filter { $0.overlay == nil && $0.kind != .title }
+            .sorted { $0.timelineStart < $1.timelineStart }
+        let currentByID = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
+        let oldByID = Dictionary(uniqueKeysWithValues: oldPrimaries.map { ($0.id, $0) })
+
+        func mappedTime(_ oldTime: Double) -> Double {
+            if let old = oldPrimaries.first(where: {
+                oldTime >= $0.timelineStart && oldTime < $0.timelineStart + $0.timelineDuration
+                    && currentByID[$0.id] != nil
+            }), let current = currentByID[old.id] {
+                let fraction = min(max(0, (oldTime - old.timelineStart) / max(0.000_001, old.timelineDuration)), 1)
+                return current.timelineStart + fraction * current.timelineDuration
+            }
+            if let old = oldPrimaries.last(where: {
+                $0.timelineStart + $0.timelineDuration <= oldTime && currentByID[$0.id] != nil
+            }),
+               let current = currentByID[old.id] {
+                return current.timelineStart + current.timelineDuration
+                    + (oldTime - old.timelineStart - old.timelineDuration)
+            }
+            if let old = oldPrimaries.first(where: { currentByID[$0.id] != nil }),
+               let current = currentByID[old.id] {
+                return max(0, current.timelineStart - (old.timelineStart - oldTime))
+            }
+            return max(0, oldTime)
+        }
+
+        func mappedInterval(start: Double, end: Double, targetID: UUID?) -> (Double, Double) {
+            if let targetID, let oldTarget = oldByID[targetID], let currentTarget = currentByID[targetID] {
+                let startFraction = (start - oldTarget.timelineStart) / max(0.000_001, oldTarget.timelineDuration)
+                let endFraction = (end - oldTarget.timelineStart) / max(0.000_001, oldTarget.timelineDuration)
+                let mappedStart = currentTarget.timelineStart + startFraction * currentTarget.timelineDuration
+                let mappedEnd = currentTarget.timelineStart + endFraction * currentTarget.timelineDuration
+                return (max(0, mappedStart), max(mappedStart + 0.05, mappedEnd))
+            }
+            let mappedStart = mappedTime(start)
+            return (mappedStart, max(mappedStart + 0.05, mappedTime(end)))
+        }
+
+        let oldAudio = Dictionary(uniqueKeysWithValues: previous.effectiveAudioClips.map { ($0.id, $0) })
+        timeline.audioClips = timeline.effectiveAudioClips.compactMap { item in
+            if let targetID = item.attachedToItemID, currentByID[targetID] == nil { return nil }
+            guard let old = oldAudio[item.id] else { return item }
+            var copy = item
+            let (start, end) = mappedInterval(
+                start: old.timelineStart,
+                end: old.timelineEnd,
+                targetID: old.attachedToItemID
+            )
+            copy.timelineStart = start
+            copy.timelineDuration = max(0.05, end - start)
+            return copy
+        }
+
+        let oldTelemetry = Dictionary(uniqueKeysWithValues: previous.effectiveTelemetryItems.map { ($0.id, $0) })
+        timeline.telemetryItems = timeline.effectiveTelemetryItems.compactMap { item in
+            if let targetID = item.targetClipID, currentByID[targetID] == nil { return nil }
+            guard let old = oldTelemetry[item.id] else { return item }
+            var copy = item
+            let (start, end) = mappedInterval(
+                start: old.timelineStart,
+                end: old.timelineEnd,
+                targetID: old.targetClipID
+            )
+            copy.timelineStart = start
+            copy.timelineDuration = max(0.05, end - start)
+            if let targetID = copy.targetClipID, let target = currentByID[targetID] {
+                copy.linkedAssetID = target.assetID
+                copy.sourceStart = target.sourceTime(atTimelineTime: start)
+            }
+            return copy
+        }
+
+        let oldEffects = Dictionary(uniqueKeysWithValues: previous.effectiveEffects.map { ($0.id, $0) })
+        timeline.effects = timeline.effectiveEffects.compactMap { item in
+            if let targetID = item.targetClipID, currentByID[targetID] == nil { return nil }
+            guard let old = oldEffects[item.id] else { return item }
+            var copy = item
+            let (start, end) = mappedInterval(
+                start: old.startTime,
+                end: old.endTime,
+                targetID: old.targetClipID
+            )
+            let ratio = max(0.000_001, end - start) / max(0.000_001, old.duration)
+            copy.startTime = start
+            copy.duration = max(0.05, end - start)
+            copy.keyframes = copy.keyframes.map { keyframe in
+                var value = keyframe
+                value.time = min(copy.duration, max(0, keyframe.time * ratio))
+                return value
+            }
+            return copy
+        }
+
+        let oldTitles = Dictionary(uniqueKeysWithValues: previous.effectiveTitleItems.map { ($0.id, $0) })
+        timeline.titleItems = timeline.effectiveTitleItems.compactMap { item in
+            if let targetID = item.targetClipID, currentByID[targetID] == nil { return nil }
+            guard let old = oldTitles[item.id] else { return item }
+            var copy = item
+            let (start, end) = mappedInterval(
+                start: old.startTime,
+                end: old.endTime,
+                targetID: old.targetClipID
+            )
+            let ratio = max(0.000_001, end - start) / max(0.000_001, old.duration)
+            copy.startTime = start
+            copy.duration = max(0.05, end - start)
+            copy.words = copy.words.map { word in
+                var value = word
+                value.start = min(copy.duration, max(0, word.start * ratio))
+                value.end = min(copy.duration, max(value.start, word.end * ratio))
+                return value
+            }
+            return copy
+        }
+
+        let validIDs = Set(timeline.items.map(\.id))
+        timeline.transitionItems = timeline.effectiveTransitionItems.compactMap { transition in
+            guard validIDs.contains(transition.outgoingClipID),
+                  validIDs.contains(transition.incomingClipID),
+                  let incoming = currentByID[transition.incomingClipID] else { return nil }
+            var copy = transition
+            copy.startTime = incoming.timelineStart
+            copy.duration = min(copy.duration, max(0.08, incoming.timelineDuration * 0.5))
+            return copy
+        }
+        return timeline
+    }
+
+    private static func slicedSpeedRamp(_ ramp: SpeedRamp, from lower: Double, to upper: Double) -> SpeedRamp {
+        let low = min(max(0, lower), 1)
+        let high = min(max(low + 0.000_001, upper), 1)
+        let points = ramp.normalizedPoints
+
+        func rate(at position: Double) -> Double {
+            guard let rightIndex = points.firstIndex(where: { $0.position >= position }) else {
+                return points.last?.rate ?? 1
+            }
+            guard rightIndex > 0 else { return points[rightIndex].rate }
+            let left = points[rightIndex - 1]
+            let right = points[rightIndex]
+            let fraction = (position - left.position) / max(0.000_001, right.position - left.position)
+            return left.rate + (right.rate - left.rate) * fraction
+        }
+
+        var selected = [SpeedRampPoint(position: 0, rate: rate(at: low))]
+        selected.append(contentsOf: points.compactMap { point in
+            guard point.position > low, point.position < high else { return nil }
+            return SpeedRampPoint(position: (point.position - low) / (high - low), rate: point.rate)
+        })
+        selected.append(SpeedRampPoint(position: 1, rate: rate(at: high)))
+        return SpeedRamp(points: selected)
     }
 
     /// Cuts primary-storyline clips on both brush boundaries and returns only
@@ -2589,18 +3324,18 @@ public actor VeloEditPipeline {
         let upper = upperCandidate > lower ? upperCandidate : min(source.duration, lower + 1 / max(1, source.frameRate))
         var items: [TimelineItem] = []
         var selectedIDs: [UUID] = []
+        var primarySegments: [UUID: [(id: UUID, start: Double, end: Double, selected: Bool)]] = [:]
         let epsilon = 0.0001
 
         for original in originalItems {
             let itemStart = original.timelineStart
             let itemEnd = itemStart + original.timelineDuration
-            guard original.overlay == nil,
-                  original.timelineDuration > epsilon,
+            guard original.timelineDuration > epsilon,
                   itemEnd > lower + epsilon,
                   itemStart < upper - epsilon else {
                 items.append(original)
-                if original.overlay != nil, itemEnd > lower + epsilon, itemStart < upper - epsilon {
-                    selectedIDs.append(original.id)
+                if original.overlay == nil {
+                    primarySegments[original.id] = [(original.id, itemStart, itemEnd, false)]
                 }
                 continue
             }
@@ -2613,25 +3348,85 @@ public actor VeloEditPipeline {
             for segmentIndex in 0..<(cuts.count - 1) {
                 let segmentStart = cuts[segmentIndex]
                 let segmentEnd = cuts[segmentIndex + 1]
-                let timelineFractionStart = (segmentStart - itemStart) / original.timelineDuration
-                let timelineFractionDuration = (segmentEnd - segmentStart) / original.timelineDuration
                 var segment = original
                 if segmentIndex > 0 {
                     segment.id = UUID()
                     segment.transition = nil
                 }
-                segment.sourceStart = original.sourceStart + original.sourceDuration * timelineFractionStart
-                segment.sourceDuration = max(epsilon, original.sourceDuration * timelineFractionDuration)
+                if original.isFreezeFrame {
+                    segment.sourceStart = original.sourceStart
+                    segment.sourceDuration = original.sourceDuration
+                } else {
+                    let mappedStart = original.sourceTime(atTimelineTime: segmentStart)
+                    let mappedEnd = original.sourceTime(atTimelineTime: segmentEnd)
+                    segment.sourceStart = min(mappedStart, mappedEnd)
+                    segment.sourceDuration = max(epsilon, abs(mappedEnd - mappedStart))
+                    if let ramp = original.speedRamp {
+                        let actualStart = (mappedStart - original.sourceStart) / max(epsilon, original.sourceDuration)
+                        let actualEnd = (mappedEnd - original.sourceStart) / max(epsilon, original.sourceDuration)
+                        let progressStart = original.isReversed ? 1 - actualStart : actualStart
+                        let progressEnd = original.isReversed ? 1 - actualEnd : actualEnd
+                        segment.speedRamp = slicedSpeedRamp(
+                            ramp,
+                            from: min(progressStart, progressEnd),
+                            to: max(progressStart, progressEnd)
+                        )
+                    }
+                }
                 segment.timelineStart = segmentStart
                 segment.timelineDuration = max(epsilon, segmentEnd - segmentStart)
+                if segment.overlay != nil {
+                    segment.overlay?.startOffset = segmentStart - itemStart + original.overlay!.effectiveStartOffset
+                }
                 items.append(segment)
-                if segmentStart >= lower - epsilon, segmentEnd <= upper + epsilon {
+                let selected = segmentStart >= lower - epsilon && segmentEnd <= upper + epsilon
+                if original.overlay == nil {
+                    primarySegments[original.id, default: []].append((segment.id, segmentStart, segmentEnd, selected))
+                }
+                if selected {
                     selectedIDs.append(segment.id)
                 }
             }
         }
 
+        func mappedClipID(_ originalID: UUID?, at time: Double) -> UUID? {
+            guard let originalID, let segments = primarySegments[originalID], !segments.isEmpty else {
+                return originalID
+            }
+            if let containing = segments.first(where: { time >= $0.start - epsilon && time <= $0.end + epsilon }) {
+                return containing.id
+            }
+            return segments.min {
+                min(abs(time - $0.start), abs(time - $0.end))
+                    < min(abs(time - $1.start), abs(time - $1.end))
+            }?.id
+        }
+
+        // Connected media keep their absolute position while their base clip
+        // may now be one of several derived segments.
+        for index in items.indices where items[index].overlay != nil {
+            let itemStart = items[index].timelineStart
+            let time = itemStart + items[index].timelineDuration * 0.5
+            guard let oldBaseID = items[index].overlay?.baseItemID,
+                  let newBaseID = mappedClipID(oldBaseID, at: time),
+                  let base = items.first(where: { $0.id == newBaseID }) else { continue }
+            items[index].overlay?.baseItemID = newBaseID
+            items[index].overlay?.startOffset = itemStart - base.timelineStart
+        }
         timeline.items = retimed(items)
+        let retimedByID = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
+        timeline.transitionItems = source.effectiveTransitionItems.compactMap { original in
+            guard let outgoing = primarySegments[original.outgoingClipID]?.last?.id
+                    ?? mappedClipID(original.outgoingClipID, at: original.startTime - epsilon),
+                  let incoming = primarySegments[original.incomingClipID]?.first?.id
+                    ?? mappedClipID(original.incomingClipID, at: original.startTime + epsilon),
+                  let incomingItem = retimedByID[incoming] else { return nil }
+            var copy = original
+            copy.outgoingClipID = outgoing
+            copy.incomingClipID = incoming
+            copy.startTime = incomingItem.timelineStart
+            return copy
+        }
 
         func segmentBounds(start: Double, end: Double) -> [(start: Double, end: Double, selected: Bool)] {
             guard end > lower + epsilon, start < upper - epsilon else {
@@ -2656,6 +3451,10 @@ public actor VeloEditPipeline {
                 segment.timelineDuration = max(epsilon, bounds.end - bounds.start)
                 segment.sourceStart = original.sourceStart + offset
                 segment.sourceDuration = segment.timelineDuration
+                segment.attachedToItemID = mappedClipID(
+                    original.attachedToItemID,
+                    at: (bounds.start + bounds.end) * 0.5
+                )
                 if bounds.selected { audioIDs.append(segment.id) }
                 return segment
             }
@@ -2670,6 +3469,10 @@ public actor VeloEditPipeline {
                 segment.timelineStart = bounds.start
                 segment.timelineDuration = max(epsilon, bounds.end - bounds.start)
                 segment.sourceStart = original.sourceStart + offset
+                segment.targetClipID = mappedClipID(
+                    original.targetClipID,
+                    at: (bounds.start + bounds.end) * 0.5
+                )
                 if bounds.selected { telemetryIDs.append(segment.id) }
                 return segment
             }
@@ -2683,6 +3486,10 @@ public actor VeloEditPipeline {
                 let offset = bounds.start - original.startTime
                 segment.startTime = bounds.start
                 segment.duration = max(epsilon, bounds.end - bounds.start)
+                segment.targetClipID = mappedClipID(
+                    original.targetClipID,
+                    at: (bounds.start + bounds.end) * 0.5
+                )
                 segment.keyframes = original.keyframes.compactMap { keyframe in
                     let absolute = original.startTime + keyframe.time
                     guard absolute >= bounds.start - epsilon, absolute <= bounds.end + epsilon else { return nil }
@@ -2703,6 +3510,10 @@ public actor VeloEditPipeline {
                 if index > 0 { segment.id = UUID() }
                 segment.startTime = bounds.start
                 segment.duration = max(epsilon, bounds.end - bounds.start)
+                segment.targetClipID = mappedClipID(
+                    original.targetClipID,
+                    at: (bounds.start + bounds.end) * 0.5
+                )
                 segment.words = original.words.compactMap { word in
                     let absoluteStart = original.startTime + word.start
                     let absoluteEnd = original.startTime + word.end
@@ -2727,7 +3538,10 @@ public actor VeloEditPipeline {
         )
     }
 
-    private func tracksForResolving(_ directive: MusicDirective?) async throws -> [LocalMusicTrack] {
+    private func tracksForResolving(
+        _ directive: MusicDirective?,
+        excludingIdentities: Set<String> = []
+    ) async throws -> [LocalMusicTrack] {
         lastMusicResolutionError = nil
         let tracks = try await musicSystem.tracks()
         guard let directive else { return tracks }
@@ -2739,6 +3553,7 @@ public actor VeloEditPipeline {
             MusicIntent(directive: directive),
             requestedTrackID: directive.trackID,
             excluding: previousTrackID,
+            excludingIdentities: excludingIdentities,
             preferCachedOnline: directive.preferDifferentTrack == true
         )
         if !resolution.failures.isEmpty {
@@ -2761,6 +3576,101 @@ public actor VeloEditPipeline {
         ))
     }
 
+    /// Converts the questionnaire mood from a suggestion into an editorial
+    /// constraint. Content analysis still supplies the story, while pace,
+    /// energy and music intent remain inside the range the user selected.
+    private static func applyingDirectorBrief(
+        _ brief: DirectorBrief,
+        to source: AutonomousDirectorDecision
+    ) -> AutonomousDirectorDecision {
+        var result = source
+        var style = result.finalStyle
+        switch brief.mood {
+        case .calm:
+            style.energy = min(style.energy, 0.42)
+            style.action = min(style.action, 0.40)
+            style.atmosphere = max(style.atmosphere, 0.68)
+            style.pacing = brief.mood.pacing
+            style.shotDuration = max(style.shotDuration, 0.70)
+            style.transitionIntensity = min(style.transitionIntensity, 0.14)
+            style.musicIntensity = min(style.musicIntensity, 0.38)
+        case .cinematic:
+            style.cinematic = max(style.cinematic, 0.82)
+            style.atmosphere = max(style.atmosphere, 0.66)
+            style.pacing = brief.mood.pacing
+            style.shotDuration = max(style.shotDuration, 0.58)
+            style.transitionIntensity = min(style.transitionIntensity, 0.22)
+        case .dynamic:
+            style.energy = max(style.energy, 0.82)
+            style.action = max(style.action, 0.72)
+            style.pacing = brief.mood.pacing
+            style.visualDensity = max(style.visualDensity, 0.74)
+            style.shotDuration = min(style.shotDuration, 0.32)
+            style.musicIntensity = max(style.musicIntensity, 0.76)
+        }
+        result.finalStyle = style
+        result.grammar = AutonomousEditingGrammar(
+            style: style,
+            project: result.projectStyle,
+            confidence: min(result.projectConfidence, max(0.35, result.grammar.confidence)),
+            personalAdjustments: result.personalSignalAdjustments ?? [:]
+        )
+        switch brief.titlePolicy {
+        case .none:
+            result.grammar.titleDensity = 0
+        case .keyOnly:
+            result.grammar.titleDensity = min(result.grammar.titleDensity, 0.025)
+        case .minimal:
+            result.grammar.titleDensity = min(result.grammar.titleDensity, 0.055)
+        }
+        result.music = AutonomousDirectorEngine.musicIntent(
+            style: style,
+            story: result.story,
+            duration: result.duration,
+            confidence: min(result.projectConfidence, result.story.confidence)
+        )
+        result.music.desiredDuration = brief.requestedDuration
+        if brief.musicPolicy == .soft {
+            result.music.style = .calm
+            result.music.desiredEnergy = min(result.music.desiredEnergy, 0.28)
+            result.music.desiredBPM = min(result.music.desiredBPM, 92)
+            result.music.needsBuildAndDrop = false
+            result.music.beatSyncIntensity = min(result.music.beatSyncIntensity, 0.24)
+            result.music.reasons.append("Стартовый бриф: мягкая и ненавязчивая музыка")
+        }
+        result.explanations.append("Стартовый бриф зафиксирован как обязательный production contract")
+        return result
+    }
+
+    private static func validateDirectorMusic(
+        _ timeline: Timeline,
+        brief: DirectorBrief?,
+        tracks: [LocalMusicTrack]
+    ) throws {
+        guard let brief else { return }
+        switch brief.musicPolicy {
+        case .none:
+            return
+        case .specificTrack:
+            guard let requestedID = brief.musicTrackID else {
+                throw DirectorBriefFulfillmentError.specificMusicTrackNotSelected
+            }
+            guard timeline.music?.trackID == requestedID,
+                  tracks.contains(where: {
+                      $0.id == requestedID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
+                  }) else {
+                throw DirectorBriefFulfillmentError.unavailableMusicTrack(requestedID)
+            }
+        case .matchVideo, .soft:
+            guard let resolvedID = timeline.music?.trackID,
+                  tracks.contains(where: {
+                      $0.id == resolvedID && FileManager.default.fileExists(atPath: $0.localFileURL.path)
+                  }) else {
+                throw DirectorBriefFulfillmentError.automaticMusicUnavailable
+            }
+        }
+    }
+
     private static func musicDirective(
         _ directive: MusicDirective?,
         replacing previousTrackID: UUID?
@@ -2775,7 +3685,13 @@ public actor VeloEditPipeline {
         return directive
     }
 
-    private static func resolvingMusic(in timeline: Timeline, tracks: [LocalMusicTrack], structures: [UUID: MusicStructure] = [:], excluding: UUID? = nil) async -> Timeline {
+    private static func resolvingMusic(
+        in timeline: Timeline,
+        tracks: [LocalMusicTrack],
+        structures: [UUID: MusicStructure] = [:],
+        excluding: UUID? = nil,
+        preserveDuration: Bool = false
+    ) async -> Timeline {
         var result = timeline
         guard var directive = result.music else { return result }
         let track: LocalMusicTrack?
@@ -2807,7 +3723,26 @@ public actor VeloEditPipeline {
         } else {
             structure = await MusicStructureCache.shared.structure(for: track)
         }
+        if preserveDuration {
+            // The chosen track and its measured structure are still attached,
+            // but beat snapping may only shorten clips. A hard user duration
+            // therefore keeps visual timing and uses the music under that cut.
+            return MusicBeatSynchronizer().refreshingStructure(in: result, for: track, analyzedStructure: structure)
+        }
         return MusicBeatSynchronizer().synchronize(result, to: track, analyzedStructure: structure, structuralOnly: true)
+    }
+
+    private static func attachingExplicitMusic(_ track: LocalMusicTrack, to timeline: Timeline) async -> Timeline {
+        var result = timeline
+        result.music = MusicDirective(
+            style: track.suggestedStyle,
+            bpm: track.bpm,
+            volume: timeline.music?.volume ?? 0.22,
+            trackID: track.id,
+            trackTitle: track.title,
+            structure: await MusicStructureCache.shared.structure(for: track)
+        )
+        return result
     }
 
     private static func directingVariants(
@@ -2817,22 +3752,33 @@ public actor VeloEditPipeline {
         assets: [MediaAsset],
         analyses: [AnalysisResult]
     ) async -> [Timeline] {
-        let structures = await withTaskGroup(of: (UUID, MusicStructure).self, returning: [UUID: MusicStructure].self) { group in
-            for track in tracks {
-                group.addTask { (track.id, await MusicStructureCache.shared.structure(for: track)) }
-            }
-            var values: [UUID: MusicStructure] = [:]
-            for await (id, structure) in group { values[id] = structure }
-            return values
+        // AVAssetReader can deadlock its media-service pipeline when several
+        // unrelated audio files are decoded concurrently in one process. The
+        // catalogue is small and every result is cached, so warm it
+        // sequentially before the CPU-only variant work fans out below.
+        var structures: [UUID: MusicStructure] = [:]
+        for track in tracks {
+            structures[track.id] = await MusicStructureCache.shared.structure(for: track)
         }
         return await withTaskGroup(of: (Int, Timeline).self, returning: [Timeline].self) { group in
             for index in stories.indices where roughTimelines.indices.contains(index) {
                 let story = stories[index]
                 let rough = roughTimelines[index]
                 group.addTask {
-                    var timeline = await Self.resolvingMusic(in: rough, tracks: tracks, structures: structures)
+                    let preservesExactDuration = story.plan.requiresExactDuration
+                    var timeline = await Self.resolvingMusic(
+                        in: rough,
+                        tracks: tracks,
+                        structures: structures,
+                        preserveDuration: preservesExactDuration
+                    )
                     timeline = AIDirectorEngine().direct(plan: story.plan, initialTimeline: timeline, assets: assets, analyses: analyses)
-                    timeline = await Self.resolvingMusic(in: timeline, tracks: tracks, structures: structures)
+                    timeline = await Self.resolvingMusic(
+                        in: timeline,
+                        tracks: tracks,
+                        structures: structures,
+                        preserveDuration: preservesExactDuration
+                    )
                     return (index, timeline)
                 }
             }
@@ -2949,8 +3895,21 @@ public actor VeloEditPipeline {
 
     /// Story regeneration may replace/reorder candidates, but visual and audio
     /// edits attached to surviving candidates must not disappear.
-    private static func carryEditorAdjustments(from previous: Timeline, to generated: Timeline) -> Timeline {
+    static func carryEditorAdjustments(
+        from previous: Timeline,
+        to generated: Timeline,
+        directorBrief: DirectorBrief? = nil
+    ) -> Timeline {
         var result = generated
+        if let format = directorBrief?.canvasFormat {
+            result.width = format.width
+            result.height = format.height
+        } else {
+            // Preserve a manually selected canvas for legacy projects whose
+            // StoryPlan predates the structured Director brief.
+            result.width = previous.width
+            result.height = previous.height
+        }
         let previousByCandidate = Dictionary(
             previous.items.compactMap { item in item.candidateID.map { ($0, item) } },
             uniquingKeysWith: { first, _ in first }
@@ -2969,7 +3928,11 @@ public actor VeloEditPipeline {
             result.items[index].videoAdjustments = old.videoAdjustments
             result.items[index].audioAdjustments = old.audioAdjustments
             result.items[index].overlay = old.overlay
-            result.items[index].telemetryOverlay = old.telemetryOverlay
+            // Telemetry is request-scoped. Carrying this legacy clip-wide
+            // field makes an old automatic HUD reappear across the entire
+            // clip even when the regenerated brief does not request it. Keep
+            // only the value produced by the current generation; manual
+            // Timeline telemetry remains available as an independent layer.
             result.items[index].locked = old.locked
             newIDByOldID[old.id] = result.items[index].id
         }
@@ -2980,6 +3943,21 @@ public actor VeloEditPipeline {
                     result.items[index].overlay = nil
                 }
             }
+        }
+        // Freeze frames are standalone editor-created clips (candidateID=nil),
+        // so candidate-based regeneration cannot recreate them. Anchor each
+        // hold to the surviving source clip that preceded it and reinsert it
+        // immediately after that clip before magnetic retiming.
+        var freezesByAnchorID: [UUID: [TimelineItem]] = [:]
+        for (index, item) in previous.items.enumerated() where item.isFreezeFrame {
+            guard let oldAnchor = previous.items[..<index].last(where: {
+                $0.overlay == nil && $0.kind != .title && !$0.isFreezeFrame && newIDByOldID[$0.id] != nil
+            }), let newAnchorID = newIDByOldID[oldAnchor.id] else { continue }
+            freezesByAnchorID[newAnchorID, default: []].append(item)
+        }
+        for index in result.items.indices.reversed() {
+            guard let freezes = freezesByAnchorID[result.items[index].id], !freezes.isEmpty else { continue }
+            result.items.insert(contentsOf: freezes, at: index + 1)
         }
         let oldTitles = previous.items.filter { $0.kind == .title }
         for title in oldTitles {
@@ -2998,12 +3976,38 @@ public actor VeloEditPipeline {
 
     private func migrateLegacyTimelineAudioSettings() async throws {
         let current = await store.manifest
-        guard current.timelines.contains(where: { $0.originalAudioVolume == nil }) else { return }
+        let needsMigration = current.timelines.contains { timeline in
+            let sanitized = AutomatedTitlePolicy.sanitized(timeline.effectiveTitleItems, timelineDuration: timeline.duration)
+            return timeline.originalAudioVolume == nil || sanitized != timeline.effectiveTitleItems
+        }
+        guard needsMigration else { return }
         try await store.update { project in
             let plans = Dictionary(uniqueKeysWithValues: project.storyPlans.map { ($0.id, $0) })
-            for index in project.timelines.indices where project.timelines[index].originalAudioVolume == nil {
-                let prompt = plans[project.timelines[index].storyPlanID]?.prompt ?? ""
-                project.timelines[index].originalAudioVolume = OriginalAudioPromptInterpreter().volume(prompt: prompt) ?? 1
+            for index in project.timelines.indices {
+                let timeline = project.timelines[index]
+                let prompt = plans[timeline.storyPlanID]?.prompt ?? ""
+                let sanitizedTitles = AutomatedTitlePolicy.sanitized(
+                    timeline.effectiveTitleItems,
+                    timelineDuration: timeline.duration
+                )
+                let repairedGeneratedTitles = sanitizedTitles != timeline.effectiveTitleItems
+                if repairedGeneratedTitles {
+                    project.timelines[index].titleItems = sanitizedTitles
+                }
+                if timeline.originalAudioVolume == nil || repairedGeneratedTitles,
+                   let requestedVolume = OriginalAudioPromptInterpreter().volume(prompt: prompt) {
+                    project.timelines[index].originalAudioVolume = requestedVolume
+                    if repairedGeneratedTitles, requestedVolume < 0.999 {
+                        project.timelines[index].audioClips = timeline.effectiveAudioClips.map { clip in
+                            guard clip.title.contains("J/L-cut") || clip.title.contains("L-cut") else { return clip }
+                            var copy = clip
+                            copy.adjustments.volume = min(copy.adjustments.volume, requestedVolume)
+                            return copy
+                        }
+                    }
+                } else if timeline.originalAudioVolume == nil {
+                    project.timelines[index].originalAudioVolume = 1
+                }
             }
         }
     }
@@ -3059,11 +4063,137 @@ public actor VeloEditPipeline {
 }
 
 private extension EditorCommand {
+    /// Reuses the command's ordinary clip target inside a brushed timeline
+    /// range. Global commands return `nil` and are handled by the range safety
+    /// policy below.
+    var timelineRangeTarget: EditorCommandTarget? {
+        switch self {
+        case .setSpeed(_, let target),
+             .removeSlowMotion(let target),
+             .setSpeedRamp(_, let target),
+             .setDuration(_, let target),
+             .setFilter(_, let target),
+             .setCrop(_, let target),
+             .rotate(_, let target),
+             .setBrightness(_, let target),
+             .setContrast(_, let target),
+             .setSaturation(_, let target),
+             .setWarmth(_, let target),
+             .setOpacity(_, let target),
+             .setExposure(_, let target),
+             .setHighlights(_, let target),
+             .setShadows(_, let target),
+             .setVignette(_, let target),
+             .setGrain(_, let target),
+             .setSharpening(_, let target),
+             .setVideoDenoise(_, let target),
+             .setBlur(_, let target),
+             .setStabilization(_, let target),
+             .setRollingShutterCorrection(_, let target),
+             .setSmoothSlowMotion(_, let target),
+             .autoEnhance(let target),
+             .setClipVolume(_, let target),
+             .setClipMuted(_, let target),
+             .setNoiseReduction(_, let target),
+             .setEQ(_, let target),
+             .detachAudio(let target),
+             .setTransition(_, let target),
+             .setTransitionPattern(_, let target),
+             .setEffect(_, let target),
+             .setEffectPattern(_, let target),
+             .setTelemetryOverlay(_, let target),
+             .insertFreezeFrame(_, let target),
+             .insertInstantReplay(_, let target),
+             .setReverse(_, let target),
+             .delete(let target),
+             .duplicate(let target),
+             .split(let target),
+             .move(let target, _):
+            return target
+        case .setClipFades(_, _, let target):
+            return target
+        case .setOverlay(_, let target, _):
+            return target
+        case .setTitleStyle(_, _, _, _, let target):
+            return target
+        case .addTitle, .removeTitles, .setAudioDucking,
+             .setOriginalAudioVolume, .setMusic, .setMusicVolume:
+            return nil
+        }
+    }
+
+    /// The ordinary executor keeps legacy title cards in `Timeline.items`, so
+    /// title styling must resolve against those IDs instead of video clip IDs.
+    var targetsLegacyTitles: Bool {
+        switch self {
+        case .setTitleStyle:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// A range edit resolves concrete item IDs before execution. Retargeting
+    /// each typed command to `.selected` prevents an `.all`/`.first` target
+    /// from escaping that resolved set when the executor is called per item.
+    func retargetedForTimelineRange() -> EditorCommand? {
+        let target: EditorCommandTarget = .selected
+        switch self {
+        case .setSpeed(let value, _): return .setSpeed(value, target)
+        case .removeSlowMotion: return .removeSlowMotion(target)
+        case .setSpeedRamp(let value, _): return .setSpeedRamp(value, target)
+        case .setDuration(let value, _): return .setDuration(value, target)
+        case .setFilter(let value, _): return .setFilter(value, target)
+        case .setCrop(let value, _): return .setCrop(value, target)
+        case .rotate(let value, _): return .rotate(value, target)
+        case .setBrightness(let value, _): return .setBrightness(value, target)
+        case .setContrast(let value, _): return .setContrast(value, target)
+        case .setSaturation(let value, _): return .setSaturation(value, target)
+        case .setWarmth(let value, _): return .setWarmth(value, target)
+        case .setOpacity(let value, _): return .setOpacity(value, target)
+        case .setExposure(let value, _): return .setExposure(value, target)
+        case .setHighlights(let value, _): return .setHighlights(value, target)
+        case .setShadows(let value, _): return .setShadows(value, target)
+        case .setVignette(let value, _): return .setVignette(value, target)
+        case .setGrain(let value, _): return .setGrain(value, target)
+        case .setSharpening(let value, _): return .setSharpening(value, target)
+        case .setVideoDenoise(let value, _): return .setVideoDenoise(value, target)
+        case .setBlur(let value, _): return .setBlur(value, target)
+        case .setStabilization(let value, _): return .setStabilization(value, target)
+        case .setRollingShutterCorrection(let value, _): return .setRollingShutterCorrection(value, target)
+        case .setSmoothSlowMotion(let value, _): return .setSmoothSlowMotion(value, target)
+        case .autoEnhance: return .autoEnhance(target)
+        case .setClipVolume(let value, _): return .setClipVolume(value, target)
+        case .setClipMuted(let value, _): return .setClipMuted(value, target)
+        case .setClipFades(let fadeIn, let fadeOut, _): return .setClipFades(fadeIn, fadeOut, target)
+        case .setNoiseReduction(let value, _): return .setNoiseReduction(value, target)
+        case .setEQ(let value, _): return .setEQ(value, target)
+        case .detachAudio: return .detachAudio(target)
+        case .setTransition(let value, _): return .setTransition(value, target)
+        case .setTransitionPattern(let value, _): return .setTransitionPattern(value, target)
+        case .setEffect(let value, _): return .setEffect(value, target)
+        case .setEffectPattern(let value, _): return .setEffectPattern(value, target)
+        case .setTelemetryOverlay(let value, _): return .setTelemetryOverlay(value, target)
+        case .insertFreezeFrame(let value, _): return .insertFreezeFrame(value, target)
+        case .insertInstantReplay(let value, _): return .insertInstantReplay(value, target)
+        case .setReverse(let value, _): return .setReverse(value, target)
+        case .setTitleStyle(let size, let textColor, let backgroundColor, let alignment, _):
+            return .setTitleStyle(size, textColor, backgroundColor, alignment, target)
+        case .delete: return .delete(target)
+        case .duplicate: return .duplicate(target)
+        case .split: return .split(target)
+        case .setAudioDucking, .setOverlay, .addTitle, .removeTitles, .move,
+             .setOriginalAudioVolume, .setMusic, .setMusicVolume:
+            return nil
+        }
+    }
+
     /// Global music/story commands are deliberately rejected here: a brushed
     /// edit must never leak outside the highlighted interval.
     var canApplyInsideTimelineRange: Bool {
         switch self {
-        case .addTitle, .setOriginalAudioVolume, .setMusic, .setMusicVolume, .setAudioDucking, .setOverlay, .move:
+        case .addTitle, .setOriginalAudioVolume, .setMusic, .setMusicVolume,
+             .setAudioDucking, .setOverlay, .move, .split:
             return false
         default:
             return true

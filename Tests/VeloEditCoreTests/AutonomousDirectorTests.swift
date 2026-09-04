@@ -102,6 +102,480 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     #expect(decision.reasons.contains { $0.contains("без искусственного") || $0.contains("повторами") })
 }
 
+@Test func explicitDurationIsExactWhenCandidateMaterialCanCoverIt() {
+    let (assets, analyses) = p3Fixture(count: 18, energetic: true)
+    let project = AutonomousProjectStyleEngine().infer(assets: assets, analyses: analyses, fallbackPreset: .story)
+    let decision = AutonomousDurationOptimizer().decide(
+        project: project,
+        style: project.vector,
+        analyses: analyses,
+        requestedDuration: 60,
+        requestIsExplicit: true
+    )
+
+    #expect(decision.seconds == 60)
+    #expect(decision.safeRange == 60...60)
+    #expect(decision.reasons.contains { $0.contains("явно заданная длительность") })
+}
+
+@Test func abbreviatedQuestionnaireDurationIsStillAHardConstraint() {
+    #expect(AutonomousDurationOptimizer.requestContainsExplicitDuration("Какой должна быть длительность? 5 мин."))
+    #expect(AutonomousDurationOptimizer.requestContainsExplicitDuration("Ролик 45 сек."))
+    let (assets, analyses) = p3Fixture(count: 6, energetic: true)
+    let decision = AutonomousDirectorEngine().decide(
+        prompt: "Какой должна быть длительность? 5 мин.",
+        fallbackPreset: .story,
+        requestedDuration: nil,
+        assets: assets,
+        analyses: analyses,
+        personalProfile: PersonalTasteProfile()
+    )
+    #expect(decision.duration.safeRange == 300...300)
+}
+
+@Test func typedQuestionnaireDurationIsHardWithoutRepeatingItInPrompt() {
+    let (assets, analyses) = p3Fixture(count: 6, energetic: true)
+    let decision = AutonomousDirectorEngine().decide(
+        prompt: "Собери историю о поездке",
+        fallbackPreset: .story,
+        requestedDuration: 60,
+        assets: assets,
+        analyses: analyses,
+        personalProfile: PersonalTasteProfile(),
+        requestIsExplicit: true
+    )
+
+    #expect(decision.duration.safeRange == 60...60)
+    #expect(decision.duration.seconds == 60)
+}
+
+@Test func explicitDurationStillShortensWhenCandidateMaterialCannotCoverIt() {
+    let (assets, analyses) = p3Fixture(count: 3, energetic: false)
+    let project = AutonomousProjectStyleEngine().infer(assets: assets, analyses: analyses, fallbackPreset: .story)
+    let decision = AutonomousDurationOptimizer().decide(
+        project: project,
+        style: project.vector,
+        analyses: analyses,
+        requestedDuration: 90,
+        requestIsExplicit: true
+    )
+
+    #expect(decision.seconds < 35)
+    #expect(decision.reasons.contains { $0.contains("материала недостаточно") })
+}
+
+@Test func fullDirectorPathKeepsExplicitDurationWhenMaterialIsSufficient() {
+    let (assets, analyses) = p3Fixture(count: 18, energetic: true)
+    let prompt = "Сделай динамичный фильм ровно на 60 секунд. Без музыки."
+    let autonomous = AutonomousDirectorEngine().decide(
+        prompt: prompt,
+        fallbackPreset: .adventure,
+        requestedDuration: 60,
+        assets: assets,
+        analyses: analyses,
+        personalProfile: PersonalTasteProfile()
+    )
+    var constraints = PromptInterpreter().interpret(prompt: prompt, preset: .adventure)
+    constraints.targetDuration = autonomous.duration.seconds
+    constraints.pacing = autonomous.finalStyle.pacing
+    constraints.transitionFrequency = autonomous.grammar.transitionDensity
+    constraints.allowSlowMotion = autonomous.grammar.slowMotionDensity > 0.025
+    let plan = StoryEngine().createPlan(
+        prompt: prompt,
+        preset: .adventure,
+        constraints: constraints,
+        assets: assets,
+        analyses: analyses,
+        autonomousDecision: autonomous
+    )
+    let rough = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let timeline = AIDirectorEngine().direct(
+        plan: plan,
+        initialTimeline: rough,
+        assets: assets,
+        analyses: analyses
+    )
+
+    #expect(abs(timeline.duration - 60) <= 1 / timeline.frameRate)
+    #expect(timeline.items.allSatisfy { $0.transition == nil })
+    #expect(timeline.effectiveTransitionItems.isEmpty)
+}
+
+@Test func fiveMinuteBriefExtendsLongCameraTakesWithoutReusingSourceRanges() {
+    let (assets, analyses) = p3Fixture(count: 18, energetic: true)
+    let prompt = "Сделай киношный фильм ровно на 5 минут. Звук исходников приглушить."
+    let autonomous = AutonomousDirectorEngine().decide(
+        prompt: prompt,
+        fallbackPreset: .cinematic,
+        requestedDuration: 300,
+        assets: assets,
+        analyses: analyses,
+        personalProfile: PersonalTasteProfile()
+    )
+    var constraints = PromptInterpreter().interpret(prompt: prompt, preset: .cinematic)
+    constraints.targetDuration = autonomous.duration.seconds
+    constraints.pacing = autonomous.finalStyle.pacing
+    let plan = StoryEngine().createPlan(
+        prompt: prompt,
+        preset: .cinematic,
+        constraints: constraints,
+        assets: assets,
+        analyses: analyses,
+        autonomousDecision: autonomous
+    )
+    let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+
+    #expect(autonomous.duration.safeRange == 300...300)
+    #expect(abs(timeline.duration - 300) <= 1 / timeline.frameRate)
+    #expect(timeline.effectiveOriginalAudioVolume == 0.30)
+    #expect(timeline.items.contains { $0.sourceDuration > 6.5 })
+    for asset in assets {
+        let ranges = timeline.items.filter { $0.assetID == asset.id }.sorted { $0.sourceStart < $1.sourceStart }
+        for pair in zip(ranges, ranges.dropFirst()) {
+            #expect(pair.0.sourceStart + pair.0.sourceDuration <= pair.1.sourceStart + 0.001)
+        }
+    }
+}
+
+@Test func typedFiveMinuteBriefRedistributesEventCapacityAndSurvivesDirectorReview() {
+    let sourceDurations = [100.0, 260.0]
+    let assets = sourceDurations.enumerated().map { index, duration in
+        MediaAsset(
+            originalURL: URL(fileURLWithPath: "/tmp/typed-five-minute-\(index).mov"),
+            kind: .video,
+            byteSize: 100,
+            contentHash: "typed-five-minute-\(index)",
+            metadata: MediaMetadata(duration: duration, frameRate: 30, hasAudio: true)
+        )
+    }
+    let candidates = assets.enumerated().map { index, asset in
+        Candidate(
+            assetID: asset.id,
+            sourceStart: index == 0 ? 45 : 120,
+            sourceDuration: 6.5,
+            scores: ClipScores(
+                quality: 0.84,
+                interest: 0.86,
+                action: 0.68,
+                stability: 0.82,
+                uniqueness: 0.84
+            ),
+            tags: [index == 0 ? "setup" : "journey"],
+            insights: CandidateInsights(
+                sceneSummary: index == 0 ? "trip setup" : "long journey",
+                dynamics: 0.68,
+                storyValue: 0.86
+            )
+        )
+    }
+    let analyses = zip(assets, candidates).map { asset, candidate in
+        AnalysisResult(
+            assetID: asset.id,
+            analyzedContentHash: asset.contentHash,
+            candidates: [candidate],
+            completedDepth: .deep
+        )
+    }
+    let events = zip(assets, candidates).enumerated().map { index, pair in
+        let (asset, candidate) = pair
+        let scene = EventScene(
+            title: "Сцена \(index + 1)",
+            assetIDs: [asset.id],
+            candidateIDs: [candidate.id],
+            phase: index == 0 ? .setup : .conclusion,
+            confidence: 0.9
+        )
+        return Event(
+            title: "Событие \(index + 1)",
+            startDate: Date(timeIntervalSince1970: Double(index * 100)),
+            assetIDs: [asset.id],
+            confidence: 0.9,
+            titleConfidence: 0.8,
+            scenes: [scene],
+            quality: EventQuality(
+                total: 0.82,
+                visualQuality: 0.84,
+                semanticCoherence: 0.82,
+                temporalCoherence: 0.84,
+                usableMaterial: index == 0 ? 0.80 : 0.82,
+                emotionalValue: 0.68,
+                action: 0.66,
+                uniqueness: 0.82,
+                storyPotential: 0.84,
+                diversity: 0.76
+            )
+        )
+    }
+    let prompt = "Собери цельную историю поездки"
+    let brief = DirectorBrief(
+        requestedDuration: 300,
+        mood: .cinematic,
+        musicPolicy: .none,
+        sourceAudioPolicy: .duck,
+        titlePolicy: .none
+    )
+    let autonomous = AutonomousDirectorEngine().decide(
+        prompt: prompt,
+        fallbackPreset: .cinematic,
+        requestedDuration: brief.requestedDuration,
+        assets: assets,
+        analyses: analyses,
+        personalProfile: PersonalTasteProfile(),
+        events: events,
+        requestIsExplicit: true
+    )
+    var constraints = PromptInterpreter.defaults(for: .cinematic)
+    constraints.targetDuration = brief.requestedDuration
+    constraints.pacing = brief.mood.pacing
+    let plan = StoryEngine().createPlan(
+        prompt: prompt,
+        preset: .cinematic,
+        constraints: constraints,
+        assets: assets,
+        analyses: analyses,
+        events: events,
+        autonomousDecision: autonomous,
+        directorBrief: brief
+    )
+    let rough = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let directed = AIDirectorEngine().direct(
+        plan: plan,
+        initialTimeline: rough,
+        assets: assets,
+        analyses: analyses
+    )
+    let delivery = TimelineDeliveryContract().validateAndRepair(
+        timeline: directed,
+        plan: plan,
+        assets: assets,
+        analyses: analyses
+    )
+
+    #expect(autonomous.duration.safeRange == 300...300)
+    #expect(abs((plan.eventStory?.entries.reduce(0) { $0 + $1.allocatedDuration } ?? 0) - 300) < 0.001)
+    #expect(abs(rough.duration - 300) <= 1 / rough.frameRate)
+    #expect(abs(directed.duration - 300) <= 1 / directed.frameRate)
+    #expect(delivery.canPersist)
+}
+
+@Test func explicitDurationPartitionsContainedSourceAnchorsWithoutReuse() throws {
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/contained-anchors.mov"),
+        kind: .video,
+        byteSize: 100,
+        contentHash: "contained-anchors",
+        metadata: MediaMetadata(duration: 120, frameRate: 30, hasAudio: true)
+    )
+    let outer = Candidate(
+        assetID: asset.id,
+        sourceStart: 0,
+        sourceDuration: 100,
+        scores: ClipScores(quality: 0.86, interest: 0.84, action: 0.72, stability: 0.82, uniqueness: 0.88),
+        tags: ["cycling", "wide"],
+        insights: CandidateInsights(sceneSummary: "wide cycling route", dynamics: 0.72, storyValue: 0.84),
+        locked: true
+    )
+    let nested = Candidate(
+        assetID: asset.id,
+        sourceStart: 10,
+        sourceDuration: 5,
+        scores: ClipScores(quality: 0.91, interest: 0.92, action: 0.88, stability: 0.80, uniqueness: 0.90),
+        tags: ["cycling", "detail"],
+        insights: CandidateInsights(sceneSummary: "cycling detail", dynamics: 0.88, storyValue: 0.92),
+        locked: true
+    )
+    let analysis = AnalysisResult(
+        assetID: asset.id,
+        analyzedContentHash: asset.contentHash,
+        sceneTags: ["cycling"],
+        candidates: [outer, nested],
+        completedDepth: .deep
+    )
+    let prompt = "Сделай фильм ровно на 60 секунд. Без музыки."
+    let autonomous = AutonomousDirectorEngine().decide(
+        prompt: prompt,
+        fallbackPreset: .story,
+        requestedDuration: 60,
+        assets: [asset],
+        analyses: [analysis],
+        personalProfile: PersonalTasteProfile()
+    )
+    var constraints = PromptInterpreter().interpret(prompt: prompt, preset: .story)
+    constraints.targetDuration = autonomous.duration.seconds
+    constraints.targetClipCount = 2
+    let plan = StoryEngine().createPlan(
+        prompt: prompt,
+        preset: .story,
+        constraints: constraints,
+        assets: [asset],
+        analyses: [analysis],
+        autonomousDecision: autonomous
+    )
+    let timeline = TimelineComposer().compose(plan: plan, assets: [asset], analyses: [analysis])
+    let ranges = timeline.items.sorted { $0.sourceStart < $1.sourceStart }
+
+    #expect(autonomous.duration.safeRange == 60...60)
+    #expect(ranges.count == 2)
+    #expect(abs(timeline.duration - 60) <= 1 / timeline.frameRate)
+    #expect(ranges[0].sourceStart + ranges[0].sourceDuration <= ranges[1].sourceStart + 0.001)
+}
+
+@Test func generatedActivityTitlesStayInsideTheirOwnReadableBlock() throws {
+    let firstAsset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/short-cycling.mov"),
+        kind: .video,
+        byteSize: 100,
+        contentHash: "short-cycling",
+        metadata: MediaMetadata(duration: 1, frameRate: 30, hasAudio: true)
+    )
+    let secondAsset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/readable-buggy.mov"),
+        kind: .video,
+        byteSize: 100,
+        contentHash: "readable-buggy",
+        metadata: MediaMetadata(duration: 6, frameRate: 30, hasAudio: true)
+    )
+    let cycling = Candidate(
+        assetID: firstAsset.id,
+        sourceStart: 0,
+        sourceDuration: 1,
+        scores: ClipScores(quality: 0.8, interest: 0.8, action: 0.7, stability: 0.8),
+        tags: ["cycling", "bicycle"]
+    )
+    let buggy = Candidate(
+        assetID: secondAsset.id,
+        sourceStart: 0,
+        sourceDuration: 6,
+        scores: ClipScores(quality: 0.86, interest: 0.88, action: 0.82, stability: 0.8),
+        tags: ["buggy", "automobile", "helmet"]
+    )
+    let eventID = UUID()
+    let cyclingSceneID = UUID()
+    let buggySceneID = UUID()
+    let chapters = [
+        StoryChapter(
+            title: "Велопрогулка",
+            candidateIDs: [cycling.id],
+            role: .intro,
+            eventID: eventID,
+            eventSceneID: cyclingSceneID,
+            chapterCardTitle: "Велопрогулка"
+        ),
+        StoryChapter(
+            title: "Багги",
+            candidateIDs: [buggy.id],
+            role: .action,
+            eventID: eventID,
+            eventSceneID: buggySceneID,
+            chapterCardTitle: "Багги"
+        )
+    ]
+    let plan = StoryPlan(
+        prompt: "Только ключевые титры. Без музыки.",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 10, targetClipCount: 2),
+        chapters: chapters,
+        eventStory: EventStoryPlan(
+            entries: [EventStoryEntry(
+                eventID: eventID,
+                title: "Активный день",
+                startDate: nil,
+                endDate: nil,
+                allocatedDuration: 10,
+                quality: 0.8,
+                sceneIDs: [cyclingSceneID, buggySceneID]
+            )],
+            chapterCardsEnabled: true
+        )
+    )
+    let analyses = [
+        AnalysisResult(assetID: firstAsset.id, analyzedContentHash: firstAsset.contentHash, candidates: [cycling]),
+        AnalysisResult(assetID: secondAsset.id, analyzedContentHash: secondAsset.contentHash, candidates: [buggy])
+    ]
+    let timeline = TimelineComposer().compose(plan: plan, assets: [firstAsset, secondAsset], analyses: analyses)
+    #expect(timeline.effectiveTitleItems.count == 1)
+    let title = try #require(timeline.effectiveTitleItems.first)
+    let buggyItems = timeline.items.filter { $0.eventSceneID == buggySceneID }
+    let buggyStart = try #require(buggyItems.map(\.timelineStart).min())
+    let buggyEnd = try #require(buggyItems.map { $0.timelineStart + $0.timelineDuration }.max())
+
+    #expect(title.text == "Багги")
+    #expect(abs(title.startTime - buggyStart) < 0.001)
+    #expect(title.endTime <= buggyEnd + 0.001)
+}
+
+@Test func eventAwareDirectorPathKeepsExplicitDurationWhenMaterialIsSufficient() {
+    let (assets, analyses) = p3Fixture(count: 18, energetic: true)
+    let events = assets.enumerated().map { index, asset in
+        let ids = analyses.first(where: { $0.assetID == asset.id })?.candidates.map(\.id) ?? []
+        let scene = EventScene(
+            title: "Сцена \(index + 1)",
+            startDate: Date(timeIntervalSince1970: Double(index * 100)),
+            assetIDs: [asset.id],
+            candidateIDs: ids,
+            phase: index == 0 ? .setup : index == 2 ? .reaction : .action,
+            confidence: 0.9
+        )
+        return Event(
+            title: "Событие \(index + 1)",
+            startDate: scene.startDate,
+            assetIDs: [asset.id],
+            confidence: 0.9,
+            titleConfidence: 0.8,
+            scenes: [scene],
+            quality: EventQuality(
+                total: 0.82,
+                visualQuality: 0.82,
+                semanticCoherence: 0.82,
+                temporalCoherence: 0.82,
+                usableMaterial: 0.9,
+                emotionalValue: 0.72,
+                action: 0.72,
+                uniqueness: 0.82,
+                storyPotential: 0.82,
+                diversity: 0.78
+            )
+        )
+    }
+    let prompt = "Сделай фильм ровно на 60 секунд. Без музыки."
+    let autonomous = AutonomousDirectorEngine().decide(
+        prompt: prompt,
+        fallbackPreset: .story,
+        requestedDuration: 60,
+        assets: assets,
+        analyses: analyses,
+        personalProfile: PersonalTasteProfile(),
+        events: events
+    )
+    var constraints = PromptInterpreter().interpret(prompt: prompt, preset: .story)
+    constraints.targetDuration = autonomous.duration.seconds
+    constraints.pacing = autonomous.finalStyle.pacing
+    let plan = StoryEngine().createPlan(
+        prompt: prompt,
+        preset: .story,
+        constraints: constraints,
+        assets: assets,
+        analyses: analyses,
+        events: events,
+        autonomousDecision: autonomous
+    )
+    let rough = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let timeline = AIDirectorEngine().direct(
+        plan: plan,
+        initialTimeline: rough,
+        assets: assets,
+        analyses: analyses
+    )
+
+    #expect(plan.eventStory != nil)
+    #expect(plan.chapters.contains { [.intro, .setup].contains($0.role) })
+    #expect(plan.chapters.contains { $0.role == .climax })
+    #expect(plan.chapters.contains { $0.role == .outro })
+    #expect(abs(timeline.duration - 60) <= 1 / timeline.frameRate)
+    #expect(timeline.items.allSatisfy { $0.transition == nil })
+    #expect(timeline.effectiveTransitionItems.isEmpty)
+}
+
 @Test func autonomousDurationPreservesUniqueMomentsAcrossSourceActivityGroups() {
     let (assets, initialAnalyses) = p3Fixture(count: 3, energetic: true)
     var analyses = initialAnalyses

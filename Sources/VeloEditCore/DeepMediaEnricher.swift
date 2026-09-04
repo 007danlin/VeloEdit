@@ -95,12 +95,11 @@ struct DeepMediaCandidateEnricher: Sendable {
         ))
 
         let trackingStarted = Date()
-        let trackingLimit: Int
-        switch profile.mode {
-        case .fast: trackingLimit = min(2, candidates.count)
-        case .balanced: trackingLimit = min(6, candidates.count)
-        case .quality, .maximum: trackingLimit = candidates.count
-        }
+        // Canvas orientation is chosen after analysis. Every candidate must
+        // therefore carry the inexpensive track assembled from already sampled
+        // subject observations; otherwise a later 9:16 build would fall back
+        // to a blind center crop for candidates outside the old fast-mode cap.
+        let trackingLimit = candidates.count
         let trackingIndices = Set(candidates.indices.sorted {
             SemanticSceneIndex.bestTakeScore(candidates[$0]) > SemanticSceneIndex.bestTakeScore(candidates[$1])
         }.prefix(trackingLimit))

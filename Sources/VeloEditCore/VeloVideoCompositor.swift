@@ -38,6 +38,94 @@ final class VeloTelemetryLayer {
     }
 }
 
+/// Geometry shared by the runtime compositor and focused unit tests. Subject
+/// coordinates are normalized in the display-oriented image. The base
+/// transform already contains preferred orientation and aspect-fill, so its
+/// transformed extent is the only reliable scale for a landscape-to-portrait
+/// camera move.
+enum SubjectReframeGeometry {
+    static func transform(
+        base: CGAffineTransform,
+        sourceExtent: CGRect,
+        plan: SubjectReframePlan,
+        progress: Double,
+        renderSize: CGSize
+    ) -> CGAffineTransform {
+        guard sourceExtent.width.isFinite, sourceExtent.height.isFinite,
+              sourceExtent.width > 0, sourceExtent.height > 0,
+              renderSize.width > 0, renderSize.height > 0 else { return base }
+
+        let progress = min(max(0, progress), 1)
+        let centerX = plan.startCenterX + (plan.endCenterX - plan.startCenterX) * progress
+        let centerY = plan.startCenterY + (plan.endCenterY - plan.startCenterY) * progress
+        let requestedScale = plan.startScale + (plan.endScale - plan.startScale) * progress
+        let canvas = CGRect(origin: .zero, size: renderSize)
+        let baseExtent = sourceExtent.applying(base).standardized
+        guard baseExtent.width.isFinite, baseExtent.height.isFinite,
+              baseExtent.width > 0, baseExtent.height > 0 else { return base }
+
+        // Old projects may contain a subject plan with crop=.fit. Raising the
+        // minimum scale restores full canvas coverage before applying focus.
+        let coverageScale = max(
+            1,
+            max(canvas.width / baseExtent.width, canvas.height / baseExtent.height)
+        )
+        let scale = CGFloat(max(requestedScale, Double(coverageScale)))
+        let canvasCenter = CGPoint(x: canvas.midX, y: canvas.midY)
+        let zoom = CGAffineTransform(translationX: canvasCenter.x, y: canvasCenter.y)
+            .scaledBy(x: scale, y: scale)
+            .translatedBy(x: -canvasCenter.x, y: -canvasCenter.y)
+        let zoomedBase = base.concatenating(zoom)
+        let zoomedExtent = sourceExtent.applying(zoomedBase).standardized
+
+        let focusBeforeZoom = CGPoint(
+            x: baseExtent.minX + baseExtent.width * CGFloat(centerX),
+            y: baseExtent.minY + baseExtent.height * CGFloat(centerY)
+        )
+        let focusAfterZoom = focusBeforeZoom.applying(zoom)
+        let requestedX = canvas.midX - focusAfterZoom.x
+        let requestedY = canvas.midY - focusAfterZoom.y
+
+        // Translation is limited to the overscan supplied by aspect-fill and
+        // digital zoom. This guarantees there is never an uncovered edge.
+        let minimumX = canvas.maxX - zoomedExtent.maxX
+        let maximumX = canvas.minX - zoomedExtent.minX
+        let minimumY = canvas.maxY - zoomedExtent.maxY
+        let maximumY = canvas.minY - zoomedExtent.minY
+        let x = minimumX <= maximumX ? min(maximumX, max(minimumX, requestedX)) : 0
+        let y = minimumY <= maximumY ? min(maximumY, max(minimumY, requestedY)) : 0
+        return zoomedBase.concatenating(CGAffineTransform(translationX: x, y: y))
+    }
+}
+
+enum SafeFitBackgroundGeometry {
+    static func aspectFillTransform(
+        foregroundTransform: CGAffineTransform,
+        sourceExtent: CGRect,
+        renderSize: CGSize
+    ) -> CGAffineTransform? {
+        let foregroundExtent = sourceExtent.applying(foregroundTransform).standardized
+        guard foregroundExtent.width.isFinite, foregroundExtent.height.isFinite,
+              foregroundExtent.width > 0, foregroundExtent.height > 0,
+              renderSize.width > 0, renderSize.height > 0 else { return nil }
+        let scale = max(
+            renderSize.width / foregroundExtent.width,
+            renderSize.height / foregroundExtent.height
+        )
+        guard scale > 1.001 else { return nil }
+        let center = CGPoint(x: renderSize.width / 2, y: renderSize.height / 2)
+        let fill = CGAffineTransform(
+            a: scale,
+            b: 0,
+            c: 0,
+            d: scale,
+            tx: center.x - foregroundExtent.midX * scale,
+            ty: center.y - foregroundExtent.midY * scale
+        )
+        return foregroundTransform.concatenating(fill)
+    }
+}
+
 final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
     let timeRange: CMTimeRange
     let enablePostProcessing = true
@@ -142,6 +230,7 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
                 )
                 transform = Self.subjectReframeTransform(
                     transform,
+                    sourceExtent: image.extent,
                     plan: layer.item.effectiveVideoAdjustments.subjectReframe,
                     progress: Self.progress(time: request.compositionTime, start: layer.start, duration: layer.duration),
                     renderSize: instruction.renderSize
@@ -152,7 +241,30 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
                     timelineTime: request.compositionTime.seconds,
                     renderSize: instruction.renderSize
                 )
-                image = image.transformed(by: transform).cropped(to: bounds)
+                let foreground = image.transformed(by: transform)
+                let splitScreenIsActive = instruction.layers.contains { $0.item.overlay?.style == .splitScreen }
+                if layer.item.effectiveVideoAdjustments.crop == .fit,
+                   layer.item.overlay == nil,
+                   !splitScreenIsActive,
+                   let backgroundTransform = SafeFitBackgroundGeometry.aspectFillTransform(
+                       foregroundTransform: transform,
+                       sourceExtent: image.extent,
+                       renderSize: instruction.renderSize
+                   ) {
+                    let blurRadius = min(36, max(12, min(bounds.width, bounds.height) * 0.016))
+                    let background = image.transformed(by: backgroundTransform)
+                        .clampedToExtent()
+                        .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: blurRadius])
+                        .applyingFilter("CIColorControls", parameters: [
+                            kCIInputBrightnessKey: -0.16,
+                            kCIInputContrastKey: 0.88,
+                            kCIInputSaturationKey: 0.72
+                        ])
+                        .cropped(to: bounds)
+                    image = foreground.composited(over: background).cropped(to: bounds)
+                } else {
+                    image = foreground.cropped(to: bounds)
+                }
                 var opacity = layer.item.effectiveVideoAdjustments.opacity
                 opacity *= TransitionEffectRenderer.effectOpacity(standaloneEffects, timelineTime: request.compositionTime.seconds)
                 if opacity < 0.999 {
@@ -359,19 +471,19 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
 
     private static func subjectReframeTransform(
         _ base: CGAffineTransform,
+        sourceExtent: CGRect,
         plan: SubjectReframePlan?,
         progress: Double,
         renderSize: CGSize
     ) -> CGAffineTransform {
         guard let plan, plan.confidence >= 0.24 else { return base }
-        let progress = min(max(0, progress), 1)
-        let centerX = plan.startCenterX + (plan.endCenterX - plan.startCenterX) * progress
-        let centerY = plan.startCenterY + (plan.endCenterY - plan.startCenterY) * progress
-        let scale = plan.startScale + (plan.endScale - plan.startScale) * progress
-        let zoomed = Self.zoomed(base, scale: CGFloat(scale), renderSize: renderSize)
-        let x = (0.5 - centerX) * Double(renderSize.width) * min(1.45, scale)
-        let y = (0.5 - centerY) * Double(renderSize.height) * min(1.45, scale)
-        return zoomed.concatenating(CGAffineTransform(translationX: x, y: y))
+        return SubjectReframeGeometry.transform(
+            base: base,
+            sourceExtent: sourceExtent,
+            plan: plan,
+            progress: progress,
+            renderSize: renderSize
+        )
     }
 
     private static func zoomed(_ base: CGAffineTransform, scale: CGFloat, renderSize: CGSize) -> CGAffineTransform {
