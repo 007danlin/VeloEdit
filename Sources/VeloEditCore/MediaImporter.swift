@@ -206,11 +206,8 @@ public struct MediaImporter: Sendable {
         else if transform.a == -1 && transform.d == -1 { orientation = 180 }
         else if transform.b == -1 && transform.c == 1 { orientation = 270 }
         else { orientation = 0 }
-        let isHDR = descriptions.contains { description in
-            guard let extensions = CMFormatDescriptionGetExtensions(description) as? [String: Any] else { return false }
-            let text = String(describing: extensions).lowercased()
-            return text.contains("itur_2100") || text.contains("smpte_st_2084") || text.contains("hlg")
-        }
+        let colorDescriptions = descriptions.map(Self.colorDescription)
+        let colorDescription = colorDescriptions.first(where: \.isHDR) ?? colorDescriptions.first ?? .unknown
         let embeddedDate = await Self.videoCaptureDate(in: asset)
         let captureDate = embeddedDate ?? fileCreationDate ?? modificationDate
         let dateSource: MediaDateSource? = embeddedDate != nil
@@ -223,13 +220,50 @@ public struct MediaImporter: Sendable {
             height: dimensions.height,
             frameRate: Double(frameRate),
             codec: codec,
-            dynamicRange: isHDR ? .hdr : .sdr,
+            dynamicRange: colorDescription.isHDR ? .hdr : .sdr,
+            colorPrimaries: colorDescription.primaries,
+            transferFunction: colorDescription.transfer,
+            yCbCrMatrix: colorDescription.matrix,
+            bitDepth: colorDescription.bitDepth,
             hasAudio: !audioTracks.isEmpty,
             creationDate: captureDate,
             modificationDate: modificationDate,
             dateSource: dateSource,
             dateConfidence: dateSource == .embeddedMetadata ? 0.98 : dateSource == .fileCreationDate ? 0.68 : 0.32,
             orientationDegrees: orientation
+        )
+    }
+
+    private struct VideoColorDescription {
+        var primaries: String?
+        var transfer: String?
+        var matrix: String?
+        var bitDepth: Int?
+        var isHDR: Bool
+
+        static let unknown = VideoColorDescription(
+            primaries: nil, transfer: nil, matrix: nil, bitDepth: nil, isHDR: false
+        )
+    }
+
+    /// Normalizes the deliberately inconsistent strings emitted by camera
+    /// vendors and AVFoundation. GoPro files can identify HLG as either
+    /// ITU-R 2100 or ARIB STD-B67, while PQ is normally SMPTE ST 2084.
+    private static func colorDescription(_ description: CMFormatDescription) -> VideoColorDescription {
+        guard let extensions = CMFormatDescriptionGetExtensions(description) as? [String: Any] else {
+            return .unknown
+        }
+        let text = String(describing: extensions).lowercased()
+        let isPQ = text.contains("2084") || text.contains("pq")
+        let isHLG = text.contains("hlg") || text.contains("arib_std_b67") || text.contains("itur_2100")
+        let is2020 = text.contains("2020") || isPQ || isHLG
+        let tenBit = text.contains("10bit") || text.contains("10-bit") || text.contains("420v10") || text.contains("xf44")
+        return VideoColorDescription(
+            primaries: is2020 ? "ITU_R_2020" : "ITU_R_709_2",
+            transfer: isPQ ? "SMPTE_ST_2084_PQ" : isHLG ? "ITU_R_2100_HLG" : "ITU_R_709_2",
+            matrix: is2020 ? "ITU_R_2020" : "ITU_R_709_2",
+            bitDepth: tenBit || isPQ || isHLG ? 10 : 8,
+            isHDR: isPQ || isHLG
         )
     }
 

@@ -139,8 +139,9 @@ final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtoco
     let transition: TransitionStyle?
     let transitionItem: TimelineTransitionItem?
     let renderSize: CGSize
+    let colorProfile: VideoColorProfile
 
-    init(timeRange: CMTimeRange, layers: [VeloCompositorLayer], telemetryLayers: [VeloTelemetryLayer] = [], effects: [EffectTimelineItem] = [], titles: [TitleTimelineItem] = [], transition: TransitionStyle?, transitionItem: TimelineTransitionItem? = nil, renderSize: CGSize) {
+    init(timeRange: CMTimeRange, layers: [VeloCompositorLayer], telemetryLayers: [VeloTelemetryLayer] = [], effects: [EffectTimelineItem] = [], titles: [TitleTimelineItem] = [], transition: TransitionStyle?, transitionItem: TimelineTransitionItem? = nil, renderSize: CGSize, colorProfile: VideoColorProfile = .rec709) {
         self.timeRange = timeRange
         self.layers = layers
         self.telemetryLayers = telemetryLayers
@@ -149,6 +150,7 @@ final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtoco
         self.transition = transition
         self.transitionItem = transitionItem
         self.renderSize = renderSize
+        self.colorProfile = colorProfile
         self.containsTweening = layers.count > 1 || transition != nil || transitionItem != nil || !telemetryLayers.isEmpty || !effects.isEmpty || !titles.isEmpty || layers.contains {
             $0.item.effect != nil || $0.item.effectiveVideoAdjustments.subjectReframe != nil
         }
@@ -161,18 +163,19 @@ final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtoco
 /// applies filters in memory during playback/render, avoiding a blocking
 /// per-clip transcode before the movie can be viewed.
 public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
-    private static let workingColorSpace = CGColorSpace(name: CGColorSpace.itur_709)
-        ?? CGColorSpace(name: CGColorSpace.sRGB)
-        ?? CGColorSpaceCreateDeviceRGB()
     public let sourcePixelBufferAttributes: [String: any Sendable]? = [
         kCVPixelBufferPixelFormatTypeKey as String: [
             kCVPixelFormatType_32BGRA,
             kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+            kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
         ]
     ]
     public let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        // A 10-bit surface prevents the custom effects/title path from being
+        // the point where HDR is silently quantized to 8 bit. SDR remains
+        // tagged Rec.709 by the instruction profile.
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
     ]
 
     private let context = CIContext(options: [.cacheIntermediates: false])
@@ -342,10 +345,24 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
             // into an sRGB-tagged buffer and exporting that buffer as video
             // changes gamma/contrast across the entire movie whenever the
             // custom compositor is enabled by one adjusted clip.
-            context.render(result, to: destination, bounds: bounds, colorSpace: Self.workingColorSpace)
-            CVBufferSetAttachment(destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
-            CVBufferSetAttachment(destination, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
-            CVBufferSetAttachment(destination, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+            let colorSpace = VideoColorPipeline.cgColorSpace(for: instruction.colorProfile)
+            context.render(result, to: destination, bounds: bounds, colorSpace: colorSpace)
+            if instruction.colorProfile.dynamicRange == .hdr {
+                CVBufferSetAttachment(destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_2020, .shouldPropagate)
+                CVBufferSetAttachment(
+                    destination,
+                    kCVImageBufferTransferFunctionKey,
+                    instruction.colorProfile.transferFunction == .pq
+                        ? kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ
+                        : kCVImageBufferTransferFunction_ITU_R_2100_HLG,
+                    .shouldPropagate
+                )
+                CVBufferSetAttachment(destination, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_2020, .shouldPropagate)
+            } else {
+                CVBufferSetAttachment(destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+                CVBufferSetAttachment(destination, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
+                CVBufferSetAttachment(destination, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+            }
             lock.lock()
             let wasCancelled = requestGeneration != cancellationGeneration
             lock.unlock()

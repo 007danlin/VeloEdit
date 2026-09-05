@@ -71,6 +71,7 @@ public actor PlaybackEngine {
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> TimelinePlayback {
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let colorProfile = VideoColorPipeline.profile(timeline: timeline, assets: assets)
         let composition = AVMutableComposition()
         let videoTracks = (0..<4).compactMap { _ in composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) }
         guard videoTracks.count == 4 else { throw DerivedMediaError.noVideoTrack }
@@ -380,10 +381,11 @@ public actor PlaybackEngine {
                 transitionItems: realtimeTransitionItems,
                 telemetry: telemetry,
                 renderSize: renderSize,
-                frameRate: timeline.frameRate
+                frameRate: timeline.frameRate,
+                colorProfile: colorProfile
             )
         } else {
-            videoComposition = makeVideoComposition(placements: placements, renderSize: renderSize, frameRate: timeline.frameRate)
+            videoComposition = makeVideoComposition(placements: placements, renderSize: renderSize, frameRate: timeline.frameRate, colorProfile: colorProfile)
         }
         if timeline.music != nil {
             progress?(ImportProgress(completed: playableItems.count, total: playableItems.count, currentName: "Добавляю локальный саундтрек"))
@@ -572,10 +574,11 @@ public actor PlaybackEngine {
         return cursor - start
     }
 
-    private func makeVideoComposition(placements: [Placement], renderSize: CGSize, frameRate: Double) -> AVMutableVideoComposition {
+    private func makeVideoComposition(placements: [Placement], renderSize: CGSize, frameRate: Double, colorProfile: VideoColorProfile) -> AVMutableVideoComposition {
         let result = AVMutableVideoComposition()
         result.renderSize = renderSize
         result.frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(1, frameRate.rounded())))
+        Self.apply(colorProfile, to: result)
         let boundaries = Set(placements.flatMap { [$0.start, $0.end] }).sorted()
         var instructions: [AVMutableVideoCompositionInstruction] = []
 
@@ -610,15 +613,14 @@ public actor PlaybackEngine {
         transitionItems: [TimelineTransitionItem],
         telemetry: [UUID: TelemetrySummary],
         renderSize: CGSize,
-        frameRate: Double
+        frameRate: Double,
+        colorProfile: VideoColorProfile
     ) -> AVMutableVideoComposition {
         let result = AVMutableVideoComposition()
         result.customVideoCompositorClass = VeloVideoCompositor.self
         result.renderSize = renderSize
         result.frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(1, frameRate.rounded())))
-        result.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-        result.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-        result.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        Self.apply(colorProfile, to: result)
         let placementByClipID = Dictionary(uniqueKeysWithValues: placements.map { ($0.item.id, $0) })
         func telemetryRange(for item: TimelineTelemetryItem) -> CMTimeRange {
             guard let clipID = item.targetClipID,
@@ -691,9 +693,23 @@ public actor PlaybackEngine {
                 $0.enabled && $0.startTime < range.end.seconds && $0.endTime > range.start.seconds &&
                 ($0.targetClipID.map { activeClipIDs.contains($0) } ?? true)
             }
-            return VeloVideoInstruction(timeRange: range, layers: layers, telemetryLayers: activeTelemetry, effects: activeEffects, titles: activeTitles, transition: transition, transitionItem: transitionItem, renderSize: renderSize)
+            return VeloVideoInstruction(timeRange: range, layers: layers, telemetryLayers: activeTelemetry, effects: activeEffects, titles: activeTitles, transition: transition, transitionItem: transitionItem, renderSize: renderSize, colorProfile: colorProfile)
         }
         return result
+    }
+
+    private static func apply(_ profile: VideoColorProfile, to composition: AVMutableVideoComposition) {
+        if profile.dynamicRange == .hdr {
+            composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_2020
+            composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_2020
+            composition.colorTransferFunction = profile.transferFunction == .pq
+                ? AVVideoTransferFunction_SMPTE_ST_2084_PQ
+                : AVVideoTransferFunction_ITU_R_2100_HLG
+        } else {
+            composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+            composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+            composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        }
     }
 
     private func addTitleOverlays(

@@ -2663,7 +2663,52 @@ public actor VeloEditPipeline {
         guard var timeline = current.timelines.last else { throw FCPXMLExportError.invalidTimeline("Нет созданного фильма") }
         if let frameRate { timeline.frameRate = min(max(1, frameRate), 240) }
         let telemetry = Self.telemetryLookup(in: current)
-        return try await RenderEngine().render(timeline: timeline, assets: current.assets, musicTracks: try await musicSystem.tracks(), telemetry: telemetry, quality: quality, destination: url, progress: progress)
+        let jobStore = PersistentJobStateStore(directory: await store.logsURL)
+        var job = PersistentJobState(
+            kind: .export,
+            stage: .preflight,
+            totalUnits: max(1, timeline.items.count),
+            resumableKey: "\(timeline.id.uuidString):\(quality.rawValue)",
+            destinationPath: url.path
+        )
+        try? await jobStore.save(job)
+        let progressJob = job
+        do {
+            let report = try await RenderEngine().render(
+                timeline: timeline,
+                assets: current.assets,
+                analyses: current.analyses,
+                musicTracks: try await musicSystem.tracks(),
+                telemetry: telemetry,
+                quality: quality,
+                destination: url
+            ) { item in
+                progress?(item)
+                Task {
+                    var update = progressJob
+                    update.stage = .processing
+                    update.completedUnits = item.completed
+                    update.totalUnits = max(1, item.total)
+                    update.updatedAt = Date()
+                    try? await jobStore.save(update)
+                }
+            }
+            job.stage = .completed
+            job.completedUnits = job.totalUnits
+            job.updatedAt = Date()
+            try? await jobStore.save(job)
+            return report
+        } catch {
+            job.stage = error is CancellationError ? .cancelled : .failed
+            job.errorMessage = error.localizedDescription
+            job.updatedAt = Date()
+            try? await jobStore.save(job)
+            throw error
+        }
+    }
+
+    public func unfinishedPersistentJobs() async -> [PersistentJobState] {
+        await PersistentJobStateStore(directory: await store.logsURL).unfinishedStates()
     }
 
     public func renderTelemetryOverlay(to url: URL, progress: (@Sendable (ImportProgress) -> Void)? = nil) async throws -> RenderReport {

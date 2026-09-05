@@ -58,6 +58,7 @@ public actor RenderEngine {
     public func render(
         timeline: Timeline,
         assets: [MediaAsset],
+        analyses: [AnalysisResult] = [],
         musicTracks: [LocalMusicTrack] = [],
         telemetry: [UUID: TelemetrySummary] = [:],
         quality: RenderQuality,
@@ -67,6 +68,15 @@ public actor RenderEngine {
         // Preview and export intentionally share one builder. This guarantees
         // that transitions, motion effects and soundtrack look/sound the same.
         let renderTimeline = RenderGeometryPolicy.timeline(timeline, for: quality)
+        progress?(ImportProgress(completed: 0, total: 1, currentName: "Проверяю проект перед экспортом"))
+        let preflight = await ExportPreflight().inspect(
+            timeline: renderTimeline,
+            assets: assets,
+            analyses: analyses,
+            destination: destination,
+            quality: quality
+        )
+        guard preflight.canExport else { throw ExportPreflightError.blocked(preflight) }
         let playback = try await PlaybackEngine().build(
             timeline: renderTimeline,
             assets: assets,
@@ -108,7 +118,7 @@ public actor RenderEngine {
             outputURL: destination,
             renderedItemCount: playback.renderedItemCount,
             skippedItemIDs: playback.skippedItemIDs,
-            warnings: playback.warnings
+            warnings: playback.warnings + preflight.warnings.map { $0.message }
         )
     }
 }

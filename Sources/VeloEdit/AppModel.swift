@@ -1623,7 +1623,7 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.setProgress(item) }
             }
             if let warning = report.warnings.first {
-                self.status = "Экспорт готов без саундтрека. \(warning)"
+                self.status = "Экспорт готов с предупреждением: \(warning)"
             } else {
                 self.status = report.skippedItemIDs.isEmpty ? "Экспорт готов" : "Экспорт готов; неподдерживаемых элементов: \(report.skippedItemIDs.count)"
             }

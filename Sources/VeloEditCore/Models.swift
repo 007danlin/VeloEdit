@@ -25,6 +25,12 @@ public struct MediaMetadata: Codable, Hashable, Sendable {
     public var frameRate: Double?
     public var codec: String?
     public var dynamicRange: DynamicRange
+    /// Source color tags are persisted instead of being rediscovered at every
+    /// preview/export. Optional values keep old project packages decodable.
+    public var colorPrimaries: String?
+    public var transferFunction: String?
+    public var yCbCrMatrix: String?
+    public var bitDepth: Int?
     public var hasAudio: Bool
     public var creationDate: Date?
     /// File modification time is intentionally retained only as a fallback for
@@ -46,6 +52,10 @@ public struct MediaMetadata: Codable, Hashable, Sendable {
         frameRate: Double? = nil,
         codec: String? = nil,
         dynamicRange: DynamicRange = .unknown,
+        colorPrimaries: String? = nil,
+        transferFunction: String? = nil,
+        yCbCrMatrix: String? = nil,
+        bitDepth: Int? = nil,
         hasAudio: Bool = false,
         creationDate: Date? = nil,
         modificationDate: Date? = nil,
@@ -64,6 +74,10 @@ public struct MediaMetadata: Codable, Hashable, Sendable {
         self.frameRate = frameRate
         self.codec = codec
         self.dynamicRange = dynamicRange
+        self.colorPrimaries = colorPrimaries
+        self.transferFunction = transferFunction
+        self.yCbCrMatrix = yCbCrMatrix
+        self.bitDepth = bitDepth
         self.hasAudio = hasAudio
         self.creationDate = creationDate
         self.modificationDate = modificationDate
