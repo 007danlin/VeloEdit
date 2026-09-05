@@ -90,6 +90,24 @@ import Testing
     }
 }
 
+@Test func effectCardsAreDistinctWithinEachCategory() throws {
+    let size = CGSize(width: 96, height: 54)
+    for category in TimelineEffectCategory.allCases {
+        var fingerprints: [Data: TimelineEffectType] = [:]
+        for effect in TimelineEffectType.allCases where effect.category == category {
+            let image = try #require(
+                TransitionEffectRenderer.previewEffectCGImage(type: effect, progress: 0.35, size: size)
+            )
+            let fingerprint = try pixelFingerprint(image)
+            if let duplicate = fingerprints[fingerprint] {
+                Issue.record("\(effect.rawValue) preview duplicates \(duplicate.rawValue)")
+            } else {
+                fingerprints[fingerprint] = effect
+            }
+        }
+    }
+}
+
 @Test func legacyTransitionDecodesWithMetadataDefaults() throws {
     let transition = TimelineTransitionItem(
         style: .lensBlur,
@@ -213,4 +231,23 @@ private func averagePixel(_ image: CGImage) throws -> (UInt8, UInt8, UInt8, UInt
     context.interpolationQuality = .high
     context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
     return (pixel[0], pixel[1], pixel[2], pixel[3])
+}
+
+private func pixelFingerprint(_ image: CGImage) throws -> Data {
+    let width = 24
+    let height = 14
+    let rowBytes = width * 4
+    var pixels = [UInt8](repeating: 0, count: rowBytes * height)
+    let context = try #require(CGContext(
+        data: &pixels,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: rowBytes,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ))
+    context.interpolationQuality = .medium
+    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    return Data(pixels)
 }

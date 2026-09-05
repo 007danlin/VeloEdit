@@ -1721,10 +1721,12 @@ private struct MontageMediaBrowser: View {
                                             .font(.caption.weight(.medium))
                                             .foregroundStyle(.primary)
                                             .lineLimit(2)
+                                            .frame(maxWidth: .infinity, minHeight: 31, maxHeight: 31, alignment: .topLeading)
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
                                 }
                                 .buttonStyle(.plain)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
                                 .draggable("effect:\(effect.rawValue)")
                                 .disabled(model.isWorking)
                                 .help("Перетащите эффект на нужный момент Timeline")

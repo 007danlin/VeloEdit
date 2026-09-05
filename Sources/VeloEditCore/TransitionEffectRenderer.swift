@@ -58,9 +58,11 @@ public enum TransitionEffectRenderer {
             guard amount > 0.0001 else { continue }
             let extent = source.extent
             switch effect.effectType {
-            case .blur, .backgroundBlur, .lensBlur:
+            case .blur, .lensBlur:
                 let radius = effect.effectType == .lensBlur ? 48.0 : 34.0
                 image = gaussianBlur(image, radius: radius * amount, extent: extent)
+            case .backgroundBlur:
+                image = backgroundBlur(image, radius: 38 * amount, extent: extent)
             case .softFocus:
                 let softened = gaussianBlur(image, radius: 18 * amount, extent: extent)
                 image = withOpacity(softened, amount * 0.58).composited(over: image).cropped(to: extent)
@@ -445,13 +447,16 @@ public enum TransitionEffectRenderer {
         let bounds = CGRect(origin: .zero, size: size)
         var source = previewEffectSource(bounds: bounds)
         let preset = EffectPresetRegistry.preset(for: type)
-        let parameters = preset.parameters.filter { $0.key != "intensity" }.map { EffectParameter(name: $0.key, value: $0.defaultValue) }
+        let previewOverrides = previewParameterOverrides(for: type)
+        let parameters = preset.parameters.filter { $0.key != "intensity" }.map {
+            EffectParameter(name: $0.key, value: previewOverrides[$0.key] ?? $0.defaultValue)
+        }
         let effect = EffectTimelineItem(
             effectType: type,
             startTime: 0,
             duration: 1,
             parameters: parameters,
-            intensity: type.defaultIntensity,
+            intensity: previewIntensity(for: type),
             explanation: ["Живая карточка использует renderer Timeline/Export"]
         )
         source = applyEffects([effect], to: source, timelineTime: progress, quality: quality)
@@ -459,6 +464,44 @@ public enum TransitionEffectRenderer {
         source = source.transformed(by: transform).cropped(to: bounds)
         source = withOpacity(source, effectOpacity([effect], timelineTime: progress))
         return cachedCGImage(source, bounds: bounds, key: key)
+    }
+
+    /// Editing defaults may intentionally be neutral. Library cards instead
+    /// use a safe but visible value so every card demonstrates its operation.
+    private static func previewIntensity(for type: TimelineEffectType) -> Double {
+        switch type {
+        case .exposure: return 0.78
+        case .brightness: return 0.74
+        case .contrast: return 0.82
+        case .saturation: return 0.84
+        case .vibrance: return 0.88
+        case .temperature: return 0.82
+        case .tint: return 0.76
+        case .highlights: return 0.22
+        case .shadows: return 0.82
+        case .sharpness: return 0.86
+        case .fade: return 0.78
+        case .opacity: return 0.58
+        case .blur, .backgroundBlur, .directionalBlur, .motionBlur, .zoomBlur, .radialBlur: return 0.68
+        case .lensBlur: return 0.82
+        case .softFocus: return 0.62
+        case .chromaticAberration: return 0.38
+        case .rgbSplit: return 0.58
+        default: return max(type.defaultIntensity, 0.62)
+        }
+    }
+
+    private static func previewParameterOverrides(for type: TimelineEffectType) -> [String: Double] {
+        switch type {
+        case .directionalBlur: return ["angle": .pi / 4]
+        case .cinematicMotionBlur: return ["angle": -.pi / 10]
+        case .shake: return ["amplitude": 0.68, "frequency": 9]
+        case .handheld: return ["amplitude": 0.34, "frequency": 5]
+        case .posterize: return ["levels": 5]
+        case .scanlines: return ["scale": 5]
+        case .halftone: return ["scale": 11]
+        default: return [:]
+        }
     }
 
     private static let previewOutgoingID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
@@ -626,6 +669,22 @@ public enum TransitionEffectRenderer {
     private static func gaussianBlur(_ image: CIImage, radius: Double, extent: CGRect) -> CIImage {
         guard radius > 0.001 else { return image.cropped(to: extent) }
         return image.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius]).cropped(to: extent)
+    }
+
+    private static func backgroundBlur(_ image: CIImage, radius: Double, extent: CGRect) -> CIImage {
+        let blurred = gaussianBlur(image, radius: radius, extent: extent)
+        guard let gradient = CIFilter(name: "CIRadialGradient") else { return blurred }
+        let shortEdge = min(extent.width, extent.height)
+        gradient.setValue(CIVector(x: extent.midX, y: extent.midY * 0.92), forKey: "inputCenter")
+        gradient.setValue(shortEdge * 0.17, forKey: "inputRadius0")
+        gradient.setValue(shortEdge * 0.43, forKey: "inputRadius1")
+        gradient.setValue(CIColor.white, forKey: "inputColor0")
+        gradient.setValue(CIColor.black, forKey: "inputColor1")
+        guard let mask = gradient.outputImage?.cropped(to: extent) else { return blurred }
+        return image.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: blurred,
+            kCIInputMaskImageKey: mask
+        ]).cropped(to: extent)
     }
 
     private static func cinematicGrade(_ image: CIImage, contrast: Double, saturation: Double, warmth: Double) -> CIImage {
