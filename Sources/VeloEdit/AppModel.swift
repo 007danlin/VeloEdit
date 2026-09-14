@@ -6292,13 +6292,13 @@ extension AppModel {
             do {
                 let playback = try await pipeline.makePlayback(timeline: before, projectSnapshot: snapshot, interactiveLongEdge: 960)
                 try Task.checkCancellation()
-                session.append(title: "Сейчас · " + (before.music?.trackTitle ?? "Музыка"), timeline: before, playback: playback)
+                await session.append(title: "Сейчас · " + (before.music?.trackTitle ?? "Музыка"), timeline: before, playback: playback)
                 let alternatives = try await pipeline.musicAlternatives(for: before)
                 for alternative in alternatives {
                     try Task.checkCancellation()
                     let playback = try await pipeline.makePlayback(timeline: alternative, projectSnapshot: snapshot, interactiveLongEdge: 960)
                     try Task.checkCancellation()
-                    session.append(title: alternative.music?.trackTitle ?? "Вариант", timeline: alternative, playback: playback)
+                    await session.append(title: alternative.music?.trackTitle ?? "Вариант", timeline: alternative, playback: playback)
                 }
                 session.message = alternatives.isEmpty ? "Других подходящих локальных треков нет. Добавьте музыку в библиотеку." : nil
             } catch is CancellationError { return }
@@ -6347,11 +6347,11 @@ extension AppModel {
             do {
                 let playback = try await pipeline.makePlayback(timeline: first.before, projectSnapshot: snapshot, interactiveLongEdge: 960)
                 try Task.checkCancellation()
-                session.append(title: "До", timeline: first.before, playback: playback)
+                await session.append(title: "До", timeline: first.before, playback: playback)
                 for (index, edit) in edits.enumerated() {
                     let playback = try await pipeline.makePlayback(timeline: edit.after, projectSnapshot: snapshot, interactiveLongEdge: 960)
                     try Task.checkCancellation()
-                    session.append(title: edits.count == 1 ? "После" : "Вариант \(index + 1)", timeline: edit.after, playback: playback)
+                    await session.append(title: edits.count == 1 ? "После" : "Вариант \(index + 1)", timeline: edit.after, playback: playback)
                 }
             } catch is CancellationError { return }
             catch { session.message = error.localizedDescription }

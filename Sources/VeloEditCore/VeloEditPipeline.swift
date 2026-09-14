@@ -49,6 +49,7 @@ public actor VeloEditPipeline {
         renderedProber: any EditorialRenderedProbing = LocalEditorialRenderedProber(),
         analyzer: (any VisionModelProtocol)? = nil,
         musicLibrary: LocalMusicLibrary? = nil,
+        musicSystem: MusicLibrary? = nil,
         freeToUseProvider: FreeToUseMusicProvider? = nil,
         musicSelectionHistory: LocalMusicSelectionHistoryStore = .shared,
         personalTasteStore: LocalPersonalTasteStore = LocalPersonalTasteStore()
@@ -63,7 +64,7 @@ public actor VeloEditPipeline {
         let localProvider = LocalMusicProvider(library: projectMusicLibrary)
         let onlineFreeToUseProvider = freeToUseProvider ?? FreeToUseMusicProvider(library: projectMusicLibrary)
         let openverseProvider = OpenverseMusicProvider(library: projectMusicLibrary)
-        self.musicSystem = MusicLibrary(
+        self.musicSystem = musicSystem ?? MusicLibrary(
             localLibrary: projectMusicLibrary,
             providers: [bundledProvider, localProvider, onlineFreeToUseProvider, openverseProvider, IncompetechMusicProvider(library: projectMusicLibrary), AudionautixMusicProvider(library: projectMusicLibrary), ScottBuckleyMusicProvider(library: projectMusicLibrary), InternetArchiveMusicProvider(library: projectMusicLibrary), WebMusicProvider(library: projectMusicLibrary)],
             reusableCache: musicLibrary == nil ? .shared : nil

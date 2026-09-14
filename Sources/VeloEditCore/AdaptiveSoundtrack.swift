@@ -192,7 +192,7 @@ public struct AdaptiveSoundtrackPlanner: Sendable {
         guard decisions.count >= 2,
               Set(decisions.map(\.track.id)).count >= 2 else { return result }
 
-        let explicitChanges = (master.searchRequests?.filter { $0.exactTrack || $0.scene != nil }.count ?? 0) > 1
+        let explicitChanges = master.searchRequests?.contains { $0.scene != nil } == true || (master.searchRequests?.filter { $0.exactTrack }.count ?? 0) > 1
         // Unknown key/vocal compatibility is not a successful audio check.
         // For automatic changes keep a suitable single song if the transition
         // would need unverified overlap to disguise incompatible recordings.

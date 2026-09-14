@@ -28,15 +28,19 @@ import VeloEditCore
         self.before = before; self.title = title; self.detail = detail; self.focusTime = focusTime
     }
 
-    func append(title: String, timeline: Timeline, playback: TimelinePlayback) {
+    func append(title: String, timeline: Timeline, playback: TimelinePlayback) async {
         let item = AVPlayerItem(asset: playback.composition)
         item.videoComposition = playback.videoComposition; item.audioMix = playback.audioMix
         item.preferredForwardBufferDuration = 2
-        let generator = AVAssetImageGenerator(asset: playback.composition)
-        generator.videoComposition = playback.videoComposition
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 220, height: 124)
-        let frame = try? generator.copyCGImage(at: CMTime(seconds: min(focusTime, max(0, playback.duration - 0.1)), preferredTimescale: 600), actualTime: nil)
+        let focus = focusTime
+        let frame = await Task.detached(priority: .userInitiated) {
+            let generator = AVAssetImageGenerator(asset: playback.composition)
+            generator.videoComposition = playback.videoComposition
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 220, height: 124)
+            return try? generator.copyCGImage(at: CMTime(seconds: min(focus, max(0, playback.duration - 0.1)), preferredTimescale: 600), actualTime: nil)
+        }.value
+        guard !Task.isCancelled else { return }
         options.append(.init(title: title, timeline: timeline, playback: playback, playerItem: item,
             thumbnail: frame.map { NSImage(cgImage: $0, size: .zero) }))
         if options.count == 1 { select(0, at: focusTime, play: false) }
