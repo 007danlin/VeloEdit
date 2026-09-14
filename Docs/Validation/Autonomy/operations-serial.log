@@ -1,0 +1,31 @@
+[0/1] Planning build
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite AutonomousOperationTests started.
+◇ Test localJournalRestoresAfterPrimaryOutageAndRestart() started.
+✔ Test localJournalRestoresAfterPrimaryOutageAndRestart() passed after 0.010 seconds.
+◇ Test failureOfBothStoresDoesNotClaimDurability() started.
+✔ Test failureOfBothStoresDoesNotClaimDurability() passed after 0.005 seconds.
+◇ Test recoveryMergesIndependentFieldsAndRefusesOverlappingEdits() started.
+✔ Test recoveryMergesIndependentFieldsAndRefusesOverlappingEdits() passed after 0.007 seconds.
+◇ Test recoveryBudgetSurvivesRestartAndCancellationIsExplicit() started.
+✔ Test recoveryBudgetSurvivesRestartAndCancellationIsExplicit() passed after 0.006 seconds.
+◇ Test operationLeasePreventsConcurrentWritersAndReleases() started.
+✔ Test operationLeasePreventsConcurrentWritersAndReleases() passed after 0.002 seconds.
+◇ Test exactApproximateRangeAndAutomaticDurationContracts() started.
+✔ Test exactApproximateRangeAndAutomaticDurationContracts() passed after 0.004 seconds.
+◇ Test relinkingVerifiesContentAndRejectsAmbiguousCopies() started.
+✔ Test relinkingVerifiesContentAndRejectsAmbiguousCopies() passed after 0.006 seconds.
+◇ Test duplicateImportDoesNotInvalidateFilmOrSourceMap() started.
+✔ Test duplicateImportDoesNotInvalidateFilmOrSourceMap() passed after 0.008 seconds.
+◇ Test corruptedThumbnailIsRegeneratedFromOriginal() started.
+✔ Test corruptedThumbnailIsRegeneratedFromOriginal() passed after 0.003 seconds.
+◇ Test encoderFailureRecoversAndVerifiedExportSurvivesRestart() started.
+✔ Test encoderFailureRecoversAndVerifiedExportSurvivesRestart() passed after 0.517 seconds.
+◇ Test removalUndoRestoresAnalysisClipsAndOriginal() started.
+✔ Test removalUndoRestoresAnalysisClipsAndOriginal() passed after 0.005 seconds.
+◇ Test orphanCacheCleanupRetainsSourceHistoryAndExports() started.
+✔ Test orphanCacheCleanupRetainsSourceHistoryAndExports() passed after 0.004 seconds.
+✔ Suite AutonomousOperationTests passed after 0.583 seconds.
+✔ Test run with 12 tests in 1 suite passed after 0.583 seconds.

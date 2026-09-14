@@ -748,7 +748,7 @@ public struct LocalSubjectTracker: Sendable {
         for frame in frames.sorted(by: { $0.timestamp < $1.timestamp }) {
             for observation in frame.observations.sorted(by: { $0.confidence * $0.region.area > $1.confidence * $1.region.area }) {
                 let best = tracks.indices
-                    .filter { tracks[$0].kind == observation.kind }
+                    .filter { tracks[$0].kind == observation.kind && tracks[$0].values.last?.timestamp != frame.timestamp }
                     .map { index -> (Int, Double) in
                         let last = tracks[index].values.last
                         let distance = last.map { hypot($0.region.centerX - observation.region.centerX, $0.region.centerY - observation.region.centerY) } ?? 1
@@ -808,6 +808,8 @@ public struct LocalSubjectTracker: Sendable {
 }
 
 public struct SubjectReframePlan: Codable, Hashable, Sendable {
+    public var keyframes: [ReframeKeyframe]?
+    public var safetyReport: FramingSafetyReport?
     public var startCenterX: Double
     public var startCenterY: Double
     public var endCenterX: Double
@@ -835,91 +837,9 @@ public struct SubjectAwareReframeEngine: Sendable {
     public init() {}
 
     public func plan(tracking: SubjectTrackingSummary, sourceAspectRatio: Double, targetAspectRatio: Double, isPhoto: Bool = false) -> SubjectReframePlan? {
-        guard let subject = tracking.mainSubject,
-              sourceAspectRatio.isFinite, sourceAspectRatio > 0,
-              targetAspectRatio.isFinite, targetAspectRatio > 0,
-              tracking.confidence >= 0.24 else { return nil }
-        let observations = subject.observations.filter { $0.confidence >= 0.24 }
-        guard let firstObservation = observations.first,
-              let lastObservation = observations.last else { return nil }
-        let first = firstObservation.region
-        let last = lastObservation.region
-        let aspectDifference = abs(sourceAspectRatio - targetAspectRatio)
-        // A video that already matches the timeline format needs neither a
-        // format conversion nor a digital camera move. Reframing such clips
-        // made ordinary 16:9 footage look accidentally cropped in Preview and
-        // Export. Photos may still receive a deliberate Ken Burns treatment.
-        guard isPhoto || aspectDifference > 0.04 else { return nil }
-        // Aspect fill already supplies the format conversion. Additional zoom
-        // is useful only when the subject is genuinely small, never when a
-        // large face/object is already close to a crop edge.
-        let meanArea = max(0.001, (first.area + last.area) / 2)
-        let subjectScale = isPhoto && meanArea < 0.075 ? min(1.24, sqrt(0.075 / meanArea)) : 1
-        let baseScale = subjectScale
-        let endScale = isPhoto ? min(3.5, baseScale * 1.06) : baseScale
-
-        // The aspect-fill viewport expressed in normalized source space. If
-        // the tracked subject cannot fit in that viewport with a small safety
-        // margin, decline the reframe so the caller can use `.fit` instead of
-        // a destructive crop.
-        let fillWidth = min(1, targetAspectRatio / sourceAspectRatio) / endScale
-        let fillHeight = min(1, sourceAspectRatio / targetAspectRatio) / endScale
-        let marginX = min(0.025, fillWidth * 0.06)
-        let marginY = min(0.025, fillHeight * 0.06)
-        guard observations.allSatisfy({ observation in
-            observation.region.width + marginX * 2 <= fillWidth + 0.000_001 &&
-                observation.region.height + marginY * 2 <= fillHeight + 0.000_001
-        }) else { return nil }
-
-        func safeCenter(_ region: NormalizedRegion, desiredX: Double, desiredY: Double) -> (Double, Double)? {
-            let lowerX = max(fillWidth / 2, region.x + region.width + marginX - fillWidth / 2)
-            let upperX = min(1 - fillWidth / 2, region.x - marginX + fillWidth / 2)
-            let lowerY = max(fillHeight / 2, region.y + region.height + marginY - fillHeight / 2)
-            let upperY = min(1 - fillHeight / 2, region.y - marginY + fillHeight / 2)
-            guard lowerX <= upperX, lowerY <= upperY else { return nil }
-            return (
-                min(upperX, max(lowerX, desiredX)),
-                min(upperY, max(lowerY, desiredY))
-            )
-        }
-
-        let lead = min(0.12, max(-0.12, subject.movementX * 0.42))
-        guard let start = safeCenter(first, desiredX: first.centerX + lead, desiredY: first.centerY) else { return nil }
-        let photoDrift = isPhoto ? min(0.07, max(0.025, abs(last.centerX - first.centerX) + 0.025)) : 0
-        let driftedEndX = last.centerX + lead + (subject.movementX >= 0 ? photoDrift : -photoDrift)
-        guard let end = safeCenter(last, desiredX: driftedEndX, desiredY: last.centerY) else { return nil }
-
-        // A two-keyframe plan must also protect the subject between its
-        // endpoints. Non-linear tracks fall back to `.fit` rather than letting
-        // a face leave the crop halfway through the shot.
-        let timeSpan = max(0.000_001, lastObservation.timestamp - firstObservation.timestamp)
-        guard observations.allSatisfy({ observation in
-            let progress = min(1, max(0, (observation.timestamp - firstObservation.timestamp) / timeSpan))
-            let centerX = start.0 + (end.0 - start.0) * progress
-            let centerY = start.1 + (end.1 - start.1) * progress
-            let region = observation.region
-            return region.x - marginX >= centerX - fillWidth / 2 - 0.000_001 &&
-                region.x + region.width + marginX <= centerX + fillWidth / 2 + 0.000_001 &&
-                region.y - marginY >= centerY - fillHeight / 2 - 0.000_001 &&
-                region.y + region.height + marginY <= centerY + fillHeight / 2 + 0.000_001
-        }) else { return nil }
-
-        var reasons = ["Главный объект \(subject.label) удерживается в safe area"]
-        if abs(subject.movementX) > 0.04 { reasons.append("Оставлено пространство по направлению движения") }
-        if subject.kind == .face || subject.kind == .person { reasons.append("Защита лица/человека от crop") }
-        if abs(sourceAspectRatio - targetAspectRatio) > 0.15 { reasons.append("Reframe \(String(format: "%.2f", sourceAspectRatio)):1 → \(String(format: "%.2f", targetAspectRatio)):1") }
-        return SubjectReframePlan(
-            startCenterX: start.0,
-            startCenterY: start.1,
-            endCenterX: end.0,
-            endCenterY: end.1,
-            startScale: baseScale,
-            endScale: endScale,
-            targetAspectRatio: targetAspectRatio,
-            confidence: tracking.confidence * 0.72 + subject.compositionQuality * 0.28,
-            reasons: reasons
-        )
+        EditorialReframeEngine().plan(tracking: tracking, sourceAspectRatio: sourceAspectRatio, targetAspectRatio: targetAspectRatio, isPhoto: isPhoto)
     }
+
 }
 
 // MARK: - Speech and audio events

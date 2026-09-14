@@ -1,0 +1,32 @@
+{
+  "project": "Проверка опроса режиссёра",
+  "build": "2026.257.081139",
+  "UIQuestionsObserved": 6,
+  "selections": [
+    "Горизонтальный 16:9",
+    "По материалам",
+    "Динамичное",
+    "Без музыки",
+    "Оставить",
+    "Без титров"
+  ],
+  "savedDraft": "Формат: Горизонтальное 16:9. Длительность — по материалам. Настроение: динамичное. Музыка: без музыки. Звук: оставить звук исходников. Титры: без титров.",
+  "savedBrief": {
+    "canvasFormatIsAutomatic": false,
+    "mood": "dynamic",
+    "canvasFormat": {
+      "label": "16:9",
+      "safeAreasEnabled": true,
+      "subjectAware": true,
+      "width": 1920,
+      "height": 1080
+    },
+    "musicPolicy": "none",
+    "sourceAudioPolicy": "preserve",
+    "titlePolicy": "none",
+    "durationMode": "automatic",
+    "requestedDuration": 30
+  },
+  "timelineCount": 0,
+  "observation": "Первый вопрос появился сразу; последующие шесть ответов сформировали редактируемое описание. Создание фильма после этого опроса не запускалось."
+}

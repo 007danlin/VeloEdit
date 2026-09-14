@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import CoreGraphics
+import Vision
 
 // MARK: - P6 public diagnostics
 
@@ -173,6 +174,21 @@ public struct PerceptualScore: Codable, Hashable, Sendable {
 }
 
 public struct PerceptualRenderedFrameEvidence: Codable, Hashable, Sendable {
+    public var exportVerification: EditorialExportVerification?
+    public var lumaFingerprint: [Float]?
+    public var editorialClaims: [EditorialSemanticClaim]?
+    public var audioMasteringReport: EditorialAudioMasteringReport?
+    public var renderedSubjects: [FrameSubjectObservation]?
+    /// Vision observations from the final composited frame. These are kept
+    /// separate from source analysis so crop/overlays can be verified rather
+    /// than inferred from the input clip.
+    public var renderedSalientRegions: [FrameSubjectObservation]?
+    public var renderedLabels: [String]?
+    /// A deterministic image-space risk score for a persistent, narrow,
+    /// high-contrast vertical foreground object (for example a nearby pole).
+    public var verticalOccluderScore: Double?
+    public var titleReadability: Double?
+    public var decodeFailed: Bool?
     public var timelineTime: Double
     public var meanLuma: Double
     public var lumaDeviation: Double
@@ -1227,60 +1243,222 @@ public struct PerceptualReviewEngine: Sendable {
 
 // MARK: - Selective rendered-preview inspection
 
+private final class EditorialProbeCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    func cancel() { lock.withLock { cancelled = true } }
+}
+
 public struct PerceptualRenderInspector: Sendable {
+    private static let decodeQueue = DispatchQueue(label: "VeloEdit.editorial-render-inspection", qos: .utility)
     public init() {}
+
+    /// AVAssetImageGenerator's synchronous reader must never block the Swift
+    /// cooperative executor while its compositor needs that same executor.
+    public func inspectAsync(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096) async -> [PerceptualRenderedFrameEvidence] {
+        guard !Task.isCancelled else { return [] }
+        let cancellation = EditorialProbeCancellation()
+        return await withTaskCancellationHandler {
+            await FilmBuildReporting.forwarding { report in
+                await withCheckedContinuation { continuation in
+                    Self.decodeQueue.async {
+                        continuation.resume(returning: inspect(playback: playback, timeline: timeline, maximumSamples: maximumSamples, cancellationCheck: { cancellation.isCancelled }, progress: report))
+                    }
+                }
+            }
+        } onCancel: { cancellation.cancel() }
+    }
 
     /// Samples cut neighborhoods, effect/title/telemetry centers and a bounded
     /// set of film positions from the actual AVComposition. It is not a second
     /// full render and reuses PlaybackEngine's proxy/derived-media cache.
-    public func inspect(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 36) -> [PerceptualRenderedFrameEvidence] {
-        let limit = min(max(4, maximumSamples), 48)
+    public func inspect(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096, cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }, progress: (@Sendable (FilmBuildProgress) -> Void)? = nil) -> [PerceptualRenderedFrameEvidence] {
+        let limit = min(max(4, maximumSamples), 4096)
         let frameStep = 1 / max(15, timeline.frameRate)
+        let endingFade = FilmEndingFade(duration: timeline.endingFadeDuration, movieDuration: playback.duration, frameRate: timeline.frameRate)
         let primaries = TimelineTiming.retimed(timeline.items).filter { $0.kind != .title && $0.overlay == nil }
-        var requested: [Double] = []
-        for item in primaries.dropFirst() {
-            requested.append(max(0, item.timelineStart - frameStep))
-            requested.append(min(timeline.duration, item.timelineStart + frameStep))
+        let scheduledTimes = EditorialProbeSchedule.times(timeline: timeline)
+        let times: [Double]
+        if scheduledTimes.count <= limit {
+            times = scheduledTimes
+        } else {
+            // A bounded preliminary review must cover the entire film instead
+            // of inspecting only its beginning. Production review keeps the
+            // complete schedule by using the default 4096-sample limit.
+            times = (0..<limit).map { index in
+                let position = Double(index) * Double(scheduledTimes.count - 1) / Double(limit - 1)
+                return scheduledTimes[Int(position.rounded())]
+            }
         }
-        requested.append(contentsOf: timeline.effectiveEffects.map { $0.startTime + $0.duration / 2 })
-        requested.append(contentsOf: timeline.effectiveTitleItems.map { $0.startTime + $0.duration / 2 })
-        requested.append(contentsOf: timeline.effectiveTelemetryItems.map { $0.timelineStart + $0.timelineDuration / 2 })
-        if requested.count < limit {
-            let count = min(10, max(3, limit - requested.count))
-            requested.append(contentsOf: (0..<count).map { timeline.duration * (Double($0) + 0.5) / Double(count) })
+        func makeGenerator() -> AVAssetImageGenerator {
+            let generator = AVAssetImageGenerator(asset: playback.composition)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 640, height: 640)
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            generator.videoComposition = playback.videoComposition
+            return generator
         }
-        let times = Array(Set(requested.map { Int(($0 * 120).rounded()) })).map { Double($0) / 120 }.sorted().prefix(limit)
-        let generator = AVAssetImageGenerator(asset: playback.composition)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 640, height: 640)
-        generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 60)
-        generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 60)
-        generator.videoComposition = playback.videoComposition
+        // AVAssetImageGenerator retains decoder state while seeking around a
+        // long multi-source composition. A bounded generator lifetime keeps a
+        // production review from accumulating every 5K source decoder.
+        let decodeChunkSize = 8
+        var generator = makeGenerator()
         var result: [PerceptualRenderedFrameEvidence] = []
         var previousHash: UInt64?
         var repeatedHashCount = 0
-        for time in times {
-            guard time >= 0, time < max(0.001, playback.duration),
-                  let image = try? generator.copyCGImage(at: CMTime(seconds: time, preferredTimescale: 600), actualTime: nil) else { continue }
-            let assessment = FrameQualityInspector.assess(image: image)
-            let hash = Self.perceptualHash(image)
-            if hash == previousHash { repeatedHashCount += 1 } else { repeatedHashCount = 0 }
-            let item = primaries.first { time >= $0.timelineStart && time <= $0.timelineStart + $0.timelineDuration }
-            let intentionalFreeze = item?.isFreezeFrame == true || item?.kind == .photo
-            result.append(PerceptualRenderedFrameEvidence(
-                timelineTime: time, meanLuma: assessment.meanLuma,
-                lumaDeviation: assessment.lumaDeviation, perceptualHash: hash,
-                isBlack: assessment.isBlack,
-                isFrozenComparedToPrevious: repeatedHashCount >= 2 && !intentionalFreeze,
-                expectedVisibleContent: item != nil,
-                source: "AVComposition selective preview"
-            ))
-            previousHash = hash
+        progress?(FilmBuildProgress(.previewFrames, completed: 0, total: times.count))
+        for (index, time) in times.enumerated() {
+            if cancellationCheck() { break }
+            guard time >= 0, time < timeline.duration else { continue }
+            if index > 0, index.isMultiple(of: decodeChunkSize) {
+                generator.cancelAllCGImageGeneration()
+                generator = makeGenerator()
+            }
+            let playbackTime = min(max(0, playback.duration - frameStep), TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline))
+            let rendered: PerceptualRenderedFrameEvidence = autoreleasepool {
+                guard let image = try? generator.copyCGImage(at: CMTime(seconds: playbackTime, preferredTimescale: 600), actualTime: nil) else {
+                    var failure = PerceptualRenderedFrameEvidence(timelineTime: time, meanLuma: 0, lumaDeviation: 0, isBlack: false, source: "AVComposition decode failed")
+                    failure.decodeFailed = true
+                    return failure
+                }
+                let assessment = FrameQualityInspector.assess(image: image)
+                let hash = Self.perceptualHash(image)
+                if hash == previousHash { repeatedHashCount += 1 } else { repeatedHashCount = 0 }
+                let item = primaries.first { time >= $0.timelineStart && time <= $0.timelineStart + $0.timelineDuration }
+                let intentionalFreeze = item?.isFreezeFrame == true || item?.kind == .photo
+                    || NaturalChapterTransitionPlanner.expectsCoveredSource(at: time, timeline: timeline)
+                var rendered = PerceptualRenderedFrameEvidence(
+                    timelineTime: time, meanLuma: assessment.meanLuma,
+                    lumaDeviation: assessment.lumaDeviation, perceptualHash: hash,
+                    isBlack: assessment.isBlack,
+                    isFrozenComparedToPrevious: repeatedHashCount >= 2 && !intentionalFreeze,
+                    expectedVisibleContent: item != nil && (endingFade?.opacity(at: playbackTime) ?? 1) > 0.1
+                        && !NaturalChapterTransitionPlanner.expectsCoveredSource(at: time, timeline: timeline, darkOnly: true),
+                    source: "AVComposition selective preview"
+                )
+                rendered.decodeFailed = false
+                rendered.lumaFingerprint = Self.lumaFingerprint(image)
+                let humanRequest = VNDetectHumanRectanglesRequest()
+                humanRequest.upperBodyOnly = false
+                let faceRequest = VNDetectFaceRectanglesRequest()
+                let classificationRequest = VNClassifyImageRequest()
+                let saliencyRequest = VNGenerateAttentionBasedSaliencyImageRequest()
+                let handler = VNImageRequestHandler(cgImage: image, options: [:])
+                if (try? handler.perform([humanRequest, faceRequest, classificationRequest, saliencyRequest])) != nil {
+                    let people = (humanRequest.results ?? []).map { observation in
+                        FrameSubjectObservation(kind: .person, label: "rendered person", region: NormalizedRegion(x: observation.boundingBox.minX, y: observation.boundingBox.minY, width: observation.boundingBox.width, height: observation.boundingBox.height), confidence: Double(observation.confidence))
+                    }
+                    let faces = (faceRequest.results ?? []).map { observation in
+                        FrameSubjectObservation(kind: .face, label: "rendered face", region: NormalizedRegion(x: observation.boundingBox.minX, y: observation.boundingBox.minY, width: observation.boundingBox.width, height: observation.boundingBox.height), confidence: Double(observation.confidence))
+                    }
+                    rendered.renderedSubjects = people + faces
+                    let labels = (classificationRequest.results ?? []).prefix(8).filter { $0.confidence >= 0.18 }.map { $0.identifier.lowercased() }
+                    rendered.renderedLabels = labels
+                    let kind = Self.subjectKind(for: labels)
+                    rendered.renderedSalientRegions = (saliencyRequest.results?.first?.salientObjects ?? []).filter { $0.confidence >= 0.16 }.map { observation in
+                        FrameSubjectObservation(kind: kind, label: labels.first ?? "rendered salient object", region: NormalizedRegion(x: observation.boundingBox.minX, y: observation.boundingBox.minY, width: observation.boundingBox.width, height: observation.boundingBox.height), confidence: Double(observation.confidence))
+                    }
+                }
+                rendered.verticalOccluderScore = Self.verticalOccluderScore(rendered.lumaFingerprint ?? [], subjects: rendered.renderedSubjects ?? [])
+                let readableTitles = timeline.effectiveTitleItems.filter { title in
+                    guard title.enabled else { return false }
+                    let template = TitleTemplateRegistry.template(for: title)
+                    let stagger = Double(template?.layout.elements.map(\.staggerIndex).max() ?? 0)
+                    let entrance = (template?.animation.animationIn.duration ?? 0.35) + stagger * (template?.animation.animationIn.stagger ?? 0)
+                    let exit = (template?.animation.animationOut.duration ?? 0.35) + stagger * (template?.animation.animationOut.stagger ?? 0)
+                    // Check readable hold, not a deliberately partial animated reveal.
+                    return time >= title.startTime + min(title.duration / 2, entrance + 0.05)
+                        && time <= title.endTime - min(title.duration / 2, exit + 0.05)
+                }
+                if !readableTitles.isEmpty {
+                    let request = VNRecognizeTextRequest()
+                    request.recognitionLevel = .accurate
+                    request.recognitionLanguages = ["ru-RU", "en-US"]
+                    if (try? handler.perform([request])) != nil {
+                        let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ").lowercased()
+                        let expected = readableTitles.flatMap { $0.text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) }
+                        rendered.titleReadability = expected.isEmpty ? 1 : Double(expected.filter { recognized.contains($0) }.count) / Double(expected.count)
+                    }
+                }
+                previousHash = hash
+                return rendered
+            }
+            result.append(rendered)
+            progress?(FilmBuildProgress(.previewFrames, completed: index + 1, total: times.count))
         }
+        generator.cancelAllCGImageGeneration()
         return result
     }
 
-    private static func perceptualHash(_ image: CGImage) -> UInt64 {
+    static func lumaFingerprint(_ image: CGImage) -> [Float] {
+        var bytes = [UInt8](repeating: 0, count: 32 * 32)
+        guard let context = CGContext(data: &bytes, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 32, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return [] }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 32, height: 32))
+        return bytes.map { Float($0) / 255 }
+    }
+
+    private static func subjectKind(for labels: [String]) -> SubjectKind {
+        let text = labels.joined(separator: " ")
+        if ["cyclist", "bicyclist", "cycling", "mountain bike"].contains(where: text.contains) { return .cyclist }
+        if ["bicycle", "bike"].contains(where: text.contains) { return .bicycle }
+        if ["car", "automobile", "vehicle", "motorcycle", "truck", "bus", "off-road"].contains(where: text.contains) { return .vehicle }
+        if ["person", "people", "human", "pedestrian"].contains(where: text.contains) { return .person }
+        if ["dog", "cat", "animal", "horse", "bird"].contains(where: text.contains) { return .animal }
+        return .salientObject
+    }
+
+    /// Looks for a narrow vertical strip whose tone differs from both adjacent
+    /// regions and remains coherent through most of the frame. The score is
+    /// intentionally only evidence for the semantic verifier; it is never a
+    /// standalone object label.
+    static func verticalOccluderScore(_ pixels: [Float], subjects: [FrameSubjectObservation]) -> Double {
+        let width = 32, height = 32
+        guard pixels.count == width * height else { return 0 }
+        let people = subjects.filter {
+            [.person, .face, .cyclist].contains($0.kind) && $0.confidence >= 0.6
+                && (0.002...0.72).contains($0.region.area)
+        }
+        var best = 0.0
+        for stripWidth in 2...7 {
+            for start in 2..<(width - stripWidth - 2) {
+                let center = (Double(start) + Double(stripWidth) / 2) / Double(width)
+                // Background poles and a full-frame Vision box do not prove
+                // that anything obscures a person. Require an interior overlap
+                // with the same meaningful human geometry used by semantics.
+                guard people.contains(where: {
+                    center > $0.region.x + 0.025
+                        && center < $0.region.x + $0.region.width - 0.025
+                }) else { continue }
+                var contrast = 0.0
+                var lighterRows = 0, darkerRows = 0
+                for y in 1..<(height - 1) {
+                    let mean = (start..<(start + stripWidth)).reduce(0.0) {
+                        $0 + Double(pixels[y * width + $1])
+                    } / Double(stripWidth)
+                    let left = mean - Double(pixels[y * width + start - 2])
+                    let right = mean - Double(pixels[y * width + start + stripWidth + 1])
+                    // A strip differs from BOTH sides with the same polarity.
+                    // Global column means otherwise confuse sky/clothing
+                    // boundaries with a coherent foreground obstruction.
+                    guard left * right > 0 else { continue }
+                    let difference = min(abs(left), abs(right))
+                    contrast += difference
+                    if difference > 0.12 {
+                        if left > 0 { lighterRows += 1 } else { darkerRows += 1 }
+                    }
+                }
+                let rows = Double(height - 2)
+                let persistence = Double(max(lighterRows, darkerRows)) / rows
+                best = max(best, min(1, contrast / rows / 0.22) * persistence)
+            }
+        }
+        return best
+    }
+
+    static func perceptualHash(_ image: CGImage) -> UInt64 {
         let width = 8
         let height = 8
         var bytes = [UInt8](repeating: 0, count: width * height)

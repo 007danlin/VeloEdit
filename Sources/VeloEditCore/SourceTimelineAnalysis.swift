@@ -310,6 +310,11 @@ public struct SourceTimelineAnalyzer: Sendable {
     }
 
     public func analyze(assets: [MediaAsset], analyses: [AnalysisResult]) -> SourceMap {
+        let assets = assets.map { asset in
+            var copy = asset
+            copy.metadata = MediaCaptureClock.metadata(for: asset)
+            return copy
+        }
         let analysesByAsset = Dictionary(uniqueKeysWithValues: analyses.map { ($0.assetID, $0) })
         var nodes = assets
             .filter { !$0.excluded && !$0.missing }
@@ -317,7 +322,10 @@ public struct SourceTimelineAnalyzer: Sendable {
         guard !nodes.isEmpty else { return .empty }
 
         let sequenceGroups = Dictionary(grouping: nodes.indices.compactMap { index in
-            nodes[index].sequence.map { ($0.seriesKey, index) }
+            nodes[index].sequence.map { sequence in
+                let day = nodes[index].captureDate.map { Calendar.current.startOfDay(for: $0).timeIntervalSince1970 }
+                return (sequence.seriesKey + (day.map { "|\($0)" } ?? "|undated"), index)
+            }
         }, by: { $0.0 })
         for (_, members) in sequenceGroups {
             let indices = members.map(\.1)
@@ -326,7 +334,7 @@ public struct SourceTimelineAnalyzer: Sendable {
             // Trust a complete set of high-confidence embedded capture clocks
             // even when filename numbers disagree. Sequence becomes dominant
             // only when at least one real timestamp is unavailable/unreliable.
-            let useSequence = reliableEmbeddedDates < indices.count
+            let useSequence = reliableEmbeddedDates == 0
             guard useSequence else { continue }
             let sequenceOrder = indices.sorted { sequenceLess(nodes[$0], nodes[$1]) }
             let anchor = indices.compactMap { nodes[$0].captureDate }.min()
@@ -420,16 +428,11 @@ public struct SourceTimelineAnalyzer: Sendable {
     }
 
     private func chronologicalLess(_ first: Node, _ second: Node) -> Bool {
-        if first.sequence?.seriesKey == second.sequence?.seriesKey,
-           first.usesSequenceOrder || second.usesSequenceOrder,
-           sequenceLess(first, second) != sequenceLess(second, first) {
-            return sequenceLess(first, second)
-        }
         let lhs = first.syntheticDate ?? first.captureDate
         let rhs = second.syntheticDate ?? second.captureDate
-        if let lhs, let rhs, lhs != rhs { return lhs < rhs }
-        if lhs != nil { return true }
-        if rhs != nil { return false }
+        if let lhs, let rhs { if lhs != rhs { return lhs < rhs } }
+        else if lhs != nil { return true }
+        else if rhs != nil { return false }
         if let left = first.sequence, let right = second.sequence,
            left.seriesKey == right.seriesKey {
             return sequenceLess(first, second)
@@ -557,9 +560,10 @@ public struct SourceTimelineAnalyzer: Sendable {
     }
 
     private func temporalHardSplit(first: Node, second: Node) -> Bool {
-        guard min(first.dateReliability, second.dateReliability) >= 0.90,
+        guard min(first.dateReliability, second.dateReliability) >= 0.65,
               let left = first.captureDate, let right = second.captureDate else { return false }
-        return abs(right.timeIntervalSince(left)) > 18 * 3_600
+        let gap = right.timeIntervalSince(left.addingTimeInterval(first.asset.metadata.duration ?? 0))
+        return gap > 45 * 60 || !Calendar.current.isDate(left, inSameDayAs: right)
     }
 
     private func gpsContinuity(first: Node, second: Node) -> Double? {

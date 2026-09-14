@@ -94,7 +94,37 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
     return (assets, analyses)
 }
 
-@Test func autonomousDirectorBuildsSemanticArcAndMakesRealDecisions() {
+@Test func automaticDirectorKeepsOriginalColorsAndDoesNotInsertCutaways() {
+    let (assets, original) = directorFixture()
+    var analyses = original
+    for index in analyses.indices {
+        for candidateIndex in analyses[index].candidates.indices {
+            analyses[index].candidates[candidateIndex].insights?.exposureQuality = 0.4
+        }
+    }
+    let plan = StoryEngine().createPlan(prompt: "Киношный фильм с названиями каждой части", preset: .adventure,
+        constraints: StoryConstraints(targetDuration: 45), assets: assets, analyses: analyses)
+    let source = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let result = AIDirectorEngine(maximumReviewIterations: 0).direct(plan: plan, initialTimeline: source, assets: assets, analyses: analyses)
+    #expect(!result.items.contains { $0.overlay != nil })
+    #expect(result.items.allSatisfy {
+        let video = $0.effectiveVideoAdjustments
+        return (video.exposure ?? 0) == 0 && video.contrast == 1 && video.saturation == 1 && video.filter == .none
+    })
+    #expect(result.effectiveEffects.isEmpty)
+}
+
+@Test func directorDoesNotLowerMusicWhenUserAskedToLowerCameraAudio() {
+    let (assets, analyses) = directorFixture()
+    let plan = StoryEngine().createPlan(prompt: "Киношный фильм. Приглушить звук исходников.", preset: .adventure,
+        constraints: StoryConstraints(targetDuration: 45), assets: assets, analyses: analyses)
+    let source = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
+    let result = AIDirectorEngine(maximumReviewIterations: 0).direct(plan: plan, initialTimeline: source, assets: assets, analyses: analyses)
+    #expect(result.effectiveOriginalAudioVolume == 0.20)
+    #expect(!SourceAudioMixPolicy.musicDucking(in: result).enabled)
+}
+
+@Test func autonomousDirectorRequiresEvidenceForClimaxAndAutomaticDecoration() {
     let (assets, analyses) = directorFixture()
     var constraints = PromptInterpreter().interpret(
         prompt: "Сделай динамичный фильм, поездка на багги — кульминация, покажи скорость на экране",
@@ -112,24 +142,21 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
     var initial = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
     initial.music = MusicDirective(style: .energetic, bpm: 132)
     let directed = AIDirectorEngine().direct(plan: plan, initialTimeline: initial, assets: assets, analyses: analyses)
-    let candidateByID = Dictionary(uniqueKeysWithValues: analyses.flatMap(\.candidates).map { ($0.id, $0) })
     let primaries = directed.items.filter { $0.overlay == nil && $0.kind != .title }
 
-    #expect(Set(primaries.compactMap(\.storyRole)).isSuperset(of: [.intro, .setup, .buildup, .action, .climax, .outro]))
-    let climaxTags = primaries.filter { $0.storyRole == .climax }.compactMap { $0.candidateID.flatMap { candidateByID[$0]?.tags } }
-    #expect(climaxTags.contains(where: { $0.contains("buggy") }))
+    #expect(primaries.first?.storyRole == .intro)
+    #expect(primaries.last?.storyRole == .outro)
+    #expect(!primaries.contains { $0.storyRole == .climax })
+    #expect(plan.narrativeBeatPlan?.beats.allSatisfy(\.fulfilled) == true)
     #expect(Set(primaries.map { Int(($0.sourceDuration * 10).rounded()) }).count > 2)
-    #expect(directed.items.contains { $0.overlay?.style == .cutaway && $0.storyRole == .bRoll })
-    #expect(primaries.contains { $0.speedRamp != nil } || primaries.contains { $0.speed < 1 })
-    #expect(primaries.contains { ($0.effectiveVideoAdjustments.stabilization ?? 0) > 0 })
+    #expect(!directed.effectiveEffects.contains { $0.enabled && $0.effectType.category == .stylized })
     #expect(directed.effectiveTelemetryItems.contains { item in
         primaries.contains(where: { $0.id == item.targetClipID }) && item.timelineDuration < directed.duration
     })
-    #expect(directed.audioDucking?.enabled == true)
+    #expect(SourceAudioMixPolicy.musicDucking(in: directed).enabled)
     #expect(directed.directorRun?.reviewIterations ?? -1 <= 2)
     #expect((directed.directorRun?.finalReview.score ?? 0) >= (directed.directorRun?.initialReview.score ?? 0))
-    let appliedToolNames = directed.directorRun?.appliedToolNames ?? []
-    #expect(appliedToolNames.contains(DirectorEditingTool.bRoll.rawValue))
+    #expect(directed.editorialBeatPlan != nil)
 }
 
 @Test func directorEditingToolsValidateAndExecuteStructuralTimelineChanges() throws {
@@ -345,13 +372,14 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
         analyses: analyses
     )
     var initial = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
-    initial.titleItems = initial.effectiveTitleItems + [TitleTimelineItem(
+    let placeholderTitle = TitleTimelineItem(
         kind: .title,
-        text: "Ключевой момент",
+        text: "Кульминация",
         startTime: 0,
         duration: 3,
         explanation: ["Автоматический титр режиссёра"]
-    )]
+    )
+    initial.titleItems = initial.effectiveTitleItems + [placeholderTitle]
 
     let directed = AIDirectorEngine(maximumReviewIterations: 0).direct(
         plan: plan,
@@ -361,7 +389,7 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
     )
 
     #expect(!directed.effectiveTitleItems.contains { SmartTitleEngine.isMeaningless($0.text) })
-    #expect(directed.directorRun?.decisionReasons.contains { $0.contains("Title quality gate [unconfirmed-text]") } == true)
+    #expect(!directed.effectiveTitleItems.contains { $0.id == placeholderTitle.id })
 }
 
 @Test func globalVariantSelectorChoosesTheStrongerCompleteMontage() throws {
@@ -388,16 +416,17 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try ProjectStore(createAt: root, name: "P1 production variants")
-    let (assets, analyses) = directorFixture()
+    let (fixtureAssets, analyses) = directorFixture()
+    let assets = try await materializeEditorialFixtureMedia(fixtureAssets, at: root)
     try await store.update { project in
         project.assets = assets
         project.analyses = analyses
     }
-    let pipeline = VeloEditPipeline(store: store)
+    try await store.update { $0.editorialDevelopmentEnabled = true }
+    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(), analyzer: FixtureEditorialAnalyzer(analyses: analyses))
     let timeline = try await pipeline.createFilm(
-        prompt: "Без музыки. Собери разные решения: природа, люди, движение и реакция, багги — кульминация",
-        preset: .adventure,
-        targetDuration: 38
+        prompt: "Без музыки. Собери разные решения: природа, люди, движение, поездка на багги и реакция",
+        preset: .adventure
     )
     let diagnostics = try #require(timeline.directorRun?.variantDiagnostics)
     let snapshot = await pipeline.snapshot()

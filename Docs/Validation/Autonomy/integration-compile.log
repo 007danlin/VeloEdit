@@ -1,0 +1,116 @@
+[0/1] Planning build
+Building for debugging...
+[0/11] Write sources
+[2/11] Write swift-version--58304C5D6DBC2206.txt
+[4/17] Emitting module VeloEditCore
+[5/17] Compiling VeloEditCore AutomaticEditorialAssembly.swift
+[6/17] Compiling VeloEditCore AutonomousDirector.swift
+[7/17] Compiling VeloEditCore EditorialNarrative.swift
+[8/17] Compiling VeloEditCore ExportVideoSettings.swift
+[9/17] Compiling VeloEditCore FilmDurationRequirement.swift
+[10/21] Compiling VeloEditCore Models.swift
+[11/21] Compiling VeloEditCore RenderEngine.swift
+[12/21] Compiling VeloEditCore SoftwareCompositionExporter.swift
+[13/21] Compiling VeloEditCore VeloEditPipeline.swift
+[14/51] Compiling VeloEditCore EditorialRollout.swift
+[15/51] Compiling VeloEditCore EditorialSpeech.swift
+[16/51] Compiling VeloEditCore EditorialVerification.swift
+[17/51] Compiling VeloEditCore FilmBuildRecovery.swift
+[18/51] Compiling VeloEditCore LocalProjectRecovery.swift
+[19/51] Compiling VeloEditCore MediaSourceRecovery.swift
+[20/51] Compiling VeloEditCore MontageVariantScoring.swift
+[21/51] Compiling VeloEditCore NaturalChapterTransitions.swift
+[22/51] Compiling VeloEditCore NaturalLanguageDirector.swift
+[23/51] Compiling VeloEditCore PerceptualReview.swift
+[24/51] Compiling VeloEditCore ProductionHardening.swift
+[25/51] Compiling VeloEditCore ProjectStore.swift
+[26/51] Compiling VeloEditCore SourceAudioMixPolicy.swift
+[27/51] Compiling VeloEditCore StoryEngine.swift
+[28/51] Compiling VeloEditCore TimelineComposer.swift
+[29/51] Compiling VeloEditCore AIDirectorEngine.swift
+[30/51] Compiling VeloEditCore AdaptiveSoundtrack.swift
+[31/51] Compiling VeloEditCore AutomaticTelemetryPolicy.swift
+[32/51] Compiling VeloEditCore AutonomousJob.swift
+[33/51] Compiling VeloEditCore ChapterTitleReference.swift
+[34/51] Compiling VeloEditCore DirectorRequestContract.swift
+[35/51] Compiling VeloEditCore DirectorVisualStyle.swift
+[36/51] Compiling VeloEditCore EditorialDeliveryVerification.swift
+[37/51] Compiling VeloEditCore EditorialFallback.swift
+[38/51] Compiling VeloEditCore EditorialIntent.swift
+[39/51] Compiling VeloEditCore EditorialLocalSemanticVerifier.swift
+[40/51] Compiling VeloEditCore EditorialPresentation.swift
+[41/51] Compiling VeloEditCore EditorialProjectMigration.swift
+[42/51] Compiling VeloEditCore EditorialRenderedReview.swift
+[43/51] Compiling VeloEditCore EditorialReview.swift
+[44/77] Emitting module VeloEditCLI
+[45/77] Compiling VeloEditCLI main.swift
+[46/84] Emitting module VeloEdit
+[47/89] Compiling VeloEdit TelemetryLibraryView.swift
+[48/89] Compiling VeloEdit ThumbnailImageView.swift
+[49/89] Compiling VeloEdit TimelineKeyboardMonitor.swift
+[50/89] Compiling VeloEdit TitlePreviewFrameSource.swift
+[51/89] Compiling VeloEdit VeloEditApp.swift
+[52/89] Compiling VeloEdit AppModel.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1505:41: error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+1503 |                         instructions: pendingInstructions,
+1504 |                         preset: preset,
+1505 |                         targetDuration: targetDuration
+     |                                         |- error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+     |                                         |- note: coalesce using '??' to provide a default when the optional value contains 'nil'
+     |                                         `- note: force-unwrap using '!' to abort execution if the optional value contains 'nil'
+1506 |                     )
+1507 |                     baseTimeline = try await pipeline.regenerate(
+[53/89] Compiling VeloEdit AppNotifications.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1505:41: error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+1503 |                         instructions: pendingInstructions,
+1504 |                         preset: preset,
+1505 |                         targetDuration: targetDuration
+     |                                         |- error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+     |                                         |- note: coalesce using '??' to provide a default when the optional value contains 'nil'
+     |                                         `- note: force-unwrap using '!' to abort execution if the optional value contains 'nil'
+1506 |                     )
+1507 |                     baseTimeline = try await pipeline.regenerate(
+[54/89] Compiling VeloEdit ContentView.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1505:41: error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+1503 |                         instructions: pendingInstructions,
+1504 |                         preset: preset,
+1505 |                         targetDuration: targetDuration
+     |                                         |- error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+     |                                         |- note: coalesce using '??' to provide a default when the optional value contains 'nil'
+     |                                         `- note: force-unwrap using '!' to abort execution if the optional value contains 'nil'
+1506 |                     )
+1507 |                     baseTimeline = try await pipeline.regenerate(
+[55/89] Compiling VeloEdit LocalDirectorAgent.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1505:41: error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+1503 |                         instructions: pendingInstructions,
+1504 |                         preset: preset,
+1505 |                         targetDuration: targetDuration
+     |                                         |- error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+     |                                         |- note: coalesce using '??' to provide a default when the optional value contains 'nil'
+     |                                         `- note: force-unwrap using '!' to abort execution if the optional value contains 'nil'
+1506 |                     )
+1507 |                     baseTimeline = try await pipeline.regenerate(
+[56/89] Compiling VeloEdit MontageTimelineView.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1505:41: error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+1503 |                         instructions: pendingInstructions,
+1504 |                         preset: preset,
+1505 |                         targetDuration: targetDuration
+     |                                         |- error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+     |                                         |- note: coalesce using '??' to provide a default when the optional value contains 'nil'
+     |                                         `- note: force-unwrap using '!' to abort execution if the optional value contains 'nil'
+1506 |                     )
+1507 |                     baseTimeline = try await pipeline.regenerate(
+[57/89] Compiling VeloEdit SystemResourceStatusView.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1505:41: error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+1503 |                         instructions: pendingInstructions,
+1504 |                         preset: preset,
+1505 |                         targetDuration: targetDuration
+     |                                         |- error: value of optional type 'Double?' must be unwrapped to a value of type 'Double'
+     |                                         |- note: coalesce using '??' to provide a default when the optional value contains 'nil'
+     |                                         `- note: force-unwrap using '!' to abort execution if the optional value contains 'nil'
+1506 |                     )
+1507 |                     baseTimeline = try await pipeline.regenerate(
+[58/89] Emitting module VeloEditCoreTests
+error: cancelled
+error: cancelled
+error: fatalError

@@ -72,41 +72,65 @@ public enum TransitionEffectRenderer {
                     kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY),
                     kCIInputAmountKey: effect.effectType == .radialBlur ? radius * 0.62 : radius
                 ]).cropped(to: extent)
-            case .directionalBlur, .motionBlur, .cinematicMotionBlur:
-                let maximum = effect.effectType == .cinematicMotionBlur ? 7.0 : 28.0
+            case .directionalBlur:
                 let angle = effect.parameterValue("angle", at: timelineTime)
                 image = image.clampedToExtent()
-                    .applyingFilter("CIMotionBlur", parameters: [kCIInputRadiusKey: maximum * amount, kCIInputAngleKey: angle])
+                    .applyingFilter("CIMotionBlur", parameters: [kCIInputRadiusKey: 28 * amount, kCIInputAngleKey: angle])
                     .cropped(to: extent)
+            case .motionBlur:
+                let progress = localProgress(effect, timelineTime: timelineTime)
+                let angle = effect.parameterValue("angle", at: timelineTime) + sin(progress * .pi * 2) * 0.18
+                image = image.clampedToExtent()
+                    .applyingFilter("CIMotionBlur", parameters: [kCIInputRadiusKey: 28 * amount, kCIInputAngleKey: angle])
+                    .cropped(to: extent)
+            case .cinematicMotionBlur:
+                // A slight diagonal bias models a camera shutter sweep and
+                // keeps this softer look distinct from directional blur even
+                // when both presets retain their default angle parameter.
+                let angle = effect.parameterValue("angle", at: timelineTime) - .pi / 16
+                let blurred = image.clampedToExtent()
+                    .applyingFilter("CIMotionBlur", parameters: [kCIInputRadiusKey: 9 * amount, kCIInputAngleKey: angle])
+                    .cropped(to: extent)
+                image = withOpacity(blurred, 0.32 + amount * 0.38).composited(over: image).cropped(to: extent)
             case .exposure:
-                image = image.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: (amount - 0.5) * 3.2])
+                image = image.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: amount * 1.6])
             case .brightness:
-                image = image.applyingFilter("CIColorControls", parameters: [kCIInputBrightnessKey: (amount - 0.5) * 0.8])
+                image = image.applyingFilter("CIColorControls", parameters: [kCIInputBrightnessKey: amount * 0.4])
             case .contrast:
-                image = image.applyingFilter("CIColorControls", parameters: [kCIInputContrastKey: 0.5 + amount])
+                image = image.applyingFilter("CIColorControls", parameters: [kCIInputContrastKey: 1 + amount * 0.6])
             case .saturation:
-                image = image.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0.35 + amount * 1.3])
+                image = image.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1 + amount * 0.65])
             case .vibrance:
-                image = image.applyingFilter("CIVibrance", parameters: ["inputAmount": (amount - 0.5) * 2])
+                image = image.applyingFilter("CIVibrance", parameters: ["inputAmount": amount])
             case .temperature:
-                let target = 6_500 + (amount - 0.5) * 4_000
+                let target = 6_500 + amount * 2_000
                 image = image.applyingFilter("CITemperatureAndTint", parameters: [
                     "inputNeutral": CIVector(x: 6_500, y: 0),
                     "inputTargetNeutral": CIVector(x: target, y: 0)
                 ])
             case .tint:
-                image = image.applyingFilter("CITemperatureAndTint", parameters: [
-                    "inputNeutral": CIVector(x: 6_500, y: 0),
-                    "inputTargetNeutral": CIVector(x: 6_500, y: (amount - 0.5) * 240)
-                ])
+                let tint = CIImage(color: colorForHue(effect.parameterValue("color", at: timelineTime)))
+                    .cropped(to: extent)
+                image = withOpacity(tint, amount * 0.28)
+                    .applyingFilter("CIColorBlendMode", parameters: [kCIInputBackgroundImageKey: image])
+                    .cropped(to: extent)
             case .highlights:
-                image = image.applyingFilter("CIHighlightShadowAdjust", parameters: ["inputHighlightAmount": 0.35 + amount * 1.3])
+                image = image.applyingFilter("CIHighlightShadowAdjust", parameters: ["inputHighlightAmount": 1 - amount * 0.7])
             case .shadows:
                 image = image.applyingFilter("CIHighlightShadowAdjust", parameters: ["inputShadowAmount": amount * 1.25])
             case .sharpness:
                 image = image.applyingFilter("CISharpenLuminance", parameters: [kCIInputSharpnessKey: amount * 1.4])
             case .colorGrade:
-                image = cinematicGrade(image, contrast: 1 + amount * 0.22, saturation: 1 + amount * 0.10, warmth: amount * 0.08)
+                switch Int(effect.parameterValue("look", at: timelineTime).rounded()) {
+                case 1:
+                    image = cinematicGrade(image, contrast: 1 + amount * 0.34, saturation: 1 - amount * 0.08, warmth: amount * 0.04)
+                case 2:
+                    image = cinematicGrade(image, contrast: 1 + amount * 0.16, saturation: 1 + amount * 0.08, warmth: amount * 0.24)
+                case 3:
+                    image = cinematicGrade(image, contrast: 1 + amount * 0.18, saturation: 1 + amount * 0.04, warmth: -amount * 0.22)
+                default:
+                    image = cinematicGrade(image, contrast: 1 + amount * 0.22, saturation: 1 + amount * 0.10, warmth: amount * 0.08)
+                }
             case .cinematicContrast:
                 image = cinematicGrade(image, contrast: 1 + amount * 0.42, saturation: 1 - amount * 0.07, warmth: amount * 0.03)
             case .tealOrangeGrade:
@@ -143,7 +167,14 @@ public enum TransitionEffectRenderer {
                 image = image.clampedToExtent()
                     .applyingFilter("CIBloom", parameters: [kCIInputRadiusKey: maximum * amount, kCIInputIntensityKey: 0.25 + amount])
                     .cropped(to: extent)
-            case .chromaticAberration, .rgbSplit:
+            case .chromaticAberration:
+                let split = rgbSplit(image, amount: amount * 0.58, extent: extent)
+                image = split.applyingFilter("CIBumpDistortion", parameters: [
+                    kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY),
+                    kCIInputRadiusKey: min(extent.width, extent.height) * 0.72,
+                    kCIInputScaleKey: amount * 0.055
+                ]).cropped(to: extent)
+            case .rgbSplit:
                 image = rgbSplit(image, amount: amount, extent: extent)
             case .lensDistortion, .barrelDistortion, .fisheye:
                 let radius = min(extent.width, extent.height) * max(0.1, effect.parameterValue("radius", at: timelineTime))
@@ -194,7 +225,12 @@ public enum TransitionEffectRenderer {
                 let haze = CIImage(color: CIColor(red: 0.78, green: 0.83, blue: 0.86, alpha: amount * 0.28)).cropped(to: extent)
                 image = haze.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: image]).cropped(to: extent)
             case .letterbox:
-                image = letterboxed(image, amount: effect.parameterValue("barSize", at: timelineTime) * amount, extent: extent)
+                image = letterboxed(
+                    image,
+                    amount: effect.parameterValue("barSize", at: timelineTime) * amount,
+                    colorValue: effect.parameterValue("barColor", at: timelineTime),
+                    extent: extent
+                )
             case .zoom, .pushIn, .pullOut, .pan, .shake, .cameraDrift, .handheld,
                  .spin, .kenBurns, .parallaxMotion, .fade, .opacity:
                 break
@@ -371,6 +407,13 @@ public enum TransitionEffectRenderer {
 
         let opacity: Double
         switch style {
+        case .push, .pushLeft, .pushRight, .pushUp, .pushDown,
+             .slideLeft, .slideRight, .slideUp, .slideDown,
+             .whipLeft, .whipRight, .whipUp, .whipDown:
+            // These images occupy complementary regions (or slide over a full
+            // background). Fading the incoming region exposes transparent /
+            // black pixels and produces a dark panel through the movement.
+            opacity = 1
         case .fadeThroughBlack, .fade:
             let outgoingOpacity = max(0, 1 - progress * 2)
             let incomingOpacity = max(0, progress * 2 - 1)
@@ -447,16 +490,12 @@ public enum TransitionEffectRenderer {
         let bounds = CGRect(origin: .zero, size: size)
         var source = previewEffectSource(bounds: bounds)
         let preset = EffectPresetRegistry.preset(for: type)
-        let previewOverrides = previewParameterOverrides(for: type)
-        let parameters = preset.parameters.filter { $0.key != "intensity" }.map {
-            EffectParameter(name: $0.key, value: previewOverrides[$0.key] ?? $0.defaultValue)
-        }
         let effect = EffectTimelineItem(
             effectType: type,
             startTime: 0,
             duration: 1,
-            parameters: parameters,
-            intensity: previewIntensity(for: type),
+            parameters: preset.defaultParameters,
+            intensity: type.defaultIntensity,
             explanation: ["Живая карточка использует renderer Timeline/Export"]
         )
         source = applyEffects([effect], to: source, timelineTime: progress, quality: quality)
@@ -464,44 +503,6 @@ public enum TransitionEffectRenderer {
         source = source.transformed(by: transform).cropped(to: bounds)
         source = withOpacity(source, effectOpacity([effect], timelineTime: progress))
         return cachedCGImage(source, bounds: bounds, key: key)
-    }
-
-    /// Editing defaults may intentionally be neutral. Library cards instead
-    /// use a safe but visible value so every card demonstrates its operation.
-    private static func previewIntensity(for type: TimelineEffectType) -> Double {
-        switch type {
-        case .exposure: return 0.78
-        case .brightness: return 0.74
-        case .contrast: return 0.82
-        case .saturation: return 0.84
-        case .vibrance: return 0.88
-        case .temperature: return 0.82
-        case .tint: return 0.76
-        case .highlights: return 0.22
-        case .shadows: return 0.82
-        case .sharpness: return 0.86
-        case .fade: return 0.78
-        case .opacity: return 0.58
-        case .blur, .backgroundBlur, .directionalBlur, .motionBlur, .zoomBlur, .radialBlur: return 0.68
-        case .lensBlur: return 0.82
-        case .softFocus: return 0.62
-        case .chromaticAberration: return 0.38
-        case .rgbSplit: return 0.58
-        default: return max(type.defaultIntensity, 0.62)
-        }
-    }
-
-    private static func previewParameterOverrides(for type: TimelineEffectType) -> [String: Double] {
-        switch type {
-        case .directionalBlur: return ["angle": .pi / 4]
-        case .cinematicMotionBlur: return ["angle": -.pi / 10]
-        case .shake: return ["amplitude": 0.68, "frequency": 9]
-        case .handheld: return ["amplitude": 0.34, "frequency": 5]
-        case .posterize: return ["levels": 5]
-        case .scanlines: return ["scale": 5]
-        case .halftone: return ["scale": 11]
-        default: return [:]
-        }
     }
 
     private static let previewOutgoingID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
@@ -708,12 +709,13 @@ public enum TransitionEffectRenderer {
         ]).cropped(to: extent)
     }
 
-    private static func letterboxed(_ image: CIImage, amount: Double, extent: CGRect) -> CIImage {
+    private static func letterboxed(_ image: CIImage, amount: Double, colorValue: Double, extent: CGRect) -> CIImage {
         let height = min(extent.height * 0.24, max(0, extent.height * amount))
         guard height > 0.5 else { return image.cropped(to: extent) }
-        let black = CIImage(color: .black)
-        let lower = black.cropped(to: CGRect(x: extent.minX, y: extent.minY, width: extent.width, height: height))
-        let upper = black.cropped(to: CGRect(x: extent.minX, y: extent.maxY - height, width: extent.width, height: height))
+        let component = min(max(0, colorValue), 1)
+        let bars = CIImage(color: CIColor(red: component, green: component, blue: component, alpha: 1))
+        let lower = bars.cropped(to: CGRect(x: extent.minX, y: extent.minY, width: extent.width, height: height))
+        let upper = bars.cropped(to: CGRect(x: extent.minX, y: extent.maxY - height, width: extent.width, height: height))
         return upper.composited(over: lower.composited(over: image)).cropped(to: extent)
     }
 

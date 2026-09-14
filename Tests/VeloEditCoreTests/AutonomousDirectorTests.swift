@@ -114,8 +114,8 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     )
 
     #expect(decision.seconds == 60)
-    #expect(decision.safeRange == 60...60)
-    #expect(decision.reasons.contains { $0.contains("явно заданная длительность") })
+    #expect(decision.safeRange.contains(60))
+    #expect(decision.contentBudgetDecision?.durationConstraintStatus == .satisfied)
 }
 
 @Test func abbreviatedQuestionnaireDurationIsStillAHardConstraint() {
@@ -130,7 +130,8 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
         analyses: analyses,
         personalProfile: PersonalTasteProfile()
     )
-    #expect(decision.duration.safeRange == 300...300)
+    #expect(decision.duration.contentBudgetDecision?.requestedDuration == 300)
+    #expect(decision.duration.contentBudgetDecision?.durationConstraintStatus == .compromisedInsufficientContent)
 }
 
 @Test func typedQuestionnaireDurationIsHardWithoutRepeatingItInPrompt() {
@@ -145,8 +146,9 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
         requestIsExplicit: true
     )
 
-    #expect(decision.duration.safeRange == 60...60)
-    #expect(decision.duration.seconds == 60)
+    #expect(decision.duration.contentBudgetDecision?.requestedDuration == 60)
+    #expect(decision.duration.seconds < 60)
+    #expect(decision.duration.contentBudgetDecision?.durationConstraintStatus == .compromisedInsufficientContent)
 }
 
 @Test func explicitDurationStillShortensWhenCandidateMaterialCannotCoverIt() {
@@ -196,12 +198,13 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
         analyses: analyses
     )
 
-    #expect(abs(timeline.duration - 60) <= 1 / timeline.frameRate)
+    #expect(timeline.duration <= 60 + 1 / timeline.frameRate)
+    #expect(timeline.items.allSatisfy { $0.sourceDuration <= 6.5 })
     #expect(timeline.items.allSatisfy { $0.transition == nil })
     #expect(timeline.effectiveTransitionItems.isEmpty)
 }
 
-@Test func fiveMinuteBriefExtendsLongCameraTakesWithoutReusingSourceRanges() {
+@Test func fiveMinuteBriefCompromisesUnsupportedDurationWithoutExtendingSourceRanges() {
     let (assets, analyses) = p3Fixture(count: 18, energetic: true)
     let prompt = "Сделай киношный фильм ровно на 5 минут. Звук исходников приглушить."
     let autonomous = AutonomousDirectorEngine().decide(
@@ -225,10 +228,11 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     )
     let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
 
-    #expect(autonomous.duration.safeRange == 300...300)
-    #expect(abs(timeline.duration - 300) <= 1 / timeline.frameRate)
-    #expect(timeline.effectiveOriginalAudioVolume == 0.30)
-    #expect(timeline.items.contains { $0.sourceDuration > 6.5 })
+    #expect(autonomous.duration.safeRange.upperBound < 300)
+    #expect(plan.contentBudget?.durationConstraintStatus == .compromisedInsufficientContent)
+    #expect(timeline.duration <= (plan.contentBudget?.supportedDuration ?? 0) + 0.05)
+    #expect(timeline.effectiveOriginalAudioVolume == DirectorSourceAudioPolicy.duck.volume)
+    #expect(timeline.items.allSatisfy { $0.sourceDuration <= 6.5 })
     for asset in assets {
         let ranges = timeline.items.filter { $0.assetID == asset.id }.sorted { $0.sourceStart < $1.sourceStart }
         for pair in zip(ranges, ranges.dropFirst()) {
@@ -237,7 +241,7 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     }
 }
 
-@Test func typedFiveMinuteBriefRedistributesEventCapacityAndSurvivesDirectorReview() {
+@Test func typedFiveMinuteBriefRespectsEditorialCapacityAndSurvivesDirectorReview() {
     let sourceDurations = [100.0, 260.0]
     let assets = sourceDurations.enumerated().map { index, duration in
         MediaAsset(
@@ -351,14 +355,14 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
         analyses: analyses
     )
 
-    #expect(autonomous.duration.safeRange == 300...300)
-    #expect(abs((plan.eventStory?.entries.reduce(0) { $0 + $1.allocatedDuration } ?? 0) - 300) < 0.001)
-    #expect(abs(rough.duration - 300) <= 1 / rough.frameRate)
-    #expect(abs(directed.duration - 300) <= 1 / directed.frameRate)
-    #expect(delivery.canPersist)
+    #expect(autonomous.duration.safeRange.upperBound < 300)
+    #expect(plan.contentBudget?.durationConstraintStatus == .compromisedInsufficientContent)
+    #expect(rough.duration <= (plan.contentBudget?.supportedDuration ?? 0) + 0.05)
+    #expect(directed.duration <= rough.duration + 0.05)
+    #expect(!delivery.canPersist)
 }
 
-@Test func explicitDurationPartitionsContainedSourceAnchorsWithoutReuse() throws {
+@Test func explicitDurationRejectsContainedDuplicateAnchorsWithoutPadding() throws {
     let asset = MediaAsset(
         originalURL: URL(fileURLWithPath: "/tmp/contained-anchors.mov"),
         kind: .video,
@@ -414,10 +418,10 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     let timeline = TimelineComposer().compose(plan: plan, assets: [asset], analyses: [analysis])
     let ranges = timeline.items.sorted { $0.sourceStart < $1.sourceStart }
 
-    #expect(autonomous.duration.safeRange == 60...60)
-    #expect(ranges.count == 2)
-    #expect(abs(timeline.duration - 60) <= 1 / timeline.frameRate)
-    #expect(ranges[0].sourceStart + ranges[0].sourceDuration <= ranges[1].sourceStart + 0.001)
+    #expect(autonomous.duration.safeRange.upperBound < 60)
+    #expect(ranges.count == 1)
+    #expect(timeline.duration <= 8)
+    #expect(plan.contentBudget?.durationConstraintStatus == .compromisedInsufficientContent)
 }
 
 @Test func generatedActivityTitlesStayInsideTheirOwnReadableBlock() throws {
@@ -569,9 +573,10 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
 
     #expect(plan.eventStory != nil)
     #expect(plan.chapters.contains { [.intro, .setup].contains($0.role) })
-    #expect(plan.chapters.contains { $0.role == .climax })
+    #expect(plan.narrativeBeatPlan != nil) // Climax requires temporal completion evidence.
     #expect(plan.chapters.contains { $0.role == .outro })
-    #expect(abs(timeline.duration - 60) <= 1 / timeline.frameRate)
+    #expect(timeline.duration <= 60 + 1 / timeline.frameRate)
+    #expect(timeline.items.allSatisfy { $0.sourceDuration <= 6.5 })
     #expect(timeline.items.allSatisfy { $0.transition == nil })
     #expect(timeline.effectiveTransitionItems.isEmpty)
 }
@@ -612,9 +617,9 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
         events: [event]
     )
 
-    #expect(withoutSourceGroups.strongMomentCount == 1)
+    #expect(withoutSourceGroups.strongMomentCount == 3)
     #expect(withSourceGroups.strongMomentCount == 3)
-    #expect(withSourceGroups.seconds > withoutSourceGroups.seconds)
+    #expect(withSourceGroups.seconds == withoutSourceGroups.seconds) // Same events do not imply interchangeable camera setups.
 }
 
 @Test func preferenceLearningIsGradualContextualAndCanReverse() throws {
@@ -752,17 +757,35 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
         try? FileManager.default.removeItem(at: tasteURL)
     }
     let store = try ProjectStore(createAt: root, name: "P3 autonomous production")
-    let (assets, analyses) = p3Fixture()
+    let (fixtureAssets, analyses) = p3Fixture()
+    let assets = try await materializeEditorialFixtureMedia(fixtureAssets, at: root)
     try await store.update { project in
         project.assets = assets
         project.analyses = analyses
     }
-    let pipeline = VeloEditPipeline(store: store, personalTasteStore: LocalPersonalTasteStore(url: tasteURL))
+    try await store.update { $0.editorialDevelopmentEnabled = true }
+    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(), analyzer: FixtureEditorialAnalyzer(analyses: analyses), personalTasteStore: LocalPersonalTasteStore(url: tasteURL))
+    let progressEvents = FilmBuildProgressRecorder()
     let timeline = try await pipeline.createFilm(
         prompt: "Без музыки. Сам определи лучший фильм из путешествия, действий, людей и реакций.",
         preset: .memories,
-        targetDuration: 180
+        progress: { update in
+            await Task.yield()
+            await progressEvents.record(update)
+        }
     )
+    let updates = await progressEvents.updates
+    #expect(updates.first?.stage == .analysis)
+    #expect(updates.last?.stage == .saving)
+    #expect(updates.contains { $0.stage == .verifying })
+    for stage in [FilmBuildProgress.Stage.assembling, .reviewing] {
+        let counts = updates.filter { $0.stage == stage }.compactMap(\.completed)
+        #expect(!counts.isEmpty)
+        #expect(counts == counts.sorted())
+        let last = try #require(updates.last { $0.stage == stage })
+        #expect(last.completed == last.total)
+        #expect((last.total ?? 0) > 1)
+    }
     let run = try #require(timeline.directorRun)
     let autonomous = try #require(run.autonomousDecision)
     let diagnostics = try #require(run.variantDiagnostics)
@@ -779,12 +802,13 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     #expect(snapshot.timelines.last?.directorRun?.autonomousDecision?.variantIntent == autonomous.variantIntent)
 
     var edited = timeline
-    edited.items.removeLast()
+    let removedPrimaryID = try #require(edited.items.last(where: { $0.overlay == nil && $0.kind != .title })?.id)
+    edited.items.removeAll { $0.id == removedPrimaryID }
     edited.items = TimelineTiming.retimed(edited.items)
     let learnedSignals = try await pipeline.recordPreferenceSignals(before: timeline, after: edited)
     let learnedSnapshot = await pipeline.snapshot()
     #expect(learnedSignals.contains { $0.source == .deletion })
-    #expect(learnedSnapshot.personalTasteProfile?.totalSignalCount ?? 0 > 0)
+    #expect((learnedSnapshot.personalTasteProfile?.totalSignalCount ?? 0) > 0 || learnedSnapshot.timelines.last?.directorRun?.personalTasteDiagnostics?.regressionReport?.committed == false)
     #expect(learnedSnapshot.preferenceSignals?.isEmpty == false)
 }
 

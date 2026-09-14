@@ -553,7 +553,6 @@ struct MagneticTimelineView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     model.selectEffectTimelineItems(block.itemIDs, primaryID: item.id, modifiers: timelineSelectionModifiers)
-                    model.openTimelineInspector()
                 }
                 .gesture(
                     DragGesture(minimumDistance: 4, coordinateSpace: .named("timelineCanvas"))
@@ -605,7 +604,7 @@ struct MagneticTimelineView: View {
         return ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(color.opacity(isHover ? 0.95 : 0.82))
-                .frame(width: lineWidth, height: max(80, canvasHeight - 2))
+                .frame(width: lineWidth, height: max(80, canvasHeight))
             Circle()
                 .fill(color)
                 .frame(width: isHover ? 8 : 7, height: isHover ? 8 : 7)
@@ -707,7 +706,10 @@ struct MagneticTimelineView: View {
             }
             .coordinateSpace(name: "primaryTimeline")
             .onPreferenceChange(TimelineClipFramePreferenceKey.self) { frames in
-                if trimPreview == nil { clipFrames = frames }
+                // Geometry changes on every drag tick. Keeping the last stable
+                // frames avoids a second full timeline invalidation per tick
+                // and also prevents applying the translation twice.
+                if trimPreview == nil, draggedItemID == nil { clipFrames = frames }
             }
 
             if let dropPrimaryIndex, draggedItemID != nil {
@@ -731,7 +733,6 @@ struct MagneticTimelineView: View {
                 if let transition = timeline.effectiveTransitionItems.first(where: { $0.incomingClipID == item.id }) {
                     Button("Настроить длительность", systemImage: "slider.horizontal.3") {
                         model.selectTransitionTimelineItem(transition.id)
-                        model.openTimelineInspector()
                     }
                     Divider()
                 }
@@ -774,6 +775,7 @@ struct MagneticTimelineView: View {
                 .font(.caption2.weight(.medium))
                 .lineLimit(1)
             MontageWaveform(seed: timeline.id.uuidString, color: .white.opacity(0.72), barCount: min(160, max(24, Int(totalTimelineWidth / 6))))
+                .frame(maxWidth: .infinity)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 9)
@@ -789,8 +791,30 @@ struct MagneticTimelineView: View {
         .overlay(alignment: .trailing) {
             edgeTrimRegion(.trailing) { translation in trimSoundtrack(edge: .trailing, translation: translation) }
         }
+        .overlay(alignment: .trailing) {
+            HStack(spacing: 3) {
+                Menu {
+                    ForEach([0.0, 0.1, 0.22, 0.35, 0.5, 0.75, 1.0], id: \.self) { volume in
+                        Button("\(Int(volume * 100))%") { model.setMusicVolume(volume) }
+                    }
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill").frame(width: 19, height: 19).background(.black.opacity(0.55), in: Circle())
+                }
+                Menu {
+                    ForEach([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2], id: \.self) { speed in
+                        Button(speedTitle(speed)) { model.setMusicSpeed(speed) }
+                    }
+                } label: {
+                    Image(systemName: "speedometer").frame(width: 19, height: 19).background(.black.opacity(0.55), in: Circle())
+                }
+            }
+            .font(.system(size: 9, weight: .bold))
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .padding(.trailing, 5)
+        }
         .contentShape(Rectangle())
-        .onTapGesture { model.selectSoundtrack(); model.openTimelineInspector() }
+        .onTapGesture { model.selectSoundtrack() }
         .gesture(
             DragGesture(minimumDistance: 4, coordinateSpace: .named("timelineCanvas"))
                 .onChanged { value in
@@ -806,9 +830,18 @@ struct MagneticTimelineView: View {
         )
         .offset(x: soundtrackDragTranslation)
         .contextMenu {
+            Button("Другая музыка", action: model.replaceMusicImmediately)
+            Button("Послушать варианты", action: model.listenToMusicAlternatives)
+            Button("Запомнить этот стиль") { model.showEditorialStyle = true }
+            Divider()
             Menu("Громкость", systemImage: "speaker.wave.2") {
                 ForEach([0.0, 0.1, 0.22, 0.35, 0.5, 0.75, 1.0], id: \.self) { volume in
                     Button("\(Int(volume * 100))%") { model.setMusicVolume(volume) }
+                }
+            }
+            Menu("Скорость", systemImage: "speedometer") {
+                ForEach([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2], id: \.self) { speed in
+                    Button(speedTitle(speed)) { model.setMusicSpeed(speed) }
                 }
             }
             Button("Удалить", systemImage: "trash", role: .destructive) {
@@ -832,6 +865,7 @@ struct MagneticTimelineView: View {
                         color: .white.opacity(0.72),
                         barCount: min(90, max(10, Int(audioClipWidth(clip) / 5)))
                     )
+                    .frame(maxWidth: .infinity)
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 8)
@@ -848,10 +882,16 @@ struct MagneticTimelineView: View {
                 .overlay(alignment: .trailing) {
                     edgeTrimRegion(.trailing) { translation in trimAudio(clip, edge: .trailing, translation: translation) }
                 }
+                .overlay(alignment: .trailing) {
+                    HStack(spacing: 3) {
+                        audioVolumeButton(clip)
+                        audioSpeedButton(clip)
+                    }
+                    .padding(.trailing, 5)
+                }
                 .contentShape(Rectangle())
                 .onTapGesture {
                     model.selectTimelineAudioClip(clip.id, modifiers: timelineSelectionModifiers)
-                    model.openTimelineInspector()
                 }
                 .gesture(audioDragGesture(for: clip))
                 .offset(
@@ -892,7 +932,6 @@ struct MagneticTimelineView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     model.selectTelemetryItem(item.id, modifiers: timelineSelectionModifiers)
-                    model.openTimelineInspector()
                 }
                 .gesture(
                     DragGesture(minimumDistance: 3, coordinateSpace: .named("timelineCanvas"))
@@ -928,42 +967,43 @@ struct MagneticTimelineView: View {
 
         return ZStack(alignment: .topLeading) {
             clipFilmstrip(item, width: width)
-            if hasAudibleSource(item) {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 4) {
-                        MontageWaveform(
-                            seed: item.id.uuidString,
-                            color: .white.opacity(0.82),
-                            barCount: min(72, max(8, Int(width / 5)))
-                        )
-                        Image(systemName: "speaker.wave.1.fill")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
-                    .padding(.horizontal, 5)
-                    .frame(height: 20)
-                    .background(Color.blue.opacity(0.82))
+                .frame(width: width, height: 58, alignment: .topLeading)
+                .clipped()
+            if hasSourceAudio(item) {
+                MontageWaveform(
+                    seed: item.id.uuidString,
+                    color: .white.opacity(0.82),
+                    barCount: min(140, max(8, Int(width / 5)))
+                )
+                .frame(width: max(0, width - 50), height: 20, alignment: .leading)
+                .padding(.leading, 5)
+                .background(Color.blue.opacity(0.82))
+                .offset(y: 56)
+
+                Color.blue.opacity(0.82)
+                    .frame(width: 50, height: 20)
+                    .offset(x: max(0, width - 50), y: 56)
+
+                HStack(spacing: 3) {
+                    clipVolumeButton(item)
+                    speedBadge(for: item, compact: true)
                 }
+                .offset(x: max(0, width - 45), y: 56)
             }
 
             Text(item.title ?? clock(shownDuration))
-                .font(.caption2.weight(.semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 4))
                 .padding(5)
-
-            if hasModifiedSpeed(item) {
-                speedBadge(for: item)
-                    .padding(5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
+                .minimumScaleFactor(0.65)
+                .layoutPriority(2)
 
         }
-        .frame(width: width, height: 76)
+        .frame(width: width, height: 76, alignment: .topLeading)
         .background(clipColor(item))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay {
@@ -998,11 +1038,31 @@ struct MagneticTimelineView: View {
         item.kind == .video && abs(item.speed - 1) > 0.001
     }
 
-    private func hasAudibleSource(_ item: TimelineItem) -> Bool {
-        guard item.kind == .video,
-              !item.effectiveAudioAdjustments.muted,
-              let assetID = item.assetID else { return false }
+    private func hasSourceAudio(_ item: TimelineItem) -> Bool {
+        guard item.kind == .video, let assetID = item.assetID else { return false }
         return model.project?.assets.first(where: { $0.id == assetID })?.metadata.hasAudio == true
+    }
+
+    private func clipVolumeButton(_ item: TimelineItem) -> some View {
+        let audio = item.effectiveAudioAdjustments
+        return Menu {
+            ForEach([0.0, 0.25, 0.5, 1.0, 1.5, 2.0], id: \.self) { volume in
+                Button("\(Int(volume * 100))%") {
+                    model.selectTimelineItem(item.id)
+                    model.setSelectedClipVolume(volume)
+                }
+            }
+        } label: {
+            Image(systemName: audio.muted || audio.volume <= 0.001 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(.black.opacity(0.68), in: Circle())
+                .overlay { Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1) }
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .help("Громкость клипа: \(Int((audio.volume * 100).rounded()))%")
     }
 
     private func speedBadge(for item: TimelineItem, compact: Bool = false) -> some View {
@@ -1062,14 +1122,19 @@ struct MagneticTimelineView: View {
                     }
                 }
             } else {
-                HStack(spacing: 1) {
-                    ForEach(0..<max(1, Int(ceil(width / 58))), id: \.self) { _ in
-                        MontageTimelineThumbnail(
-                            url: model.timelineThumbnailURLs[item.id] ?? model.thumbnailURLs[assetID],
-                            kind: asset.kind
-                        )
-                        .frame(width: 58, height: 58)
-                    }
+                if let filmstripURL = model.timelineFilmstripURLs[item.id] {
+                    CachedAdaptiveFilmstripImage(
+                        url: filmstripURL,
+                        kind: asset.kind,
+                        sourceFrameCount: 16
+                    )
+                    .frame(width: width, height: 58)
+                } else {
+                    MontageTimelineThumbnail(
+                        url: model.timelineThumbnailURLs[item.id] ?? model.thumbnailURLs[assetID],
+                        kind: asset.kind
+                    )
+                    .frame(width: width, height: 58)
                 }
             }
         } else {
@@ -1188,6 +1253,12 @@ struct MagneticTimelineView: View {
 
     @ViewBuilder
     private func clipContextMenu(_ item: TimelineItem) -> some View {
+        if item.kind == .video {
+            Button("Другой кадр") { model.compareOtherShot(item.id) }.disabled(item.locked)
+            Button("Покороче") { model.compareShotDuration(item.id, longer: false) }.disabled(item.locked)
+            Button("Оставить момент подольше") { model.compareShotDuration(item.id, longer: true) }.disabled(item.locked)
+            Divider()
+        }
         Button("Обрезать", systemImage: "selection.pin.in.out") {
             model.selectTimelineItem(item.id)
         }
@@ -1355,6 +1426,14 @@ struct MagneticTimelineView: View {
                 }
             }
         }
+        Menu("Скорость", systemImage: "speedometer") {
+            ForEach([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4], id: \.self) { speed in
+                Button(speedTitle(speed)) {
+                    model.selectTimelineAudioClip(clip.id)
+                    model.setSelectedTimelineAudioSpeed(speed)
+                }
+            }
+        }
         Menu("Fade", systemImage: "waveform.path") {
             Button("Без fade") {
                 model.selectTimelineAudioClip(clip.id)
@@ -1401,6 +1480,44 @@ struct MagneticTimelineView: View {
                 }
             }
         }
+    }
+
+    private func audioVolumeButton(_ clip: TimelineAudioClip) -> some View {
+        Menu {
+            ForEach([0.0, 0.25, 0.5, 1.0, 1.5, 2.0], id: \.self) { volume in
+                Button("\(Int(volume * 100))%") {
+                    model.selectTimelineAudioClip(clip.id)
+                    model.setSelectedTimelineAudioVolume(volume)
+                }
+            }
+        } label: {
+            Image(systemName: clip.adjustments.volume <= 0.001 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                .font(.system(size: 9, weight: .bold))
+                .frame(width: 19, height: 19)
+                .background(.black.opacity(0.55), in: Circle())
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .help("Громкость: \(Int((clip.adjustments.volume * 100).rounded()))%")
+    }
+
+    private func audioSpeedButton(_ clip: TimelineAudioClip) -> some View {
+        Menu {
+            ForEach([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4], id: \.self) { speed in
+                Button(speedTitle(speed)) {
+                    model.selectTimelineAudioClip(clip.id)
+                    model.setSelectedTimelineAudioSpeed(speed)
+                }
+            }
+        } label: {
+            Image(systemName: "speedometer")
+                .font(.system(size: 9, weight: .bold))
+                .frame(width: 19, height: 19)
+                .background(.black.opacity(0.55), in: Circle())
+        }
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .help("Скорость: \(speedTitle(clip.effectiveSpeed))")
     }
 
     private func containsPlayhead(_ item: TimelineItem) -> Bool {
@@ -1845,11 +1962,21 @@ private struct MontageWaveform: View {
     let barCount: Int
 
     var body: some View {
-        HStack(alignment: .center, spacing: 1) {
-            ForEach(0..<max(1, barCount), id: \.self) { index in
-                Capsule()
-                    .fill(color)
-                    .frame(width: 2, height: amplitude(index))
+        Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+            // Keep a stable density as the clip or soundtrack grows. The
+            // caller's count is only a lower bound for compact regions.
+            let count = max(1, barCount, Int(ceil(size.width / 4)))
+            let slotWidth = size.width / CGFloat(count)
+            let barWidth = min(2, max(1, slotWidth * 0.68))
+            for index in 0..<count {
+                let height = min(size.height, amplitude(index))
+                let rect = CGRect(
+                    x: CGFloat(index) * slotWidth + (slotWidth - barWidth) / 2,
+                    y: (size.height - height) / 2,
+                    width: barWidth,
+                    height: height
+                )
+                context.fill(Path(roundedRect: rect, cornerRadius: barWidth / 2), with: .color(color))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -1868,7 +1995,7 @@ private struct MontageTimelineThumbnail: View {
     let kind: MediaKind
 
     var body: some View {
-        CachedThumbnailImage(url: url, kind: kind, contentMode: .fill)
+        CachedThumbnailImage(url: url, kind: kind, contentMode: .fill, stretchesToFill: true)
         .clipped()
     }
 }
@@ -1887,7 +2014,7 @@ private struct TimelinePlayheadOverlay: View {
         ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(Color.white.opacity(0.82))
-                .frame(width: 1, height: max(80, canvasHeight - 2))
+                .frame(width: 1, height: max(80, canvasHeight))
             Circle()
                 .fill(Color.white)
                 .frame(width: 7, height: 7)
@@ -1930,7 +2057,7 @@ private struct TimelineHoverOverlay: View {
             ZStack(alignment: .topLeading) {
                 Rectangle()
                     .fill(Color.yellow.opacity(0.95))
-                    .frame(width: 1.5, height: max(80, canvasHeight - 2))
+                    .frame(width: 1.5, height: max(80, canvasHeight))
                 Circle()
                     .fill(Color.yellow)
                     .frame(width: 8, height: 8)

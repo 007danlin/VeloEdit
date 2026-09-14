@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import AVFoundation
 @testable import VeloEditCore
 
 @Test func newProjectsUseBundledFastAIAndSeparateMusicLibraries() async throws {
@@ -48,9 +49,13 @@ import Testing
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try ProjectStore(createAt: root, name: "Фильм со своим треком")
-    let trackURL = root.appendingPathComponent("MusicLibrary/Files/own.mp3")
+    let trackURL = root.appendingPathComponent("MusicLibrary/Files/own.wav")
     try FileManager.default.createDirectory(at: trackURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try Data("audio-placeholder".utf8).write(to: trackURL)
+    let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+    let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_440_000))
+    buffer.frameLength = buffer.frameCapacity
+    for i in 0..<Int(buffer.frameLength) { buffer.floatChannelData![0][i] = Float(0.08 * sin(2 * .pi * 220 * Double(i) / 48_000)) }
+    try AVAudioFile(forWriting: trackURL, settings: format.settings).write(from: buffer)
     let track = LocalMusicTrack(
         title: "Мой трек",
         author: "Пользователь",
@@ -67,30 +72,39 @@ import Testing
     )
     try JSONEncoder.veloEdit.encode([track]).write(to: root.appendingPathComponent("MusicLibrary/tracks.json"))
 
-    let asset = MediaAsset(
-        originalURL: URL(fileURLWithPath: "/tmp/user-track-film.mov"),
-        kind: .video,
-        byteSize: 1,
-        contentHash: "user-track-film",
-        metadata: MediaMetadata(duration: 8, width: 1920, height: 1080, frameRate: 30, hasAudio: true)
-    )
-    let candidate = Candidate(
-        assetID: asset.id,
-        sourceStart: 0,
-        sourceDuration: 6,
-        scores: ClipScores(quality: 0.9, interest: 0.9, action: 0.8, stability: 0.85, uniqueness: 0.9),
-        tags: ["ride", "action"]
-    )
+    // Supply enough distinct footage for the minimum automatic film length;
+    // this test exercises the user's music choice, not duration rejection.
+    var assets = (0..<4).map { index in
+        MediaAsset(
+            originalURL: URL(fileURLWithPath: "/tmp/user-track-film-\(index).mov"),
+            kind: .video,
+            byteSize: 1,
+            contentHash: "user-track-film-\(index)",
+            metadata: MediaMetadata(duration: 8, width: 1920, height: 1080, frameRate: 30, hasAudio: true)
+        )
+    }
+    let analyses = assets.enumerated().map { index, asset in
+        AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash, candidates: [
+            Candidate(
+                assetID: asset.id,
+                sourceStart: 0,
+                sourceDuration: 6,
+                scores: ClipScores(quality: 0.9, interest: 0.9, action: 0.8, stability: 0.85, uniqueness: 0.9),
+                tags: ["ride", "action", "scene-\(index)"]
+            )
+        ])
+    }
+    assets = try await materializeEditorialFixtureMedia(assets, at: root)
     try await store.update { project in
-        project.assets = [asset]
-        project.analyses = [AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash, candidates: [candidate])]
+        project.assets = assets
+        project.analyses = preparedFixtureAnalyses(analyses, preferences: project.preferences)
     }
 
-    let pipeline = VeloEditPipeline(store: store)
+    try await store.update { $0.editorialDevelopmentEnabled = true }
+    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(), analyzer: FixtureEditorialAnalyzer(analyses: analyses))
     let timeline = try await pipeline.createFilm(
         prompt: "Без музыки. Собери короткий фильм.",
         preset: .adventure,
-        targetDuration: 6,
         preferredMusicTrackID: track.id
     )
 
@@ -155,9 +169,20 @@ import Testing
         timelineStart: 0,
         timelineDuration: 4
     )
+    let currentAnalysis = AnalysisResult(
+        assetID: unusedFirstAsset.id,
+        analyzedContentHash: unusedFirstAsset.contentHash,
+        candidates: []
+    )
+    let staleAnalysis = AnalysisResult(
+        assetID: coverAsset.id,
+        analyzedContentHash: "older-photo-hash",
+        candidates: []
+    )
     try await store.update { project in
         project.name = "Правильное имя"
         project.assets = [unusedFirstAsset, coverAsset]
+        project.analyses = [currentAnalysis, staleAnalysis]
         // Deliberately keep array order different from timeline order.
         project.timelines = [Timeline(storyPlanID: UUID(), items: [laterItem, coverItem])]
     }
@@ -166,6 +191,9 @@ import Testing
     #expect(summary.name == "Правильное имя")
     #expect(summary.assetCount == 2)
     #expect(summary.previewKind == .photo)
+    #expect(summary.analyzedContentDuration == 8)
+    #expect(summary.analyzedAssetCount == 1)
+    #expect(summary.statisticsVersion == ProjectSummary.currentStatisticsVersion)
 
     let paths = CachePaths(root: root.appendingPathComponent("Cache", isDirectory: true))
     let expectedTimelinePath = paths.timelineThumbnail(for: coverItem, asset: coverAsset)
@@ -331,6 +359,27 @@ import Testing
     let asset = MediaAsset(originalURL: URL(fileURLWithPath: "/tmp/a.mov"), kind: .video, byteSize: 1, contentHash: "hash", metadata: MediaMetadata())
     let paths = CachePaths(root: URL(fileURLWithPath: "/tmp/cache"))
     #expect(paths.analysisKey(for: asset, schemaVersion: 1) != paths.analysisKey(for: asset, schemaVersion: 2))
+}
+
+@Test func timelineFilmstripsUseRetinaSizedTilesAndVersionedCache() {
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/a.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "hash",
+        metadata: MediaMetadata(duration: 4)
+    )
+    let item = TimelineItem(
+        kind: .video,
+        sourceStart: 0,
+        sourceDuration: 4,
+        timelineStart: 0,
+        timelineDuration: 4
+    )
+    let paths = CachePaths(root: URL(fileURLWithPath: "/tmp/cache"))
+
+    #expect(ThumbnailGenerator.filmstripTileSize == CGSize(width: 208, height: 116))
+    #expect(paths.timelineFilmstrip(for: item, asset: asset, sampleCount: 16).lastPathComponent.hasSuffix("-filmstrip-16-v4.jpg"))
 }
 
 @Test func expansionFiltersSupportedFiles() throws {

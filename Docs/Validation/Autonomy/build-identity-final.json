@@ -1,0 +1,8 @@
+{
+  "builtAt": "2026-09-13T20:48:24.120406+00:00",
+  "sourceSHA256": "cbd6626b224321593cfe71f2fcb889c60ad1a9e680a01dc3e180df22781795a1",
+  "build": "2026.256.204824",
+  "runtime": "Ollama 0.32.14",
+  "sourceResourceIdentityVerified": true,
+  "appPath": "/Users/daniellineckij/VeloEdit/Build/VeloEdit.app"
+}

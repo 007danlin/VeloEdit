@@ -9,6 +9,33 @@ import CoreText
 public enum TitleOverlayRenderer {
     private static let previewCIContext = CIContext(options: [.cacheIntermediates: true])
 
+    /// Video-aware path shared by playback and export. Library thumbnails have
+    /// no source frame and continue to render the unmodified template artwork.
+    static func composited(
+        item: TitleTimelineItem, timelineTime: Double, renderSize: CGSize,
+        over background: CIImage, adaptation: AdaptiveTitleBackgroundRenderer,
+        overlayOnly: Bool = false
+    ) -> CIImage {
+        guard let frame = renderedFrame(item: item, timelineTime: timelineTime,
+                                        renderSize: renderSize, collectReadability: true) else {
+            return overlayOnly ? CIImage.empty() : background
+        }
+        let analysis = adaptation.process(
+            background: background, artwork: frame.artwork.map { CIImage(cgImage: $0) },
+            regions: frame.regions, item: item, time: timelineTime, bounds: frame.bounds
+        )
+        let protectedFrame = analysis.treatments.isEmpty ? frame :
+            (renderedFrame(item: item, timelineTime: timelineTime, renderSize: renderSize,
+                           treatments: analysis.treatments) ?? frame)
+        var overlay = CIImage(cgImage: protectedFrame.image)
+        if protectedFrame.maximumBlur > 0.01 {
+            overlay = overlay.clampedToExtent()
+                .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: min(30, protectedFrame.maximumBlur)])
+                .cropped(to: frame.bounds)
+        }
+        return overlay.composited(over: overlayOnly ? analysis.backgroundOverlay : analysis.image).cropped(to: frame.bounds)
+    }
+
     static func image(item: TitleTimelineItem, timelineTime: Double, renderSize: CGSize) -> CIImage? {
         guard let frame = renderedFrame(item: item, timelineTime: timelineTime, renderSize: renderSize) else { return nil }
         var result = CIImage(cgImage: frame.image)
@@ -39,16 +66,20 @@ public enum TitleOverlayRenderer {
         var image: CGImage
         var bounds: CGRect
         var maximumBlur: CGFloat
+        var artwork: CGImage?
+        var regions: [TitleReadabilityRegion]
     }
 
     private static func renderedFrame(
         item: TitleTimelineItem,
         timelineTime: Double,
-        renderSize: CGSize
+        renderSize: CGSize,
+        collectReadability: Bool = false,
+        treatments: [String: TitleBackgroundTreatment] = [:]
     ) -> RenderedFrame? {
         guard item.enabled,
               timelineTime >= item.startTime,
-              timelineTime <= item.endTime,
+              timelineTime < item.endTime,
               renderSize.width >= 1,
               renderSize.height >= 1,
               let template = TitleTemplateRegistry.template(for: item) else { return nil }
@@ -67,7 +98,8 @@ public enum TitleOverlayRenderer {
         ) else { return nil }
 
         let bounds = CGRect(origin: .zero, size: renderSize)
-        let safeRect = template.safeArea.rect(in: renderSize)
+        let adaptiveLayout = AdaptiveTitleLayout.resolve(template: template, renderSize: renderSize)
+        let safeRect = adaptiveLayout.safeRect
         let localTime = timelineTime - item.startTime
         let defaultStyle = template.defaultStyle
         let groupDX = safeRect.width * CGFloat(item.style.effectiveXPosition - defaultStyle.effectiveXPosition)
@@ -75,19 +107,33 @@ public enum TitleOverlayRenderer {
         let groupScale = CGFloat(item.style.effectiveScale / max(0.01, defaultStyle.effectiveScale))
         let groupRotation = CGFloat(item.style.effectiveRotation * .pi / 180)
         var maximumBlur = CGFloat(item.style.blur ?? 0)
+        var regions: [TitleReadabilityRegion] = []
+        let artworkContext = collectReadability ? CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) : nil
 
         context.clear(bounds)
+        // Opacity belongs to the complete title, including secondary text,
+        // artwork and readability outlines. A transparency group avoids
+        // multiplying alpha where those elements overlap.
+        context.setAlpha(CGFloat(item.style.effectiveOpacity))
+        context.beginTransparencyLayer(auxiliaryInfo: nil)
+        artworkContext?.setAlpha(CGFloat(item.style.effectiveOpacity))
+        artworkContext?.beginTransparencyLayer(auxiliaryInfo: nil)
         for element in template.layout.elements {
             guard let resolved = resolvedContent(for: element, item: item) else { continue }
-            let container = element.followsSafeArea ? safeRect : bounds
-            var rect = element.frame.rect(in: container).offsetBy(dx: groupDX, dy: groupDY)
+            guard let layoutElement = adaptiveLayout.element(id: element.id) else { continue }
+            var rect = layoutElement.frame.offsetBy(dx: groupDX, dy: groupDY)
             guard rect.width > 0.5, rect.height > 0.5 else { continue }
             let motion = motionState(
                 animation: template.animation,
                 elementIndex: element.staggerIndex,
                 localTime: localTime,
                 itemDuration: item.duration,
-                renderSize: renderSize
+                renderSize: renderSize,
+                immediateEntrance: item.animation.entrance == .none,
+                immediateExit: item.animation.exit == .none
             )
             maximumBlur = max(maximumBlur, motion.blur)
             rect = rect.offsetBy(dx: motion.offset.width, dy: motion.offset.height)
@@ -113,7 +159,20 @@ public enum TitleOverlayRenderer {
             context.translateBy(x: -rect.midX, y: -rect.midY)
             let elementOpacity = element.strokeColorHex != nil && element.opacity <= 0.001 ? 1 : element.opacity
             context.setAlpha(CGFloat(elementOpacity * motion.opacity))
-            draw(
+            // Mirror only template artwork, so a designed panel is included in
+            // the contrast analysis but the letters cannot mask their own background.
+            if element.kind != .text, let artworkContext {
+                artworkContext.saveGState()
+                artworkContext.concatenate(context.ctm)
+                artworkContext.setAlpha(CGFloat(elementOpacity * motion.opacity))
+                if element.reveal != .none {
+                    // The active context already contains the animated reveal clip.
+                    artworkContext.clip(to: context.boundingBoxOfClipPath)
+                }
+                drawShape(element, in: rect, context: artworkContext, renderSize: renderSize)
+                artworkContext.restoreGState()
+            }
+            if let region = draw(
                 element: element,
                 resolvedContent: resolved,
                 in: rect,
@@ -121,13 +180,24 @@ public enum TitleOverlayRenderer {
                 template: template,
                 timelineTime: timelineTime,
                 context: context,
-                renderSize: renderSize
-            )
+                renderSize: renderSize,
+                typographyScale: adaptiveLayout.typographyScale,
+                maximumLines: layoutElement.maximumLines,
+                collectReadability: collectReadability,
+                treatment: treatments[element.id]
+            ) {
+                var visibleRegion = region
+                visibleRegion.visibility = motion.opacity * elementOpacity * item.style.effectiveOpacity
+                regions.append(visibleRegion)
+            }
             context.restoreGState()
         }
+        context.endTransparencyLayer()
+        artworkContext?.endTransparencyLayer()
 
         guard let cgImage = context.makeImage() else { return nil }
-        return RenderedFrame(image: cgImage, bounds: bounds, maximumBlur: maximumBlur)
+        return RenderedFrame(image: cgImage, bounds: bounds, maximumBlur: maximumBlur,
+                             artwork: artworkContext?.makeImage(), regions: regions)
     }
 
     private enum ResolvedContent {
@@ -143,6 +213,7 @@ public enum TitleOverlayRenderer {
         case .primaryText, .activeCaption: value = item.text
         case .secondaryText: value = item.additionalText
         case .callToAction: value = item.callToAction
+        case .chapterNumber: value = item.formattedChapterNumber
         }
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
         return .text(element.uppercase ? value.uppercased() : value)
@@ -156,13 +227,30 @@ public enum TitleOverlayRenderer {
         template: TitleTemplateDefinition,
         timelineTime: Double,
         context: CGContext,
-        renderSize: CGSize
-    ) {
+        renderSize: CGSize,
+        typographyScale: CGFloat,
+        maximumLines: Int,
+        collectReadability: Bool,
+        treatment: TitleBackgroundTreatment?
+    ) -> TitleReadabilityRegion? {
         switch resolvedContent {
         case .shape:
             drawShape(element, in: rect, context: context, renderSize: renderSize)
+            return nil
         case .text(let value):
-            drawText(value, element: element, in: rect, item: item, template: template, timelineTime: timelineTime, context: context, renderSize: renderSize)
+            return drawText(
+                value,
+                element: element,
+                in: rect,
+                item: item,
+                template: template,
+                timelineTime: timelineTime,
+                context: context,
+                typographyScale: typographyScale,
+                maximumLines: maximumLines,
+                collectReadability: collectReadability,
+                treatment: treatment
+            )
         }
     }
 
@@ -211,8 +299,11 @@ public enum TitleOverlayRenderer {
         template: TitleTemplateDefinition,
         timelineTime: Double,
         context: CGContext,
-        renderSize: CGSize
-    ) {
+        typographyScale: CGFloat,
+        maximumLines: Int,
+        collectReadability: Bool,
+        treatment: TitleBackgroundTreatment?
+    ) -> TitleReadabilityRegion? {
         let isPrimary = element.content == .primaryText || element.content == .activeCaption
         let base = element.typography ?? template.typography
         let family = isPrimary ? item.style.effectiveFontFamily : base.fontFamily
@@ -222,30 +313,29 @@ public enum TitleOverlayRenderer {
         let lineSpacing = isPrimary ? (item.style.lineSpacing ?? base.lineSpacing) : base.lineSpacing
         let alignment = isPrimary ? item.style.alignment : base.alignment
         let textColor = isPrimary ? item.style.textColorHex : element.fillColorHex
-        let shortSideScale = min(renderSize.width, renderSize.height) / 1080
-        let lengthScale = value.count > template.textConstraints.maxCharacters
-            ? sqrt(Double(template.textConstraints.maxCharacters) / Double(max(1, value.count)))
-            : 1
-        let desiredSize = CGFloat(referenceFontSize * lengthScale) * shortSideScale
-        let minimumSize = max(9 * shortSideScale, desiredSize * CGFloat(template.textConstraints.minFontScale))
+        // Keep typography tied to the actual short side and give narrow/tall
+        // formats a small readability lift. Text is reflowed before this size
+        // is reduced; character count never directly shrinks the font.
+        let desiredSize = CGFloat(referenceFontSize) * typographyScale
+        let minimumSize = max(9 * typographyScale, desiredSize * CGFloat(template.textConstraints.minFontScale))
         let maximumSize = desiredSize * CGFloat(template.textConstraints.maxFontScale)
         let fitted = fittedText(
             value,
             family: family,
             weight: weight,
-            color: color(textColor, alpha: isPrimary ? item.style.effectiveOpacity : 1),
-            tracking: CGFloat(tracking) * shortSideScale,
+            color: color(textColor, alpha: 1),
+            tracking: CGFloat(tracking) * typographyScale,
             lineSpacing: lineSpacing,
             alignment: alignment,
             maximumSize: maximumSize,
             minimumSize: minimumSize,
             rect: rect,
-            maxLines: template.textConstraints.maxLines,
+            maxLines: maximumLines,
             strokeWidth: isPrimary ? CGFloat(item.style.strokeWidth ?? 0) : 0,
             activeWord: element.content == .activeCaption && item.activeWordHighlighting ? item.activeWord(at: timelineTime)?.word : nil,
-            activeWordColor: color(item.style.activeWordColorHex ?? "#34C759", alpha: item.style.effectiveOpacity)
+            activeWordColor: color(item.style.activeWordColorHex ?? "#34C759", alpha: 1)
         )
-        guard let fitted else { return }
+        guard let fitted else { return nil }
         if isPrimary, (item.style.shadow ?? 0) > 0.001 {
             context.setShadow(
                 offset: CGSize(width: 0, height: -fitted.fontSize * 0.045),
@@ -253,10 +343,60 @@ public enum TitleOverlayRenderer {
                 color: CGColor(gray: 0, alpha: 0.72)
             )
         }
+        var edgeText: NSMutableAttributedString?
+        if let treatment, treatment.edgeOpacity > 0.001 {
+            let edgeColor = CGColor(gray: treatment.lightSupport ? 1 : 0, alpha: treatment.edgeOpacity)
+            context.setShadow(offset: CGSize(width: 0, height: -fitted.fontSize * 0.025),
+                              blur: fitted.fontSize * 0.035, color: edgeColor)
+            // Core Text specifies stroke as a percentage of the actual font size.
+            // Preserve a deliberately stronger user stroke.
+            if !isPrimary || (item.style.strokeWidth ?? 0) < treatment.strokeWidth {
+                let outlined = NSMutableAttributedString(attributedString: fitted.text)
+                outlined.addAttributes([
+                    // A monochrome support silhouette gives the shadow a solid
+                    // source. It contains no duplicate of the text's own fill.
+                    NSAttributedString.Key(kCTForegroundColorAttributeName as String): edgeColor,
+                    NSAttributedString.Key(kCTStrokeWidthAttributeName as String): -treatment.strokeWidth,
+                    NSAttributedString.Key(kCTStrokeColorAttributeName as String): edgeColor
+                ], range: NSRange(location: 0, length: fitted.text.length))
+                edgeText = outlined
+            }
+        }
         let path = CGMutablePath()
         path.addRect(rect)
         let framesetter = CTFramesetterCreateWithAttributedString(fitted.text)
-        CTFrameDraw(CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: fitted.text.length), path, nil), context)
+        let textFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: fitted.text.length), path, nil)
+        if let edgeText {
+            context.saveGState()
+            let edgeSetter = CTFramesetterCreateWithAttributedString(edgeText)
+            CTFrameDraw(CTFramesetterCreateFrame(edgeSetter, CFRange(location: 0, length: edgeText.length), path, nil), context)
+            context.restoreGState()
+            context.setShadow(offset: .zero, blur: 0, color: nil)
+        }
+        // Restore the original fill over the inner half of the outline. This is
+        // especially important for thin serif strokes at preview resolution.
+        context.setTextDrawingMode(.fill)
+        CTFrameDraw(textFrame, context)
+        guard collectReadability else { return nil }
+        let lines = CTFrameGetLines(textFrame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(textFrame, CFRange(location: 0, length: 0), &origins)
+        let lineRects = zip(lines, origins).map { line, origin in
+            CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
+                .offsetBy(dx: rect.minX + origin.x, dy: rect.minY + origin.y)
+                .applying(context.ctm).standardized
+        }.filter { $0.width > 0 && $0.height > 0 }
+        let transformScale = hypot(context.ctm.a, context.ctm.b)
+        var luminances: [Double] = []
+        fitted.text.enumerateAttribute(NSAttributedString.Key(kCTForegroundColorAttributeName as String),
+                                       in: NSRange(location: 0, length: fitted.text.length)) { value, _, _ in
+            if let value { luminances.append(TitleReadabilityAnalysis.luminance(value as! CGColor)) }
+        }
+        return TitleReadabilityRegion(elementID: element.id, lineRects: lineRects,
+                                      fontSize: Double(fitted.fontSize * transformScale),
+                                      textLuminances: Array(Set(luminances)),
+                                      textOpacity: 1,
+                                      visibility: 1)
     }
 
     private struct FittedText {
@@ -281,9 +421,80 @@ public enum TitleOverlayRenderer {
         activeWordColor: CGColor
     ) -> FittedText? {
         guard rect.width > 1, rect.height > 1 else { return nil }
+        // Never split a single title word at an arbitrary glyph boundary.
+        // Phrases can reflow between words; a long place/name is fitted as one
+        // readable line before the bounded truncation fallback is considered.
+        let effectiveMaxLines = value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil ? 1 : maxLines
+        let candidates = lineBreakCandidates(value, maximumLines: effectiveMaxLines)
         var size = max(minimumSize, maximumSize)
-        var last: FittedText?
-        while size >= minimumSize - 0.1 {
+        while true {
+            for candidate in candidates {
+                let text = attributedText(
+                    candidate,
+                    family: family,
+                    size: size,
+                    weight: weight,
+                    color: textColor,
+                    tracking: tracking,
+                    lineSpacing: lineSpacing,
+                    alignment: alignment,
+                    strokeWidth: strokeWidth,
+                    activeWord: activeWord,
+                    activeWordColor: activeWordColor
+                )
+                if textFits(text, rect: rect, maxLines: effectiveMaxLines) {
+                    return FittedText(text: text, fontSize: size)
+                }
+            }
+            if size <= minimumSize + 0.1 { break }
+            size = max(minimumSize, size * 0.91)
+        }
+
+        // Extremely long manually entered text is shortened only after all
+        // legal reflow and font-size options have been exhausted. This keeps
+        // the visible result inside its frame instead of silently clipping it.
+        var shortened = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        while shortened.count > 1 {
+            if let boundary = shortened.lastIndex(where: { $0.isWhitespace }), shortened.distance(from: shortened.startIndex, to: boundary) > shortened.count / 2 {
+                shortened = String(shortened[..<boundary]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                shortened.removeLast()
+            }
+            for candidate in lineBreakCandidates(shortened + "…", maximumLines: effectiveMaxLines) {
+                let text = attributedText(
+                    candidate,
+                    family: family,
+                    size: minimumSize,
+                    weight: weight,
+                    color: textColor,
+                    tracking: tracking,
+                    lineSpacing: lineSpacing,
+                    alignment: alignment,
+                    strokeWidth: strokeWidth,
+                    activeWord: activeWord,
+                    activeWordColor: activeWordColor
+                )
+                if textFits(text, rect: rect, maxLines: effectiveMaxLines) {
+                    return FittedText(text: text, fontSize: minimumSize)
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func attributedText(
+        _ value: String,
+        family: String,
+        size: CGFloat,
+        weight: Double,
+        color textColor: CGColor,
+        tracking: CGFloat,
+        lineSpacing: Double,
+        alignment: TitleAlignment,
+        strokeWidth: CGFloat,
+        activeWord: String?,
+        activeWordColor: CGColor
+    ) -> NSMutableAttributedString {
             let font = resolvedFont(family: family, size: size, weight: weight, text: value)
             let paragraph = paragraphStyle(alignment: alignment, lineSpacing: lineSpacing)
             let text = NSMutableAttributedString(string: value)
@@ -301,22 +512,61 @@ public enum TitleOverlayRenderer {
                 ], range: range)
             }
             if let activeWord { highlight(activeWord, in: text, color: activeWordColor) }
-            last = FittedText(text: text, fontSize: size)
-            let framesetter = CTFramesetterCreateWithAttributedString(text)
-            let suggested = CTFramesetterSuggestFrameSizeWithConstraints(
-                framesetter,
-                CFRange(location: 0, length: text.length),
-                nil,
-                CGSize(width: rect.width, height: .greatestFiniteMagnitude),
-                nil
-            )
-            let lineCount = numberOfLines(text: text, width: rect.width)
-            if suggested.width <= rect.width + 0.5, suggested.height <= rect.height + 0.5, lineCount <= maxLines {
-                return last
+            return text
+    }
+
+    private static func textFits(_ text: NSAttributedString, rect: CGRect, maxLines: Int) -> Bool {
+        let framesetter = CTFramesetterCreateWithAttributedString(text)
+        let suggested = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: text.length),
+            nil,
+            CGSize(width: rect.width, height: .greatestFiniteMagnitude),
+            nil
+        )
+        return suggested.width <= rect.width + 0.5
+            && suggested.height <= rect.height + 0.5
+            && numberOfLines(text: text, width: rect.width) <= maxLines
+    }
+
+    private static func lineBreakCandidates(_ value: String, maximumLines: Int) -> [String] {
+        let normalized = value
+            .split(whereSeparator: \Character.isWhitespace)
+            .map(String.init)
+            .joined(separator: " ")
+        guard maximumLines > 1 else { return [normalized] }
+        let words = normalized.split(separator: " ").map(String.init)
+        guard words.count > 1 else { return [normalized] }
+        var result = [normalized]
+        for lineCount in 2...min(maximumLines, words.count) {
+            var lines: [String] = []
+            var cursor = 0
+            for line in 0..<lineCount {
+                let remainingLines = lineCount - line
+                let remainingWords = words.count - cursor
+                let take: Int
+                if remainingLines == 1 {
+                    take = remainingWords
+                } else {
+                    let remainingCharacters = words[cursor...].reduce(0) { $0 + $1.count + 1 }
+                    let target = max(1, remainingCharacters / remainingLines)
+                    var count = 1
+                    var length = words[cursor].count
+                    while count < remainingWords - (remainingLines - 1) {
+                        let nextLength = length + 1 + words[cursor + count].count
+                        if nextLength > target, count > 0 { break }
+                        count += 1
+                        length = nextLength
+                    }
+                    take = count
+                }
+                lines.append(words[cursor..<(cursor + take)].joined(separator: " "))
+                cursor += take
             }
-            size *= 0.91
+            let candidate = lines.joined(separator: "\n")
+            if !result.contains(candidate) { result.append(candidate) }
         }
-        return last
+        return result
     }
 
     private static func numberOfLines(text: NSAttributedString, width: CGFloat) -> Int {
@@ -378,15 +628,17 @@ public enum TitleOverlayRenderer {
         elementIndex: Int,
         localTime: Double,
         itemDuration: Double,
-        renderSize: CGSize
+        renderSize: CGSize,
+        immediateEntrance: Bool = false,
+        immediateExit: Bool = false
     ) -> MotionState {
         let entrance = animation.animationIn
         let exit = animation.animationOut
         let inDelay = Double(elementIndex) * entrance.stagger
         let outDelay = Double(elementIndex) * exit.stagger
-        let inLinear = min(max(0, (localTime - inDelay) / max(0.001, entrance.duration)), 1)
+        let inLinear = immediateEntrance ? 1 : min(max(0, (localTime - inDelay) / max(0.001, entrance.duration)), 1)
         let remaining = max(0, itemDuration - localTime)
-        let outLinear = remaining >= exit.duration + outDelay
+        let outLinear = immediateExit || remaining >= exit.duration + outDelay
             ? 1
             : min(max(0, (remaining - outDelay) / max(0.001, exit.duration)), 1)
         let inProgress = entrance.easing.transform(inLinear)

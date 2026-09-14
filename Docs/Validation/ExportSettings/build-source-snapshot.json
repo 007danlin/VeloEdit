@@ -1,0 +1,13 @@
+{
+  "Sources/VeloEditCore/ExportVideoSettings.swift": "a9f03518d837e1b26aba3d3bf708a09bafe3cb87e291319f995caaf3b9f3234a",
+  "Sources/VeloEditCore/RenderEngine.swift": "51c130f8dc80a9af97a6e170cd6aec501c81d1f47ce490359a089fe7d3290ddc",
+  "Sources/VeloEditCore/SoftwareCompositionExporter.swift": "78ddb67c39c6b2735af25ab1b9774da37afaf32efc00cd1b06e09fe39931f211",
+  "Sources/VeloEditCore/PlaybackEngine.swift": "e3396717f2a2f11f20a23dea2a3258a047aa32ff2f1cdf63b52efb0a3bf33370",
+  "Sources/VeloEditCore/TitleCardVideoGenerator.swift": "36719a36ec4d3c828566cf413d1c0c6fcd3676cc9436c915dd2bf90432d28a74",
+  "Sources/VeloEditCore/VeloEditPipeline.swift": "b200dd84c88de4556799361f7c89c625fe5df142e9b6288b424ba557fe9621c3",
+  "Sources/VeloEditCore/ProfessionalPipeline.swift": "6834499eed37fb7c16f016e12f78483db20180102224ee4267361e8fefe89b31",
+  "Sources/VeloEdit/AppModel.swift": "d968b553f43d90cccb3612c991dd4f0723872dffa17ebb1d1a7d64af1384fc2c",
+  "Sources/VeloEdit/ContentView.swift": "ba1638fd79ef338ebae2f140b2f2edaa4df67386580dfef51d59fca63dd2f3cf",
+  "Tests/VeloEditCoreTests/ExportSettingsTests.swift": "16028e6edf890c5ff782935564d2887a1c0f8a3c9a7de9152b13eab0b1db88bb",
+  "Tests/VeloEditCoreTests/ProfessionalPipelineTests.swift": "aed4ba157a354bf4fe6b774102f31e28520537f98e21f488b661e8fad15054d7"
+}

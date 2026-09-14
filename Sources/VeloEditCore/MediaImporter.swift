@@ -110,6 +110,7 @@ public struct MediaImporter: Sendable {
         // Bounded batches avoid opening hundreds of camera files at once while
         // letting Apple Silicon parse several metadata headers concurrently.
         var batchStart = 0
+        var resourcePacer = ResourceWorkPacer()
         while batchStart < pending.count {
             while ProcessInfo.processInfo.thermalState == .critical {
                 if Task.isCancelled { break }
@@ -117,7 +118,10 @@ public struct MediaImporter: Sendable {
                 try? await Task.sleep(for: .seconds(2))
             }
             if Task.isCancelled { break }
-            let batchSize = Self.recommendedImportConcurrency
+            do { try await resourcePacer.checkpoint() }
+            catch { break }
+            let resources = await SystemResourceMonitor.shared.snapshot()
+            let batchSize = resources.workLimit == .unrestricted ? Self.recommendedImportConcurrency : 1
             let batch = Array(pending[batchStart..<min(pending.count, batchStart + batchSize)])
             if let first = batch.first {
                 progress?(ImportProgress(completed: completed, total: urls.count, currentName: "Читаю: \(first.element.lastPathComponent)"))
@@ -137,7 +141,7 @@ public struct MediaImporter: Sendable {
             }
             batchStart += batch.count
         }
-        progress?(ImportProgress(completed: urls.count, total: urls.count, currentName: "Готово"))
+        progress?(ImportProgress(completed: completed, total: urls.count, currentName: Task.isCancelled ? "Импорт отменён" : "Готово"))
         return indexed.sorted { $0.0 < $1.0 }.map(\.1)
     }
 
@@ -208,7 +212,7 @@ public struct MediaImporter: Sendable {
         else { orientation = 0 }
         let colorDescriptions = descriptions.map(Self.colorDescription)
         let colorDescription = colorDescriptions.first(where: \.isHDR) ?? colorDescriptions.first ?? .unknown
-        let embeddedDate = await Self.videoCaptureDate(in: asset)
+        let embeddedDate = await Self.videoCaptureDate(in: asset) ?? MediaCaptureClock.movieDate(at: url)
         let captureDate = embeddedDate ?? fileCreationDate ?? modificationDate
         let dateSource: MediaDateSource? = embeddedDate != nil
             ? .embeddedMetadata
@@ -334,6 +338,7 @@ public struct MediaImporter: Sendable {
         defer { try? handle.close() }
         var hasher = SHA256()
         while true {
+            try Task.checkCancellation()
             let data = try handle.read(upToCount: 1_048_576) ?? Data()
             if data.isEmpty { break }
             hasher.update(data: data)

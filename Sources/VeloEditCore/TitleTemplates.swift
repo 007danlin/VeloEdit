@@ -59,9 +59,14 @@ public struct TitleSafeArea: Codable, Hashable, Sendable {
     }
 
     public func rect(in size: CGSize) -> CGRect {
-        let portrait = size.height > size.width
-        let x = size.width * CGFloat(portrait ? portraitHorizontal : horizontal)
-        let y = size.height * CGFloat(portrait ? portraitVertical : vertical)
+        let geometry = VideoFrameGeometry(width: Int(max(1, size.width)), height: Int(max(1, size.height)))
+        let influence = geometry.portraitInfluence
+        let horizontalMargin = horizontal + (portraitHorizontal - horizontal) * influence
+        // Tall social-video canvases need extra head/foot room. This is
+        // continuous, so 4:5 and square formats do not jump between presets.
+        let verticalMargin = vertical + (portraitVertical - vertical) * influence + 0.035 * influence
+        let x = size.width * CGFloat(horizontalMargin)
+        let y = size.height * CGFloat(verticalMargin)
         return CGRect(x: x, y: y, width: max(1, size.width - x * 2), height: max(1, size.height - y * 2))
     }
 }
@@ -135,6 +140,7 @@ public enum TitleTemplateElementKind: String, Codable, Hashable, Sendable {
 
 public enum TitleTemplateContent: String, Codable, Hashable, Sendable {
     case none, primaryText = "primary-text", secondaryText = "secondary-text", callToAction = "call-to-action", activeCaption = "active-caption"
+    case chapterNumber = "chapter-number"
 }
 
 public enum TitleRevealAxis: String, Codable, Hashable, Sendable {
@@ -147,6 +153,7 @@ public struct TitleTemplateElement: Codable, Identifiable, Hashable, Sendable {
     public var content: TitleTemplateContent
     public var fixedText: String?
     public var frame: TitleNormalizedRect
+    public var portraitFrame: TitleNormalizedRect?
     public var followsSafeArea: Bool
     public var fillColorHex: String
     public var strokeColorHex: String?
@@ -164,6 +171,7 @@ public struct TitleTemplateElement: Codable, Identifiable, Hashable, Sendable {
         content: TitleTemplateContent = .none,
         fixedText: String? = nil,
         frame: TitleNormalizedRect,
+        portraitFrame: TitleNormalizedRect? = nil,
         followsSafeArea: Bool = true,
         fillColorHex: String = "#FFFFFF",
         strokeColorHex: String? = nil,
@@ -180,6 +188,7 @@ public struct TitleTemplateElement: Codable, Identifiable, Hashable, Sendable {
         self.content = content
         self.fixedText = fixedText
         self.frame = frame
+        self.portraitFrame = portraitFrame
         self.followsSafeArea = followsSafeArea
         self.fillColorHex = fillColorHex
         self.strokeColorHex = strokeColorHex
@@ -368,12 +377,15 @@ public enum TitleTemplateRegistry {
         )
         let maskReveal = TitleTemplateAnimation(
             animationIn: TitleMotionPhase(duration: 0.55, opacityFrom: 0, translateX: -0.06, scaleFrom: 0.96, stagger: 0.09, easing: .easeOut),
-            animationHold: TitleHoldMotion(translateY: 0.003, scaleAmplitude: 0.006, cycles: 1.4),
+            // Once the reveal has settled, keep the complete composition
+            // pixel-stable. Even a very small continuous scale/translation
+            // makes rasterized text appear to shake during playback.
+            animationHold: TitleHoldMotion(cycles: 0),
             animationOut: TitleMotionPhase(duration: 0.42, opacityFrom: 0, translateX: 0.045, scaleFrom: 0.97, stagger: 0.05, easing: .easeIn)
         )
         let kinetic = TitleTemplateAnimation(
             animationIn: TitleMotionPhase(duration: 0.34, opacityFrom: 0, translateY: -0.10, scaleFrom: 0.72, rotationFrom: -8, blurFrom: 6, stagger: 0.055, easing: .easeOut),
-            animationHold: TitleHoldMotion(translateX: 0.004, translateY: 0.006, scaleAmplitude: 0.012, rotationAmplitude: 0.5, cycles: 2.2),
+            animationHold: TitleHoldMotion(cycles: 0),
             animationOut: TitleMotionPhase(duration: 0.28, opacityFrom: 0, translateY: 0.08, scaleFrom: 0.78, rotationFrom: 6, stagger: 0.035, easing: .easeIn)
         )
         let cleanCaption = TitleTemplateAnimation(
@@ -384,8 +396,8 @@ public enum TitleTemplateRegistry {
         func type(_ family: String, _ size: Double, _ weight: Double, _ color: String, _ tracking: Double = 0, _ alignment: TitleAlignment = .center, _ lineSpacing: Double = 1) -> TitleTemplateTypography {
             TitleTemplateTypography(fontFamily: family, fontSize: size, fontWeight: weight, textColorHex: color, tracking: tracking, lineSpacing: lineSpacing, alignment: alignment)
         }
-        func text(_ id: String, _ content: TitleTemplateContent, _ frame: TitleNormalizedRect, _ typography: TitleTemplateTypography, uppercase: Bool = false, stagger: Int = 0, reveal: TitleRevealAxis = .none, color: String? = nil) -> TitleTemplateElement {
-            TitleTemplateElement(id: id, kind: .text, content: content, frame: frame, fillColorHex: color ?? typography.textColorHex, typography: typography, uppercase: uppercase, staggerIndex: stagger, reveal: reveal)
+        func text(_ id: String, _ content: TitleTemplateContent, _ frame: TitleNormalizedRect, _ typography: TitleTemplateTypography, uppercase: Bool = false, stagger: Int = 0, reveal: TitleRevealAxis = .none, color: String? = nil, portrait: TitleNormalizedRect? = nil) -> TitleTemplateElement {
+            TitleTemplateElement(id: id, kind: .text, content: content, frame: frame, portraitFrame: portrait, fillColorHex: color ?? typography.textColorHex, typography: typography, uppercase: uppercase, staggerIndex: stagger, reveal: reveal)
         }
         func shape(_ id: String, _ kind: TitleTemplateElementKind, _ frame: TitleNormalizedRect, _ color: String, opacity: Double = 1, radius: Double = 0, stroke: String? = nil, lineWidth: Double = 0, safe: Bool = true, stagger: Int = 0, reveal: TitleRevealAxis = .none) -> TitleTemplateElement {
             TitleTemplateElement(id: id, kind: kind, frame: frame, followsSafeArea: safe, fillColorHex: color, strokeColorHex: stroke, opacity: opacity, cornerRadius: radius, lineWidth: lineWidth, staggerIndex: stagger, reveal: reveal)
@@ -458,12 +470,11 @@ public enum TitleTemplateRegistry {
             TitleTemplateDefinition(
                 id: "title.dynamic.v1", name: "Dynamic", category: .dynamicKinetic, kind: .kineticText,
                 preview: TitleTemplatePreview(primaryText: "ВПЕРЁД!", secondaryText: "RIDE · EXPLORE · REPEAT"),
-                typography: type(sans, 132, 1, "#FFFFFF", -5),
+                typography: type(sans, 132, 1, "#FFFFFF", -2),
                 layout: TitleTemplateLayout(elements: [
-                    shape("ring", .circle, .init(x: 0.12, y: 0.19, width: 0.27, height: 0.48), "#000000", opacity: 0, stroke: "#34C759", lineWidth: 18, stagger: 0, reveal: .vertical),
-                    shape("slash", .rectangle, .init(x: 0.31, y: 0.22, width: 0.035, height: 0.57), "#34C759", opacity: 0.9, stagger: 1, reveal: .vertical),
-                    text("primary", .primaryText, .init(x: 0.23, y: 0.36, width: 0.66, height: 0.23), type(sans, 132, 1, "#FFFFFF", -5), uppercase: true, stagger: 2, reveal: .horizontal),
-                    text("secondary", .secondaryText, .init(x: 0.47, y: 0.62, width: 0.40, height: 0.07), type(mono, 20, 0.64, "#34C759", 2, .right), uppercase: true, stagger: 3)
+                    shape("accent", .line, .init(x: 0.43, y: 0.27, width: 0.14, height: 0.004), "#34C759", lineWidth: 6, reveal: .horizontal),
+                    text("primary", .primaryText, .init(x: 0.10, y: 0.37, width: 0.80, height: 0.24), type(sans, 132, 1, "#FFFFFF", -2), uppercase: true, stagger: 1, reveal: .horizontal, portrait: .init(x: 0.04, y: 0.36, width: 0.92, height: 0.25)),
+                    text("secondary", .secondaryText, .init(x: 0.14, y: 0.65, width: 0.72, height: 0.11), type(sans, 32, 0.64, "#8CECA5", 2), uppercase: true, stagger: 2, portrait: .init(x: 0.08, y: 0.64, width: 0.84, height: 0.12))
                 ]), animation: kinetic,
                 textConstraints: TitleTextConstraints(maxCharacters: 28, maxLines: 1, maxWidth: 0.66, maxHeight: 0.23, minFontScale: 0.44)
             ),
@@ -482,17 +493,13 @@ public enum TitleTemplateRegistry {
             ),
             TitleTemplateDefinition(
                 id: "title.chapter.v1", name: "Chapter", category: .chapterTitles, kind: .chapter,
-                preview: TitleTemplatePreview(primaryText: "ВЕЛОПРОГУЛКА", secondaryText: "ГЛАВА 03"),
-                typography: type(sans, 84, 0.78, "#FFFFFF", 1, .left),
+                preview: TitleTemplatePreview(primaryText: "ВЕЛОПРОГУЛКА", secondaryText: "ГЛАВА"),
+                typography: type(sans, 84, 0.78, "#FFFFFF", 1),
                 layout: TitleTemplateLayout(elements: [
-                    text("number", .none, .init(x: 0.04, y: 0.17, width: 0.34, height: 0.53), type(sans, 210, 1, "#8B5CF6", -8, .left), uppercase: true, stagger: 0, reveal: .vertical),
-                    shape("rule", .line, .init(x: 0.35, y: 0.31, width: 0.43, height: 0.004), "#8B5CF6", lineWidth: 5, stagger: 1, reveal: .horizontal),
-                    text("primary", .primaryText, .init(x: 0.35, y: 0.36, width: 0.54, height: 0.22), type(sans, 84, 0.78, "#FFFFFF", 1, .left), uppercase: true, stagger: 2, reveal: .horizontal),
-                    text("secondary", .secondaryText, .init(x: 0.36, y: 0.60, width: 0.34, height: 0.07), type(mono, 22, 0.62, "#C8AFFF", 3, .left), uppercase: true, stagger: 3)
-                ].enumerated().map { index, element in
-                    if element.id != "number" { return element }
-                    var copy = element; copy.fixedText = "03"; return copy
-                }), animation: maskReveal,
+                    text("number", .chapterNumber, .init(x: 0.25, y: 0.20, width: 0.50, height: 0.18), type(sans, 140, 0.88, "#A78BFA", -4), stagger: 0, reveal: .vertical, portrait: .init(x: 0.25, y: 0.17, width: 0.50, height: 0.15)),
+                    text("primary", .primaryText, .init(x: 0.09, y: 0.46, width: 0.82, height: 0.18), type(sans, 84, 0.78, "#FFFFFF", 1), uppercase: true, stagger: 1, reveal: .horizontal, portrait: .init(x: 0.09, y: 0.40, width: 0.82, height: 0.23)),
+                    text("secondary", .secondaryText, .init(x: 0.09, y: 0.70, width: 0.82, height: 0.10), type(sans, 30, 0.62, "#C8AFFF", 3), uppercase: true, stagger: 2, portrait: .init(x: 0.09, y: 0.66, width: 0.82, height: 0.10))
+                ]), animation: maskReveal,
                 textConstraints: TitleTextConstraints(maxCharacters: 40, maxLines: 2, maxWidth: 0.54, maxHeight: 0.23, minFontScale: 0.45)
             ),
             TitleTemplateDefinition(
@@ -535,13 +542,12 @@ public enum TitleTemplateRegistry {
                 preview: TitleTemplatePreview(primaryText: "КОНЕЦ", secondaryText: "СПАСИБО ЗА ПРОСМОТР", callToAction: "ПОДПИСАТЬСЯ"), duration: 4.5,
                 typography: type(serif, 92, 0.50, "#FFF8EE", 7),
                 layout: TitleTemplateLayout(elements: [
-                    shape("background", .rectangle, .init(x: 0, y: 0, width: 1, height: 1), "#09090C", safe: false),
-                    shape("halo", .circle, .init(x: 0.35, y: 0.18, width: 0.30, height: 0.54), "#8B5CF6", opacity: 0.22, safe: false, stagger: 0),
-                    shape("frame", .rectangle, .init(x: 0.18, y: 0.20, width: 0.64, height: 0.60), "#000000", opacity: 0, stroke: "#6C5A8D", lineWidth: 2, stagger: 1, reveal: .horizontal),
-                    text("primary", .primaryText, .init(x: 0.20, y: 0.34, width: 0.60, height: 0.19), type(serif, 92, 0.50, "#FFF8EE", 7), uppercase: true, stagger: 2, reveal: .vertical),
-                    text("secondary", .secondaryText, .init(x: 0.26, y: 0.56, width: 0.48, height: 0.07), type(sans, 20, 0.48, "#C9BCD9", 3), uppercase: true, stagger: 3),
-                    text("cta", .callToAction, .init(x: 0.36, y: 0.68, width: 0.28, height: 0.08), type(sans, 18, 0.72, "#FFFFFF", 2), uppercase: true, stagger: 4)
-                ]), animation: fadeBlur, safeArea: TitleSafeArea(horizontal: 0.04, vertical: 0.04, portraitHorizontal: 0.055, portraitVertical: 0.04),
+                    shape("background", .rectangle, .init(x: 0, y: 0, width: 1, height: 1), "#101116", safe: false),
+                    shape("rule", .line, .init(x: 0.45, y: 0.25, width: 0.10, height: 0.004), "#D8B26E", lineWidth: 3, stagger: 1, reveal: .horizontal),
+                    text("primary", .primaryText, .init(x: 0.12, y: 0.35, width: 0.76, height: 0.22), type(serif, 92, 0.50, "#FFF8EE", 7), uppercase: true, stagger: 2, reveal: .vertical, portrait: .init(x: 0.08, y: 0.34, width: 0.84, height: 0.23)),
+                    text("secondary", .secondaryText, .init(x: 0.16, y: 0.60, width: 0.68, height: 0.10), type(sans, 32, 0.48, "#D3CEC5", 2), uppercase: true, stagger: 3, portrait: .init(x: 0.08, y: 0.60, width: 0.84, height: 0.10)),
+                    text("cta", .callToAction, .init(x: 0.24, y: 0.76, width: 0.52, height: 0.09), type(sans, 28, 0.64, "#D8B26E", 2), uppercase: true, stagger: 4, portrait: .init(x: 0.12, y: 0.77, width: 0.76, height: 0.09))
+                ]), animation: fadeBlur, safeArea: TitleSafeArea(horizontal: 0.06, vertical: 0.06, portraitHorizontal: 0.07, portraitVertical: 0.06),
                 textConstraints: TitleTextConstraints(maxCharacters: 36, maxLines: 2, maxWidth: 0.60, maxHeight: 0.20, minFontScale: 0.46)
             ),
             TitleTemplateDefinition(

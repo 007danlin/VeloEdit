@@ -140,9 +140,9 @@ private func professionalCandidate(
     let dialogueAsset = professionalAsset(11)
     let first = professionalCandidate(asset: firstAsset, start: 0, role: .setup, dynamics: 0.40)
     let speech = SpeechEditingEvidence(
-        text: "Мы наконец добрались",
-        phraseStart: 2,
-        phraseEnd: 5.6,
+        text: "Мы наконец добрались к тихому горному озеру!",
+        phraseStart: 1.5,
+        phraseEnd: 6.3,
         confidence: 0.92,
         startsAtPhraseBoundary: true,
         endsAtPhraseBoundary: true,
@@ -170,6 +170,36 @@ private func professionalCandidate(
     #expect((bridge?.timelineStart ?? 99) < (dialogueItem?.timelineStart ?? 0))
     #expect(dialogueItem?.effectiveAudioAdjustments.muted == true)
     #expect(timeline.audioDucking?.enabled == true)
+}
+
+@Test func composerKeepsUsefulContainedDialogueSynchronous() {
+    let asset = professionalAsset(12)
+    let speech = SpeechEditingEvidence(
+        text: "Мы наконец добрались",
+        phraseStart: 2.1,
+        phraseEnd: 5.7,
+        confidence: 0.94,
+        startsAtPhraseBoundary: true,
+        endsAtPhraseBoundary: true,
+        silenceBefore: 0.3,
+        silenceAfter: 0.3
+    )
+    let dialogue = professionalCandidate(asset: asset, start: 2, role: .reaction, dynamics: 0.34, speech: speech)
+    let plan = StoryPlan(
+        prompt: "История без музыки и без переходов",
+        preset: .story,
+        constraints: StoryConstraints(targetDuration: 4),
+        chapters: [StoryChapter(title: "Реакция", candidateIDs: [dialogue.id], role: .reaction)]
+    )
+
+    let timeline = TimelineComposer().compose(
+        plan: plan,
+        assets: [asset],
+        analyses: [AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash, candidates: [dialogue])]
+    )
+
+    #expect(timeline.effectiveAudioClips.allSatisfy { $0.attachedToItemID == nil })
+    #expect(timeline.items.first?.effectiveAudioAdjustments.muted == false)
 }
 
 @Test func perceptualReviewFlagsUnnecessaryCutAndJumpCutRisk() {

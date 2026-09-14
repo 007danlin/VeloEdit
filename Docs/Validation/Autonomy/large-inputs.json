@@ -1,0 +1,235 @@
+{
+  "selectedAt": "2026-09-13T18:56:10.361734+00:00",
+  "purpose": "T02: 300 seconds from a larger fixed archive",
+  "sourceManifestSHA256": "c21e412b7cf30023a7b481b2ecc1a06659c2add46c94991eabeb7fa99e690e5e",
+  "initialTimelineCount": 0,
+  "assets": [
+    {
+      "id": "AC2B5373-9637-4209-9A65-A0FD37F6AF9D",
+      "file": "GX010529.MP4",
+      "bytes": 5381345589,
+      "duration": 717.9005166666667
+    },
+    {
+      "id": "2EF4B2F3-9611-43C3-9555-B79589724ED7",
+      "file": "GX010531.MP4",
+      "bytes": 1589840219,
+      "duration": 212.16195
+    },
+    {
+      "id": "CEBCC00E-36EB-4A91-8DFD-870507E342D1",
+      "file": "GX010431.MP4",
+      "bytes": 1990762222,
+      "duration": 265.4318333333333
+    },
+    {
+      "id": "85C6FE20-0E6C-4076-875C-CC84C4AB6671",
+      "file": "GX010457.MP4",
+      "bytes": 1475280444,
+      "duration": 196.81328333333335
+    },
+    {
+      "id": "BE4482AC-BF77-4C4A-8C99-85AB9EE24079",
+      "file": "GX010434.MP4",
+      "bytes": 1844330701,
+      "duration": 246.07916666666668
+    },
+    {
+      "id": "203E5A0D-D705-43FB-9905-6C00C3D963E9",
+      "file": "GX010455.MP4",
+      "bytes": 1532263301,
+      "duration": 204.37083333333334
+    },
+    {
+      "id": "575E9984-A1BA-4BCD-9EA4-82A025E210FA",
+      "file": "GX010509.MP4",
+      "bytes": 1340035340,
+      "duration": 178.69518333333335
+    },
+    {
+      "id": "F4540D62-2529-4DC1-A7EC-F5F3E1033345",
+      "file": "GX010505.MP4",
+      "bytes": 902517912,
+      "duration": 120.45366666666666
+    },
+    {
+      "id": "E5E9EE33-BD10-427C-A203-F0383A4693D7",
+      "file": "GX010510.MP4",
+      "bytes": 322574995,
+      "duration": 43.05968333333333
+    },
+    {
+      "id": "5ABBF2CE-2167-46BC-9F48-0150FF4BB10D",
+      "file": "GX010499.MP4",
+      "bytes": 29111740,
+      "duration": 3.8038
+    },
+    {
+      "id": "266F3BE5-1B76-42AE-BD4A-ED1432419187",
+      "file": "GX010501.MP4",
+      "bytes": 316211676,
+      "duration": 42.125416666666666
+    },
+    {
+      "id": "BE9F8B93-53F7-491E-B289-84C6EAC201DA",
+      "file": "GX010496.MP4",
+      "bytes": 96853619,
+      "duration": 12.9129
+    },
+    {
+      "id": "1762F0BF-A68E-4255-9455-20A17E1AF0D1",
+      "file": "GX010514.MP4",
+      "bytes": 141501147,
+      "duration": 18.902216666666668
+    },
+    {
+      "id": "D8D63F31-D433-446E-A4FB-5E8992683645",
+      "file": "GX010517.MP4",
+      "bytes": 157334733,
+      "duration": 20.97095
+    },
+    {
+      "id": "3B3477F5-03DF-4A11-9466-C5C04B6EFB97",
+      "file": "GX010518.MP4",
+      "bytes": 27821955,
+      "duration": 3.75375
+    },
+    {
+      "id": "92EBD940-7273-40B7-9878-022F9C4D7614",
+      "file": "GX010495.MP4",
+      "bytes": 1182299057,
+      "duration": 157.7576
+    },
+    {
+      "id": "06B65F15-B509-4629-B872-89EC139999DF",
+      "file": "GX010500.MP4",
+      "bytes": 156867188,
+      "duration": 20.887533333333334
+    },
+    {
+      "id": "462921C5-D44A-44B8-9023-64B05E847CF3",
+      "file": "GX010523.MP4",
+      "bytes": 58956881,
+      "duration": 7.540866666666667
+    },
+    {
+      "id": "9D8DD9A5-1521-4633-B6E4-22E7669E2EE9",
+      "file": "GX010528.MP4",
+      "bytes": 1055607959,
+      "duration": 141.00753333333333
+    },
+    {
+      "id": "AF8E1FBA-B33D-4A13-B77D-1D6D3DFEEA6E",
+      "file": "GX010527.MP4",
+      "bytes": 563646962,
+      "duration": 75.14173333333333
+    },
+    {
+      "id": "A952D9AA-62EF-4D3B-816B-D0A216FA6138",
+      "file": "GX010494.MP4",
+      "bytes": 599742012,
+      "duration": 79.99658333333333
+    },
+    {
+      "id": "A6F8C0D3-B811-477B-B224-BB6A1275AD3B",
+      "file": "GX010504.MP4",
+      "bytes": 517068569,
+      "duration": 69.00226666666667
+    },
+    {
+      "id": "6DB0CB33-964B-42E4-8329-86CA7EFB2F7F",
+      "file": "GX010512.MP4",
+      "bytes": 72980843,
+      "duration": 9.743066666666667
+    },
+    {
+      "id": "D426897E-0164-442E-9D72-EA2B1E663F88",
+      "file": "GX010507.MP4",
+      "bytes": 78709820,
+      "duration": 10.36035
+    },
+    {
+      "id": "A936CDC1-2284-416B-8AA2-4317292B87DA",
+      "file": "GX010522.MP4",
+      "bytes": 62937109,
+      "duration": 8.041366666666667
+    },
+    {
+      "id": "23ADC49E-47EC-4190-836D-11FA18C47742",
+      "file": "GX010502.MP4",
+      "bytes": 631839569,
+      "duration": 84.25083333333333
+    },
+    {
+      "id": "10FAC7F3-9B81-4177-AF10-C90B90761C81",
+      "file": "GX010503.MP4",
+      "bytes": 91565697,
+      "duration": 12.2122
+    },
+    {
+      "id": "CAE2E0C0-704A-4692-8FC2-3A30D252CAAA",
+      "file": "GX010511.MP4",
+      "bytes": 272299466,
+      "duration": 36.18615
+    },
+    {
+      "id": "523A0683-76D7-438E-92C2-C92D9EF3D239",
+      "file": "GX010525.MP4",
+      "bytes": 902221360,
+      "duration": 120.38693333333333
+    },
+    {
+      "id": "1245A4E4-C0E3-4D61-B07B-F8A8C1F958BE",
+      "file": "GX010521.MP4",
+      "bytes": 79956521,
+      "duration": 10.143466666666667
+    },
+    {
+      "id": "392C6253-0AEC-4D74-98EC-4C8AEF54063F",
+      "file": "GX010545.MP4",
+      "bytes": 2153291518,
+      "duration": 287.27031666666664
+    },
+    {
+      "id": "352DF88B-1AFD-4F30-B1B3-40F811B3DBC3",
+      "file": "GX010544.MP4",
+      "bytes": 537588151,
+      "duration": 71.70496666666666
+    },
+    {
+      "id": "6F95F290-7D63-4D72-B58F-26E3B850BFD4",
+      "file": "GX010541.MP4",
+      "bytes": 2743464705,
+      "duration": 365.99896666666666
+    },
+    {
+      "id": "AF602086-C097-4CC5-BF01-E227E35B77A7",
+      "file": "GX010546.MP4",
+      "bytes": 612614886,
+      "duration": 81.71496666666667
+    },
+    {
+      "id": "CF889EC2-41EE-44E7-9B11-1260EB8D61B8",
+      "file": "GX010543.MP4",
+      "bytes": 743613488,
+      "duration": 99.18241666666667
+    },
+    {
+      "id": "EC05F3E0-8E4F-40E8-8962-33F0DAA6BF23",
+      "file": "GX010548.MP4",
+      "bytes": 2108986514,
+      "duration": 281.34773333333334
+    },
+    {
+      "id": "C5F786EC-4A44-4498-B37F-BFA99EFA06D0",
+      "file": "GX010542.MP4",
+      "bytes": 1080930623,
+      "duration": 144.17736666666667
+    }
+  ],
+  "outputContract": {
+    "durationSeconds": 300,
+    "width": 1920,
+    "height": 1080
+  }
+}

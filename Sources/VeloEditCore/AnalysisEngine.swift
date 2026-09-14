@@ -33,6 +33,7 @@ public struct LocalHeuristicAnalyzer: VisionModelProtocol {
         }
         switch asset.kind {
         case .photo:
+            tags.insert("photo")
             let metrics = Self.photoMetrics(url: asset.originalURL)
             tags.formUnion(metrics.labels)
             let scores = ClipScores(quality: metrics.quality, interest: metrics.interest, action: 0.08, stability: 1)
@@ -46,7 +47,7 @@ public struct LocalHeuristicAnalyzer: VisionModelProtocol {
                 storyValue: metrics.interest,
                 roleScores: [.intro: metrics.interest, .setup: 0.62, .reaction: metrics.interest * 0.72, .outro: metrics.interest]
             )
-            let candidate = Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: 5, scores: scores, tags: tags, explanation: Self.explanation(scores: scores, tags: tags), insights: insights)
+            let candidate = Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: PhotoPresentationPolicy.duration, scores: scores, tags: tags, explanation: Self.explanation(scores: scores, tags: tags), insights: insights)
             return AnalysisResult(assetID: asset.id, schemaVersion: schemaVersion, analyzedContentHash: asset.contentHash, sceneTags: tags, candidates: [candidate])
         case .video:
             let duration = max(0, asset.metadata.duration ?? 0)

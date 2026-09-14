@@ -6,11 +6,13 @@ public struct RenderReport: Sendable {
     public var renderedItemCount: Int
     public var skippedItemIDs: [UUID]
     public var warnings: [String]
-    public init(outputURL: URL, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = []) {
+    public var videoInfo: EncodedVideoInfo?
+    public init(outputURL: URL, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], videoInfo: EncodedVideoInfo? = nil) {
         self.outputURL = outputURL
         self.renderedItemCount = renderedItemCount
         self.skippedItemIDs = skippedItemIDs
         self.warnings = warnings
+        self.videoInfo = videoInfo
     }
 }
 
@@ -61,13 +63,18 @@ public actor RenderEngine {
         analyses: [AnalysisResult] = [],
         musicTracks: [LocalMusicTrack] = [],
         telemetry: [UUID: TelemetrySummary] = [:],
+        preferredVideoSources: [UUID: URL] = [:],
+        sourceWarnings: [String] = [],
         quality: RenderQuality,
+        frameRate: Double? = nil,
         destination: URL,
+        softwareEncoder: Bool = false,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> RenderReport {
         // Preview and export intentionally share one builder. This guarantees
         // that transitions, motion effects and soundtrack look/sound the same.
-        let renderTimeline = RenderGeometryPolicy.timeline(timeline, for: quality)
+        let framedTimeline = AutomaticFramingPolicy.applying(to: timeline, assets: assets, analyses: analyses)
+        let renderTimeline = ExportSettingsPolicy.timeline(framedTimeline, assets: assets, quality: quality, frameRate: frameRate)
         progress?(ImportProgress(completed: 0, total: 1, currentName: "Проверяю проект перед экспортом"))
         let preflight = await ExportPreflight().inspect(
             timeline: renderTimeline,
@@ -82,43 +89,90 @@ public actor RenderEngine {
             assets: assets,
             musicTracks: musicTracks,
             telemetry: telemetry,
+            // Delivery always decodes originals. Preview/analysis caches are
+            // deliberately ineligible, even when supplied by an older caller.
+            preferredVideoSources: [:],
+            sourceWarnings: [],
+            outputColorProfile: .rec709,
             forceVideoComposition: true,
             progress: progress
         )
         progress?(ImportProgress(completed: timeline.items.count, total: timeline.items.count, currentName: "Монтаж собран"))
-        try? FileManager.default.removeItem(at: destination)
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // The video composition above already has the exact requested size.
-        // Fixed 1280x720/1920x1080/3840x2160 presets are landscape presets and
-        // may reinterpret a portrait composition. HighestQuality encodes the
-        // composition's own geometry instead of silently changing its shape.
-        guard let session = AVAssetExportSession(asset: playback.composition, presetName: AVAssetExportPresetHighestQuality) else {
-            throw DerivedMediaError.exportUnavailable
-        }
-        session.outputURL = destination
-        session.outputFileType = .mp4
-        session.videoComposition = playback.videoComposition
-        session.audioMix = playback.audioMix
-        session.shouldOptimizeForNetworkUse = quality == .preview720p || quality == .preview1080p
-        progress?(ImportProgress(completed: 0, total: 100, currentName: "Кодирую готовый фильм"))
-        let monitor = Task {
-            while !Task.isCancelled {
-                let percent = Int((Double(session.progress) * 100).rounded())
-                progress?(ImportProgress(completed: percent, total: 100, currentName: "Сохраняю видео: \(percent) из 100"))
-                try? await Task.sleep(nanoseconds: 150_000_000)
-            }
-        }
-        await session.export()
-        monitor.cancel()
-        guard session.status == .completed else {
-            throw DerivedMediaError.exportFailed(session.error?.localizedDescription ?? String(describing: session.status))
-        }
-        progress?(ImportProgress(completed: 100, total: 100, currentName: "Экспорт готов"))
-        return RenderReport(
-            outputURL: destination,
-            renderedItemCount: playback.renderedItemCount,
-            skippedItemIDs: playback.skippedItemIDs,
-            warnings: playback.warnings + preflight.warnings.map { $0.message }
+        let settings = ExportVideoSettings(timeline: renderTimeline, quality: quality)
+        return try await renderComposition(
+            playback: playback,
+            maximumAudioGainDB: SourceAudioMixPolicy.preservesAttenuation(in: renderTimeline) ? 0 : 12,
+            settings: settings,
+            destination: destination,
+            softwareEncoder: softwareEncoder,
+            preflightWarnings: preflight.warnings.map(\.message),
+            progress: progress
         )
     }
+
+    private func renderComposition(
+        playback: TimelinePlayback,
+        maximumAudioGainDB: Double,
+        settings: ExportVideoSettings,
+        destination: URL,
+        softwareEncoder: Bool,
+        preflightWarnings: [String],
+        progress: (@Sendable (ImportProgress) -> Void)?
+    ) async throws -> RenderReport {
+        let staged = destination.deletingLastPathComponent()
+            .appendingPathComponent(".veloedit-export-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: staged) }
+        do {
+            try await SoftwareCompositionExporter.export(
+                asset: playback.composition,
+                videoComposition: playback.videoComposition,
+                audioMix: playback.audioMix,
+                settings: settings,
+                duration: playback.duration,
+                destination: staged,
+                softwareEncoder: softwareEncoder
+            ) { fraction in
+                progress?(ImportProgress(completed: Int((fraction * 85).rounded()), total: 100,
+                                         currentName: "Кодирую фильм: \(settings.summary)"))
+            }
+            let firstPassAsset = AVURLAsset(url: staged)
+            if let measured = try await EditorialDeliveryVerifier.measureEncodedAudio(asset: firstPassAsset),
+               let mastered = EditorialAudioMastering.adjustedMix(composition: firstPassAsset, mix: nil,
+                                                                  duration: playback.duration, measured: measured,
+                                                                  maximumGainDB: maximumAudioGainDB) {
+                let firstPass = destination.deletingLastPathComponent()
+                    .appendingPathComponent(".veloedit-first-pass-\(UUID().uuidString).mp4")
+                try FileManager.default.moveItem(at: staged, to: firstPass)
+                defer { try? FileManager.default.removeItem(at: firstPass) }
+                // Audio mastering stream-copies the already encoded video.
+                try await SoftwareCompositionExporter.remaster(source: firstPass, gainDB: mastered.1.appliedGainDB,
+                                                                duration: playback.duration, destination: staged)
+            }
+            progress?(ImportProgress(completed: 95, total: 100, currentName: "Проверяю параметры записанного MP4"))
+            let expectsAudio = !(try await playback.composition.loadTracks(withMediaType: .audio)).isEmpty
+            let info = try await ExportVideoVerifier.verify(url: staged, settings: settings, duration: playback.duration, expectsAudio: expectsAudio)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: staged)
+            } else {
+                try FileManager.default.moveItem(at: staged, to: destination)
+            }
+            progress?(ImportProgress(completed: 100, total: 100, currentName: "Экспорт проверен: \(info.summary)"))
+            return RenderReport(outputURL: destination, renderedItemCount: playback.renderedItemCount,
+                                skippedItemIDs: playback.skippedItemIDs, warnings: playback.warnings + preflightWarnings,
+                                videoInfo: info)
+        } catch {
+            if error is CancellationError { throw error }
+            throw DerivedMediaError.exportFailed(Self.diagnostic(error, stage: "delivery"))
+        }
+    }
+
+    private static func diagnostic(_ error: Error, stage: String) -> String {
+        let value = error as NSError
+        let reason = value.userInfo[NSLocalizedFailureReasonErrorKey] as? String
+        let underlying = value.userInfo[NSUnderlyingErrorKey] as? NSError
+        return "\(stage): \(value.domain) \(value.code): \(reason ?? value.localizedDescription)" +
+            (underlying.map { " [\($0.domain) \($0.code): \($0.localizedDescription)]" } ?? "")
+    }
+
 }

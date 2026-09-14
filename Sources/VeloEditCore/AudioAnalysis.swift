@@ -44,9 +44,12 @@ actor LocalAudioAnalyzer {
         var onsetEnvelope: [Double] = []
         var featureWindows: [AudioFeatureWindow] = []
         var audioCursor = 0.0
+        var resourcePacer = ResourceWorkPacer()
+        defer { if reader.status == .reading { reader.cancelReading() } }
 
-        while reader.status == .reading, let buffer = output.copyNextSampleBuffer() {
-            try Task.checkCancellation()
+        while reader.status == .reading {
+            try await resourcePacer.checkpoint()
+            guard let buffer = try await MediaSampleReader.next(from: output, reader: reader) else { break }
             guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
             let byteCount = CMBlockBufferGetDataLength(block)
             guard byteCount >= MemoryLayout<Float>.size else { continue }

@@ -49,6 +49,44 @@ public actor LocalAIModelManager {
 
     public init() {}
 
+    public nonisolated func authorizeDownload(model: String) {
+        UserDefaults.standard.set(true, forKey: "VeloEdit.ModelDownloadConsent.\(model)")
+    }
+
+    public func prepareAuthorizedModel(model: String, progress: (@Sendable (LocalModelDownloadProgress) -> Void)? = nil) async throws {
+        let status = await availability(model: model)
+        if !status.installed {
+            guard UserDefaults.standard.bool(forKey: "VeloEdit.ModelDownloadConsent.\(model)") else {
+                throw LocalAIModelError.downloadApprovalRequired(model)
+            }
+            try await pull(model: model, progress: progress)
+        }
+        try await Self.recoveringRequest { try await self.warmUp(model: model) }
+    }
+
+    static func recoveringRequest<T: Sendable>(_ operation: @Sendable () async throws -> T) async throws -> T {
+        var attempts = 0
+        while true {
+            try Task.checkCancellation()
+            do { return try await operation() }
+            catch {
+                let cause = AutonomousFailureCause.classify(error)
+                guard cause == .transientNetwork || cause == .localService else { throw error }
+                let delay: TimeInterval
+                if let store = AutonomousJobContext.store {
+                    guard let reserved = try await store.reserveRecovery(error: error, strategy: "reopen-local-model-session") else { throw error }
+                    delay = reserved
+                } else {
+                    guard attempts < 2 else { throw error }
+                    delay = attempts == 0 ? 1 : 3
+                }
+                attempts += 1
+                try await Task.sleep(for: .seconds(delay))
+                try await Self.shared.ensureService()
+            }
+        }
+    }
+
     public func availability(model: String, startService: Bool = true) async -> LocalModelAvailability {
         do {
             if startService { try await ensureService() }
@@ -67,6 +105,10 @@ public actor LocalAIModelManager {
     }
 
     public func pull(model: String, progress: (@Sendable (LocalModelDownloadProgress) -> Void)? = nil) async throws {
+        try await Self.recoveringRequest { try await self.pullAttempt(model: model, progress: progress) }
+    }
+
+    private func pullAttempt(model: String, progress: (@Sendable (LocalModelDownloadProgress) -> Void)?) async throws {
         try await ensureService()
         var request = URLRequest(url: baseURL.appendingPathComponent("api/pull"))
         request.httpMethod = "POST"
@@ -92,8 +134,8 @@ public actor LocalAIModelManager {
     }
 
     public func warmUp(model: String) async throws {
-        if warmedModels.contains(model) { return }
         try await ensureService()
+        if warmedModels.contains(model) { return }
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
         request.httpMethod = "POST"
         request.timeoutInterval = 45
@@ -108,6 +150,14 @@ public actor LocalAIModelManager {
 
     public func ensureService() async throws {
         if await installedModels() != nil { return }
+        // Only a Process instance launched by this manager may be stopped.
+        // A foreign service on the same port is never a termination target.
+        if let process = serverProcess, process.isRunning {
+            process.terminate()
+            for _ in 0..<20 where process.isRunning { try await Task.sleep(for: .milliseconds(100)) }
+            guard !process.isRunning else { throw LocalAIModelError.serviceUnavailable }
+        }
+        warmedModels.removeAll()
         if serverProcess?.isRunning != true {
             guard let executable = Self.ollamaExecutable() else { throw LocalAIModelError.ollamaNotInstalled }
             let process = Process()
@@ -140,7 +190,9 @@ public actor LocalAIModelManager {
     }
 
     private static func ollamaExecutable() -> URL? {
-        let candidates = [
+        let bundled = Bundle.main.resourceURL?.appendingPathComponent("Ollama/ollama").path
+        let candidates = [bundled].compactMap { $0 } + [
+            "/Applications/Ollama.app/Contents/Resources/ollama",
             "/opt/homebrew/bin/ollama",
             "/usr/local/bin/ollama"
         ] + (ProcessInfo.processInfo.environment["PATH"] ?? "")
@@ -154,12 +206,14 @@ public enum LocalAIModelError: LocalizedError {
     case ollamaNotInstalled
     case serviceUnavailable
     case downloadFailed(String)
+    case downloadApprovalRequired(String)
 
     public var errorDescription: String? {
         switch self {
-        case .ollamaNotInstalled: return "Ollama не установлен. Установите бесплатный локальный runtime и повторите загрузку."
+        case .ollamaNotInstalled: return "В этой копии приложения отсутствует локальный runtime. Нужен полный пакет VeloEdit.app."
         case .serviceUnavailable: return "Не удалось запустить локальный сервис Ollama."
         case .downloadFailed(let message): return "Не удалось загрузить модель: \(message)"
+        case .downloadApprovalRequired: return "Для подготовки локального анализа требуется разрешить загрузку модели."
         }
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Testing
 @testable import VeloEditCore
 
@@ -107,7 +108,32 @@ private func professionalTimeline(assetIDs: [UUID], titles: [TitleTimelineItem] 
     #expect(restored.first?.stage == .processing)
 }
 
-@Test func hdrExportReserveIsLargerThanSDRReserve() {
+@Test func exportPreflightDoesNotTreatAPFSZeroCapacityHintAsFullDisk() async {
+    let destination = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        .appendingPathComponent("nested/movie.mp4")
+    let timeline = professionalTimeline(assetIDs: [])
+    let report = await ExportPreflight().inspect(
+        timeline: timeline,
+        assets: [],
+        destination: destination,
+        quality: .maximum
+    )
+    #expect(report.availableBytes == nil || report.availableBytes! > 0)
+    #expect(!report.issues.contains { $0.kind == .insufficientDiskSpace })
+}
+
+@Test func renderUsesExplicitCodecAndPreservesPortraitGeometry() {
+    var timeline = professionalTimeline(assetIDs: [])
+    timeline.width = 1_920
+    timeline.height = 1_080
+    #expect(ExportVideoSettings(timeline: timeline, quality: .final1080p).codec == .h264)
+    timeline.width = 1_080
+    timeline.height = 1_920
+    #expect(ExportVideoSettings(timeline: timeline, quality: .final1080p).width == 1080)
+}
+
+@Test func exportReserveMatchesActualSDRDeliveryForHDRSources() {
     let timeline = professionalTimeline(assetIDs: [UUID()])
     let sdr = ExportPreflight.estimatedOutputBytes(timeline: timeline, quality: .maximum, profile: .rec709)
     let hdr = ExportPreflight.estimatedOutputBytes(
@@ -115,7 +141,7 @@ private func professionalTimeline(assetIDs: [UUID], titles: [TitleTimelineItem] 
         quality: .maximum,
         profile: VideoColorProfile(dynamicRange: .hdr, transferFunction: .hlg, bitDepth: 10)
     )
-    #expect(hdr > sdr)
+    #expect(hdr == sdr)
 }
 
 @Test func previewExportContractAllowsResolutionChangeButRejectsFPSOrColorMismatch() {

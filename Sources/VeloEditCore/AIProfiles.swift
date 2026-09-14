@@ -117,7 +117,7 @@ public struct AIAnalysisProfile: Hashable, Sendable {
     public var cacheKey: String {
         // Thermal throttling may temporarily reduce sampling depth, but should
         // not make a completed analysis look stale as the Mac cools down.
-        ["pipeline-v5-deep-media", mode.rawValue, runtime.rawValue, modelID, quantization.rawValue].joined(separator: ":")
+        ["pipeline-v6-structured-vision", mode.rawValue, runtime.rawValue, modelID, quantization.rawValue].joined(separator: ":")
     }
 
     /// Modes differ by work performed, not only by frame density.

@@ -6,12 +6,17 @@ public enum MusicSourceProvider: String, Codable, Sendable {
     case pixabay
     case freeToUse = "free-to-use"
     case openverse
+    case incompetech
+    case audionautix
+    case scottBuckley = "scott-buckley"
+    case internetArchive = "internet-archive"
+    case web = "web-search"
     case user
     case other
 
     public var isOnline: Bool {
         switch self {
-        case .freeToUse, .openverse, .pixabay: return true
+        case .freeToUse, .openverse, .incompetech, .audionautix, .scottBuckley, .pixabay, .internetArchive, .web: return true
         case .bundled, .user, .other: return false
         }
     }
@@ -22,6 +27,11 @@ public enum MusicSourceProvider: String, Codable, Sendable {
         case .user: return "My Music"
         case .freeToUse: return "Free To Use"
         case .openverse: return "Openverse"
+        case .incompetech: return "Incompetech"
+        case .audionautix: return "Audionautix"
+        case .scottBuckley: return "Scott Buckley"
+        case .internetArchive: return "Internet Archive"
+        case .web: return "Интернет"
         case .pixabay: return "Pixabay"
         case .other: return "Другой источник"
         }
@@ -211,6 +221,7 @@ public enum MusicLibraryError: LocalizedError {
 
 public actor LocalMusicLibrary {
     public static let shared = LocalMusicLibrary()
+    private static let importAnalyzer = LocalAudioAnalyzer()
 
     private let rootURL: URL
     private var cachedTracks: [LocalMusicTrack]?
@@ -229,7 +240,14 @@ public actor LocalMusicLibrary {
         }
         var decoded = try JSONDecoder.veloEdit.decode([LocalMusicTrack].self, from: Data(contentsOf: catalogURL))
         var repairedMovedPaths = false
-        for index in decoded.indices where !FileManager.default.fileExists(atPath: decoded[index].localFileURL.path) {
+        for index in decoded.indices {
+            let packaged = filesURL.appendingPathComponent(decoded[index].localFileURL.lastPathComponent)
+            if packaged != decoded[index].localFileURL, FileManager.default.fileExists(atPath: packaged.path) {
+                decoded[index].localFileURL = packaged
+                repairedMovedPaths = true
+                continue
+            }
+            if FileManager.default.fileExists(atPath: decoded[index].localFileURL.path) { continue }
             if decoded[index].sourceProvider == .bundled {
                 let roots = [
                     Bundle.main.resourceURL?.appendingPathComponent("Music", isDirectory: true),
@@ -271,6 +289,7 @@ public actor LocalMusicLibrary {
         }
 
         let measuredDuration: Double
+        var measuredAudio: AudioAnalysisSummary?
         if providerTrack.sourceProvider == .bundled {
             guard FileManager.default.fileExists(atPath: downloadedFileURL.path),
                   providerTrack.metadata.duration > 0 else { throw MusicLibraryError.unreadableAudio }
@@ -280,6 +299,10 @@ public actor LocalMusicLibrary {
             guard !(try await asset.loadTracks(withMediaType: .audio)).isEmpty else { throw MusicLibraryError.unreadableAudio }
             measuredDuration = try await asset.load(.duration).seconds
             guard measuredDuration.isFinite, measuredDuration > 0 else { throw MusicLibraryError.unreadableAudio }
+
+            measuredAudio = try await Self.importAnalyzer.analyze(url: downloadedFileURL, level: .deep)
+            guard measuredAudio != nil else { throw MusicLibraryError.unreadableAudio }
+            try Task.checkCancellation()
 
             // AVFoundation suspends this actor while it inspects the file. A
             // bundled-catalog import can complete during that suspension, so
@@ -315,7 +338,7 @@ public actor LocalMusicLibrary {
                 id: id,
                 title: metadata.title,
                 author: metadata.artist,
-                bpm: metadata.bpm,
+                bpm: (measuredAudio?.tempoConfidence ?? 0) >= 0.18 ? measuredAudio?.estimatedBPM ?? metadata.bpm : metadata.bpm,
                 genres: metadata.genres,
                 moods: metadata.moods,
                 energy: metadata.energy,
@@ -327,10 +350,10 @@ public actor LocalMusicLibrary {
                 originalFileName: downloadedFileURL.lastPathComponent,
                 providerTrackID: providerTrack.id,
                 isPremium: false,
-                bpmIsEstimated: false,
+                bpmIsEstimated: measuredAudio?.estimatedBPM == nil,
                 tags: metadata.tags,
-                loudness: metadata.loudness,
-                waveform: metadata.waveform,
+                loudness: measuredAudio?.meanVolume ?? metadata.loudness,
+                waveform: measuredAudio?.waveform ?? metadata.waveform,
                 musicalKey: metadata.musicalKey
             )
             library.removeAll {
@@ -548,6 +571,7 @@ public struct LocalMusicSelector: Sendable {
         let available = tracks.filter {
             $0.id != excludedID &&
                 !excludingIdentities.contains($0.selectionIdentity) &&
+                AutomaticSoundtrackSuitability.accepts($0, directive: directive) &&
                 FileManager.default.fileExists(atPath: $0.localFileURL.path)
         }
         if let requestedID = directive.trackID,
@@ -562,16 +586,17 @@ public struct LocalMusicSelector: Sendable {
     }
 
     public func score(_ track: LocalMusicTrack, directive: MusicDirective) -> Double {
-        let tokens = Set((track.genres + track.moods + (track.tags ?? [])).map { $0.lowercased() })
-        let desired = Self.tokens(for: directive.style)
-        let semantic = Double(tokens.intersection(desired).count) / Double(max(1, desired.count))
+        guard AutomaticSoundtrackSuitability.accepts(track, directive: directive) else { return -1 }
+        if let request = directive.searchRequests?.first, request.exactTrack,
+           request.matches(title: track.title, artist: track.author) { return 2 }
+        let intent = MusicIntent(directive: directive)
+        let desired = intent.mood.union(intent.genres)
+        let semantic = AutomaticSoundtrackSuitability.semanticMatch(genres: track.genres, moods: track.moods, tags: track.tags ?? [], desired: desired)
         let bpm = max(0, 1 - abs(track.bpm - directive.bpm) / 80)
-        let desiredEnergy = Self.energy(for: directive.style)
+        let desiredEnergy = intent.energy
         let energy = max(0, 1 - abs(track.energy - desiredEnergy))
-        let text = (track.genres + track.moods + (track.tags ?? [])).joined(separator: " ").lowercased()
-        let fatiguePenalty = ["aggressive", "hard", "heavy", "bass", "metal", "trap", "dubstep", "intense"]
-            .filter(text.contains).count
-        return semantic * 0.48 + bpm * 0.22 + energy * 0.30 - Double(fatiguePenalty) * 0.16
+        let character = AutomaticSoundtrackSuitability.characterAdjustment(genres: track.genres, moods: track.moods, tags: track.tags ?? [], desired: desired, request: directive.searchRequests?.first)
+        return semantic * 0.48 + bpm * 0.22 + energy * 0.30 + character
     }
 
     private static func tokens(for style: MusicStyle) -> Set<String> {
@@ -606,6 +631,8 @@ public struct MusicBeatSynchronizer: Sendable {
         var result = refreshingStructure(in: timeline, for: track, analyzedStructure: analyzedStructure)
         let movieDuration = max(0.1, result.duration)
         let structure = analyzedStructure ?? result.music?.structure ?? MusicSyncEngine().analyze(bpm: track.bpm, duration: movieDuration, energy: track.energy)
+        // Unknown rhythm must not shorten speech, actions or manual edits.
+        guard structure.analysisIsMeasured == true, (structure.tempoConfidence ?? 0) >= 0.65 else { return result }
         let beat = structure.beatInterval
         let sections = structure.sections
         if var directive = result.music {
@@ -615,6 +642,10 @@ public struct MusicBeatSynchronizer: Sendable {
         }
         for index in result.items.indices where result.items[index].overlay == nil {
             var item = result.items[index]
+            guard !item.locked, ![StoryRole.climax, .reaction, .outro].contains(item.storyRole ?? .bRoll),
+                  result.editorialBeatPlan == nil else { continue }
+            // Evidence-based plans are synchronized by moving the music window,
+            // not by cutting an uninspected word or completed action.
             // Earlier clips may already have been shortened in this pass. Use
             // their updated durations for the current boundary; otherwise the
             // next clip is snapped against its stale pre-sync start time.

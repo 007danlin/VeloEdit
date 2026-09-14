@@ -26,6 +26,7 @@ public struct SmartTitleContext: Sendable {
     public var usedTitles: [String]
     public var avoidRegions: [NormalizedRegion]
     public var preferredTemplateID: String?
+    public var mood: DirectorNarrativeMood?
 
     public init(
         purpose: SmartTitlePurpose,
@@ -40,7 +41,8 @@ public struct SmartTitleContext: Sendable {
         sequenceCount: Int? = nil,
         usedTitles: [String] = [],
         avoidRegions: [NormalizedRegion] = [],
-        preferredTemplateID: String? = nil
+        preferredTemplateID: String? = nil,
+        mood: DirectorNarrativeMood? = nil
     ) {
         self.purpose = purpose
         self.requestedText = requestedText
@@ -55,6 +57,7 @@ public struct SmartTitleContext: Sendable {
         self.usedTitles = usedTitles
         self.avoidRegions = avoidRegions
         self.preferredTemplateID = preferredTemplateID
+        self.mood = mood
     }
 }
 
@@ -210,7 +213,7 @@ public struct SmartTitleEngine: Sendable {
             primaryText: fittedPrimary,
             secondaryText: fittedSecondary,
             templateID: template.id,
-            duration: template.duration,
+            duration: DirectorVisualStyle(mood: context.mood ?? .calm).duration(text: fittedPrimary, secondary: fittedSecondary, purpose: context.purpose),
             confidence: confidence,
             explanation: explanation
         )
@@ -223,7 +226,7 @@ public struct SmartTitleEngine: Sendable {
             "захватывающая сцена", "приключение", "эмоциональный момент", "главный момент",
             "следующий этап путешествия", "событие", "сцена", "съёмка", "материал"
         ]
-        return normalized.isEmpty || forbidden.contains(normalized)
+        return normalized.isEmpty || forbidden.contains(where: { normalizePhrase($0) == normalized })
     }
 
     /// Structural beat names are useful inside the edit graph, but are not
@@ -235,6 +238,18 @@ public struct SmartTitleEngine: Sendable {
             "знакомство с местом", "в движении", "пик маршрута", "развитие действия", "дорога домой"
         ]
         return structural.contains(normalizePhrase(value))
+    }
+
+    /// A generic word inside a descriptive label ("Съёмка на озере") does
+    /// not make the whole title a placeholder. Share this rule with render QA
+    /// so generated titles cannot be accepted by one stage and rejected by another.
+    public static func isPlaceholderTitle(_ value: String, allowsNumericText: Bool = false) -> Bool {
+        if isMeaningless(value) || isStructuralPlaceholder(value) { return true }
+        let words = Set(normalizePhrase(value).split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        let descriptive = words.filter { !$0.allSatisfy(\.isNumber) }
+        if descriptive.isEmpty { return !allowsNumericText || words.isEmpty }
+        let generic: Set<String> = ["съемка", "съёмка", "видео", "фильм", "глава", "scene", "shot", "chapter", "untitled"]
+        return descriptive.isSubset(of: generic)
     }
 
     /// Produces a label from analyzed content only. In particular, a proposed
@@ -341,6 +356,9 @@ public struct SmartTitleEngine: Sendable {
     }
 
     private func selectTemplate(primaryText: String, secondaryText: String?, context: SmartTitleContext, evidence: [String]) -> TitleTemplateDefinition? {
+        if let mood = context.mood,
+           let id = DirectorVisualStyle(mood: mood).templateID(for: context.purpose),
+           let template = TitleTemplateRegistry.template(id: id) { return template }
         let categories: Set<TitleTemplateCategory>
         switch context.purpose {
         case .filmOpening: categories = [.mainTitles, .cinematicTitles, .minimalTitles]
@@ -549,7 +567,12 @@ public enum AutomatedTitlePolicy {
                 reject(item, code: "exact-duplicate", message: "Повторная команда автотитра «\(item.text)» удалена")
                 continue
             }
-            if lastGeneratedTextByTrack[item.track] == normalized {
+            let previousSameTitle = result.last { $0.track == item.track && isGenerated($0) && !isCaption($0.kind) }
+            let previousEnd = previousSameTitle?.endTime ?? 0
+            let distinctChapter = item.kind == .chapter
+                && item.startTime >= previousEnd
+                && (item.targetClipID != previousSameTitle?.targetClipID || item.startTime > previousEnd + 0.001)
+            if lastGeneratedTextByTrack[item.track] == normalized && !distinctChapter {
                 reject(item, code: "adjacent-duplicate", message: "Соседний повтор автотитра «\(item.text)» удалён")
                 continue
             }
@@ -644,10 +667,11 @@ public enum AutomatedTitlePolicy {
             .replacingOccurrences(of: "ё", with: "е")
     }
 
-    private static func isGenerated(_ item: TitleTimelineItem) -> Bool {
-        item.explanation.contains { reason in
+    static func isGenerated(_ item: TitleTimelineItem) -> Bool {
+        guard item.userEdited != true else { return false }
+        return item.explanation.contains { reason in
             let value = reason.lowercased()
-            return value.contains("режисс") || value.contains("автомат") || value.contains("event hierarchy")
+            return value.contains("режисс") || value.contains("автомат") || value.contains("ai director") || value.contains("event hierarchy") || value.contains("editorial chapter")
         }
     }
 

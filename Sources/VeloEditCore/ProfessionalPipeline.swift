@@ -68,7 +68,49 @@ public enum VideoColorPipeline {
     }
 }
 
+/// Repairs timelines created before automatic canvas framing was persisted.
+/// An explicit `.fit` remains untouched; only clips with no saved adjustment
+/// receive the current fill/subject-aware default.
+public enum AutomaticFramingPolicy {
+    public static func applying(
+        to timeline: Timeline,
+        assets: [MediaAsset],
+        analyses: [AnalysisResult]
+    ) -> Timeline {
+        var result = timeline
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let candidatesByID = Dictionary(uniqueKeysWithValues: analyses.flatMap(\.candidates).map { ($0.id, $0) })
+        let targetAspect = Double(max(1, timeline.width)) / Double(max(1, timeline.height))
+
+        for index in result.items.indices {
+            let item = result.items[index]
+            guard item.kind == .video,
+                  item.overlay == nil,
+                  item.videoAdjustments == nil,
+                  let assetID = item.assetID,
+                  let sourceAspect = assetsByID[assetID]?.displayAspectRatio,
+                  sourceAspect > 0,
+                  abs(log(sourceAspect / targetAspect)) > 0.015 else { continue }
+
+            var adjustments = VideoAdjustments(crop: .fit)
+            if let tracking = item.candidateID.flatMap({ candidatesByID[$0]?.insights?.subjectTracking }),
+               let reframe = SubjectAwareReframeEngine().plan(
+                   tracking: tracking,
+                   sourceAspectRatio: sourceAspect,
+                   targetAspectRatio: targetAspect
+               ),
+               reframe.confidence >= 0.42 {
+                adjustments.crop = .fill
+                adjustments.subjectReframe = reframe
+            }
+            result.items[index].videoAdjustments = adjustments
+        }
+        return result
+    }
+}
+
 public struct PreviewExportSignature: Hashable, Sendable {
+    public var editorialSignature: String
     public var aspectRatio: Double
     public var frameRate: Double
     public var colorProfile: VideoColorProfile
@@ -78,6 +120,7 @@ public struct PreviewExportSignature: Hashable, Sendable {
     public var transitionCount: Int
 
     public init(timeline: Timeline, assets: [MediaAsset]) {
+        editorialSignature = EditorialRenderSignature.signature(timeline)
         aspectRatio = Double(max(1, timeline.width)) / Double(max(1, timeline.height))
         frameRate = timeline.frameRate
         colorProfile = VideoColorPipeline.profile(timeline: timeline, assets: assets)
@@ -91,6 +134,7 @@ public struct PreviewExportSignature: Hashable, Sendable {
 public enum PreviewExportConsistencyContract {
     public static func issues(preview: PreviewExportSignature, export: PreviewExportSignature) -> [String] {
         var issues: [String] = []
+        if preview.editorialSignature != export.editorialSignature { issues.append("Preview и export расходятся по crop, reframe, timing, audio или слоям композиции.") }
         if abs(preview.aspectRatio - export.aspectRatio) > 0.000_1 { issues.append("Preview и экспорт используют разный aspect ratio.") }
         if abs(preview.frameRate - export.frameRate) > 0.001 { issues.append("Preview и экспорт используют разный FPS.") }
         if preview.colorProfile != export.colorProfile { issues.append("Preview и экспорт используют разные color-space настройки.") }
@@ -175,7 +219,7 @@ public struct ExportPreflight: Sendable {
         let usedIDs = Set(timeline.items.compactMap(\.assetID))
         var issues: [ExportPreflightIssue] = []
 
-        if timeline.width < 2 || timeline.height < 2 || timeline.frameRate <= 0 || timeline.duration <= 0 {
+        if timeline.width < 2 || timeline.height < 2 || !timeline.frameRate.isFinite || timeline.frameRate <= 0 || timeline.frameRate > 240 || !timeline.duration.isFinite || timeline.duration <= 0 {
             issues.append(.init(kind: .invalidTimeline, severity: .blocking, message: "Монтаж имеет некорректный размер, FPS или длительность."))
         }
 
@@ -205,8 +249,8 @@ public struct ExportPreflight: Sendable {
                 message: "Недостаточно места для экспорта: требуется примерно \(Self.storageString(estimate)), доступно \(Self.storageString(available))."
             ))
         }
-        if profile.containsMixedDynamicRange {
-            issues.append(.init(kind: .colorMismatch, severity: .warning, message: "В монтаже смешаны HDR и SDR. Экспорт будет выполнен в HDR с управляемым преобразованием SDR-кадров."))
+        if profile.dynamicRange == .hdr {
+            issues.append(.init(kind: .colorMismatch, severity: .warning, message: "HDR-исходники преобразуются в SDR Rec.709. Сохранение HDR в MP4 пока не поддерживается."))
         }
 
         for title in timeline.effectiveTitleItems where title.enabled {
@@ -247,27 +291,32 @@ public struct ExportPreflight: Sendable {
     }
 
     public static func estimatedOutputBytes(timeline: Timeline, quality: RenderQuality, profile: VideoColorProfile) -> Int64 {
-        let pixels = Double(max(2, timeline.width) * max(2, timeline.height))
-        let fps = min(240, max(1, timeline.frameRate))
-        let qualityFactor: Double
-        switch quality {
-        case .preview720p: qualityFactor = 0.55
-        case .preview1080p: qualityFactor = 0.72
-        case .final1080p: qualityFactor = 1
-        case .final4K: qualityFactor = 1.28
-        case .maximum: qualityFactor = 1.65
-        }
-        let hdrFactor = profile.dynamicRange == .hdr ? 1.45 : 1
-        let bitsPerPixelPerFrame = 0.085 * qualityFactor * hdrFactor
-        let video = pixels * fps * max(0.1, timeline.duration) * bitsPerPixelPerFrame / 8
-        let audio = max(0.1, timeline.duration) * 32_000
-        return Int64(max(8_000_000, (video + audio) * 1.25))
+        guard timeline.frameRate.isFinite, timeline.frameRate > 0, timeline.frameRate <= 240,
+              timeline.duration.isFinite, timeline.duration > 0 else { return 0 }
+        let settings = ExportVideoSettings(timeline: timeline, quality: quality)
+        let video = Double(settings.targetVideoBitRate) * timeline.duration / 8
+        let audio = timeline.duration * 32_000
+        // Encoded video, muxed staging result, remastering and a safety reserve
+        // coexist on the destination volume until verification completes.
+        return Int64(max(8_000_000, (video + audio) * 3.25 + 64_000_000))
     }
 
-    private static func availableCapacity(near destination: URL) -> Int64? {
-        let directory = destination.deletingLastPathComponent()
-        let values = try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-        return values?.volumeAvailableCapacityForImportantUsage
+    static func availableCapacity(near destination: URL) -> Int64? {
+        var directory = destination.deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: directory.path), directory.path != "/" {
+            directory.deleteLastPathComponent()
+        }
+        if let important = try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
+           important > 0 {
+            return important
+        }
+        // APFS can report zero for the ImportantUsage resource key in CLI,
+        // sandbox and freshly created package directories even with ample
+        // space. The filesystem attribute is the stable fallback.
+        if let number = try? FileManager.default.attributesOfFileSystem(forPath: directory.path)[.systemFreeSize] as? NSNumber {
+            return number.int64Value
+        }
+        return nil
     }
 
     private static func storageString(_ bytes: Int64) -> String {

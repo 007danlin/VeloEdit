@@ -10,41 +10,77 @@ public enum TimelineTiming {
     /// outgoing clips. The editor, however, keeps magnetic clips adjacent so
     /// their visible boundaries remain easy to edit. These helpers provide the
     /// single mapping between both clocks.
-    public static func transitionOverlap(incoming: TimelineItem, previous: TimelineItem?) -> Double {
+    public static func transitionOverlap(incoming: TimelineItem, previous: TimelineItem?, transitionItems: [TimelineTransitionItem] = []) -> Double {
         guard incoming.overlay == nil,
-              incoming.transition.flatMap(TransitionStyle.init(rawValue:)) != nil,
               let previous,
               previous.overlay == nil else { return 0 }
-        return max(0.12, min(0.65, incoming.timelineDuration * 0.28, previous.timelineDuration * 0.28))
+        let explicit = transitionItems.first { $0.incomingClipID == incoming.id && $0.outgoingClipID == previous.id }
+        let style = explicit?.style ?? incoming.transition.flatMap(TransitionStyle.init(rawValue:))
+        guard explicit?.enabled != false, let style, style != .cut else { return 0 }
+        let requested = explicit?.duration ?? max(0.12, min(0.65, incoming.timelineDuration * 0.28, previous.timelineDuration * 0.28))
+        guard requested.isFinite, requested > 0,
+              incoming.timelineDuration.isFinite, previous.timelineDuration.isFinite else { return 0 }
+        // Two alternating video tracks must never contain three primary clips
+        // at once. Reserve at most half of each neighbor for this boundary.
+        // Use the same 600 Hz clock as AVComposition, rounding the cap down.
+        let limit = (min(compositionSeconds(incoming.timelineDuration), compositionSeconds(previous.timelineDuration)) * 0.5 * 600).rounded(.down) / 600
+        return max(0, min(compositionSeconds(requested), limit))
     }
 
-    public static func playbackTime(forTimelineTime requestedTime: Double, items: [TimelineItem]) -> Double {
+    /// Resolves legacy clip flags and explicit objects against actual adjacent
+    /// clips. Disabled objects override legacy flags; stale pairs are ignored.
+    public static func resolvedTransitions(items: [TimelineItem], transitionItems: [TimelineTransitionItem]) -> [TimelineTransitionItem] {
+        let primaries = retimed(items).filter { $0.overlay == nil }
+        return primaries.indices.dropFirst().compactMap { index in
+            let incoming = primaries[index]
+            let previous = primaries[index - 1]
+            let overlap = transitionOverlap(incoming: incoming, previous: previous, transitionItems: transitionItems)
+            guard overlap > 0 else { return nil }
+            var item = transitionItems.first { $0.incomingClipID == incoming.id && $0.outgoingClipID == previous.id }
+                ?? TimelineTransitionItem(style: incoming.transition.flatMap(TransitionStyle.init(rawValue:)) ?? .cut,
+                                          outgoingClipID: previous.id, incomingClipID: incoming.id,
+                                          startTime: incoming.timelineStart, duration: overlap)
+            item.startTime = incoming.timelineStart
+            item.duration = overlap
+            return item
+        }
+    }
+
+    public static func playbackTime(forTimelineTime time: Double, timeline: Timeline) -> Double {
+        playbackTime(forTimelineTime: time, items: timeline.items, transitionItems: timeline.effectiveTransitionItems)
+    }
+
+    public static func timelineTime(forPlaybackTime time: Double, timeline: Timeline) -> Double {
+        timelineTime(forPlaybackTime: time, items: timeline.items, transitionItems: timeline.effectiveTransitionItems)
+    }
+
+    public static func playbackTime(forTimelineTime requestedTime: Double, items: [TimelineItem], transitionItems: [TimelineTransitionItem] = []) -> Double {
         let primaries = retimed(items).filter { $0.overlay == nil }
         guard !primaries.isEmpty else { return max(0, requestedTime) }
         let timelineTime = min(max(0, requestedTime), primaries.last.map { $0.timelineStart + $0.timelineDuration } ?? 0)
-        let starts = playbackStarts(for: primaries)
+        let starts = playbackStarts(for: primaries, transitionItems: transitionItems)
         for index in primaries.indices {
             let item = primaries[index]
             let isLast = index == primaries.index(before: primaries.endIndex)
             if timelineTime >= item.timelineStart,
                timelineTime < item.timelineStart + item.timelineDuration || isLast {
                 let fraction = min(max(0, (timelineTime - item.timelineStart) / max(0.001, item.timelineDuration)), 1)
-                let playbackEnd = isLast ? starts[index] + item.timelineDuration : starts[index + 1]
+                let playbackEnd = isLast ? starts[index] + compositionSeconds(item.timelineDuration) : starts[index + 1]
                 return starts[index] + (playbackEnd - starts[index]) * fraction
             }
         }
         return starts.last.map { $0 + (primaries.last?.timelineDuration ?? 0) } ?? timelineTime
     }
 
-    public static func timelineTime(forPlaybackTime requestedTime: Double, items: [TimelineItem]) -> Double {
+    public static func timelineTime(forPlaybackTime requestedTime: Double, items: [TimelineItem], transitionItems: [TimelineTransitionItem] = []) -> Double {
         let primaries = retimed(items).filter { $0.overlay == nil }
         guard !primaries.isEmpty else { return max(0, requestedTime) }
         let playbackTime = max(0, requestedTime)
-        let starts = playbackStarts(for: primaries)
+        let starts = playbackStarts(for: primaries, transitionItems: transitionItems)
         for index in primaries.indices {
             let item = primaries[index]
             let isLast = index == primaries.index(before: primaries.endIndex)
-            let playbackEnd = isLast ? starts[index] + item.timelineDuration : starts[index + 1]
+            let playbackEnd = isLast ? starts[index] + compositionSeconds(item.timelineDuration) : starts[index + 1]
             if playbackTime < playbackEnd || isLast {
                 let fraction = min(max(0, (playbackTime - starts[index]) / max(0.001, playbackEnd - starts[index])), 1)
                 return item.timelineStart + item.timelineDuration * fraction
@@ -53,14 +89,21 @@ public enum TimelineTiming {
         return primaries.last.map { $0.timelineStart + $0.timelineDuration } ?? playbackTime
     }
 
-    private static func playbackStarts(for primaries: [TimelineItem]) -> [Double] {
-        var accumulatedOverlap = 0.0
+    private static func compositionSeconds(_ time: Double) -> Double {
+        (time * 600).rounded() / 600
+    }
+
+    private static func playbackStarts(for primaries: [TimelineItem], transitionItems: [TimelineTransitionItem]) -> [Double] {
+        var cursor = 0.0
         return primaries.indices.map { index in
-            accumulatedOverlap += transitionOverlap(
+            let overlap = transitionOverlap(
                 incoming: primaries[index],
-                previous: index > 0 ? primaries[index - 1] : nil
+                previous: index > 0 ? primaries[index - 1] : nil,
+                transitionItems: transitionItems
             )
-            return max(0, primaries[index].timelineStart - accumulatedOverlap)
+            let start = max(0, cursor - overlap)
+            cursor = start + compositionSeconds(primaries[index].timelineDuration)
+            return start
         }
     }
 

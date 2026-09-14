@@ -1,0 +1,188 @@
+{
+  "projectPath": "/Users/daniellineckij/VeloEdit/Build/AutonomyAcceptance-2026-09-13/five-minutes.veloedit",
+  "timelineID": "39EBFC9C-6DCE-4836-9807-CC6D381D744F",
+  "state": "completed",
+  "publishedTimelineCount": 1,
+  "draftRemaining": false,
+  "inputAssetCount": 37,
+  "fragments": 65,
+  "width": 1920,
+  "height": 1080,
+  "frameRate": 30,
+  "durationEvidence": {
+    "budget": {
+      "usableAtmosphereSeconds": 346.2666666666667,
+      "absoluteCeiling": 400.1666666666667,
+      "distinctShotFamilyCount": 65,
+      "idealDuration": 300,
+      "confidence": 0.6200000000000032,
+      "distinctSceneCount": 6,
+      "limitingFactors": [
+        "repeatedSetup"
+      ],
+      "safeRange": [
+        300,
+        400.1666666666667
+      ],
+      "distinctEventCount": 5,
+      "strongUnitCount": 65,
+      "usableSpeechSeconds": 0,
+      "usableActionSeconds": 53.900000000000006
+    },
+    "durationConstraintStatus": "satisfied",
+    "feasibility": 1,
+    "supportedDuration": 400.1666666666667,
+    "requestedDuration": 300,
+    "requiresExpandedMining": false,
+    "committedDuration": 299.9999999999999,
+    "reason": "Автоматическая финальная сборка: 65 неповторяющихся моментов; вместимость 400 с рассчитана по непересекающимся проверенным диапазонам."
+  },
+  "compositionRepairCount": 2,
+  "finalFindings": [],
+  "probedFrames": 308,
+  "decodedProbes": 308,
+  "controlVideoPath": "/Users/daniellineckij/VeloEdit/Build/AutonomyAcceptance-2026-09-13/five-minutes.veloedit/Cache/Preview/DerivedMedia/EditorialControlExports/176bcf73eed71208679d629d0bfec797529ac75614ed4aa1b8fa0a0f646955f5.mp4",
+  "controlVideoBytes": 661923322,
+  "controlVideoSHA256": "bc55f6a3784f58461b1a832eacff0bd0941da5dfc19bac86e4250cc9a57eba1c",
+  "durationDifference": 1.1368683772161603e-13,
+  "aspectRatioMatches": true,
+  "encodedAudio": {
+    "outputTruePeakDBTP": -1.4666041516570787,
+    "measuredFrames": 14400000,
+    "integratedLUFS": -16.0041805997732,
+    "appliedGainDB": 0,
+    "peakLimited": false,
+    "outputLUFS": -16.0041805997732,
+    "truePeakDBTP": -1.4666041516570787
+  },
+  "evidenceDomains": [
+    {
+      "domain": "primaryMediaPresence",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "renderDecode",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "subjectCoverage",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "faceSafety",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "bodySafety",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "foregroundOcclusion",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "dominantForegroundObject",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "shotFamilyIdentity",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "visualNovelty",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "actionProgression",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "momentCompletion",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "hookFulfillment",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "closureFulfillment",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "eventBridge",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "titleGrounding",
+      "status": "unknown",
+      "required": false
+    },
+    {
+      "domain": "titleReadability",
+      "status": "unknown",
+      "required": false
+    },
+    {
+      "domain": "telemetryMeaningfulness",
+      "status": "unknown",
+      "required": false
+    },
+    {
+      "domain": "musicNarrativeFit",
+      "status": "unknown",
+      "required": false
+    },
+    {
+      "domain": "sourceAudioPolicy",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "integratedLoudness",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "truePeak",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "previewExportParity",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "contentBudgetLowerBound",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "contentBudgetUpperBound",
+      "status": "passed",
+      "required": true
+    },
+    {
+      "domain": "pendingIntentSatisfaction",
+      "status": "passed",
+      "required": true
+    }
+  ],
+  "visualEvidence": "frames-five-minutes-exact; selection of 8 frames, not a full subjective viewing",
+  "performanceCaveat": "Wall time includes Mac sleep; not a performance result",
+  "scopeCaveat": "Real cached-analysis archive; initial shortlist was not artificially shortened for every T02 precondition"
+}

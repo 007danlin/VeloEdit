@@ -49,16 +49,18 @@ enum SubjectReframeGeometry {
         sourceExtent: CGRect,
         plan: SubjectReframePlan,
         progress: Double,
-        renderSize: CGSize
+        renderSize: CGSize,
+        sourceTime: Double? = nil
     ) -> CGAffineTransform {
         guard sourceExtent.width.isFinite, sourceExtent.height.isFinite,
               sourceExtent.width > 0, sourceExtent.height > 0,
               renderSize.width > 0, renderSize.height > 0 else { return base }
 
         let progress = min(max(0, progress), 1)
-        let centerX = plan.startCenterX + (plan.endCenterX - plan.startCenterX) * progress
-        let centerY = plan.startCenterY + (plan.endCenterY - plan.startCenterY) * progress
-        let requestedScale = plan.startScale + (plan.endScale - plan.startScale) * progress
+        let keyframe = sourceTime.map { plan.interpolated(atSourceTime: $0) } ?? plan.interpolated(progress: progress)
+        let centerX = keyframe.centerX
+        let centerY = keyframe.centerY
+        let requestedScale = keyframe.scale
         let canvas = CGRect(origin: .zero, size: renderSize)
         let baseExtent = sourceExtent.applying(base).standardized
         guard baseExtent.width.isFinite, baseExtent.height.isFinite,
@@ -95,6 +97,23 @@ enum SubjectReframeGeometry {
         let x = minimumX <= maximumX ? min(maximumX, max(minimumX, requestedX)) : 0
         let y = minimumY <= maximumY ? min(maximumY, max(minimumY, requestedY)) : 0
         return zoomedBase.concatenating(CGAffineTransform(translationX: x, y: y))
+    }
+}
+
+enum CompositorOutputGeometry {
+    static func transform(canvas: CGSize, destination: CGSize) -> CGAffineTransform {
+        guard canvas.width > 0, canvas.height > 0 else { return .identity }
+        return CGAffineTransform(scaleX: destination.width / canvas.width,
+                                 y: destination.height / canvas.height)
+    }
+}
+
+enum SafeFitBackgroundRenderer {
+    /// Scale light instead of subtracting a constant: subtraction crushes
+    /// low-light RGB channels independently into black and saturated patches.
+    static func shade(_ image: CIImage) -> CIImage {
+        image.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0.72])
+            .applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: -0.65])
     }
 }
 
@@ -140,8 +159,10 @@ final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtoco
     let transitionItem: TimelineTransitionItem?
     let renderSize: CGSize
     let colorProfile: VideoColorProfile
+    let endingFade: FilmEndingFade?
+    let timelineTimeRange: CMTimeRange?
 
-    init(timeRange: CMTimeRange, layers: [VeloCompositorLayer], telemetryLayers: [VeloTelemetryLayer] = [], effects: [EffectTimelineItem] = [], titles: [TitleTimelineItem] = [], transition: TransitionStyle?, transitionItem: TimelineTransitionItem? = nil, renderSize: CGSize, colorProfile: VideoColorProfile = .rec709) {
+    init(timeRange: CMTimeRange, layers: [VeloCompositorLayer], telemetryLayers: [VeloTelemetryLayer] = [], effects: [EffectTimelineItem] = [], titles: [TitleTimelineItem] = [], transition: TransitionStyle?, transitionItem: TimelineTransitionItem? = nil, renderSize: CGSize, colorProfile: VideoColorProfile = .rec709, endingFade: FilmEndingFade? = nil, timelineTimeRange: CMTimeRange? = nil) {
         self.timeRange = timeRange
         self.layers = layers
         self.telemetryLayers = telemetryLayers
@@ -151,34 +172,85 @@ final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtoco
         self.transitionItem = transitionItem
         self.renderSize = renderSize
         self.colorProfile = colorProfile
-        self.containsTweening = layers.count > 1 || transition != nil || transitionItem != nil || !telemetryLayers.isEmpty || !effects.isEmpty || !titles.isEmpty || layers.contains {
-            $0.item.effect != nil || $0.item.effectiveVideoAdjustments.subjectReframe != nil
-        }
+        self.endingFade = endingFade
+        self.timelineTimeRange = timelineTimeRange
+        // Every instruction is handled by the custom compositor, including a
+        // visually neutral single-layer interval. Advertising such an interval
+        // as non-tweening while also exposing no passthrough track is an invalid
+        // AVVideoCompositionInstruction contract and makes AVAssetExportSession
+        // reject the composition before startRequest(_:) is ever called.
+        self.containsTweening = true
         self.requiredSourceTrackIDs = layers.map { NSNumber(value: $0.trackID) }
         super.init()
     }
+
+    /// Instruction boundaries include every primary start, so this interval
+    /// maps linearly to the editor clock even when transitions overlap clips.
+    /// Effects, title animations and keyframes keep their original timestamps.
+    func timelineTime(at time: CMTime) -> Double {
+        guard let timelineTimeRange, timeRange.duration.seconds > 0 else { return time.seconds }
+        let fraction = min(1, max(0, (time - timeRange.start).seconds / timeRange.duration.seconds))
+        return timelineTimeRange.start.seconds + timelineTimeRange.duration.seconds * fraction
+    }
+
+    var effectiveTransitionItem: TimelineTransitionItem? {
+        if let transitionItem { return transitionItem }
+        let primaries = layers.filter { $0.item.overlay == nil }
+        guard let transition, transition != .cut, primaries.count == 2 else { return nil }
+        return TimelineTransitionItem(style: transition,
+                                      outgoingClipID: primaries[1].item.id,
+                                      incomingClipID: primaries[0].item.id,
+                                      startTime: primaries[0].start.seconds,
+                                      duration: (primaries[1].start + primaries[1].duration - primaries[0].start).seconds)
+    }
+
+    func transitionProgress(at time: CMTime) -> Double {
+        guard let item = effectiveTransitionItem, item.duration > 0 else { return 0 }
+        return min(1, max(0, (time.seconds - item.startTime) / item.duration))
+    }
+
+    /// Transition only the two primary clips, then place connected video above
+    /// the result. A PiP/overlay must neither disable nor join the transition.
+    func compositeFrames(_ frames: [UUID: CIImage], at time: CMTime) -> CIImage {
+        let bounds = CGRect(origin: .zero, size: renderSize)
+        var result = CIImage(color: .black).cropped(to: bounds)
+        if let item = effectiveTransitionItem,
+           let outgoing = frames[item.outgoingClipID], let incoming = frames[item.incomingClipID] {
+            result = TransitionEffectRenderer.renderTransition(
+                outgoing: outgoing, incoming: incoming, item: item,
+                progress: transitionProgress(at: time), bounds: bounds
+            ).composited(over: result)
+        } else {
+            for layer in layers.reversed() where layer.item.overlay == nil {
+                if let image = frames[layer.item.id] { result = image.composited(over: result) }
+            }
+        }
+        for layer in layers.reversed() where layer.item.overlay != nil {
+            if let image = frames[layer.item.id] { result = image.composited(over: result) }
+        }
+        return result.cropped(to: bounds)
+    }
 }
 
-/// Core Image compositor used only when a clip has a color adjustment. It
+/// Core Image compositor for transitions, effects and color adjustments. It
 /// applies filters in memory during playback/render, avoiding a blocking
 /// per-clip transcode before the movie can be viewed.
-public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
-    public let sourcePixelBufferAttributes: [String: any Sendable]? = [
-        kCVPixelBufferPixelFormatTypeKey as String: [
-            kCVPixelFormatType_32BGRA,
-            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-            kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
-        ]
-    ]
-    public let requiredPixelBufferAttributesForRenderContext: [String: any Sendable] = [
-        // A 10-bit surface prevents the custom effects/title path from being
-        // the point where HDR is silently quantized to 8 bit. SDR remains
-        // tagged Rec.709 by the instruction profile.
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
-    ]
+public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
+    public var sourcePixelBufferAttributes: [String: any Sendable]? { [
+        // Keep source and destination pools on one Core Image-native format.
+        // Mixed 8/10-bit YUV alternatives let AVFoundation pick a surface
+        // that cannot be joined to the BGRA render context and fail before
+        // startRequest(_:) with VideoToolbox -12903.
+        kCVPixelBufferPixelFormatTypeKey as String: [kCVPixelFormatType_32BGRA]
+    ] }
+    public var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { [
+        // BGRA is the common Core Image surface and avoids asking CIContext to
+        // render into a bi-planar YUV pool it cannot reliably allocate.
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+    ] }
 
     private let context = CIContext(options: [.cacheIntermediates: false])
+    private let titleBackgroundRenderer = AdaptiveTitleBackgroundRenderer()
     private let lock = NSLock()
     private var renderContext: AVVideoCompositionRenderContext?
     private var cancellationGeneration: UInt64 = 0
@@ -193,25 +265,21 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
 
     public func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
         lock.lock()
-        let currentContext = renderContext
         let requestGeneration = cancellationGeneration
         lock.unlock()
-        guard let instruction = request.videoCompositionInstruction as? VeloVideoInstruction,
-              let destination = currentContext?.newPixelBuffer() else {
+        guard let instruction = request.videoCompositionInstruction as? VeloVideoInstruction else {
             request.finish(with: NSError(domain: "VeloEdit.VideoCompositor", code: 1))
+            return
+        }
+        guard let destination = request.renderContext.newPixelBuffer() else {
+            request.finish(with: NSError(domain: "VeloEdit.VideoCompositor", code: 2))
             return
         }
 
         autoreleasepool {
             let bounds = CGRect(origin: .zero, size: instruction.renderSize)
-            var result = CIImage(color: .black).cropped(to: bounds)
-            let transitionProgress = Self.progress(
-                time: request.compositionTime,
-                start: instruction.timeRange.start,
-                duration: instruction.timeRange.duration
-            )
-
-            var processedLayers: [CIImage] = []
+            let timelineTime = instruction.timelineTime(at: request.compositionTime)
+            var processedLayers: [UUID: CIImage] = [:]
             // The newest/incoming layer is first. Reversing yields outgoing,
             // then incoming — the order expected by the shared renderer.
             for layer in instruction.layers.reversed() {
@@ -220,8 +288,8 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
                 image = AdjustedClipGenerator.apply(layer.item.effectiveVideoAdjustments, to: image)
                 image = stabilizedImage(image, buffer: buffer, layer: layer)
                 let clipTrack = layer.item.overlay == nil ? 0 : 1
-                let standaloneEffects = instruction.effects.active(at: request.compositionTime.seconds, for: layer.item.id, clipTrack: clipTrack)
-                image = TransitionEffectRenderer.applyEffects(standaloneEffects, to: image, timelineTime: request.compositionTime.seconds)
+                let standaloneEffects = instruction.effects.active(at: timelineTime, for: layer.item.id, clipTrack: clipTrack)
+                image = TransitionEffectRenderer.applyEffects(standaloneEffects, to: image, timelineTime: timelineTime)
                 if layer.item.overlay?.style == .greenScreen {
                     image = Self.removeGreen(from: image)
                 }
@@ -236,12 +304,13 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
                     sourceExtent: image.extent,
                     plan: layer.item.effectiveVideoAdjustments.subjectReframe,
                     progress: Self.progress(time: request.compositionTime, start: layer.start, duration: layer.duration),
-                    renderSize: instruction.renderSize
+                    renderSize: instruction.renderSize,
+                    sourceTime: layer.item.sourceTime(atTimelineTime: layer.item.timelineStart + Self.progress(time: request.compositionTime, start: layer.start, duration: layer.duration) * layer.item.timelineDuration)
                 )
                 transform = TransitionEffectRenderer.effectTransform(
                     standaloneEffects,
                     base: transform,
-                    timelineTime: request.compositionTime.seconds,
+                    timelineTime: timelineTime,
                     renderSize: instruction.renderSize
                 )
                 let foreground = image.transformed(by: transform)
@@ -255,48 +324,24 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
                        renderSize: instruction.renderSize
                    ) {
                     let blurRadius = min(36, max(12, min(bounds.width, bounds.height) * 0.016))
-                    let background = image.transformed(by: backgroundTransform)
+                    let blurred = image.transformed(by: backgroundTransform)
                         .clampedToExtent()
                         .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: blurRadius])
-                        .applyingFilter("CIColorControls", parameters: [
-                            kCIInputBrightnessKey: -0.16,
-                            kCIInputContrastKey: 0.88,
-                            kCIInputSaturationKey: 0.72
-                        ])
-                        .cropped(to: bounds)
+                    let background = SafeFitBackgroundRenderer.shade(blurred).cropped(to: bounds)
                     image = foreground.composited(over: background).cropped(to: bounds)
                 } else {
                     image = foreground.cropped(to: bounds)
                 }
                 var opacity = layer.item.effectiveVideoAdjustments.opacity
-                opacity *= TransitionEffectRenderer.effectOpacity(standaloneEffects, timelineTime: request.compositionTime.seconds)
+                opacity *= TransitionEffectRenderer.effectOpacity(standaloneEffects, timelineTime: timelineTime)
                 if opacity < 0.999 {
                     image = image.applyingFilter("CIColorMatrix", parameters: [
                         "inputAVector": CIVector(x: 0, y: 0, z: 0, w: opacity)
                     ])
                 }
-                processedLayers.append(image)
+                processedLayers[layer.item.id] = image
             }
-            if processedLayers.count == 2,
-               let transitionItem = instruction.transitionItem ?? instruction.transition.map({ style in
-                   TimelineTransitionItem(
-                       style: style,
-                       outgoingClipID: instruction.layers.last?.item.id ?? UUID(),
-                       incomingClipID: instruction.layers.first?.item.id ?? UUID(),
-                       startTime: instruction.timeRange.start.seconds,
-                       duration: instruction.timeRange.duration.seconds
-                   )
-               }) {
-                result = TransitionEffectRenderer.renderTransition(
-                    outgoing: processedLayers[0],
-                    incoming: processedLayers[1],
-                    item: transitionItem,
-                    progress: transitionProgress,
-                    bounds: bounds
-                )
-            } else {
-                for image in processedLayers { result = image.composited(over: result) }
-            }
+            var result = instruction.compositeFrames(processedLayers, at: request.compositionTime)
             if instruction.telemetryLayers.isEmpty,
                let layer = instruction.layers.first(where: { $0.item.telemetryOverlay != nil }),
                let settings = layer.item.telemetryOverlay,
@@ -313,8 +358,8 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
                 }
             }
             for layer in instruction.telemetryLayers {
-                let elapsed = request.compositionTime.seconds - layer.start.seconds
-                let progress = min(max(0, elapsed / max(0.05, layer.duration.seconds)), 1)
+                let elapsed = timelineTime - layer.item.timelineStart
+                let progress = min(max(0, elapsed / max(0.05, layer.item.timelineDuration)), 1)
                 let sourceTime: Double
                 if let clip = layer.targetClip {
                     let targetTimelineTime = layer.item.timelineStart + layer.item.timelineDuration * progress
@@ -333,20 +378,32 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
                 result = overlay.composited(over: result)
             }
             for title in instruction.titles.sorted(by: { $0.track < $1.track }) {
-                if let overlay = TitleOverlayRenderer.image(
+                result = TitleOverlayRenderer.composited(
                     item: title,
-                    timelineTime: request.compositionTime.seconds,
-                    renderSize: instruction.renderSize
-                ) {
-                    result = overlay.composited(over: result)
-                }
+                    timelineTime: timelineTime,
+                    renderSize: instruction.renderSize,
+                    over: result,
+                    adaptation: titleBackgroundRenderer
+                )
+            }
+            if let endingFade = instruction.endingFade {
+                result = endingFade.applying(to: result, at: request.compositionTime.seconds)
             }
             // AVFoundation video frames are normally Rec.709. Rendering them
             // into an sRGB-tagged buffer and exporting that buffer as video
             // changes gamma/contrast across the entire movie whenever the
             // custom compositor is enabled by one adjusted clip.
             let colorSpace = VideoColorPipeline.cgColorSpace(for: instruction.colorProfile)
-            context.render(result, to: destination, bounds: bounds, colorSpace: colorSpace)
+            // AVPlayer can request a reduced render surface. Instructions and
+            // layer transforms remain in timeline pixels: fit the entire canvas
+            // to the actual buffer rather than cropping its lower-left corner.
+            let outputBounds = CGRect(x: 0, y: 0,
+                                      width: CVPixelBufferGetWidth(destination),
+                                      height: CVPixelBufferGetHeight(destination))
+            let output = result.transformed(by: CompositorOutputGeometry.transform(
+                canvas: bounds.size, destination: outputBounds.size
+            ))
+            context.render(output, to: destination, bounds: outputBounds, colorSpace: colorSpace)
             if instruction.colorProfile.dynamicRange == .hdr {
                 CVBufferSetAttachment(destination, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_2020, .shouldPropagate)
                 CVBufferSetAttachment(
@@ -491,7 +548,8 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
         sourceExtent: CGRect,
         plan: SubjectReframePlan?,
         progress: Double,
-        renderSize: CGSize
+        renderSize: CGSize,
+        sourceTime: Double? = nil
     ) -> CGAffineTransform {
         guard let plan, plan.confidence >= 0.24 else { return base }
         return SubjectReframeGeometry.transform(
@@ -499,7 +557,8 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
             sourceExtent: sourceExtent,
             plan: plan,
             progress: progress,
-            renderSize: renderSize
+            renderSize: renderSize,
+            sourceTime: plan.keyframes == nil ? nil : sourceTime
         )
     }
 
@@ -541,4 +600,12 @@ public final class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked
         }
         return values.withUnsafeBufferPointer { Data(buffer: $0) }
     }()
+}
+
+/// HDR keeps a 10-bit compositor surface; PlaybackEngine selects this class
+/// only for an HDR delivery profile.
+public final class VeloHDRVideoCompositor: VeloVideoCompositor, @unchecked Sendable {
+    public override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    ] }
 }

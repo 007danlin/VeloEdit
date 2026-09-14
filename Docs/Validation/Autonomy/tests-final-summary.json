@@ -1,0 +1,24 @@
+{
+  "summary": "✔ Test run with 690 tests in 21 suites passed after 298.183 seconds.",
+  "registeredTestCount": 690,
+  "executedPassedTestCount": 680,
+  "skippedTestCount": 10,
+  "issueCount": 0,
+  "testCommand": "caffeinate -i ./Scripts/dev-test.sh --jobs 2 --no-parallel",
+  "log": "/Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/full-regression-final-isolated.log",
+  "skippedTests": [
+    "➜ Test directorRealProjectRepairAndRenderOnCopy() skipped.",
+    "➜ Test largeProjectOpenPlaybackAndFirstFrame() skipped.",
+    "➜ Test editorialProductionizationAudit() skipped.",
+    "➜ Test editorialRealProjectAcceptanceOnCopies() skipped.",
+    "➜ Test editorialRealProjectContactSheetsOnCopies() skipped.",
+    "➜ Test verificationRealProjectRecoveryCommitsFullyVerifiedFilm() skipped.",
+    "➜ Test realGoProExportsAtOriginal5KAndFractionalFPS() skipped.",
+    "➜ Test existingArchiveReceivesOnlyEvidenceBackedChapterEdits() skipped.",
+    "➜ Test realProjectReusesExistingCameraCopiesAndDecodesPlayback() skipped.",
+    "➜ Test highResolutionCameraTransitionDeliversLivePlayerFrames() skipped."
+  ],
+  "performanceRegression": "eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering: 6.442 seconds, unchanged 12-second bound",
+  "priorFailure": "13.000 seconds under concurrent real video work; isolated repeat 9.081 seconds, final full run 6.442 seconds",
+  "timingCaveat": "Runner reported 298.183 seconds; wall time contains Mac sleep and is not an end-to-end UI performance measurement."
+}

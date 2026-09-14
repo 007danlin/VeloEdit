@@ -122,11 +122,23 @@ public enum FreeToUseAPIError: LocalizedError {
 }
 
 public actor FreeToUseMusicProvider {
-    private static let apiTimeout: TimeInterval = 7
-    private static let downloadTimeout: TimeInterval = 60
-    private static let maxRetryAttempts = 1
-    private static let retryBaseDelayNanoseconds: UInt64 = 500_000_000
-    private struct SearchResponse: Decodable { let ok: Bool; let data: [FreeToUseRemoteTrack] }
+    private static let apiTimeout: TimeInterval = 10
+    private struct SearchResponse: Decodable {
+        let ok: Bool
+        let data: [FreeToUseRemoteTrack]
+        enum CodingKeys: String, CodingKey { case ok, data }
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            ok = try container.decode(Bool.self, forKey: .ok)
+            var rows = try container.nestedUnkeyedContainer(forKey: .data)
+            var valid: [FreeToUseRemoteTrack] = []
+            while !rows.isAtEnd {
+                let row = try rows.superDecoder()
+                if let track = try? FreeToUseRemoteTrack(from: row) { valid.append(track) }
+            }
+            data = valid
+        }
+    }
     private struct TrackResponse: Decodable { let ok: Bool; let data: FreeToUseRemoteTrack? }
     public static let apiBaseURL = URL(string: "https://api.freetouse.com/v3")!
     public static let musicHomeURL = URL(string: "https://freetouse.com/music")!
@@ -141,11 +153,7 @@ public actor FreeToUseMusicProvider {
     }
 
     private static func makeDefaultSession() -> URLSession {
-        let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = false
-        configuration.timeoutIntervalForRequest = apiTimeout
-        configuration.timeoutIntervalForResource = downloadTimeout
-        return URLSession(configuration: configuration)
+        MusicAudioDownloader.makeSession()
     }
 
     @discardableResult
@@ -199,14 +207,13 @@ public actor FreeToUseMusicProvider {
         var components = URLComponents(url: Self.apiBaseURL.appendingPathComponent("music/tracks/search"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "query", value: query),
-            URLQueryItem(name: "limit", value: "40"),
-            URLQueryItem(name: "order", value: "downloads"),
+            URLQueryItem(name: "limit", value: "60"),
+            URLQueryItem(name: "order", value: "random"),
             URLQueryItem(name: "sort", value: "desc")
         ]
         guard let url = components.url else { throw FreeToUseAPIError.invalidResponse }
-        let request = URLRequest(url: url)
-        let (data, response) = try await performDataRequest(request, timeoutInterval: Self.apiTimeout)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+        let data = try await MusicHTTPClient.data(at: url, session: session, timeout: Self.apiTimeout)
+        guard
               let decoded = try? JSONDecoder().decode(SearchResponse.self, from: data), decoded.ok else {
             throw FreeToUseAPIError.invalidResponse
         }
@@ -216,9 +223,8 @@ public actor FreeToUseMusicProvider {
     public func track(id: String) async throws -> FreeToUseRemoteTrack {
         guard UUID(uuidString: id) != nil else { throw FreeToUseAPIError.invalidResponse }
         let url = Self.apiBaseURL.appendingPathComponent("music/tracks").appendingPathComponent(id)
-        let request = URLRequest(url: url)
-        let (data, response) = try await performDataRequest(request, timeoutInterval: Self.apiTimeout)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+        let data = try await MusicHTTPClient.data(at: url, session: session, timeout: Self.apiTimeout)
+        guard
               let decoded = try? JSONDecoder().decode(TrackResponse.self, from: data),
               decoded.ok, let track = decoded.data else {
             throw FreeToUseAPIError.invalidResponse
@@ -227,30 +233,18 @@ public actor FreeToUseMusicProvider {
     }
 
     public func download(_ remote: FreeToUseRemoteTrack) async throws -> LocalMusicTrack {
+        guard !remote.isPremium else { throw FreeToUseAPIError.noFreeTrack }
         let audioURL = remote.files.mp3
         guard audioURL.scheme == "https", audioURL.host?.lowercased() == "data.freetouse.com" else {
             throw FreeToUseAPIError.invalidDownloadURL
         }
-        let request = URLRequest(url: audioURL)
-        let (temporaryURL, response) = try await performDownloadRequest(request, timeoutInterval: Self.downloadTimeout)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw FreeToUseAPIError.downloadFailed
-        }
-        // URLSession gives downloads an extensionless temporary name. AVFoundation
-        // can reject that file before sniffing its MPEG payload, so stage it with
-        // the real extension before validating and importing it.
-        let stagedURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("veloedit-music-\(UUID().uuidString)")
-            .appendingPathExtension("mp3")
-        defer { try? FileManager.default.removeItem(at: stagedURL) }
-        do {
-            try FileManager.default.copyItem(at: temporaryURL, to: stagedURL)
-            return try await library.importFreeToUseTrack(remote, downloadedFileURL: stagedURL)
-        } catch let error as FreeToUseAPIError {
-            throw error
-        } catch {
-            throw FreeToUseAPIError.providerFailure(error.localizedDescription)
-        }
+        let author = remote.author.isEmpty ? "Free To Use artist" : remote.author
+        let candidate = MusicProviderTrack(id: remote.id, sourceProvider: .freeToUse,
+            metadata: MusicTrackMetadata(title: remote.title, artist: author,
+                genres: [remote.genre].compactMap { $0 }, moods: remote.categories.map(\.name), tags: remote.tags,
+                energy: remote.energy, bpm: remote.estimatedBPM, duration: remote.duration, sourceName: "Free To Use Music"),
+            license: .freeToUse(title: remote.title, author: author), sourcePageURL: remote.sourcePageURL, downloadURL: audioURL)
+        return try await MusicAudioDownloader.download(candidate, into: library, session: session)
     }
 
     private func score(_ track: FreeToUseRemoteTrack, _ directive: MusicDirective) -> Double {
@@ -295,55 +289,7 @@ public actor FreeToUseMusicProvider {
         }
     }
 
-    private func performDataRequest(
-        _ request: URLRequest,
-        timeoutInterval: TimeInterval
-    ) async throws -> (Data, URLResponse) {
-        for attempt in 1...Self.maxRetryAttempts {
-            do {
-                var request = request
-                request.setValue("VeloEdit/1.0", forHTTPHeaderField: "User-Agent")
-                request.timeoutInterval = timeoutInterval
-                return try await session.data(for: request)
-            } catch {
-                if attempt == Self.maxRetryAttempts || !Self.shouldRetry(error) { throw error }
-                try await Task.sleep(nanoseconds: Self.retryBaseDelayNanoseconds << (attempt - 1))
-            }
-        }
-        throw FreeToUseAPIError.providerFailure("не удалось выполнить сетевой запрос после повтора")
-    }
 
-    private func performDownloadRequest(
-        _ request: URLRequest,
-        timeoutInterval: TimeInterval
-    ) async throws -> (URL, URLResponse) {
-        for attempt in 1...Self.maxRetryAttempts {
-            do {
-                var request = request
-                request.setValue("VeloEdit/1.0", forHTTPHeaderField: "User-Agent")
-                request.timeoutInterval = timeoutInterval
-                return try await session.download(for: request)
-            } catch {
-                if attempt == Self.maxRetryAttempts || !Self.shouldRetry(error) { throw error }
-                try await Task.sleep(nanoseconds: Self.retryBaseDelayNanoseconds << (attempt - 1))
-            }
-        }
-        throw FreeToUseAPIError.providerFailure("не удалось выполнить сетевой запрос после повтора")
-    }
-
-    private static func shouldRetry(_ error: Error) -> Bool {
-        let error = error as NSError
-        guard error.domain == NSURLErrorDomain else { return false }
-        switch error.code {
-        case NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost, NSURLErrorCannotFindHost,
-             NSURLErrorCannotConnectToHost, NSURLErrorDNSLookupFailed, NSURLErrorNotConnectedToInternet,
-             NSURLErrorDataNotAllowed, NSURLErrorInternationalRoamingOff, NSURLErrorCallIsActive,
-             NSURLErrorResourceUnavailable, NSURLErrorSecureConnectionFailed, NSURLErrorCannotLoadFromNetwork:
-            return true
-        default:
-            return false
-        }
-    }
 }
 
 extension FreeToUseMusicProvider: MusicProvider {
@@ -354,38 +300,83 @@ extension FreeToUseMusicProvider: MusicProvider {
     public func availability() async -> MusicProviderAvailability { .available }
 
     public func search(_ intent: MusicIntent) async throws -> [MusicProviderTrack] {
-        try await search(query: intent.searchQuery.isEmpty ? "background music" : intent.searchQuery)
-            .filter { !$0.isPremium }
-            .map { remote in
-                let author = remote.author.isEmpty ? "Free To Use artist" : remote.author
-                let license = MusicLicenseRecord.freeToUse(title: remote.title, author: author)
-                return MusicProviderTrack(
-                    id: remote.id,
-                    sourceProvider: .freeToUse,
-                    metadata: MusicTrackMetadata(
-                        title: remote.title,
-                        artist: author,
-                        genres: [remote.genre].compactMap { $0 },
-                        moods: remote.categories.map(\.name),
-                        tags: remote.tags,
-                        energy: remote.energy,
-                        bpm: remote.estimatedBPM,
-                        duration: remote.duration,
-                        sourceName: "Free To Use Music",
-                        instrumental: nil
-                    ),
-                    license: license,
-                    sourcePageURL: remote.sourcePageURL,
-                    downloadURL: remote.files.mp3
-                )
+        var remoteTracks: [FreeToUseRemoteTrack] = []
+        var lastError: Error?
+        for query in Self.searchQueries(for: intent) {
+            do {
+                remoteTracks += try await search(query: query).filter { !$0.isPremium }
+                if remoteTracks.count >= 40 { break }
+            } catch {
+                if Task.isCancelled { throw error }
+                lastError = error
+                break // Changing words cannot repair a network outage.
             }
+        }
+        if remoteTracks.isEmpty, let lastError { throw lastError }
+        var seen: Set<String> = []
+        return remoteTracks.filter { seen.insert($0.id).inserted }.map { remote in
+            let author = remote.author.isEmpty ? "Free To Use artist" : remote.author
+            let license = MusicLicenseRecord.freeToUse(title: remote.title, author: author)
+            return MusicProviderTrack(
+                id: remote.id,
+                sourceProvider: .freeToUse,
+                metadata: MusicTrackMetadata(
+                    title: remote.title,
+                    artist: author,
+                    genres: [remote.genre].compactMap { $0 },
+                    moods: remote.categories.map(\.name),
+                    tags: remote.tags,
+                    energy: remote.energy,
+                    bpm: remote.estimatedBPM,
+                    duration: remote.duration,
+                    sourceName: "Free To Use Music",
+                    instrumental: nil
+                ),
+                license: license,
+                sourcePageURL: remote.sourcePageURL,
+                downloadURL: remote.files.mp3
+            )
+        }
+    }
+
+    /// Free To Use matches every supplied term quite narrowly. Start with a
+    /// short provider-specific query and keep the richer intent as a fallback.
+    nonisolated static func searchQueries(for intent: MusicIntent) -> [String] {
+        if let request = intent.request {
+            if request.exactTrack { return [request.query] }
+            let words = MusicSearchRequest.translatedDescriptors(request.query.lowercased())
+            return [request.query] + words.filter { $0 != request.query }.prefix(2)
+        }
+        let tokens = intent.mood.union(intent.genres)
+        let primary: String
+        if intent.genres.contains("folk") {
+            primary = "acoustic"
+        } else if !tokens.isDisjoint(with: ["joyful", "happy", "bright"]) {
+            primary = "happy"
+        } else if !tokens.isDisjoint(with: ["cinematic", "dramatic", "orchestral"]) {
+            primary = "cinematic"
+        } else if !tokens.isDisjoint(with: ["electronic", "synth", "techno", "energetic", "upbeat"]) {
+            primary = "electronic"
+        } else if !tokens.isDisjoint(with: ["calm", "ambient", "soft"]) {
+            primary = "calm"
+        } else {
+            primary = "energetic"
+        }
+        var queries = [primary]
+        let fallback = primary == "calm" ? "ambient" : primary == "cinematic" ? "inspiring" : primary == "electronic" ? "upbeat" : "melodic"
+        if !fallback.isEmpty, fallback != primary { queries.append(fallback) }
+        return queries
     }
 
     public func download(_ candidate: MusicProviderTrack) async throws -> LocalMusicTrack {
         if let existing = try await library.tracks().first(where: {
             $0.sourceProvider == .freeToUse && $0.providerTrackID == candidate.id && $0.isPlayable
         }) { return existing }
-        return try await download(track(id: candidate.id))
+        // Search already provides the authoritative non-premium flag and
+        // direct MP3. A second metadata request must not block a valid file.
+        guard candidate.sourceProvider == .freeToUse,
+              candidate.downloadURL?.host?.lowercased() == "data.freetouse.com" else { throw FreeToUseAPIError.invalidDownloadURL }
+        return try await MusicAudioDownloader.download(candidate, into: library, session: session)
     }
 
     public func metadata(_ track: MusicProviderTrack) async throws -> MusicTrackMetadata { track.metadata }

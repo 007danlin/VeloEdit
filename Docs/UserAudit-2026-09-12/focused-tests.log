@@ -1,0 +1,601 @@
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/Caches/org.swift.swiftpm is not accessible or not writable, disabling user-level cache features.
+warning: 'veloedit': failed storing manifest for 'veloedit' in cache: attempt to write a readonly database
+[0/1] Planning build
+Building for debugging...
+[0/8] Write sources
+[4/13] Write swift-version--58304C5D6DBC2206.txt
+[6/23] Emitting module VeloEditCore
+[7/23] Compiling VeloEditCore AutomaticEditorialAssembly.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[8/23] Compiling VeloEditCore DirectorRequestContract.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[9/23] Compiling VeloEditCore EditorialAudioMastering.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[10/23] Compiling VeloEditCore EditorialFallback.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[11/23] Compiling VeloEditCore EditorialLocalSemanticVerifier.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[12/23] Compiling VeloEditCore EditorialRenderedReview.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[13/23] Compiling VeloEditCore EditorialReview.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[14/23] Compiling VeloEditCore EditorialVerification.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[15/23] Compiling VeloEditCore Models.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[16/51] Compiling VeloEditCore AIDirectorEngine.swift
+[17/51] Compiling VeloEditCore AdaptiveSoundtrack.swift
+[18/51] Compiling VeloEditCore AdaptiveTasteEngine.swift
+[19/51] Compiling VeloEditCore ApprovedReferenceLearning.swift
+[20/51] Compiling VeloEditCore AutomaticFilmDurationPolicy.swift
+[21/51] Compiling VeloEditCore AutomaticTelemetryPolicy.swift
+[22/51] Compiling VeloEditCore AutonomousDirector.swift
+[23/51] Compiling VeloEditCore CachePaths.swift
+[24/51] Compiling VeloEditCore ChapterTitleReference.swift
+[25/51] Compiling VeloEditCore DirectorVisualStyle.swift
+[26/51] Compiling VeloEditCore EditorCommandEngine.swift
+[27/51] Compiling VeloEditCore EditorialDeliveryVerification.swift
+[28/51] Compiling VeloEditCore EditorialIntent.swift
+[29/51] Compiling VeloEditCore EditorialPresentation.swift
+[30/51] Compiling VeloEditCore EditorialProjectMigration.swift
+[31/51] Compiling VeloEditCore EditorialRollout.swift
+[32/51] Compiling VeloEditCore EditorialSpeech.swift
+[33/51] Compiling VeloEditCore ExportVideoSettings.swift
+[34/51] Compiling VeloEditCore FCPXMLExporter.swift
+[35/70] Compiling VeloEditCore NaturalChapterTransitions.swift
+[36/70] Compiling VeloEditCore NaturalTransitionVision.swift
+[37/70] Compiling VeloEditCore PerceptualReview.swift
+[38/70] Compiling VeloEditCore PlaybackEngine.swift
+[39/70] Compiling VeloEditCore ProcessedAudioGenerator.swift
+[40/70] Compiling VeloEditCore ProjectStore.swift
+[41/70] Compiling VeloEditCore RenderEngine.swift
+[42/70] Compiling VeloEditCore SourceAudioMixPolicy.swift
+[43/70] Compiling VeloEditCore VeloEditPipeline.swift
+[44/70] Compiling VeloEditCore FilmBuildRecovery.swift
+[45/70] Compiling VeloEditCore FilmEndingFade.swift
+[46/70] Compiling VeloEditCore MontageVariantScoring.swift
+[47/70] Compiling VeloEditCore MusicLibrary.swift
+[48/70] Compiling VeloEditCore MusicSyncEngine.swift
+[49/70] Compiling VeloEditCore NaturalLanguageDirector.swift
+[50/70] Compiling VeloEditCore ProductionHardening.swift
+[51/70] Compiling VeloEditCore ProfessionalEffectSystem.swift
+[52/70] Compiling VeloEditCore ProfessionalPipeline.swift
+[53/70] Compiling VeloEditCore SmartTelemetryEngine.swift
+[54/70] Compiling VeloEditCore SmartTitleEngine.swift
+[55/70] Compiling VeloEditCore SoftwareCompositionExporter.swift
+[56/70] Compiling VeloEditCore StoryEngine.swift
+[57/70] Compiling VeloEditCore TelemetryAlphaRenderer.swift
+[58/70] Compiling VeloEditCore TimelineComposer.swift
+[59/70] Compiling VeloEditCore TimelineTiming.swift
+[60/70] Compiling VeloEditCore TitleEditPreservation.swift
+[61/70] Compiling VeloEditCore VariantQuality.swift
+[62/70] Compiling VeloEditCore VeloVideoCompositor.swift
+[63/101] Emitting module VeloEditCoreTests
+[64/124] Compiling VeloEditCoreTests AIDirectorEngineTests.swift
+[65/124] Compiling VeloEditCoreTests AIProfilesTests.swift
+[66/124] Compiling VeloEditCoreTests ActivityTimeEstimateTests.swift
+[67/124] Compiling VeloEditCoreTests AdaptiveSoundtrackTests.swift
+[68/124] Compiling VeloEditCoreTests AdaptiveTasteEngineTests.swift
+[69/124] Compiling VeloEditCoreTests AdaptiveTitleBackgroundTests.swift
+[70/124] Compiling VeloEditCoreTests AnalysisPipelineTests.swift
+[71/124] Compiling VeloEditCoreTests AutomaticEditorialAssemblyTests.swift
+[72/124] Compiling VeloEditCoreTests AutomaticFilmDurationTests.swift
+[73/124] Compiling VeloEditCoreTests AutomaticSoundtrackSuitabilityTests.swift
+[74/124] Compiling VeloEditCoreTests AutonomousDirectorTests.swift
+[75/124] Compiling VeloEditCoreTests AutopilotArchiveAuditTests.swift
+[76/124] Compiling VeloEditCoreTests AutopilotDefaultsTests.swift
+[77/124] Compiling VeloEditCoreTests DeepMediaUnderstandingTests.swift
+[78/124] Compiling VeloEditCoreTests DirectorBriefTests.swift
+[79/124] Compiling VeloEditCoreTests DirectorRealProjectAuditTests.swift
+[80/124] Compiling VeloEditCoreTests DirectorRequestContractTests.swift
+[81/124] Compiling VeloEditCoreTests DirectorVisualStyleTests.swift
+[82/124] Compiling VeloEditCoreTests DynamicMusicTests.swift
+[83/124] Compiling VeloEditCoreTests EditorFeaturesTests.swift
+[84/124] Compiling VeloEditCoreTests EditorPerformanceTests.swift
+[85/124] Compiling VeloEditCoreTests EditorPreviewParityTests.swift
+[86/124] Compiling VeloEditCoreTests EditorialAudioMasteringTests.swift
+[87/146] Emitting module VeloEdit
+[94/151] Compiling VeloEditCoreTests EditorialFixtureProber.swift
+[95/151] Compiling VeloEditCoreTests EditorialIntelligenceTests.swift
+[96/151] Compiling VeloEditCoreTests EditorialProductionizationAuditTests.swift
+[97/151] Compiling VeloEditCoreTests EditorialProjectMigrationTests.swift
+[98/151] Compiling VeloEditCoreTests EditorialRealProjectAcceptanceTests.swift
+[99/151] Compiling VeloEditCoreTests EditorialVerificationTests.swift
+[100/151] Compiling VeloEditCoreTests EventIntelligenceTests.swift
+[101/151] Compiling VeloEditCoreTests ExportSettingsTests.swift
+[102/151] Compiling VeloEditCoreTests ExportTests.swift
+[103/151] Compiling VeloEditCoreTests FilmBuildProgressTests.swift
+[104/151] Compiling VeloEditCoreTests FilmBuildRecoveryTests.swift
+[105/151] Compiling VeloEditCoreTests FilmBuildTimeEstimateTests.swift
+[106/151] Compiling VeloEditCoreTests FilmMusicEndingTests.swift
+[107/151] Compiling VeloEditCoreTests FilmPresentationTests.swift
+[108/151] Compiling VeloEditCoreTests FilmReadinessTests.swift
+[109/151] Compiling VeloEditCoreTests MixedMediaExportTests.swift
+[110/151] Compiling VeloEditCoreTests MusicCascadeTests.swift
+[111/151] Compiling VeloEditCoreTests MusicNetworkReliabilityTests.swift
+[112/151] Compiling VeloEditCoreTests MusicProviderArchitectureTests.swift
+[113/151] Compiling VeloEditCoreTests NaturalChapterTransitionTests.swift
+[114/151] Compiling VeloEditCoreTests PerceptualReviewTests.swift
+[115/151] Compiling VeloEditCoreTests ProcessedAudioCacheTests.swift
+[116/151] Compiling VeloEditCoreTests ProductionHardeningTests.swift
+[117/151] Compiling VeloEdit TelemetryLibraryView.swift
+[118/151] Compiling VeloEdit ThumbnailImageView.swift
+[119/151] Compiling VeloEdit TimelineKeyboardMonitor.swift
+[120/151] Compiling VeloEdit TitlePreviewFrameSource.swift
+[121/151] Compiling VeloEdit VeloEditApp.swift
+[122/153] Emitting module VeloEditCLI
+[123/153] Compiling VeloEditCLI main.swift
+[123/153] Write Objects.LinkFileList
+[125/153] Linking VeloEdit
+[126/153] Linking veloedit-cli
+[128/155] Compiling VeloEditAppTests ProjectInteractionTests.swift
+[129/155] Emitting module VeloEditAppTests
+[129/155] Applying veloedit-cli
+[130/155] Applying VeloEdit
+[132/155] Compiling VeloEditCoreTests ProfessionalEditingCoreTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[133/155] Compiling VeloEditCoreTests ProfessionalEffectSystemTZ16Tests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[134/155] Compiling VeloEditCoreTests ProfessionalPipelineTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[135/155] Compiling VeloEditCoreTests ProjectStoreTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[136/155] Compiling VeloEditCoreTests ProxyPlaybackRegressionTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[137/155] Compiling VeloEditCoreTests SafeFitBackgroundTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[138/155] Compiling VeloEditCoreTests SmartFramingTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[139/155] Compiling VeloEditCoreTests SmartTelemetryEngineTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[140/155] Compiling VeloEditCoreTests SmartTitleEngineTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[141/155] Compiling VeloEditCoreTests SourceAudioMixPolicyTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[142/155] Compiling VeloEditCoreTests StoryEngineTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[143/155] Compiling VeloEditCoreTests SystemResourceMonitorTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[144/155] Compiling VeloEditCoreTests TelemetryEngineTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[145/155] Compiling VeloEditCoreTests TelemetryHighlightsTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[146/155] Compiling VeloEditCoreTests TimelineAICommentsTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[147/155] Compiling VeloEditCoreTests TimelineObjectsTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[148/155] Compiling VeloEditCoreTests TitleIntentRecoveryTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[149/155] Compiling VeloEditCoreTests TitleTemplateTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[150/155] Compiling VeloEditCoreTests TransitionEffectProfessionalTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[151/155] Compiling VeloEditCoreTests TransitionPlaybackRegressionTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[152/155] Compiling VeloEditCoreTests VariantQualityTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[153/155] Compiling VeloEditCoreTests VisionBatchContractTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[153/155] Write Objects.LinkFileList
+[154/155] Linking VeloEditPackageTests
+Build complete! (73.64s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ProjectInteractionTests started.
+◇ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() started.
+✔ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() passed after 0.028 seconds.
+◇ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() started.
+✔ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() passed after 0.057 seconds.
+◇ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() started.
+✔ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() passed after 0.018 seconds.
+◇ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() started.
+PERF optimistic-trim maximum_ms=0.5069971084594727
+✔ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() passed after 0.071 seconds.
+✔ Suite ProjectInteractionTests passed after 0.176 seconds.
+◇ Test filmBuildRecoveryReopensAndCommitsExactWinnerOnlyOnce() started.
+✔ Test filmBuildRecoveryReopensAndCommitsExactWinnerOnlyOnce() passed after 0.020 seconds.
+◇ Test filmBuildRecoveryRejectsChangedInputsButPreservesNavigation() started.
+✔ Test filmBuildRecoveryRejectsChangedInputsButPreservesNavigation() passed after 0.013 seconds.
+◇ Test filmBuildRecoveryRejectsStaleCheckpointAndRetainsCancelledWork() started.
+✔ Test filmBuildRecoveryRejectsStaleCheckpointAndRetainsCancelledWork() passed after 0.011 seconds.
+◇ Test filmBuildRecoveryKeepsRequestAfterReusableAnalysisIsSaved() started.
+✔ Test filmBuildRecoveryKeepsRequestAfterReusableAnalysisIsSaved() passed after 0.007 seconds.
+◇ Test filmBuildProgressDrainsNestedUpdatesBeforeReturning() started.
+✔ Test filmBuildProgressDrainsNestedUpdatesBeforeReturning() passed after 0.025 seconds.
+◇ Test filmBuildRecoveryReusesOnlyCompletedControlExports() started.
+✘ Test filmBuildRecoveryReusesOnlyCompletedControlExports() recorded an issue at FilmBuildRecoveryTests.swift:107:2: Caught error: .unsatisfiedIntent("Playback build: VeloEditCore.DerivedMediaError 0: Не удалось экспортировать видео: startWriting: AVFoundationErrorDomain -11834 [\"NSLocalizedDescription\": Cannot Encode, \"AVErrorMediaSubTypeKey\": <__NSSingleObjectArrayI 0xbef3fd0b0>(\n1635148593\n)\n, \"AVErrorMediaTypeKey\": vide, \"NSLocalizedFailureReason\": The encoder required for this media cannot be found.]")
+✘ Test filmBuildRecoveryReusesOnlyCompletedControlExports() failed after 0.044 seconds with 1 issue.
+◇ Test newProjectsUseBundledFastAIAndSeparateMusicLibraries() started.
+✔ Test newProjectsUseBundledFastAIAndSeparateMusicLibraries() passed after 0.030 seconds.
+◇ Test createFilmUsesExplicitUserTrackEvenWhenBriefDisablesAutomaticMusic() started.
+✔ Test createFilmUsesExplicitUserTrackEvenWhenBriefDisablesAutomaticMusic() passed after 0.412 seconds.
+◇ Test projectRoundTripAndCacheLookup() started.
+✔ Test projectRoundTripAndCacheLookup() passed after 0.005 seconds.
+◇ Test projectSummaryTracksTheActualTimelineCoverAndAssetCount() started.
+✔ Test projectSummaryTracksTheActualTimelineCoverAndAssetCount() passed after 0.005 seconds.
+◇ Test projectCacheRejectsAnOutdatedDeepAnalysisContract() started.
+✔ Test projectCacheRejectsAnOutdatedDeepAnalysisContract() passed after 0.004 seconds.
+◇ Test builtInBackgroundBecomesReusableTimelineMedia() started.
+✔ Test builtInBackgroundBecomesReusableTimelineMedia() passed after 0.039 seconds.
+◇ Test legacyBackgroundAssetMigratesWithoutBreakingTimelineReference() started.
+✔ Test legacyBackgroundAssetMigratesWithoutBreakingTimelineReference() passed after 0.014 seconds.
+◇ Test everyNonSolidBackgroundHasMotionAndCategory() started.
+✔ Test everyNonSolidBackgroundHasMotionAndCategory() passed after 0.001 seconds.
+◇ Test projectRoundTripPreservesDirectorConversation() started.
+✔ Test projectRoundTripPreservesDirectorConversation() passed after 0.005 seconds.
+◇ Test projectRoundTripPreservesDirectorMusicChoice() started.
+✔ Test projectRoundTripPreservesDirectorMusicChoice() passed after 0.005 seconds.
+◇ Test legacyWorkspaceStateDecodesWithoutDirectorConversation() started.
+✔ Test legacyWorkspaceStateDecodesWithoutDirectorConversation() passed after 0.001 seconds.
+◇ Test cacheKeyChangesWithSchema() started.
+✔ Test cacheKeyChangesWithSchema() passed after 0.001 seconds.
+◇ Test timelineFilmstripsUseRetinaSizedTilesAndVersionedCache() started.
+✔ Test timelineFilmstripsUseRetinaSizedTilesAndVersionedCache() passed after 0.001 seconds.
+◇ Test expansionFiltersSupportedFiles() started.
+✔ Test expansionFiltersSupportedFiles() passed after 0.081 seconds.
+◇ Test streamingHashIsStable() started.
+✔ Test streamingHashIsStable() passed after 0.001 seconds.
+◇ Test quickFingerprintIsStableAndDetectsChangedTail() started.
+✔ Test quickFingerprintIsStableAndDetectsChangedTail() passed after 0.001 seconds.
+◇ Test legacyAssetJSONDecodesWithoutFullHash() started.
+✔ Test legacyAssetJSONDecodesWithoutFullHash() passed after 0.001 seconds.
+◇ Test pipelinePersistsAssetAndTimelineEdits() started.
+✔ Test pipelinePersistsAssetAndTimelineEdits() passed after 0.015 seconds.
+◇ Test timelineSupportsDirectReorderingAndSpeedAwareEdgeTrimming() started.
+✔ Test timelineSupportsDirectReorderingAndSpeedAwareEdgeTrimming() passed after 0.010 seconds.
+◇ Test connectedClipKeepsItsOffsetWhenPrimaryStorylineReorders() started.
+✔ Test connectedClipKeepsItsOffsetWhenPrimaryStorylineReorders() passed after 0.001 seconds.
+◇ Test pipelineSplitsSelectedClipAtAnExactTimelineFrame() started.
+✔ Test pipelineSplitsSelectedClipAtAnExactTimelineFrame() passed after 0.007 seconds.
+◇ Test detachedAudioMovesIndependentlyAndSurvivesMagneticVideoReorder() started.
+✔ Test detachedAudioMovesIndependentlyAndSurvivesMagneticVideoReorder() passed after 0.012 seconds.
+◇ Test productionTimelineSequenceStaysGapFreeAndPersistsAfterManyEdits() started.
+✔ Test productionTimelineSequenceStaysGapFreeAndPersistsAfterManyEdits() passed after 0.026 seconds.
+◇ Test magicBrushSlicesBoundariesAndChangesOnlyTheRequestedRange() started.
+✔ Test magicBrushSlicesBoundariesAndChangesOnlyTheRequestedRange() passed after 0.009 seconds.
+◇ Test magicBrushRejectsCommandsThatWouldLeakAcrossTheWholeFilm() started.
+✔ Test magicBrushRejectsCommandsThatWouldLeakAcrossTheWholeFilm() passed after 0.009 seconds.
+◇ Test magicBrushSlicesAndUpdatesEveryStandaloneTrack() started.
+✔ Test magicBrushSlicesAndUpdatesEveryStandaloneTrack() passed after 0.009 seconds.
+◇ Test removingAssetCleansDependentProjectData() started.
+✔ Test removingAssetCleansDependentProjectData() passed after 0.008 seconds.
+✘ Test run with 37 tests in 1 suite failed after 1.017 seconds with 1 issue.

@@ -1,0 +1,80 @@
+{
+  "ui-one-click": {
+    "timelineCount": 1,
+    "timelineID": "B270E85D-EA4B-4B85-96AB-7F796813FEBD",
+    "items": 4,
+    "job": {
+      "projectID": "E2B617A6-1C8B-4B0F-9DF1-FABD5C41A77B",
+      "kind": "export",
+      "state": "completed",
+      "explicitCancellation": false,
+      "updatedAt": "2026-09-14T08:07:14Z",
+      "resultTimelineID": "B270E85D-EA4B-4B85-96AB-7F796813FEBD",
+      "executor": "VeloEdit/71185",
+      "attempts": [],
+      "id": "B22D9053-B552-42C4-B45D-2467DD464416",
+      "inputSignature": "film-build-v1:D7DC5B61-9C8F-4BD4-BA0D-99010C463291",
+      "maximumRecoveries": 8,
+      "baseRevision": 7,
+      "schemaVersion": 1,
+      "stage": "export",
+      "maximumCompositionRepairs": 6
+    },
+    "exports": [
+      {
+        "file": "/Users/daniellineckij/VeloEdit/Build/AutonomyAcceptance-2026-09-13/ui-one-click.veloedit/Exports/Проверка одного нажатия-8F3F8C19.mp4",
+        "bytes": 142079601,
+        "storedSHA256": "3038e8cc30e105442b4685c37ed95b542361f2a01c9c89bd25a011691ed73a3a",
+        "actualSHA256": "3038e8cc30e105442b4685c37ed95b542361f2a01c9c89bd25a011691ed73a3a",
+        "matches": true,
+        "timelineID": "B270E85D-EA4B-4B85-96AB-7F796813FEBD",
+        "videoSummary": "5312 × 2988 · 30 кадров/с · HEVC · 113.4 Мбит/с",
+        "status": "completed"
+      }
+    ]
+  },
+  "exact": {
+    "timelineCount": 1,
+    "timelineID": "5DCC183F-FBBC-45FC-A308-5D8BEF995EB9",
+    "items": 7,
+    "job": {
+      "executor": "VeloEdit/69336",
+      "schemaVersion": 1,
+      "baseRevision": 1,
+      "attempts": [],
+      "kind": "export",
+      "id": "3DDB92B7-4344-4EA9-9A39-C6E153FF0FDF",
+      "maximumCompositionRepairs": 6,
+      "updatedAt": "2026-09-14T07:42:10Z",
+      "explicitCancellation": false,
+      "resultTimelineID": "5DCC183F-FBBC-45FC-A308-5D8BEF995EB9",
+      "inputSignature": "film-build-v1:188A6F4B-FCB0-499C-B066-6C69E8334E7D",
+      "projectID": "34F53A76-7931-4E7D-816E-D94283BCEA4D",
+      "state": "completed",
+      "maximumRecoveries": 8,
+      "stage": "export"
+    },
+    "exports": [
+      {
+        "file": "/Users/daniellineckij/VeloEdit/Build/AutonomyAcceptance-2026-09-13/exact.veloedit/Exports/automatic-ADDBC6E0.mp4",
+        "bytes": 208039722,
+        "storedSHA256": "4288d6bb0fbfc2cdfaea331744cc63cae2a988dcb69e36c24711ea20f6cb7798",
+        "actualSHA256": "4288d6bb0fbfc2cdfaea331744cc63cae2a988dcb69e36c24711ea20f6cb7798",
+        "matches": true,
+        "timelineID": "5DCC183F-FBBC-45FC-A308-5D8BEF995EB9",
+        "videoSummary": "5312 × 2988 · 30 кадров/с · HEVC · 110.7 Мбит/с",
+        "status": "completed"
+      },
+      {
+        "file": "/Users/daniellineckij/VeloEdit/Build/AutonomyAcceptance-2026-09-13/exact.veloedit/Exports/automatic-85FC3731.mp4",
+        "bytes": 214153802,
+        "storedSHA256": "5d3a1c6c264871cb38e32b437a89570914f8340e121f258e021e3d42cc007e57",
+        "actualSHA256": "5d3a1c6c264871cb38e32b437a89570914f8340e121f258e021e3d42cc007e57",
+        "matches": true,
+        "timelineID": "5DCC183F-FBBC-45FC-A308-5D8BEF995EB9",
+        "videoSummary": "5312 × 2988 · 30 кадров/с · HEVC · 114.0 Мбит/с",
+        "status": "completed"
+      }
+    ]
+  }
+}

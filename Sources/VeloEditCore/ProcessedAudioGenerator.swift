@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import Darwin
 
 /// Creates a disposable PCM intermediate for adjustments AVAudioMix cannot
 /// express. Originals are only read. Clip gain and fades remain non-destructive
@@ -17,8 +18,31 @@ public actor ProcessedAudioGenerator {
         sourceStart: Double,
         sourceDuration: Double,
         adjustments: AudioAdjustments,
-        destination: URL
+        destination: URL,
+        cacheDirectory: URL? = nil
     ) async throws -> URL {
+        try Task.checkCancellation()
+        if let cacheDirectory {
+            let identity = try Self.cacheIdentity(sourceURL: sourceURL, sourceStart: sourceStart,
+                                                 sourceDuration: sourceDuration, adjustments: adjustments)
+            let cached = cacheDirectory.appendingPathComponent("audio-\(identity).caf")
+            if Self.isUsableCachedAudio(cached, duration: sourceDuration) { return cached }
+            try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            let temporary = cacheDirectory.appendingPathComponent(".audio-\(UUID().uuidString).partial.caf")
+            defer { try? FileManager.default.removeItem(at: temporary) }
+            _ = try await generate(sourceURL: sourceURL, sourceStart: sourceStart, sourceDuration: sourceDuration,
+                                   adjustments: adjustments, destination: temporary)
+            try Task.checkCancellation()
+            guard Self.isUsableCachedAudio(temporary, duration: sourceDuration) else {
+                throw DerivedMediaError.exportFailed("Обработанный звук неполный или повреждён")
+            }
+            // Atomic replacement also handles two overlapping preview builds.
+            // Existing players retain the old inode until they release it.
+            guard rename(temporary.path, cached.path) == 0 else {
+                throw DerivedMediaError.exportFailed("Не удалось сохранить кэш обработанного звука")
+            }
+            return cached
+        }
         let trimmed = FileManager.default.temporaryDirectory
             .appendingPathComponent("veloedit-audio-source-\(UUID().uuidString)")
             .appendingPathExtension("m4a")
@@ -34,6 +58,14 @@ public actor ProcessedAudioGenerator {
         let input = try AVAudioFile(forReading: trimmed)
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
+        let sourceMixer = AVAudioMixerNode()
+        // Audio Units do not all accept a camera/voice recording's native
+        // layout (for example mono 16 kHz). AVAudioEngine.connect raises an
+        // Objective-C exception for unsupported formats, bypassing Swift error
+        // handling. Convert at a mixer before entering the effect chain.
+        guard let renderFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2) else {
+            throw DerivedMediaError.cannotCreateDestination
+        }
         let equalizer = AVAudioUnitEQ(numberOfBands: 5)
         let reverb = AVAudioUnitReverb()
         let delay = AVAudioUnitDelay()
@@ -49,18 +81,20 @@ public actor ProcessedAudioGenerator {
         )
 
         engine.attach(player)
+        engine.attach(sourceMixer)
         engine.attach(equalizer)
         engine.attach(reverb)
         engine.attach(delay)
         engine.attach(distortion)
-        engine.connect(player, to: equalizer, format: input.processingFormat)
-        engine.connect(equalizer, to: reverb, format: input.processingFormat)
-        engine.connect(reverb, to: delay, format: input.processingFormat)
-        engine.connect(delay, to: distortion, format: input.processingFormat)
-        engine.connect(distortion, to: engine.mainMixerNode, format: input.processingFormat)
+        engine.connect(player, to: sourceMixer, format: input.processingFormat)
+        engine.connect(sourceMixer, to: equalizer, format: renderFormat)
+        engine.connect(equalizer, to: reverb, format: renderFormat)
+        engine.connect(reverb, to: delay, format: renderFormat)
+        engine.connect(delay, to: distortion, format: renderFormat)
+        engine.connect(distortion, to: engine.mainMixerNode, format: renderFormat)
         try engine.enableManualRenderingMode(
             .offline,
-            format: input.processingFormat,
+            format: renderFormat,
             maximumFrameCount: 4_096
         )
         let output = try AVAudioFile(
@@ -78,13 +112,14 @@ public actor ProcessedAudioGenerator {
         scheduleForOfflineRendering(input, on: player)
         player.play()
         var stalledRenderAttempts = 0
-        while engine.manualRenderingSampleTime < input.length {
+        let outputLength = AVAudioFramePosition((Double(input.length) * renderFormat.sampleRate / input.processingFormat.sampleRate).rounded())
+        while engine.manualRenderingSampleTime < outputLength {
             if Task.isCancelled {
                 player.stop()
                 engine.stop()
                 throw CancellationError()
             }
-            let remaining = input.length - engine.manualRenderingSampleTime
+            let remaining = outputLength - engine.manualRenderingSampleTime
             let frames = AVAudioFrameCount(min(Int64(engine.manualRenderingMaximumFrameCount), remaining))
             switch try engine.renderOffline(frames, to: buffer) {
             case .success:
@@ -106,6 +141,30 @@ public actor ProcessedAudioGenerator {
         engine.stop()
         engine.disableManualRenderingMode()
         return destination
+    }
+
+    static func cacheIdentity(sourceURL: URL, sourceStart: Double, sourceDuration: Double,
+                              adjustments: AudioAdjustments) throws -> String {
+        let resolvedURL = sourceURL.resolvingSymlinksInPath()
+        let values = try FileManager.default.attributesOfItem(atPath: resolvedURL.path)
+        return ProductionCacheIdentity.hash([
+            "processed-audio-v1-48k-stereo", resolvedURL.path,
+            String((values[.size] as? NSNumber)?.int64Value ?? 0),
+            String(((values[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0).bitPattern),
+            String(sourceStart.bitPattern), String(sourceDuration.bitPattern),
+            String((adjustments.noiseReduction ?? 0).bitPattern), (adjustments.eqPreset ?? .flat).rawValue,
+            String(adjustments.normalize ?? false), (adjustments.effect ?? .none).rawValue
+        ])
+    }
+
+    private static func isUsableCachedAudio(_ url: URL, duration: Double) -> Bool {
+        guard let file = try? AVAudioFile(forReading: url), file.length > 0,
+              Double(file.length) / file.processingFormat.sampleRate <= max(0.05, duration) + 0.15,
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 32) else { return false }
+        // Read the tail too: a valid CAF header can outlive a truncated payload.
+        file.framePosition = max(0, file.length - 32)
+        do { try file.read(into: buffer); return buffer.frameLength > 0 }
+        catch { return false }
     }
 
     /// The async AVAudioPlayerNode overload completes only after playback.
@@ -141,6 +200,7 @@ public actor ProcessedAudioGenerator {
         var sampleCount = 0
         input.framePosition = 0
         while input.framePosition < input.length {
+            try Task.checkCancellation()
             try input.read(into: buffer)
             guard let channels = buffer.floatChannelData else { break }
             for channel in 0..<Int(buffer.format.channelCount) {

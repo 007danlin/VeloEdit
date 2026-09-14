@@ -4,6 +4,7 @@ import CoreGraphics
 import CoreImage
 import CoreVideo
 import ImageIO
+import VideoToolbox
 
 public enum BackgroundAnimationConfiguration {
     public static var intensity: Double = 0.5
@@ -38,7 +39,7 @@ enum StillImageRenderGeometry {
         let baseScale = fill ? max(widthScale, heightScale) : min(widthScale, heightScale)
         let progressValue = Double(min(max(0, progress), 1))
         let subjectScale = subjectReframe.map {
-            $0.startScale + ($0.endScale - $0.startScale) * progressValue
+            $0.interpolated(progress: progressValue).scale
         } ?? 1
         let scale = baseScale * max(1, motionScale) * CGFloat(max(1, subjectScale))
         let scaledWidth = sourceExtent.width * scale
@@ -47,10 +48,9 @@ enum StillImageRenderGeometry {
         var x = (targetSize.width - scaledWidth) / 2 + horizontalTravel
         var y = (targetSize.height - scaledHeight) / 2 + verticalTravel
         if let subjectReframe {
-            let centerX = subjectReframe.startCenterX +
-                (subjectReframe.endCenterX - subjectReframe.startCenterX) * progressValue
-            let centerY = subjectReframe.startCenterY +
-                (subjectReframe.endCenterY - subjectReframe.startCenterY) * progressValue
+            let keyframe = subjectReframe.interpolated(progress: progressValue)
+            let centerX = keyframe.centerX
+            let centerY = keyframe.centerY
             x = targetSize.width / 2 - scaledWidth * CGFloat(centerX) + horizontalTravel
             y = targetSize.height / 2 - scaledHeight * CGFloat(centerY) + verticalTravel
         }
@@ -89,7 +89,7 @@ public actor StillImageVideoGenerator {
         frameRate: Int32,
         destination: URL,
         codec: AVVideoCodecType = .h264,
-        motion: ClipEffect? = .kenBurns,
+        motion: ClipEffect? = .zoomIn,
         subjectReframe: SubjectReframePlan? = nil,
         cropStyle: CropStyle = .fill,
         backgroundAnimationStyle: BackgroundAnimationStyle? = nil,
@@ -101,15 +101,25 @@ public actor StillImageVideoGenerator {
         let intensity = CGFloat(max(0, min(1, animationIntensity)))
         try? FileManager.default.removeItem(at: destination)
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
-        let compression: [String: Any] = codec == .jpeg
-            ? [AVVideoQualityKey: 0.92]
-            : [AVVideoAverageBitRateKey: min(18_000_000, width * height * 4)]
-        let settings: [String: Any] = [
+        let compression: [String: Any]
+        if codec == .jpeg {
+            compression = [AVVideoQualityKey: 0.92]
+        } else if codec == .proRes422 || codec == .proRes422LT || codec == .proRes422Proxy || codec == .proRes422HQ || codec == .proRes4444 {
+            compression = [:]
+        } else {
+            compression = [AVVideoAverageBitRateKey: min(18_000_000, width * height * 4)]
+        }
+        var settings: [String: Any] = [
             AVVideoCodecKey: codec,
             AVVideoWidthKey: width,
-            AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: compression
+            AVVideoHeightKey: height
         ]
+        if !compression.isEmpty { settings[AVVideoCompressionPropertiesKey] = compression }
+        if codec == .h264 || codec == .hevc || codec == .hevcWithAlpha {
+            settings[AVVideoEncoderSpecificationKey] = [
+                kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: false
+            ]
+        }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
         let attributes: [String: Any] = [
@@ -129,8 +139,10 @@ public actor StillImageVideoGenerator {
 
         let frames = max(1, Int((duration * Double(frameRate)).rounded()))
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        var resourcePacer = ResourceWorkPacer()
+        defer { if writer.status == .writing { writer.cancelWriting() } }
         for frame in 0..<frames {
-            if Task.isCancelled { writer.cancelWriting(); throw CancellationError() }
+            try await resourcePacer.checkpoint()
             while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
             guard let pool = adaptor.pixelBufferPool else { throw DerivedMediaError.cannotCreateDestination }
             var optional: CVPixelBuffer?
@@ -159,7 +171,7 @@ public actor StillImageVideoGenerator {
                     motionScale = 1 + 0.09 * progress
                     horizontalTravel = CGFloat(width) * (-0.025 + 0.05 * progress)
                 case .zoomIn:
-                    motionScale = 1 + 0.07 * progress
+                    motionScale = 1 + CGFloat(PhotoPresentationPolicy.zoomAmount) * progress
                 case .zoomOut:
                     motionScale = 1.07 - 0.07 * progress
                 case .pushIn:
@@ -204,7 +216,7 @@ public actor StillImageVideoGenerator {
                     progress: progress,
                     fill: true
                 )
-                let background = image.transformed(
+                let blurred = image.transformed(
                     by: CGAffineTransform(scaleX: backgroundPlacement.scale, y: backgroundPlacement.scale)
                         .translatedBy(
                             x: backgroundPlacement.x / backgroundPlacement.scale,
@@ -215,12 +227,8 @@ public actor StillImageVideoGenerator {
                 .applyingFilter("CIGaussianBlur", parameters: [
                     kCIInputRadiusKey: min(36, max(12, CGFloat(min(width, height)) * 0.016))
                 ])
-                .applyingFilter("CIColorControls", parameters: [
-                    kCIInputBrightnessKey: -0.16,
-                    kCIInputContrastKey: 0.88,
-                    kCIInputSaturationKey: 0.72
-                ])
                 .cropped(to: bounds)
+                let background = SafeFitBackgroundRenderer.shade(blurred)
                 finalImage = baseImage.composited(over: background).cropped(to: bounds)
             } else {
                 // Every animated background uses the same calm continuous

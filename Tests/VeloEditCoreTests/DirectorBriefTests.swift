@@ -2,6 +2,27 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
+@Test func keyTitlePolicyKeepsEveryPartWithoutCountOrSpacingLimits() {
+    let opening = TitleTimelineItem(kind: .cinematicTitle, text: "Активный день", startTime: 0, duration: 2)
+    let chapters = ["Велопрогулка", "Сплав", "Рыбалка", "Велопрогулка"].enumerated().map {
+        TitleTimelineItem(kind: .chapter, text: $0.element, startTime: 3 + Double($0.offset) * 4, duration: 2)
+    }
+    let caption = TitleTimelineItem(kind: .automaticSubtitles, text: "Поехали!", startTime: 4, duration: 1.5)
+    let decoration = TitleTimelineItem(kind: .keywordOverlay, text: "Вперёд!", startTime: 8, duration: 2)
+    let placeholder = TitleTimelineItem(kind: .chapter, text: "Кульминация", startTime: 12, duration: 2)
+    let source = [opening] + chapters + [caption, decoration, placeholder]
+    let result = DirectorTitlePolicyEngine.applying(.keyOnly, to: source, timelineDuration: 20)
+
+    #expect(result.filter { $0.kind == .chapter }.map(\.id) == chapters.map(\.id))
+    #expect(result.contains(opening))
+    #expect(result.contains(caption))
+    #expect(!result.contains(decoration))
+    #expect(!result.contains(placeholder))
+    #expect(DirectorTitlePolicyEngine.applying(.keyOnly, to: result, timelineDuration: 20) == result)
+    #expect(DirectorTitlePolicyEngine.applying(.minimal, to: source, timelineDuration: 20).map(\.id) == [opening.id, caption.id])
+    #expect(DirectorTitlePolicyEngine.applying(.none, to: source, timelineDuration: 20).isEmpty)
+}
+
 @Test func directorBriefRoundTripsEveryOpeningChoice() throws {
     let trackID = UUID()
     let brief = DirectorBrief(
@@ -61,6 +82,86 @@ import Testing
     decoder.dateDecodingStrategy = .secondsSince1970
     let plan = try decoder.decode(StoryPlan.self, from: json)
     #expect(plan.directorBrief == nil)
+}
+
+@Test func unreadableMetadataFallbackLeavesRecoverableIntentWithoutFakeTimeline() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+        .appendingPathExtension("veloedit")
+    let tasteURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("duration-fallback-\(UUID().uuidString).json")
+    defer {
+        try? FileManager.default.removeItem(at: root)
+        try? FileManager.default.removeItem(at: tasteURL)
+    }
+
+    let store = try ProjectStore(createAt: root, name: "Duration fallback")
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/duration-fallback.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "duration-fallback",
+        metadata: MediaMetadata(duration: 12, width: 1920, height: 1080, frameRate: 30)
+    )
+    try await store.update { project in
+        project.assets = [asset]
+        project.analyses = [AnalysisResult(
+            assetID: asset.id,
+            schemaVersion: project.analysisSchemaVersion,
+            analyzedContentHash: asset.contentHash,
+            candidates: []
+        )]
+    }
+
+    try await store.update { $0.editorialDevelopmentEnabled = true }
+    let pipeline = VeloEditPipeline(
+        store: store,
+        personalTasteStore: LocalPersonalTasteStore(url: tasteURL)
+    )
+    let brief = DirectorBrief(
+        requestedDuration: 300,
+        musicPolicy: .none,
+        titlePolicy: .none
+    )
+    await #expect(throws: EditorialGenerationError.self) {
+        try await pipeline.createFilm(prompt: "Собери фильм из доступного материала", preset: .story, targetDuration: brief.requestedDuration, directorBrief: brief)
+    }
+    let snapshot = await pipeline.snapshot()
+    #expect(snapshot.timelines.isEmpty)
+    #expect(snapshot.intentLedger?.hasRecoverableGeneration == true)
+    #expect(snapshot.intentLedger?.entries.contains { $0.status == .recoverableFailure && $0.failureReason != nil } == true)
+}
+
+@Test func directorReportsMissingReadableMediaInsteadOfZeroDurationContractFailure() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+        .appendingPathExtension("veloedit")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Unreadable source")
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/unreadable.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "unreadable",
+        metadata: MediaMetadata()
+    )
+    try await store.update { project in
+        project.assets = [asset]
+        project.analyses = []
+    }
+
+    let pipeline = VeloEditPipeline(store: store)
+    do {
+        _ = try await pipeline.createFilm(
+            prompt: "Собери фильм",
+            preset: .story,
+            directorBrief: DirectorBrief(requestedDuration: 300, musicPolicy: .none)
+        )
+        Issue.record("Expected a readable-source error")
+    } catch {
+        #expect(error.localizedDescription.contains("пригодного видеофрагмента"))
+        #expect(!error.localizedDescription.contains("монтаж длится 0.000"))
+    }
 }
 
 @Test func displayAspectUsesVideoPreferredTransformOnlyOnceAndPhotoEXIFOnce() {

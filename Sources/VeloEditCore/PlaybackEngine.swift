@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import QuartzCore
+import CoreImage
 
 /// A ready-to-play, non-exported timeline. Temporary photo and music
 /// intermediates stay alive for as long as the playback object is retained.
@@ -8,6 +9,7 @@ public final class TimelinePlayback: @unchecked Sendable {
     public let composition: AVComposition
     public let videoComposition: AVVideoComposition?
     public let audioMix: AVAudioMix?
+    public let audioMasteringReport: EditorialAudioMasteringReport?
     public let duration: Double
     public let renderedItemCount: Int
     public let skippedItemIDs: [UUID]
@@ -16,10 +18,11 @@ public final class TimelinePlayback: @unchecked Sendable {
     public let derivedMediaCacheMisses: Int
     private let temporaryFiles: [URL]
 
-    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, temporaryFiles: [URL]) {
+    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, audioMasteringReport: EditorialAudioMasteringReport? = nil, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, temporaryFiles: [URL]) {
         self.composition = composition
         self.videoComposition = videoComposition
         self.audioMix = audioMix
+        self.audioMasteringReport = audioMasteringReport
         self.duration = duration
         self.renderedItemCount = renderedItemCount
         self.skippedItemIDs = skippedItemIDs
@@ -65,13 +68,14 @@ public actor PlaybackEngine {
         telemetry: [UUID: TelemetrySummary] = [:],
         preferredVideoSources: [UUID: URL] = [:],
         sourceWarnings: [String] = [],
+        outputColorProfile: VideoColorProfile? = nil,
         derivedMediaCacheURL: URL? = nil,
         forceVideoComposition: Bool = false,
         preferStableRealtimePreview: Bool = false,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> TimelinePlayback {
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        let colorProfile = VideoColorPipeline.profile(timeline: timeline, assets: assets)
+        let colorProfile = outputColorProfile ?? VideoColorPipeline.profile(timeline: timeline, assets: assets)
         let composition = AVMutableComposition()
         let videoTracks = (0..<4).compactMap { _ in composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) }
         guard videoTracks.count == 4 else { throw DerivedMediaError.noVideoTrack }
@@ -80,11 +84,10 @@ public actor PlaybackEngine {
             ? (0..<4).map { _ in composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) }
             : [nil, nil, nil, nil]
         let timescale: CMTimeScale = 600
+        let transitions = TimelineTiming.resolvedTransitions(items: timeline.items, transitionItems: timeline.effectiveTransitionItems)
         var resolvedItems = timeline.items
-        for transition in timeline.effectiveTransitionItems {
-            if let index = resolvedItems.firstIndex(where: { $0.id == transition.incomingClipID }) {
-                resolvedItems[index].transition = transition.enabled ? transition.style.rawValue : nil
-            }
+        for index in resolvedItems.indices where resolvedItems[index].overlay == nil {
+            resolvedItems[index].transition = transitions.first { $0.incomingClipID == resolvedItems[index].id }?.style.rawValue
         }
         let retimedItems = TimelineTiming.retimed(resolvedItems)
         // Build the complete magnetic storyline before connected media. This
@@ -94,22 +97,20 @@ public actor PlaybackEngine {
             retimedItems.filter { $0.overlay == nil } +
             retimedItems.filter { $0.overlay != nil }.sorted { $0.timelineStart < $1.timelineStart }
         ).filter { $0.kind == .title || $0.assetID != nil }
-        // Large homogeneous HEVC camera files are substantially more reliable
-        // in AVPlayer when they keep their native track geometry. Some macOS
-        // MediaToolbox versions return black frames when a custom per-clip
-        // compositor is attached to a 5K composition. Timeline transition
-        // intents remain stored and exported, but live playback favors a
-        // stable image unless the user explicitly adds a motion effect.
-        let realtimeTitles = preferStableRealtimePreview ? [] : timeline.effectiveTitleItems
-        let realtimeTelemetryItems = preferStableRealtimePreview ? [] : timeline.effectiveTelemetryItems
-        let realtimeEffects = preferStableRealtimePreview ? [] : timeline.effectiveEffects
-        let realtimeTransitionItems = preferStableRealtimePreview ? [] : timeline.effectiveTransitionItems
+        // Preview quality may change resolution, never the edit. Every visible
+        // layer uses the same compositor in AVPlayer, paused posters and export.
+        // Keep the stable-preview argument compatible with older callers;
+        // only undecorated cuts qualify for native playback.
+        let realtimeTitles = timeline.effectiveTitleItems.filter(\.enabled)
+        let realtimeTelemetryItems = timeline.effectiveTelemetryItems
+        let realtimeEffects = timeline.effectiveEffects.filter(\.enabled)
+        let realtimeTransitionItems = transitions
         let targetAspectRatio = Double(max(1, timeline.width)) / Double(max(1, timeline.height))
-        let usesNativeCameraPath = realtimeTelemetryItems.isEmpty && realtimeEffects.isEmpty && realtimeTitles.isEmpty && realtimeTransitionItems.isEmpty && !forceVideoComposition && Self.shouldUseNativeCameraPath(
+        let hasEndingFade = (timeline.endingFadeDuration ?? 0) > 0
+        let usesNativeCameraPath = !hasEndingFade && realtimeTelemetryItems.isEmpty && realtimeEffects.isEmpty && realtimeTitles.isEmpty && realtimeTransitionItems.isEmpty && !forceVideoComposition && Self.shouldUseNativeCameraPath(
             items: playableItems,
             assets: assetByID,
-            targetAspectRatio: targetAspectRatio,
-            ignoringDecorations: preferStableRealtimePreview
+            targetAspectRatio: targetAspectRatio
         )
         let usesSafeFitBackground = playableItems.contains { item in
             guard item.kind == .video,
@@ -121,19 +122,23 @@ public actor PlaybackEngine {
             return abs(log(sourceAspectRatio / targetAspectRatio)) > 0.015
         }
         let usesColorCompositor = playableItems.contains {
-            AdjustedClipGenerator.needsRender($0.effectiveVideoAdjustments) ||
-            $0.overlay?.style == .greenScreen ||
-            (!preferStableRealtimePreview && ($0.telemetryOverlay != nil || $0.transition != nil))
-        } || usesSafeFitBackground || !realtimeTelemetryItems.isEmpty || !realtimeEffects.isEmpty || !realtimeTitles.isEmpty || !realtimeTransitionItems.isEmpty
+            Self.requiresPixelProcessing($0.effectiveVideoAdjustments) ||
+            $0.overlay?.style == .greenScreen || $0.telemetryOverlay != nil
+        } || hasEndingFade || usesSafeFitBackground || !realtimeTelemetryItems.isEmpty || !realtimeEffects.isEmpty || !realtimeTitles.isEmpty || !realtimeTransitionItems.isEmpty
         var temporaryFiles: [URL] = []
         var placements: [Placement] = []
         var skippedItemIDs: [UUID] = []
         var derivedMediaCacheHits = 0
         var derivedMediaCacheMisses = 0
         var cursor = CMTime.zero
+        var resourcePacer = ResourceWorkPacer()
+        // Many cuts reference one camera file. Reuse loaded AVFoundation
+        // metadata within this build; never retain stale files across builds.
+        var sourceAssets: [URL: AVURLAsset] = [:]
+        var videoMetadata: [URL: (track: AVAssetTrack, size: CGSize, transform: CGAffineTransform)] = [:]
 
         for (index, item) in playableItems.enumerated() {
-            if Task.isCancelled { throw CancellationError() }
+            try await resourcePacer.checkpoint()
             let media = item.assetID.flatMap { assetByID[$0] }
             guard item.kind == .title || media != nil else {
                 skippedItemIDs.append(item.id)
@@ -157,7 +162,7 @@ public actor PlaybackEngine {
                 let identity = Self.titleCacheIdentity(item: item, timeline: timeline)
                 let isPersistent = derivedMediaCacheURL != nil
                 let destination = derivedMediaCacheURL?.appendingPathComponent("title-\(identity).mov")
-                    ?? FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-title-\(item.id.uuidString).mov")
+                    ?? FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-title-\(UUID().uuidString).mov")
                 let cacheHit = isPersistent ? await Self.usableGeneratedVideo(destination) : false
                 if cacheHit {
                     sourceURL = destination
@@ -170,7 +175,8 @@ public actor PlaybackEngine {
                             width: timeline.width,
                             height: timeline.height,
                             frameRate: Int32(timeline.frameRate.rounded()),
-                            destination: temporary
+                            destination: temporary,
+                            codec: forceVideoComposition && derivedMediaCacheURL == nil ? .proRes4444 : .h264
                         )
                     }
                 }
@@ -184,11 +190,11 @@ public actor PlaybackEngine {
                 let backgroundPreset = BackgroundPreset.preset(for: media)
                 let bakedMotion = item.effect.flatMap(ClipEffect.init(rawValue:))
                     ?? backgroundPreset?.animationMotion
-                    ?? .kenBurns
+                    ?? .zoomIn
                 let identity = Self.photoCacheIdentity(item: item, asset: media, timeline: timeline, preset: backgroundPreset)
                 let isPersistent = derivedMediaCacheURL != nil
                 let destination = derivedMediaCacheURL?.appendingPathComponent("photo-\(identity).mov")
-                    ?? FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-playback-\(item.id.uuidString).mov")
+                    ?? FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-playback-\(UUID().uuidString).mov")
                 let cacheHit = isPersistent ? await Self.usableGeneratedVideo(destination) : false
                 if cacheHit {
                     sourceURL = destination
@@ -201,6 +207,7 @@ public actor PlaybackEngine {
                             height: timeline.height,
                             frameRate: Int32(timeline.frameRate.rounded()),
                             destination: temporary,
+                            codec: forceVideoComposition && derivedMediaCacheURL == nil ? .proRes4444 : .h264,
                             motion: bakedMotion,
                             subjectReframe: item.effectiveVideoAdjustments.subjectReframe,
                             cropStyle: item.effectiveVideoAdjustments.crop,
@@ -223,35 +230,48 @@ public actor PlaybackEngine {
                 continue
             }
 
-            let source = AVURLAsset(url: sourceURL)
-            guard let sourceVideo = try await source.loadTracks(withMediaType: .video).first else {
-                skippedItemIDs.append(item.id)
-                continue
+            let metadata: (track: AVAssetTrack, size: CGSize, transform: CGAffineTransform)
+            if let cached = videoMetadata[sourceURL] {
+                metadata = cached
+            } else {
+                let source = sourceAssets[sourceURL] ?? AVURLAsset(url: sourceURL)
+                sourceAssets[sourceURL] = source
+                guard let track = try await source.loadTracks(withMediaType: .video).first else {
+                    skippedItemIDs.append(item.id)
+                    continue
+                }
+                metadata = (track, try await track.load(.naturalSize), try await track.load(.preferredTransform))
+                videoMetadata[sourceURL] = metadata
             }
+            let sourceVideo = metadata.track
             let sourceRange = CMTimeRange(
                 start: CMTime(seconds: sourceStart, preferredTimescale: timescale),
                 duration: CMTime(seconds: insertedSourceDuration, preferredTimescale: timescale)
             )
-            let overlayBase = item.overlay?.baseItemID.flatMap { baseID in
-                placements.first(where: { $0.item.id == baseID })
-            }
             let requestedDuration = CMTime(seconds: item.timelineDuration, preferredTimescale: timescale)
+            let overlayStart = item.overlay == nil ? 0 : TimelineTiming.playbackTime(forTimelineTime: item.timelineStart, timeline: timeline)
+            let overlayEnd = item.overlay == nil ? 0 : TimelineTiming.playbackTime(forTimelineTime: item.timelineStart + item.timelineDuration, timeline: timeline)
             let targetDuration = item.overlay == nil
                 ? requestedDuration
-                : min(requestedDuration, CMTime(seconds: max(0.05, timeline.duration - item.timelineStart), preferredTimescale: timescale))
+                : CMTime(seconds: max(1.0 / timeline.frameRate, overlayEnd - overlayStart), preferredTimescale: timescale)
             let previousPrimary = placements.last(where: { $0.item.overlay == nil })
             let overlap = item.overlay == nil && !usesNativeCameraPath
-                ? transitionDuration(for: item, previous: previousPrimary?.item, transitionItems: timeline.effectiveTransitionItems, timescale: timescale)
+                ? CMTime(seconds: TimelineTiming.transitionOverlap(incoming: item, previous: previousPrimary?.item, transitionItems: transitions), preferredTimescale: timescale)
                 : .zero
             let at = item.overlay == nil
                 ? max(.zero, cursor - overlap)
-                : CMTime(seconds: item.timelineStart, preferredTimescale: timescale)
+                : CMTime(seconds: overlayStart, preferredTimescale: timescale)
             let trackIndex: Int
             if usesNativeCameraPath {
                 trackIndex = 0
-            } else if let overlayBase {
-                let baseTrackIndex = videoTracks.firstIndex(where: { $0.trackID == overlayBase.track.trackID }) ?? 0
-                trackIndex = (baseTrackIndex + 1) % videoTracks.count
+            } else if item.overlay != nil {
+                // Primaries own tracks 0/1. Inserting a connected clip into
+                // either track shifts already assembled primary segments and
+                // leaves the compositor's placement ranges pointing at gaps.
+                guard let available = [2, 3].first(where: { index in
+                    !placements.contains { $0.track.trackID == videoTracks[index].trackID && $0.start < at + targetDuration && $0.end > at }
+                }) else { throw DerivedMediaError.noVideoTrack }
+                trackIndex = available
             } else {
                 trackIndex = placements.filter { $0.item.overlay == nil }.count % 2
             }
@@ -295,22 +315,24 @@ public actor PlaybackEngine {
                 let audioSourceStart: Double
                 if ProcessedAudioGenerator.needsRender(audioAdjustments) {
                     let temporary = FileManager.default.temporaryDirectory
-                        .appendingPathComponent("veloedit-processed-audio-\(item.id.uuidString)")
+                        .appendingPathComponent("veloedit-processed-audio-\(UUID().uuidString)")
                         .appendingPathExtension("caf")
                     audioSourceURL = try await audioProcessor.generate(
                         sourceURL: media.originalURL,
                         sourceStart: item.sourceStart,
                         sourceDuration: item.sourceDuration,
                         adjustments: audioAdjustments,
-                        destination: temporary
+                        destination: temporary,
+                        cacheDirectory: derivedMediaCacheURL
                     )
                     audioSourceStart = 0
-                    temporaryFiles.append(temporary)
+                    if derivedMediaCacheURL == nil { temporaryFiles.append(temporary) }
                 } else {
                     audioSourceURL = media.originalURL
                     audioSourceStart = item.sourceStart
                 }
-                let audioSource = AVURLAsset(url: audioSourceURL)
+                let audioSource = sourceAssets[audioSourceURL] ?? AVURLAsset(url: audioSourceURL)
+                sourceAssets[audioSourceURL] = audioSource
                 if let sourceAudio = try await audioSource.loadTracks(withMediaType: .audio).first {
                     let audioRange = CMTimeRange(
                         start: CMTime(seconds: audioSourceStart, preferredTimescale: timescale),
@@ -356,8 +378,8 @@ public actor PlaybackEngine {
                 audioTrack: audioTrack,
                 start: at,
                 duration: targetDuration,
-                naturalSize: try await sourceVideo.load(.naturalSize),
-                preferredTransform: try await sourceVideo.load(.preferredTransform)
+                naturalSize: metadata.size,
+                preferredTransform: metadata.transform
             ))
             if item.overlay == nil { cursor = at + targetDuration }
         }
@@ -375,6 +397,7 @@ public actor PlaybackEngine {
         } else if usesColorCompositor {
             videoComposition = makeColorVideoComposition(
                 placements: placements,
+                timeline: timeline,
                 telemetryItems: realtimeTelemetryItems,
                 effects: realtimeEffects,
                 titles: realtimeTitles,
@@ -382,46 +405,95 @@ public actor PlaybackEngine {
                 telemetry: telemetry,
                 renderSize: renderSize,
                 frameRate: timeline.frameRate,
-                colorProfile: colorProfile
+                colorProfile: colorProfile,
+                endingFade: FilmEndingFade(duration: timeline.endingFadeDuration, movieDuration: cursor.seconds, frameRate: timeline.frameRate)
             )
         } else {
             videoComposition = makeVideoComposition(placements: placements, renderSize: renderSize, frameRate: timeline.frameRate, colorProfile: colorProfile)
         }
+        if !usesColorCompositor {
+            addTitleOverlays(
+                to: videoComposition,
+                titles: realtimeTitles,
+                telemetryItems: realtimeTelemetryItems,
+                placements: placements,
+                telemetry: telemetry,
+                renderSize: renderSize,
+                duration: cursor
+            )
+        }
         if timeline.music != nil {
             progress?(ImportProgress(completed: playableItems.count, total: playableItems.count, currentName: "Добавляю локальный саундтрек"))
         }
+        let adaptivePlan = timeline.effectiveAdaptiveSoundtrack
+        let adaptiveWarning = Self.adaptiveSoundtrackWarning(for: adaptivePlan, tracks: musicTracks)
+        let usesAdaptiveSoundtrack = adaptivePlan != nil && adaptiveWarning == nil
         let unavailableSoundtrack = Self.soundtrackWarning(for: timeline.music, tracks: musicTracks)
-        let musicResult = unavailableSoundtrack == nil
+        let musicResult = !usesAdaptiveSoundtrack && unavailableSoundtrack == nil
             ? try await addMusic(timeline.music, tracks: musicTracks, to: composition, duration: cursor)
             : nil
+        let adaptiveMusic = usesAdaptiveSoundtrack
+            ? try await addAdaptiveMusic(adaptivePlan, master: timeline.music, tracks: musicTracks, timeline: timeline, to: composition, movieDuration: cursor)
+            : []
+        let renderAudioClips = timeline.effectiveAudioClips.map { clip -> TimelineAudioClip in
+            var result = clip
+            if let attachedID = clip.attachedToItemID,
+               let placement = placements.first(where: { $0.item.id == attachedID }) {
+                // Detached source audio must retain its owner's media clock,
+                // including the full portion participating in a transition.
+                result.timelineStart = max(0, placement.start.seconds + clip.timelineStart - placement.item.timelineStart)
+            } else {
+                result.timelineStart = TimelineTiming.playbackTime(forTimelineTime: clip.timelineStart, timeline: timeline)
+                let end = TimelineTiming.playbackTime(forTimelineTime: clip.timelineEnd, timeline: timeline)
+                result.timelineDuration = max(0.05, end - result.timelineStart)
+            }
+            return result
+        }
         let audioResult = try await addAudioClips(
-            timeline.effectiveAudioClips,
+            renderAudioClips,
             assets: assetByID,
             musicTracks: musicTracks,
             to: composition,
-            movieDuration: cursor
+            movieDuration: cursor,
+            derivedMediaCacheURL: derivedMediaCacheURL
         )
         temporaryFiles.append(contentsOf: audioResult.temporaryFiles)
-        let soundtrackWarning = unavailableSoundtrack ?? (timeline.music != nil && musicResult == nil
+        let soundtrackWarning = (adaptiveWarning != nil && musicResult != nil
+            ? "Один из адаптивных музыкальных фрагментов недоступен — использован цельный основной трек."
+            : unavailableSoundtrack) ?? (timeline.music != nil && musicResult == nil && adaptiveMusic.isEmpty
             ? "Саундтрек недоступен — просмотр собран без музыки. Видео и звук исходников сохранены."
             : nil)
-        let audioMix = makeAudioMix(
+        // Reserved tracks are useful while assigning alternating clips, but
+        // AVAssetExportSession rejects empty tracks with OSStatus -12123.
+        // Preview frame extraction tolerates them, hiding the export failure.
+        for track in composition.tracks where track.segments.isEmpty {
+            composition.removeTrack(track)
+        }
+        let audioMix: AVAudioMix? = makeAudioMix(
             placements: placements,
-            originalTracks: originalAudioTracks.compactMap { $0 },
+            originalTracks: originalAudioTracks.compactMap { $0 }.filter { !$0.segments.isEmpty },
             originalAudioVolume: Float(originalAudioVolume),
             music: musicResult,
-            additionalAudio: audioResult.placements,
-            ducking: timeline.audioDucking ?? AudioDuckingSettings()
+            additionalAudio: audioResult.placements + adaptiveMusic,
+            ducking: SourceAudioMixPolicy.musicDucking(in: timeline),
+            movieDuration: cursor.seconds,
+            frameRate: timeline.frameRate
         )
 
+        // Exact loudness mastering happens against an encoded first pass in
+        // RenderEngine. Playback stays immediate and cannot fail because an
+        // optional audio-only transcode rejects a heterogeneous source mix.
+        let audioMasteringReport: EditorialAudioMasteringReport? = nil
         progress?(ImportProgress(completed: playableItems.count, total: playableItems.count, currentName: "Просмотр готов"))
         if let derivedMediaCacheURL {
-            Self.pruneDerivedMediaCache(derivedMediaCacheURL, maximumFiles: 128, maximumBytes: 2_000_000_000)
+            let inUse = Set(composition.tracks.flatMap { $0.segments.compactMap(\.sourceURL) }.map { $0.resolvingSymlinksInPath() })
+            Self.pruneDerivedMediaCache(derivedMediaCacheURL, maximumFiles: 128, maximumBytes: 2_000_000_000, protectedURLs: inUse)
         }
         return TimelinePlayback(
             composition: composition,
             videoComposition: videoComposition,
             audioMix: audioMix,
+            audioMasteringReport: audioMasteringReport,
             duration: cursor.seconds,
             renderedItemCount: placements.count,
             skippedItemIDs: skippedItemIDs,
@@ -460,7 +532,7 @@ public actor PlaybackEngine {
     private static func titleCacheIdentity(item: TimelineItem, timeline: Timeline) -> String {
         let style = (try? JSONEncoder.veloEdit.encode(item.effectiveTitleStyle)).map { $0.base64EncodedString() } ?? "style"
         return ProductionCacheIdentity.hash([
-            "title-v2", item.title ?? "", style,
+            "title-v3-full-resolution", item.title ?? "", style,
             String(Int((item.timelineDuration * 1_000).rounded())),
             "\(timeline.width)x\(timeline.height)@\(Int(timeline.frameRate.rounded()))"
         ])
@@ -473,18 +545,18 @@ public actor PlaybackEngine {
         preset: BackgroundPreset?
     ) -> String {
         ProductionCacheIdentity.hash([
-            "photo-v3", asset.contentHash, item.effect ?? "ken-burns",
+            "photo-v5", asset.contentHash, item.effect ?? "zoom-in",
             item.effectiveVideoAdjustments.crop.rawValue,
             preset?.rawValue ?? "photo", preset?.animationStyle?.rawValue ?? "none",
             item.effectiveVideoAdjustments.subjectReframe.map {
-                "\($0.startCenterX),\($0.startCenterY),\($0.endCenterX),\($0.endCenterY),\($0.startScale),\($0.endScale)"
+                (try? JSONEncoder().encode($0).base64EncodedString()) ?? "invalid-reframe"
             } ?? "no-reframe",
             String(Int((item.timelineDuration * 1_000).rounded())),
             "\(timeline.width)x\(timeline.height)@\(Int(timeline.frameRate.rounded()))"
         ])
     }
 
-    private static func pruneDerivedMediaCache(_ directory: URL, maximumFiles: Int, maximumBytes: Int64) {
+    private static func pruneDerivedMediaCache(_ directory: URL, maximumFiles: Int, maximumBytes: Int64, protectedURLs: Set<URL>) {
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
         guard let urls = try? FileManager.default.contentsOfDirectory(
             at: directory,
@@ -497,7 +569,8 @@ public actor PlaybackEngine {
         }.sorted { $0.date > $1.date }
         var total = records.reduce(Int64(0)) { $0 + $1.size }
         while records.count > max(1, maximumFiles) || total > max(1, maximumBytes) {
-            let record = records.removeLast()
+            guard let index = records.lastIndex(where: { !protectedURLs.contains($0.url.resolvingSymlinksInPath()) }) else { break }
+            let record = records.remove(at: index)
             if (try? FileManager.default.removeItem(at: record.url)) != nil { total -= record.size }
         }
     }
@@ -505,13 +578,12 @@ public actor PlaybackEngine {
     private static func shouldUseNativeCameraPath(
         items: [TimelineItem],
         assets: [UUID: MediaAsset],
-        targetAspectRatio: Double,
-        ignoringDecorations: Bool = false
+        targetAspectRatio: Double
     ) -> Bool {
         guard !items.isEmpty, items.allSatisfy({
             $0.kind == .video && $0.effect == nil &&
-            (ignoringDecorations || $0.transition == nil) && $0.overlay == nil &&
-            (ignoringDecorations || $0.telemetryOverlay == nil) && $0.effectiveVideoAdjustments.isNeutral
+            $0.transition == nil && $0.overlay == nil &&
+            $0.telemetryOverlay == nil && $0.effectiveVideoAdjustments.isNeutral
         }) else { return false }
         let descriptors = items.compactMap { item -> String? in
             guard let id = item.assetID, let metadata = assets[id]?.metadata,
@@ -538,12 +610,12 @@ public actor PlaybackEngine {
         return nil
     }
 
-    private func transitionDuration(for item: TimelineItem, previous: TimelineItem?, transitionItems: [TimelineTransitionItem], timescale: CMTimeScale) -> CMTime {
-        let explicit = transitionItems.first { $0.enabled && $0.incomingClipID == item.id && $0.outgoingClipID == previous?.id }
-        return CMTime(
-            seconds: explicit?.duration ?? TimelineTiming.transitionOverlap(incoming: item, previous: previous),
-            preferredTimescale: timescale
-        )
+    public nonisolated static func adaptiveSoundtrackWarning(for plan: AdaptiveSoundtrackPlan?, tracks: [LocalMusicTrack]) -> String? {
+        guard let plan else { return nil }
+        let available = Set(tracks.filter(\.isPlayable).map(\.id))
+        return plan.segments.allSatisfy { segment in
+            segment.directive.trackID.map(available.contains) == true
+        } ? nil : "Один или несколько адаптивных музыкальных фрагментов недоступны."
     }
 
     /// Inserts a variable-rate clip as adjacent source ranges. AVFoundation
@@ -577,9 +649,9 @@ public actor PlaybackEngine {
     private func makeVideoComposition(placements: [Placement], renderSize: CGSize, frameRate: Double, colorProfile: VideoColorProfile) -> AVMutableVideoComposition {
         let result = AVMutableVideoComposition()
         result.renderSize = renderSize
-        result.frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(1, frameRate.rounded())))
+        result.frameDuration = VideoFrameTiming.duration(for: frameRate)
         Self.apply(colorProfile, to: result)
-        let boundaries = Set(placements.flatMap { [$0.start, $0.end] }).sorted()
+        let boundaries = Set(placements.flatMap { [$0.start, $0.end] }.map(Self.instructionBoundary)).sorted()
         var instructions: [AVMutableVideoCompositionInstruction] = []
 
         for pair in zip(boundaries, boundaries.dropFirst()) where pair.0 < pair.1 {
@@ -607,6 +679,7 @@ public actor PlaybackEngine {
 
     private func makeColorVideoComposition(
         placements: [Placement],
+        timeline: Timeline,
         telemetryItems: [TimelineTelemetryItem],
         effects: [EffectTimelineItem],
         titles: [TitleTimelineItem],
@@ -614,41 +687,46 @@ public actor PlaybackEngine {
         telemetry: [UUID: TelemetrySummary],
         renderSize: CGSize,
         frameRate: Double,
-        colorProfile: VideoColorProfile
+        colorProfile: VideoColorProfile,
+        endingFade: FilmEndingFade? = nil
     ) -> AVMutableVideoComposition {
         let result = AVMutableVideoComposition()
-        result.customVideoCompositorClass = VeloVideoCompositor.self
+        result.customVideoCompositorClass = colorProfile.dynamicRange == .hdr
+            ? VeloHDRVideoCompositor.self
+            : VeloVideoCompositor.self
         result.renderSize = renderSize
-        result.frameDuration = CMTime(value: 1, timescale: CMTimeScale(max(1, frameRate.rounded())))
+        result.frameDuration = VideoFrameTiming.duration(for: frameRate)
         Self.apply(colorProfile, to: result)
         let placementByClipID = Dictionary(uniqueKeysWithValues: placements.map { ($0.item.id, $0) })
-        func telemetryRange(for item: TimelineTelemetryItem) -> CMTimeRange {
-            guard let clipID = item.targetClipID,
-                  let placement = placementByClipID[clipID] else {
-                return CMTimeRange(
-                    start: CMTime(seconds: item.timelineStart, preferredTimescale: 600),
-                    duration: CMTime(seconds: item.timelineDuration, preferredTimescale: 600)
-                )
-            }
-            let clip = placement.item
-            let startFraction = min(max(0, (item.timelineStart - clip.timelineStart) / max(0.05, clip.timelineDuration)), 1)
-            let endFraction = min(max(startFraction, (item.timelineEnd - clip.timelineStart) / max(0.05, clip.timelineDuration)), 1)
-            let start = placement.start + CMTimeMultiplyByFloat64(placement.duration, multiplier: startFraction)
-            let duration = CMTimeMultiplyByFloat64(placement.duration, multiplier: max(0, endFraction - startFraction))
-            return CMTimeRange(start: start, duration: max(duration, CMTime(value: 1, timescale: 600)))
+        func playbackTime(_ time: Double) -> CMTime {
+            CMTime(seconds: TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline), preferredTimescale: 600)
         }
-        let telemetryRanges = Dictionary(uniqueKeysWithValues: telemetryItems.map { ($0.id, telemetryRange(for: $0)) })
+        func editorTime(_ time: CMTime) -> CMTime {
+            CMTime(seconds: TimelineTiming.timelineTime(forPlaybackTime: time.seconds, timeline: timeline), preferredTimescale: 600_000)
+        }
+        let telemetryRanges = Dictionary(uniqueKeysWithValues: telemetryItems.map {
+            ($0.id, CMTimeRange(start: playbackTime($0.timelineStart), end: playbackTime($0.timelineEnd)))
+        })
         let telemetryBoundaries = telemetryRanges.values.flatMap { [$0.start, $0.end] }
         let effectBoundaries = effects.filter(\.enabled).flatMap {
-            [CMTime(seconds: $0.startTime, preferredTimescale: 600), CMTime(seconds: $0.endTime, preferredTimescale: 600)]
+            [playbackTime($0.startTime), playbackTime($0.endTime)]
         }
         let titleBoundaries = titles.filter(\.enabled).flatMap {
-            [CMTime(seconds: $0.startTime, preferredTimescale: 600), CMTime(seconds: $0.endTime, preferredTimescale: 600)]
+            [playbackTime($0.startTime), playbackTime($0.endTime)]
         }
-        let boundaries = Set(placements.flatMap { [$0.start, $0.end] } + telemetryBoundaries + effectBoundaries + titleBoundaries).sorted()
+        // Boundaries arrive from both media timebases and JSON seconds. Two
+        // mathematically identical instants can therefore differ by a tiny
+        // fraction (for example 129.366666667 vs 129.36666666666667). Leaving
+        // both in the set creates overlapping instructions, which AVFoundation
+        // rejects with -11841/-17390 before invoking the custom compositor.
+        let boundaries = Set(
+            (placements.flatMap { [$0.start, $0.end] } + telemetryBoundaries + effectBoundaries + titleBoundaries)
+                .map(Self.instructionBoundary)
+        ).sorted()
         result.instructions = zip(boundaries, boundaries.dropFirst()).compactMap { start, end in
             guard start < end else { return nil }
             let range = CMTimeRange(start: start, end: end)
+            let timelineRange = CMTimeRange(start: editorTime(start), end: editorTime(end))
             let active = placements
                 .filter { $0.start < range.end && $0.end > range.start }
                 .sorted { $0.index > $1.index }
@@ -663,23 +741,19 @@ public actor PlaybackEngine {
                     telemetry: placement.item.assetID.flatMap { telemetry[$0] }
                 )
             }
-            let explicitTransition = active.count > 1 && active.allSatisfy({ $0.item.overlay == nil })
+            let primaries = active.filter { $0.item.overlay == nil }
+            let explicitTransition = primaries.count == 2
                 ? transitionItems.first(where: {
-                    $0.enabled && $0.incomingClipID == active[0].item.id && $0.outgoingClipID == active[1].item.id
+                    $0.enabled && $0.incomingClipID == primaries[0].item.id && $0.outgoingClipID == primaries[1].item.id
                 })
                 : nil
-            let transition = explicitTransition?.style ?? (active.count > 1 && active.allSatisfy({ $0.item.overlay == nil })
-                ? active.first?.item.transition.flatMap(TransitionStyle.init(rawValue:))
-                : nil)
-            let transitionItem = explicitTransition ?? transition.map {
-                TimelineTransitionItem(
-                    style: $0,
-                    outgoingClipID: active[1].item.id,
-                    incomingClipID: active[0].item.id,
-                    startTime: range.start.seconds,
-                    duration: range.duration.seconds,
-                    explanation: ["Совместимый переход из Timeline"]
-                )
+            let transitionItem = explicitTransition.map { transition -> TimelineTransitionItem in
+                var result = transition
+                // Effect/title/overlay boundaries may split this overlap into
+                // several instructions. All must share one animation clock.
+                result.startTime = primaries[0].start.seconds
+                result.duration = (min(primaries[0].end, primaries[1].end) - primaries[0].start).seconds
+                return result
             }
             let activeTelemetry = telemetryItems.compactMap { item -> VeloTelemetryLayer? in
                 guard let itemRange = telemetryRanges[item.id], itemRange.start < range.end, itemRange.end > range.start,
@@ -687,15 +761,19 @@ public actor PlaybackEngine {
                 let targetClip = item.targetClipID.flatMap { placementByClipID[$0]?.item }
                 return VeloTelemetryLayer(item: item, telemetry: summary, targetClip: targetClip, start: itemRange.start, duration: itemRange.duration)
             }
-            let activeEffects = effects.filter { $0.enabled && $0.startTime < range.end.seconds && $0.endTime > range.start.seconds }
+            let activeEffects = effects.filter { $0.enabled && $0.startTime < timelineRange.end.seconds && $0.endTime > timelineRange.start.seconds }
             let activeClipIDs = Set(active.map(\.item.id))
             let activeTitles = titles.filter {
-                $0.enabled && $0.startTime < range.end.seconds && $0.endTime > range.start.seconds &&
+                $0.enabled && $0.startTime < timelineRange.end.seconds && $0.endTime > timelineRange.start.seconds &&
                 ($0.targetClipID.map { activeClipIDs.contains($0) } ?? true)
             }
-            return VeloVideoInstruction(timeRange: range, layers: layers, telemetryLayers: activeTelemetry, effects: activeEffects, titles: activeTitles, transition: transition, transitionItem: transitionItem, renderSize: renderSize, colorProfile: colorProfile)
+            return VeloVideoInstruction(timeRange: range, layers: layers, telemetryLayers: activeTelemetry, effects: activeEffects, titles: activeTitles, transition: transitionItem?.style, transitionItem: transitionItem, renderSize: renderSize, colorProfile: colorProfile, endingFade: endingFade, timelineTimeRange: timelineRange)
         }
         return result
+    }
+
+    private static func instructionBoundary(_ time: CMTime) -> CMTime {
+        CMTimeConvertScale(time, timescale: 600, method: .roundHalfAwayFromZero)
     }
 
     private static func apply(_ profile: VideoColorProfile, to composition: AVMutableVideoComposition) {
@@ -714,43 +792,108 @@ public actor PlaybackEngine {
 
     private func addTitleOverlays(
         to composition: AVMutableVideoComposition?,
+        titles: [TitleTimelineItem],
+        telemetryItems: [TimelineTelemetryItem],
         placements: [Placement],
+        telemetry: [UUID: TelemetrySummary],
         renderSize: CGSize,
         duration: CMTime
     ) {
-        guard let composition, placements.contains(where: { $0.item.kind == .title }) else { return }
+        let placementByID = Dictionary(uniqueKeysWithValues: placements.map { ($0.item.id, $0) })
+        let explicitTelemetry: [(TimelineTelemetryItem, Placement, TelemetrySummary)] = telemetryItems.compactMap { item in
+            guard let placement = item.targetClipID.flatMap({ placementByID[$0] }),
+                  let summary = item.sourceID.flatMap({ telemetry[$0] })
+                    ?? item.linkedAssetID.flatMap({ telemetry[$0] })
+                    ?? placement.item.assetID.flatMap({ telemetry[$0] }) else { return nil }
+            return (item, placement, summary)
+        }
+        let embeddedTelemetry: [(TimelineTelemetryItem, Placement, TelemetrySummary)] = telemetryItems.isEmpty ? placements.compactMap { placement in
+            guard let settings = placement.item.telemetryOverlay,
+                  let assetID = placement.item.assetID,
+                  let summary = telemetry[assetID] else { return nil }
+            return (
+                TimelineTelemetryItem(
+                    targetClipID: placement.item.id,
+                    sourceID: assetID,
+                    sourceStart: placement.item.sourceStart,
+                    timelineStart: placement.start.seconds,
+                    timelineDuration: placement.duration.seconds,
+                    settings: settings
+                ),
+                placement,
+                summary
+            )
+        } : []
+        let telemetryLayers = explicitTelemetry + embeddedTelemetry
+        guard let composition, !titles.isEmpty || !telemetryLayers.isEmpty else { return }
         let videoLayer = CALayer()
         videoLayer.frame = CGRect(origin: .zero, size: renderSize)
         let parentLayer = CALayer()
         parentLayer.frame = videoLayer.frame
         parentLayer.addSublayer(videoLayer)
 
-        for placement in placements where placement.item.kind == .title {
-            let style = placement.item.effectiveTitleStyle
-            let background = CALayer()
-            background.frame = videoLayer.frame
-            background.backgroundColor = Self.cgColor(style.backgroundColorHex, fallback: CGColor(gray: 0.04, alpha: 1))
-            background.opacity = 0
-            background.add(Self.visibilityAnimation(start: placement.start.seconds, visibleDuration: placement.duration.seconds, totalDuration: duration.seconds), forKey: "veloedit-visibility")
-            parentLayer.addSublayer(background)
-
-            let text = CATextLayer()
-            text.frame = CGRect(
-                x: renderSize.width * 0.08,
-                y: renderSize.height * 0.26,
-                width: renderSize.width * 0.84,
-                height: renderSize.height * 0.48
+        for title in titles where title.enabled {
+            let sampleTime = title.startTime + min(title.duration * 0.5, 0.4)
+            guard let image = TitleOverlayRenderer.cgImage(
+                item: title,
+                timelineTime: sampleTime,
+                renderSize: renderSize
+            ) else { continue }
+            let layer = CALayer()
+            layer.frame = videoLayer.frame
+            layer.contents = image
+            layer.contentsGravity = .resize
+            layer.opacity = 0
+            layer.add(
+                Self.visibilityAnimation(
+                    start: title.startTime,
+                    visibleDuration: title.duration,
+                    totalDuration: duration.seconds
+                ),
+                forKey: "veloedit-visibility"
             )
-            text.string = placement.item.title ?? "Мой фильм"
-            text.font = "Helvetica Neue Bold" as CFTypeRef
-            text.fontSize = CGFloat(style.fontSize)
-            text.foregroundColor = Self.cgColor(style.textColorHex, fallback: CGColor(gray: 1, alpha: 1))
-            text.alignmentMode = style.alignment == .left ? .left : style.alignment == .right ? .right : .center
-            text.isWrapped = true
-            text.contentsScale = 2
-            text.opacity = 0
-            text.add(Self.visibilityAnimation(start: placement.start.seconds, visibleDuration: placement.duration.seconds, totalDuration: duration.seconds), forKey: "veloedit-visibility")
-            parentLayer.addSublayer(text)
+            parentLayer.addSublayer(layer)
+        }
+        let ciContext = CIContext(options: [.cacheIntermediates: true])
+        let fullBounds = CGRect(origin: .zero, size: renderSize)
+        for (item, placement, summary) in telemetryLayers {
+            let start = placement.start.seconds
+            let visibleDuration = placement.duration.seconds
+            let sampleCount = min(30, max(2, Int(ceil(visibleDuration * 4))))
+            let images: [CGImage] = (0..<sampleCount).compactMap { index -> CGImage? in
+                let progress = sampleCount == 1 ? 0 : Double(index) / Double(sampleCount - 1)
+                let sourceTime = item.sourceStart + item.syncOffset + placement.item.sourceDuration * progress
+                guard let image = TelemetryOverlayRenderer.image(
+                    settings: item.settings,
+                    telemetry: summary,
+                    progress: progress,
+                    sourceTime: sourceTime,
+                    renderSize: renderSize
+                ) else { return nil }
+                return ciContext.createCGImage(image, from: fullBounds)
+            }
+            guard let first = images.first else { continue }
+            let layer = CALayer()
+            layer.frame = videoLayer.frame
+            layer.contents = first
+            layer.contentsGravity = .resize
+            layer.opacity = 0
+            if images.count > 1 {
+                let animation = CAKeyframeAnimation(keyPath: "contents")
+                animation.values = images
+                animation.keyTimes = images.indices.map { NSNumber(value: Double($0) / Double(images.count - 1)) }
+                animation.calculationMode = .discrete
+                animation.beginTime = AVCoreAnimationBeginTimeAtZero + start
+                animation.duration = max(0.1, visibleDuration)
+                animation.fillMode = .both
+                animation.isRemovedOnCompletion = false
+                layer.add(animation, forKey: "veloedit-telemetry-frames")
+            }
+            layer.add(
+                Self.visibilityAnimation(start: start, visibleDuration: visibleDuration, totalDuration: duration.seconds),
+                forKey: "veloedit-visibility"
+            )
+            parentLayer.addSublayer(layer)
         }
         composition.animationTool = AVVideoCompositionCoreAnimationTool(
             postProcessingAsVideoLayer: videoLayer,
@@ -783,15 +926,24 @@ public actor PlaybackEngine {
     private func applyEffect(_ effect: ClipEffect?, to layer: AVMutableVideoCompositionLayerInstruction, base: CGAffineTransform, placement: Placement, renderSize: CGSize) {
         let opacity = Float(placement.item.effectiveVideoAdjustments.opacity)
         if opacity < 0.999 { layer.setOpacity(opacity, at: placement.start) }
-        guard let effect else { layer.setTransform(base, at: placement.start); return }
         let range = CMTimeRange(start: placement.start, duration: placement.duration)
+        let startBase = Self.nativeReframeTransform(base, placement: placement, progress: 0, renderSize: renderSize)
+        let endBase = Self.nativeReframeTransform(base, placement: placement, progress: 1, renderSize: renderSize)
+        guard let effect else {
+            if startBase != endBase {
+                layer.setTransformRamp(fromStart: startBase, toEnd: endBase, timeRange: range)
+            } else {
+                layer.setTransform(startBase, at: placement.start)
+            }
+            return
+        }
         switch effect {
         case .kenBurns:
-            layer.setTransformRamp(fromStart: base, toEnd: zoomed(base, scale: 1.08, renderSize: renderSize), timeRange: range)
+            layer.setTransformRamp(fromStart: startBase, toEnd: zoomed(endBase, scale: 1.08, renderSize: renderSize), timeRange: range)
         case .zoomIn:
-            layer.setTransformRamp(fromStart: base, toEnd: zoomed(base, scale: 1.12, renderSize: renderSize), timeRange: range)
+            layer.setTransformRamp(fromStart: startBase, toEnd: zoomed(endBase, scale: 1.12, renderSize: renderSize), timeRange: range)
         case .zoomOut:
-            layer.setTransformRamp(fromStart: zoomed(base, scale: 1.12, renderSize: renderSize), toEnd: base, timeRange: range)
+            layer.setTransformRamp(fromStart: zoomed(startBase, scale: 1.12, renderSize: renderSize), toEnd: endBase, timeRange: range)
         case .pushIn:
             layer.setTransformRamp(fromStart: base, toEnd: zoomed(base, scale: 1.20, renderSize: renderSize), timeRange: range)
         case .pullOut:
@@ -859,14 +1011,135 @@ public actor PlaybackEngine {
         guard let sourceTrack = try await source.loadTracks(withMediaType: .audio).first,
               let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
         let sourceDuration = try await source.load(.duration)
+        guard sourceDuration.seconds.isFinite, sourceDuration.seconds > 0 else { return nil }
+        var sourceCursor = min(max(0, directive.sourceStart ?? 0), max(0, sourceDuration.seconds - 0.05))
         var cursor = CMTime.zero
         while cursor < duration {
             let remaining = duration - cursor
-            let part = min(sourceDuration, remaining)
-            try track.insertTimeRange(CMTimeRange(start: .zero, duration: part), of: sourceTrack, at: cursor)
-            cursor = cursor + part
+            let outputPart = min((sourceDuration.seconds - sourceCursor) / directive.effectiveSpeed, remaining.seconds)
+            let sourcePart = min(sourceDuration.seconds - sourceCursor, outputPart * directive.effectiveSpeed)
+            let inserted = CMTime(seconds: sourcePart, preferredTimescale: 600)
+            let output = CMTime(seconds: outputPart, preferredTimescale: 600)
+            try track.insertTimeRange(CMTimeRange(start: CMTime(seconds: sourceCursor, preferredTimescale: 600), duration: inserted), of: sourceTrack, at: cursor)
+            if abs(sourcePart - outputPart) > 0.000_1 {
+                track.scaleTimeRange(CMTimeRange(start: cursor, duration: inserted), toDuration: output)
+            }
+            cursor = cursor + output
+            sourceCursor = 0
         }
         return (track, directive)
+    }
+
+    /// Places every semantic music region on its own composition track. The
+    /// overlap is centered on the exact rendered position of the visual cut,
+    /// so a transition overlap cannot make the soundtrack switch drift late.
+    private func addAdaptiveMusic(
+        _ plan: AdaptiveSoundtrackPlan?,
+        master: MusicDirective?,
+        tracks: [LocalMusicTrack],
+        timeline: Timeline,
+        to composition: AVMutableComposition,
+        movieDuration: CMTime
+    ) async throws -> [AudioPlacement] {
+        guard let plan, let master, movieDuration > .zero else { return [] }
+        var placements: [AudioPlacement] = []
+        for index in plan.segments.indices {
+            let segment = plan.segments[index]
+            guard let trackID = segment.directive.trackID,
+                  let localTrack = tracks.first(where: { $0.id == trackID }),
+                  localTrack.isPlayable,
+                  let destinationTrack = composition.addMutableTrack(
+                    withMediaType: .audio,
+                    preferredTrackID: kCMPersistentTrackID_Invalid
+                  ) else { continue }
+            let source = AVURLAsset(url: localTrack.localFileURL)
+            guard let sourceTrack = try await source.loadTracks(withMediaType: .audio).first else { continue }
+            let sourceDuration = try await source.load(.duration).seconds
+            guard sourceDuration > 0.05 else { continue }
+            // Quantizing a floating-point asset duration to the composition's
+            // 600 Hz clock can otherwise round the final loop a fraction past
+            // the source and make AVFoundation reject the whole soundtrack.
+            let safeSourceDuration = max(0.05, sourceDuration - 1.0 / 600.0)
+
+            let coreStartSeconds = TimelineTiming.playbackTime(
+                forTimelineTime: segment.timelineStart,
+                timeline: timeline
+            )
+            let coreEndSeconds = TimelineTiming.playbackTime(
+                forTimelineTime: segment.timelineEnd,
+                timeline: timeline
+            )
+            let incomingTransition = index == plan.segments.startIndex ? 0 : segment.transitionDuration
+            let outgoingTransition = index < plan.segments.index(before: plan.segments.endIndex)
+                ? plan.segments[index + 1].transitionDuration
+                : 0
+            let renderedStartSeconds = max(0, coreStartSeconds - incomingTransition * 0.5)
+            let renderedEndSeconds = min(movieDuration.seconds, coreEndSeconds + outgoingTransition * 0.5)
+            guard renderedEndSeconds - renderedStartSeconds > 0.05 else { continue }
+
+            let renderedStart = CMTime(seconds: renderedStartSeconds, preferredTimescale: 600)
+            let renderedEnd = CMTime(seconds: renderedEndSeconds, preferredTimescale: 600)
+            let speed = segment.directive.effectiveSpeed
+            var destinationCursor = renderedStart
+            var sourceCursor = min(max(0, segment.sourceStart), max(0, safeSourceDuration - 0.05))
+            while destinationCursor < renderedEnd {
+                let remainingOutput = (renderedEnd - destinationCursor).seconds
+                let availableSource = max(0.05, safeSourceDuration - sourceCursor)
+                let sourcePart = min(availableSource, remainingOutput * speed)
+                let outputPart = min(remainingOutput, sourcePart / speed)
+                let inserted = CMTime(seconds: sourcePart, preferredTimescale: 600)
+                let output = CMTime(seconds: outputPart, preferredTimescale: 600)
+                try destinationTrack.insertTimeRange(
+                    CMTimeRange(
+                        start: CMTime(seconds: sourceCursor, preferredTimescale: 600),
+                        duration: inserted
+                    ),
+                    of: sourceTrack,
+                    at: destinationCursor
+                )
+                if abs(sourcePart - outputPart) > 0.000_1 {
+                    destinationTrack.scaleTimeRange(
+                        CMTimeRange(start: destinationCursor, duration: inserted),
+                        toDuration: output
+                    )
+                }
+                destinationCursor = destinationCursor + output
+                sourceCursor = 0
+            }
+
+            let renderedDuration = max(0.05, (renderedEnd - renderedStart).seconds)
+            let fadeIn = index == plan.segments.startIndex
+                ? min(0.9, renderedDuration * 0.20)
+                : min(incomingTransition, renderedDuration * 0.45)
+            // The shared movie-level fade handles the final region, even
+            // when it is shorter than the finish and spans a music change.
+            let fadeOut = min(outgoingTransition, renderedDuration * 0.45)
+            let energyGain = 0.92 + segment.energy * 0.12
+            let clip = TimelineAudioClip(
+                trackID: trackID,
+                title: "Adaptive · \(segment.semanticLabel) · \(localTrack.title)",
+                role: .music,
+                sourceStart: segment.sourceStart,
+                sourceDuration: min(safeSourceDuration, max(0.05, renderedDuration * speed)),
+                timelineStart: renderedStartSeconds,
+                timelineDuration: renderedDuration,
+                speed: speed,
+                adjustments: AudioAdjustments(
+                    volume: min(1, master.volume * energyGain),
+                    fadeIn: fadeIn,
+                    fadeOut: fadeOut,
+                    eqPreset: .music,
+                    preservePitch: true
+                )
+            )
+            placements.append(AudioPlacement(
+                clip: clip,
+                track: destinationTrack,
+                start: renderedStart,
+                duration: renderedEnd - renderedStart
+            ))
+        }
+        return placements
     }
 
     private func addAudioClips(
@@ -874,7 +1147,8 @@ public actor PlaybackEngine {
         assets: [UUID: MediaAsset],
         musicTracks: [LocalMusicTrack],
         to composition: AVMutableComposition,
-        movieDuration: CMTime
+        movieDuration: CMTime,
+        derivedMediaCacheURL: URL?
     ) async throws -> (placements: [AudioPlacement], temporaryFiles: [URL]) {
         var placements: [AudioPlacement] = []
         var temporaryFiles: [URL] = []
@@ -895,17 +1169,18 @@ public actor PlaybackEngine {
             let sourceStart: Double
             if ProcessedAudioGenerator.needsRender(clip.adjustments) {
                 let temporary = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("veloedit-timeline-audio-\(clip.id.uuidString)")
+                    .appendingPathComponent("veloedit-timeline-audio-\(UUID().uuidString)")
                     .appendingPathExtension("caf")
                 inputURL = try await audioProcessor.generate(
                     sourceURL: sourceURL,
                     sourceStart: clip.sourceStart,
                     sourceDuration: clip.sourceDuration,
                     adjustments: clip.adjustments,
-                    destination: temporary
+                    destination: temporary,
+                    cacheDirectory: derivedMediaCacheURL
                 )
                 sourceStart = 0
-                temporaryFiles.append(temporary)
+                if derivedMediaCacheURL == nil { temporaryFiles.append(temporary) }
             } else {
                 inputURL = sourceURL
                 sourceStart = clip.sourceStart
@@ -933,7 +1208,7 @@ public actor PlaybackEngine {
         return (placements, temporaryFiles)
     }
 
-    private func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings) -> AVMutableAudioMix? {
+    private func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double) -> AVMutableAudioMix? {
         guard !originalTracks.isEmpty || music != nil || !additionalAudio.isEmpty else { return nil }
         func clipVolume(_ placement: Placement) -> Float {
             originalAudioVolume * Float(placement.item.effectiveAudioAdjustments.effectiveVolume)
@@ -1097,6 +1372,67 @@ public actor PlaybackEngine {
                 scheduleVolumeRamp(on: value, from: reduced, to: normal, timeRange: CMTimeRange(start: end - ramp, duration: ramp))
             }
         }
+        if ducking.enabled {
+            let audibleStoryRanges = (placements
+                .filter { $0.audioTrack != nil && clipVolume($0) > 0.001 }
+                .map { (start: $0.start.seconds, end: $0.end.seconds) }
+                + additionalAudio
+                .filter { $0.clip.role != .music && $0.clip.adjustments.effectiveVolume > 0.001 }
+                .map { (start: $0.start.seconds, end: $0.end.seconds) })
+                .sorted { $0.start < $1.start }
+            var mergedStoryRanges: [(start: Double, end: Double)] = []
+            for range in audibleStoryRanges {
+                if let last = mergedStoryRanges.last,
+                   range.start <= last.end + max(ducking.attack, ducking.release) {
+                    mergedStoryRanges[mergedStoryRanges.count - 1].end = max(last.end, range.end)
+                } else {
+                    mergedStoryRanges.append(range)
+                }
+            }
+            for background in additionalAudio where background.clip.role == .music {
+                guard let value = parameters.first(where: {
+                    $0.trackID == background.track.trackID
+                }) as? AVMutableAudioMixInputParameters else { continue }
+                let normal = Float(background.clip.adjustments.effectiveVolume)
+                let reduced = normal * Float(ducking.attenuation)
+                for story in mergedStoryRanges {
+                    let start = max(story.start, background.start.seconds)
+                    let end = min(story.end, background.end.seconds)
+                    guard end > start else { continue }
+                    let attack = min(ducking.attack, max(0, (end - start) * 0.45))
+                    let release = min(
+                        ducking.release,
+                        max(0, (end - start) * 0.45),
+                        max(0, background.end.seconds - end)
+                    )
+                    let attackStart = max(background.start.seconds, start - attack)
+                    if start > attackStart + 0.001 {
+                        scheduleVolumeRamp(
+                            on: value,
+                            from: normal,
+                            to: reduced,
+                            timeRange: CMTimeRange(
+                                start: CMTime(seconds: attackStart, preferredTimescale: 600),
+                                end: CMTime(seconds: start, preferredTimescale: 600)
+                            )
+                        )
+                    } else {
+                        value.setVolume(reduced, at: CMTime(seconds: start, preferredTimescale: 600))
+                    }
+                    if release > 0.001 {
+                        scheduleVolumeRamp(
+                            on: value,
+                            from: reduced,
+                            to: normal,
+                            timeRange: CMTimeRange(
+                                start: CMTime(seconds: end, preferredTimescale: 600),
+                                duration: CMTime(seconds: release, preferredTimescale: 600)
+                            )
+                        )
+                    }
+                }
+            }
+        }
         if let music {
             let value = AVMutableAudioMixInputParameters(track: music.track)
             let normal = Float(music.directive.volume)
@@ -1144,6 +1480,16 @@ public actor PlaybackEngine {
             }
             parameters.append(value)
         }
+        // Apply to ordinary, adaptive and manually placed music alike, after
+        // clip fades and speech ducking. Legacy projects also get the finish;
+        // disabling the visual fade does not disable the musical ending.
+        if let ending = FilmEndingFade(duration: FilmEndingFade.defaultDuration, movieDuration: movieDuration, frameRate: frameRate) {
+            var musicTrackIDs = Set(additionalAudio.filter { $0.clip.role == .music }.map { $0.track.trackID })
+            if let music { musicTrackIDs.insert(music.track.trackID) }
+            parameters = parameters.map { value in
+                musicTrackIDs.contains(value.trackID) ? ending.applying(to: value, movieDuration: movieDuration) : value
+            }
+        }
         let mix = AVMutableAudioMix()
         mix.inputParameters = parameters
         return mix
@@ -1155,6 +1501,32 @@ public actor PlaybackEngine {
 
     private func translated(_ base: CGAffineTransform, x: CGFloat) -> CGAffineTransform {
         base.concatenating(CGAffineTransform(translationX: x, y: 0))
+    }
+
+    private static func requiresPixelProcessing(_ adjustments: VideoAdjustments) -> Bool {
+        var value = adjustments
+        // Subject tracking is geometry and is represented by native transform
+        // ramps below. It must not force the fragile custom pixel compositor.
+        value.subjectReframe = nil
+        return AdjustedClipGenerator.needsRender(value)
+    }
+
+    private static func nativeReframeTransform(
+        _ base: CGAffineTransform,
+        placement: Placement,
+        progress: Double,
+        renderSize: CGSize
+    ) -> CGAffineTransform {
+        guard let plan = placement.item.effectiveVideoAdjustments.subjectReframe,
+              plan.confidence >= 0.24 else { return base }
+        return SubjectReframeGeometry.transform(
+            base: base,
+            sourceExtent: CGRect(origin: .zero, size: placement.naturalSize),
+            plan: plan,
+            progress: progress,
+            renderSize: renderSize,
+            sourceTime: nil
+        )
     }
 
     private static func aspectFillTransform(naturalSize: CGSize, preferredTransform: CGAffineTransform, target: CGSize) -> CGAffineTransform {

@@ -1,0 +1,214 @@
+{
+  "recordedAt": "2026-09-06T19:07:12.714123+00:00",
+  "defaultEnabled": true,
+  "humanEvaluationPerformed": false,
+  "fullSpecificationPassed": false,
+  "testSuite": {
+    "tests": 428,
+    "failures": 0,
+    "seconds": 45.158
+  },
+  "realProjectAcceptanceSeconds": 243.955,
+  "appBuild": {
+    "script": "./Scripts/build-app.sh",
+    "releaseCompileSeconds": 110.53,
+    "codesignStrictVerified": true
+  },
+  "projects": [
+    {
+      "contract": "A",
+      "status": "committed",
+      "originalDuration": 164.88563368055554,
+      "duration": 45.54910391398107,
+      "primaryCount": 16,
+      "titleCount": 2,
+      "originalAudioVolume": 0.28,
+      "seconds": 98.45063304901123,
+      "defaultActivation": true,
+      "canvas": [
+        1920,
+        1080
+      ],
+      "renderedProbeCount": 60,
+      "criticalFindings": 0,
+      "highFindings": 0,
+      "sceneRunCount": 3,
+      "distinctScenes": 3,
+      "sceneReentry": false,
+      "audioMastering": {
+        "appliedGainDB": 11.056839336175662,
+        "integratedLUFS": -30.023486914078052,
+        "measuredFrames": 2185680,
+        "outputLUFS": -18.966647577902393,
+        "outputTruePeakDBTP": -4.887795655256911,
+        "peakLimited": false,
+        "truePeakDBTP": -15.944634991432572
+      },
+      "contentBudget": {
+        "budget": {
+          "absoluteCeiling": 72.56806737159907,
+          "confidence": 0.6199999999999998,
+          "distinctEventCount": 1,
+          "distinctSceneCount": 3,
+          "distinctShotFamilyCount": 18,
+          "idealDuration": 56.20158937883729,
+          "limitingFactors": [
+            "repeatedSetup",
+            "insufficientContent"
+          ],
+          "safeRange": [
+            44.96127150306984,
+            72.56806737159907
+          ],
+          "strongUnitCount": 18,
+          "usableActionSeconds": 72.56806737159907,
+          "usableAtmosphereSeconds": 0,
+          "usableSpeechSeconds": 0
+        },
+        "committedDuration": 45.54910391398107,
+        "durationConstraintStatus": "compromisedInsufficientContent",
+        "feasibility": 0.24189355790533024,
+        "reason": "Запрошено 300 с; поддерживается 73 с: 18 сильных моментов, 18 разных camera setups. Цель 73 с; расширение пустых диапазонов запрещено. Ограничения последовательности поддерживают 64 с.",
+        "requestedDuration": 300,
+        "requiresExpandedMining": false,
+        "supportedDuration": 72.56806737159907
+      },
+      "editorialScore": 0.9101582128874477
+    },
+    {
+      "contract": "B",
+      "status": "committed",
+      "originalDuration": 289.44270833333337,
+      "duration": 15.66125778215435,
+      "primaryCount": 6,
+      "titleCount": 2,
+      "originalAudioVolume": 0,
+      "seconds": 65.040030002594,
+      "defaultActivation": true,
+      "canvas": [
+        1080,
+        1920
+      ],
+      "renderedProbeCount": 29,
+      "criticalFindings": 0,
+      "highFindings": 0,
+      "sceneRunCount": 3,
+      "distinctScenes": 3,
+      "sceneReentry": false,
+      "audioMastering": {
+        "appliedGainDB": 12,
+        "integratedLUFS": -31.58731642096535,
+        "measuredFrames": 751520,
+        "outputLUFS": -19.58731642096535,
+        "outputTruePeakDBTP": -4.036394105662421,
+        "peakLimited": false,
+        "truePeakDBTP": -16.03639410566242
+      },
+      "contentBudget": {
+        "budget": {
+          "absoluteCeiling": 34.87656783648433,
+          "confidence": 0.62,
+          "distinctEventCount": 3,
+          "distinctSceneCount": 3,
+          "distinctShotFamilyCount": 9,
+          "idealDuration": 30.640118826198407,
+          "limitingFactors": [
+            "repeatedSetup",
+            "insufficientContent"
+          ],
+          "safeRange": [
+            24.51209506095873,
+            34.87656783648433
+          ],
+          "strongUnitCount": 10,
+          "usableActionSeconds": 34.87656783648433,
+          "usableAtmosphereSeconds": 0,
+          "usableSpeechSeconds": 0
+        },
+        "committedDuration": 15.66125778215435,
+        "durationConstraintStatus": "compromisedInsufficientContent",
+        "feasibility": 0.11625522612161442,
+        "reason": "Запрошено 300 с; поддерживается 35 с: 10 сильных моментов, 9 разных camera setups. Цель 35 с; расширение пустых диапазонов запрещено. Ограничения последовательности поддерживают 20 с.",
+        "requestedDuration": 300,
+        "requiresExpandedMining": false,
+        "supportedDuration": 34.87656783648433
+      },
+      "editorialScore": 0.8930500235513406
+    },
+    {
+      "contract": "C",
+      "status": "committed",
+      "duration": 26.834854185388167,
+      "primaryCount": 10,
+      "titleCount": 3,
+      "originalAudioVolume": 0,
+      "seconds": 77.45967495441437,
+      "defaultActivation": true,
+      "canvas": [
+        1080,
+        1920
+      ],
+      "renderedProbeCount": 43,
+      "criticalFindings": 0,
+      "highFindings": 0,
+      "sceneRunCount": 3,
+      "distinctScenes": 3,
+      "sceneReentry": false,
+      "audioMastering": {
+        "appliedGainDB": 0,
+        "integratedLUFS": -28.04338009664463,
+        "measuredFrames": 1288289,
+        "outputLUFS": -28.04338009664463,
+        "outputTruePeakDBTP": -4.70613697642231,
+        "peakLimited": false,
+        "truePeakDBTP": -4.70613697642231
+      },
+      "contentBudget": {
+        "budget": {
+          "absoluteCeiling": 45.02265828758566,
+          "confidence": 0.62,
+          "distinctEventCount": 3,
+          "distinctSceneCount": 3,
+          "distinctShotFamilyCount": 11,
+          "idealDuration": 38.345559002493886,
+          "limitingFactors": [
+            "repeatedSetup",
+            "insufficientContent"
+          ],
+          "safeRange": [
+            30.67644720199511,
+            45.02265828758566
+          ],
+          "strongUnitCount": 13,
+          "usableActionSeconds": 45.02265828758566,
+          "usableAtmosphereSeconds": 0,
+          "usableSpeechSeconds": 0
+        },
+        "committedDuration": 26.834854185388167,
+        "durationConstraintStatus": "compromisedInsufficientContent",
+        "feasibility": 0.15007552762528553,
+        "reason": "Запрошено 300 с; поддерживается 45 с: 13 сильных моментов, 11 разных camera setups. Цель 45 с; расширение пустых диапазонов запрещено. Ограничения последовательности поддерживают 35 с.",
+        "requestedDuration": 300,
+        "requiresExpandedMining": false,
+        "supportedDuration": 45.02265828758566
+      },
+      "editorialScore": 0.9008226040971014
+    }
+  ],
+  "limitations": [
+    "Unreliable accidental foreground occlusion and dominant vehicle-body detection",
+    "Shot-family semantic calibration incomplete",
+    "Semantic closure and complete bridge verification incomplete",
+    "Loudness target not always reached within AVAudioMix headroom",
+    "No independent blind human evaluation"
+  ],
+  "visualQA": {
+    "contactSheetTestSeconds": 8.907,
+    "inspectedContracts": [
+      "A",
+      "B",
+      "C"
+    ],
+    "independentHumanRatings": false
+  }
+}

@@ -1,0 +1,10 @@
+[0/1] Planning build
+Building for debugging...
+[0/6] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.20s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() started.
+✔ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() passed after 9.081 seconds.
+✔ Test run with 1 test in 0 suites passed after 9.082 seconds.

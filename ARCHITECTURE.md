@@ -10,6 +10,7 @@ P2 не создаёт отдельную модель selection: embeddings, se
 
 ## Модули
 
+- **FilmEndingFade / PhotoPresentationPolicy** — новые автоматические Timeline сохраняют `endingFadeDuration = 1`; старые проекты без поля не меняются. Затемнение работает на фактическом времени композиции после перекрытий и применяется после всех визуальных слоёв. Последний кадр чёрный без увеличения длительности, намеренное затемнение учитывается при проверке кадров. Фото получают 6 секунд и медленный zoom-in на 5%; ручные панорамы остаются отдельными эффектами.
 - **VeloEditCore/Models** — versioned Codable-типы, не зависящие от UI и AI runtime.
 - **VeloEditCore/Storage** — пакет проекта, атомарные manifest writes, derived-media cache.
 - **VeloEditCore/Media** — импорт, metadata, thumbnails, proxy и AVFoundation render.

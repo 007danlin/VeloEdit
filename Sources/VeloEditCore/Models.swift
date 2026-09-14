@@ -281,6 +281,7 @@ public struct MomentBoundary: Codable, Hashable, Sendable {
 /// never modified. The optional property on `Candidate` keeps older projects
 /// backward compatible.
 public struct CandidateInsights: Codable, Hashable, Sendable {
+    public var editorialEvidence: EditorialEvidence?
     public var sceneSummary: String?
     public var emotion: String?
     public var dynamics: Double
@@ -913,7 +914,7 @@ public enum DirectorSourceAudioPolicy: String, Codable, CaseIterable, Identifiab
     public var volume: Double {
         switch self {
         case .preserve: return 1
-        case .duck: return 0.28
+        case .duck: return 0.20
         case .mute: return 0
         }
     }
@@ -928,7 +929,11 @@ public enum DirectorTitlePolicy: String, Codable, CaseIterable, Identifiable, Se
 }
 
 public struct DirectorBrief: Codable, Hashable, Sendable {
+    public var durationMode: FilmDurationMode?
     public var canvasFormat: DirectorCanvasFormat
+    /// `nil` preserves the explicit format of projects created before adaptive
+    /// canvases. New projects opt into source-driven format selection.
+    public var canvasFormatIsAutomatic: Bool?
     /// The user's requested final runtime. It remains separate from any
     /// optimizer-resolved duration so an impossible request cannot pass as met.
     public var requestedDuration: Double
@@ -940,15 +945,19 @@ public struct DirectorBrief: Codable, Hashable, Sendable {
 
     public init(
         canvasFormat: DirectorCanvasFormat = .landscape16x9,
+        canvasFormatIsAutomatic: Bool = false,
         requestedDuration: Double = 120,
         mood: DirectorNarrativeMood = .cinematic,
         musicPolicy: DirectorMusicPolicy = .matchVideo,
         musicTrackID: UUID? = nil,
         sourceAudioPolicy: DirectorSourceAudioPolicy = .preserve,
-        titlePolicy: DirectorTitlePolicy = .minimal
+        titlePolicy: DirectorTitlePolicy = .minimal,
+        durationMode: FilmDurationMode = .exact
     ) {
         self.canvasFormat = canvasFormat
-        self.requestedDuration = min(3_600, max(5, requestedDuration))
+        self.durationMode = durationMode
+        self.canvasFormatIsAutomatic = canvasFormatIsAutomatic
+        self.requestedDuration = min(3_600, AutomaticFilmDurationPolicy.normalizedRequest(requestedDuration))
         self.mood = mood
         self.musicPolicy = musicPolicy
         self.musicTrackID = musicPolicy == .specificTrack ? musicTrackID : nil
@@ -956,7 +965,10 @@ public struct DirectorBrief: Codable, Hashable, Sendable {
         self.titlePolicy = titlePolicy
     }
 
-    public static let legacyDefault = DirectorBrief()
+    public var usesAutomaticCanvasFormat: Bool { canvasFormatIsAutomatic ?? false }
+    public var explicitRequestedDuration: Double? { durationMode == .automatic ? nil : requestedDuration }
+
+    public static let legacyDefault = DirectorBrief(canvasFormatIsAutomatic: true, durationMode: .automatic)
 }
 
 /// Exact constraints stated by the user must survive creative variant search.
@@ -992,7 +1004,7 @@ public struct StoryConstraints: Codable, Hashable, Sendable {
     public var preferredOutroTags: Set<String>?
 
     public init(targetDuration: Double = 120, targetClipCount: Int? = nil, includeTags: Set<String> = [], excludeTags: Set<String> = [], maximumTagShares: [String: Double] = [:], preferPhotos: Bool = false, allowSlowMotion: Bool = true, transitionFrequency: Double = 0.15, pacing: Double = 0.65, preferredIntroTags: Set<String>? = nil, preferredClimaxTags: Set<String>? = nil, preferredOutroTags: Set<String>? = nil) {
-        self.targetDuration = max(5, targetDuration)
+        self.targetDuration = AutomaticFilmDurationPolicy.normalizedRequest(targetDuration)
         self.targetClipCount = targetClipCount.map { min(200, max(1, $0)) }
         self.includeTags = includeTags
         self.excludeTags = excludeTags
@@ -1247,6 +1259,12 @@ public struct EventStoryPlan: Codable, Hashable, Sendable {
 }
 
 public struct StoryPlan: Codable, Identifiable, Hashable, Sendable {
+    public var preferredChapterTitleDuration: Double?
+    public var chapterTitleReference: ChapterTitleReference?
+    public var approvedSourceChapterLabels: [UUID: ChapterTitleReference.Label]?
+    public var explicitMusicTrackID: UUID?
+    public var contentBudget: ContentBudgetDecision?
+    public var narrativeBeatPlan: NarrativeBeatPlan?
     public var id: UUID
     public var version: Int
     public var prompt: String
@@ -1277,11 +1295,22 @@ public struct StoryPlan: Codable, Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
     }
 
-    /// A typed opening brief is just as explicit as a duration written in the
-    /// free-form prompt. Keeping the predicate on StoryPlan prevents later
-    /// editing and review stages from disagreeing about that contract.
+    /// The effective exact target is normally the duration explicitly chosen
+    /// by the user. When the autonomous duration pass has proved that the
+    /// source material cannot cover that request, the plan carries a smaller,
+    /// material-bounded target in `constraints`; enforcing the impossible
+    /// original value would discard an otherwise valid film at delivery time.
+    public var exactDurationRequirement: Double? {
+        let requirement = FilmDurationRequirement.parse(prompt: prompt,
+            explicitSeconds: directorBrief?.explicitRequestedDuration ?? contentBudget?.requestedDuration,
+            mode: directorBrief?.durationMode)
+        return requirement.mode == .exact ? requirement.target : nil
+    }
+
+    /// Keeping the predicate on StoryPlan prevents composing, directing and
+    /// final delivery from disagreeing about the effective duration contract.
     public var requiresExactDuration: Bool {
-        directorBrief != nil || AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt)
+        exactDurationRequirement != nil
     }
 }
 
@@ -1429,6 +1458,7 @@ public struct EditorialBoundaryDecision: Codable, Hashable, Sendable {
     public var motivation: String
     public var confidence: Double
     public var transitionStyle: TransitionStyle?
+    public var naturalTransition: NaturalChapterTransitionEvidence?
 
     public init(choice: EditorialEditChoice, motivation: String, confidence: Double, transitionStyle: TransitionStyle? = nil) {
         self.choice = choice
@@ -1552,7 +1582,7 @@ public struct VideoAdjustments: Codable, Hashable, Sendable {
     public var subjectReframe: SubjectReframePlan?
 
     public init(
-        crop: CropStyle = .fit,
+        crop: CropStyle = .fill,
         rotationQuarterTurns: Int = 0,
         filter: VideoFilter = .none,
         brightness: Double = 0,
@@ -1600,7 +1630,7 @@ public struct VideoAdjustments: Codable, Hashable, Sendable {
     }
 
     public var isNeutral: Bool {
-        crop == .fit && rotationQuarterTurns == 0 && filter == .none &&
+        crop == .fill && rotationQuarterTurns == 0 && filter == .none &&
         abs(brightness) < 0.0001 && abs(contrast - 1) < 0.0001 &&
         abs(saturation - 1) < 0.0001 && abs(warmth) < 0.0001 &&
         abs(opacity - 1) < 0.0001 && abs(exposure ?? 0) < 0.0001 &&
@@ -2048,6 +2078,8 @@ public struct MusicDirective: Codable, Hashable, Sendable {
     public var style: MusicStyle
     public var bpm: Double
     public var volume: Double
+    /// Playback rate for the soundtrack. Optional for backward compatibility.
+    public var speed: Double?
     /// The concrete file is resolved only from VeloEdit's local music catalog.
     /// `nil` means that a suitable local track still needs to be selected.
     public var trackID: UUID?
@@ -2057,16 +2089,126 @@ public struct MusicDirective: Codable, Hashable, Sendable {
     /// Optional continuous P3 intent used for track structure and narrative
     /// matching. Older projects continue to use style/BPM selection.
     public var autonomousIntent: AutonomousMusicIntent?
+    public var searchRequests: [MusicSearchRequest]?
 
-    public init(style: MusicStyle, bpm: Double, volume: Double = 0.18, trackID: UUID? = nil, trackTitle: String? = nil, preferDifferentTrack: Bool? = nil, structure: MusicStructure? = nil, autonomousIntent: AutonomousMusicIntent? = nil) {
+    /// Source clock shared by preview and export. Missing in legacy projects.
+    public var sourceStart: Double?
+    public var selectionEvidence: SoundtrackSelectionEvidence?
+
+    public init(style: MusicStyle, bpm: Double, volume: Double = 0.18, speed: Double? = nil, trackID: UUID? = nil, trackTitle: String? = nil, preferDifferentTrack: Bool? = nil, structure: MusicStructure? = nil, autonomousIntent: AutonomousMusicIntent? = nil, searchRequests: [MusicSearchRequest]? = nil) {
         self.style = style
         self.bpm = min(max(55, bpm), 180)
         self.volume = min(max(0, volume), 1)
+        self.speed = speed.map { min(max(0.1, $0), 20) }
         self.trackID = trackID
         self.trackTitle = trackTitle
         self.preferDifferentTrack = preferDifferentTrack
         self.structure = structure
         self.autonomousIntent = autonomousIntent
+        self.searchRequests = searchRequests
+    }
+
+    public var effectiveSpeed: Double { min(max(0.1, speed ?? 1), 20) }
+}
+
+/// One story-sized region of an automatically directed soundtrack. The region
+/// is expressed on the editable Timeline clock; PlaybackEngine maps it to the
+/// rendered clock so visual transition overlaps and music transitions stay in
+/// lockstep.
+public struct AdaptiveMusicSegment: Codable, Identifiable, Hashable, Sendable {
+    public var id: UUID
+    public var timelineStart: Double
+    public var timelineDuration: Double
+    public var directive: MusicDirective
+    public var sourceStart: Double
+    /// Crossfade duration at the beginning of this region. The first region
+    /// uses zero and receives a regular fade-in in the audio renderer.
+    public var transitionDuration: Double
+    public var semanticLabel: String
+    public var activityKey: String?
+    public var energy: Double
+    public var confidence: Double
+    public var boundaryItemID: UUID?
+    public var explanation: [String]
+
+    public init(
+        id: UUID = UUID(),
+        timelineStart: Double,
+        timelineDuration: Double,
+        directive: MusicDirective,
+        sourceStart: Double = 0,
+        transitionDuration: Double = 0,
+        semanticLabel: String,
+        activityKey: String? = nil,
+        energy: Double,
+        confidence: Double,
+        boundaryItemID: UUID? = nil,
+        explanation: [String] = []
+    ) {
+        self.id = id
+        self.timelineStart = max(0, timelineStart)
+        self.timelineDuration = max(0.05, timelineDuration)
+        self.directive = directive
+        self.sourceStart = max(0, sourceStart)
+        self.transitionDuration = min(max(0, transitionDuration), 4)
+        self.semanticLabel = semanticLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.activityKey = activityKey
+        self.energy = energy.clamped01
+        self.confidence = confidence.clamped01
+        self.boundaryItemID = boundaryItemID
+        self.explanation = explanation
+    }
+
+    public var timelineEnd: Double { timelineStart + timelineDuration }
+}
+
+/// A conservative, internal AI-director decision. `primaryTrackID` ties the
+/// plan to the visible soundtrack control: assigning another track manually
+/// invalidates the plan without exposing any new UI or migration step.
+public struct AdaptiveSoundtrackPlan: Codable, Hashable, Sendable {
+    public var primaryTrackID: UUID
+    public var timelineDuration: Double
+    /// Identifies the exact primary-storyline layout that produced the plan.
+    /// Reordering clips can preserve total duration, so duration alone is not
+    /// enough to decide that musical boundaries are still synchronized.
+    public var timelineFingerprint: String?
+    public var segments: [AdaptiveMusicSegment]
+    public var confidence: Double
+    public var explanation: [String]
+
+    public init(
+        primaryTrackID: UUID,
+        timelineDuration: Double,
+        timelineFingerprint: String? = nil,
+        segments: [AdaptiveMusicSegment],
+        confidence: Double,
+        explanation: [String] = []
+    ) {
+        self.primaryTrackID = primaryTrackID
+        self.timelineDuration = max(0, timelineDuration)
+        self.timelineFingerprint = timelineFingerprint
+        self.segments = segments.sorted { $0.timelineStart < $1.timelineStart }
+        self.confidence = confidence.clamped01
+        self.explanation = explanation
+    }
+
+    public func isValid(
+        for timelineDuration: Double,
+        primaryTrackID: UUID?,
+        timelineFingerprint: String? = nil
+    ) -> Bool {
+        guard segments.count >= 2,
+              Set(segments.compactMap(\.directive.trackID)).count >= 2,
+              self.primaryTrackID == primaryTrackID,
+              abs(self.timelineDuration - timelineDuration) <= 0.12,
+              let first = segments.first,
+              let last = segments.last,
+              first.timelineStart <= 0.06,
+              abs(last.timelineEnd - timelineDuration) <= 0.12 else { return false }
+        if let expected = self.timelineFingerprint, expected != timelineFingerprint { return false }
+        return zip(segments, segments.dropFirst()).allSatisfy { pair in
+            abs(pair.0.timelineEnd - pair.1.timelineStart) <= 0.08
+        }
     }
 }
 
@@ -2184,6 +2326,8 @@ public struct TimelineAudioClip: Codable, Identifiable, Hashable, Sendable {
     public var sourceDuration: Double
     public var timelineStart: Double
     public var timelineDuration: Double
+    /// Playback rate. Optional so timelines created by older builds still decode.
+    public var speed: Double?
     public var attachedToItemID: UUID?
     public var attachmentOffset: Double?
     public var adjustments: AudioAdjustments
@@ -2198,6 +2342,7 @@ public struct TimelineAudioClip: Codable, Identifiable, Hashable, Sendable {
         sourceDuration: Double,
         timelineStart: Double,
         timelineDuration: Double,
+        speed: Double? = nil,
         attachedToItemID: UUID? = nil,
         attachmentOffset: Double? = nil,
         adjustments: AudioAdjustments = AudioAdjustments()
@@ -2211,15 +2356,20 @@ public struct TimelineAudioClip: Codable, Identifiable, Hashable, Sendable {
         self.sourceDuration = max(0.05, sourceDuration)
         self.timelineStart = max(0, timelineStart)
         self.timelineDuration = max(0.05, timelineDuration)
+        self.speed = speed.map { min(max(0.1, $0), 20) }
         self.attachedToItemID = attachedToItemID
         self.attachmentOffset = attachmentOffset
         self.adjustments = adjustments
     }
 
     public var timelineEnd: Double { timelineStart + timelineDuration }
+    public var effectiveSpeed: Double { min(max(0.1, speed ?? 1), 20) }
 }
 
 public struct Timeline: Codable, Identifiable, Hashable, Sendable {
+    public var editorialRegeneration: EditorialRegenerationRecord?
+    public var editorialBeatPlan: NarrativeBeatPlan?
+    public var editorialReview: EditorialReview?
     public var id: UUID
     public var storyPlanID: UUID
     public var width: Int
@@ -2237,9 +2387,16 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
     public var titleItems: [TitleTimelineItem]?
     public var transitionItems: [TimelineTransitionItem]?
     public var music: MusicDirective?
+    /// Optional so every project created before adaptive soundtracks remains
+    /// directly decodable. A valid plan is rendered instead of the global
+    /// music loop while `music` remains its backward-compatible master control.
+    public var adaptiveSoundtrack: AdaptiveSoundtrackPlan?
     /// `nil` keeps projects created before audio controls backward compatible.
     /// Playback treats it as full source volume.
     public var originalAudioVolume: Double?
+    /// Movie-level fade to black. Missing on legacy/manual timelines; zero
+    /// explicitly disables it. New automatic films save a three-second finish.
+    public var endingFadeDuration: Double?
     public var audioDucking: AudioDuckingSettings?
     public var versionName: String?
     public var directorRun: DirectorRunSummary?
@@ -2248,7 +2405,7 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
     public var naturalLanguageHistory: [NaturalLanguageCommandRecord]?
     public var createdAt: Date
 
-    public init(id: UUID = UUID(), storyPlanID: UUID, width: Int = 1920, height: Int = 1080, frameRate: Double = 30, items: [TimelineItem], audioClips: [TimelineAudioClip]? = nil, telemetryItems: [TimelineTelemetryItem]? = nil, effects: [EffectTimelineItem]? = nil, titleItems: [TitleTimelineItem]? = nil, transitionItems: [TimelineTransitionItem]? = nil, music: MusicDirective? = nil, originalAudioVolume: Double? = nil, audioDucking: AudioDuckingSettings? = nil, versionName: String? = nil, directorRun: DirectorRunSummary? = nil, naturalLanguageHistory: [NaturalLanguageCommandRecord]? = nil, createdAt: Date = Date()) {
+    public init(id: UUID = UUID(), storyPlanID: UUID, width: Int = 1920, height: Int = 1080, frameRate: Double = 30, items: [TimelineItem], audioClips: [TimelineAudioClip]? = nil, telemetryItems: [TimelineTelemetryItem]? = nil, effects: [EffectTimelineItem]? = nil, titleItems: [TitleTimelineItem]? = nil, transitionItems: [TimelineTransitionItem]? = nil, music: MusicDirective? = nil, adaptiveSoundtrack: AdaptiveSoundtrackPlan? = nil, originalAudioVolume: Double? = nil, endingFadeDuration: Double? = nil, audioDucking: AudioDuckingSettings? = nil, versionName: String? = nil, directorRun: DirectorRunSummary? = nil, naturalLanguageHistory: [NaturalLanguageCommandRecord]? = nil, createdAt: Date = Date()) {
         self.id = id
         self.storyPlanID = storyPlanID
         self.width = width
@@ -2261,7 +2418,9 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
         self.titleItems = titleItems
         self.transitionItems = transitionItems
         self.music = music
+        self.adaptiveSoundtrack = adaptiveSoundtrack
         self.originalAudioVolume = originalAudioVolume.map { min(max(0, $0), 1) }
+        self.endingFadeDuration = endingFadeDuration.map { $0.isFinite ? max(0, $0) : 0 }
         self.audioDucking = audioDucking
         self.versionName = versionName
         self.directorRun = directorRun
@@ -2276,6 +2435,36 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
     }
     public var effectiveOriginalAudioVolume: Double { originalAudioVolume ?? 1 }
     public var effectiveAudioClips: [TimelineAudioClip] { audioClips ?? [] }
+    public var effectiveAdaptiveSoundtrack: AdaptiveSoundtrackPlan? {
+        guard let adaptiveSoundtrack,
+              adaptiveSoundtrack.isValid(
+                for: duration,
+                primaryTrackID: music?.trackID,
+                timelineFingerprint: adaptiveSoundtrackFingerprint
+              ) else { return nil }
+        return adaptiveSoundtrack
+    }
+    public var adaptiveSoundtrackFingerprint: String {
+        items
+            .filter { $0.overlay == nil }
+            .sorted {
+                $0.timelineStart == $1.timelineStart
+                    ? $0.id.uuidString < $1.id.uuidString
+                    : $0.timelineStart < $1.timelineStart
+            }
+            .map { item in
+                [
+                    item.id.uuidString.lowercased(),
+                    String(Int((item.timelineStart * 1_000).rounded())),
+                    String(Int((item.timelineDuration * 1_000).rounded())),
+                    item.candidateID?.uuidString.lowercased() ?? "candidate:none",
+                    item.eventID?.uuidString.lowercased() ?? "event:none",
+                    item.eventSceneID?.uuidString.lowercased() ?? "scene:none",
+                    item.transition ?? "transition:none"
+                ].joined(separator: "|")
+            }
+            .joined(separator: ";")
+    }
     public var effectiveTelemetryItems: [TimelineTelemetryItem] { telemetryItems ?? [] }
     public var effectiveEffects: [EffectTimelineItem] { effects ?? [] }
     public var effectiveTitleItems: [TitleTimelineItem] { titleItems ?? [] }
@@ -2286,6 +2475,13 @@ public enum RenderQuality: String, Codable, Sendable { case preview720p, preview
 public enum RenderJobStatus: String, Codable, Sendable { case queued, running, paused, completed, failed, cancelled }
 
 public struct RenderJob: Codable, Identifiable, Hashable, Sendable {
+    public var frameRate: Double?
+    public var inputSignature: String?
+    public var artifactHash: String?
+    public var verifiedStagingURL: URL?
+    public var videoSummary: String?
+    public var completedAt: Date?
+    public var replacesExistingFile: Bool?
     public var id: UUID
     public var timelineID: UUID
     public var quality: RenderQuality
@@ -2305,6 +2501,7 @@ public struct RenderJob: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct UserPreferences: Codable, Hashable, Sendable {
+    public var chapterTitleReference: ChapterTitleReference?
     public var likedTags: Set<String> = []
     public var dislikedTags: Set<String> = []
     public var preferredPacing: Double = 0.65
@@ -2323,6 +2520,17 @@ public struct UserPreferences: Codable, Hashable, Sendable {
 }
 
 public struct ProjectManifest: Codable, Identifiable, Sendable {
+    public var autonomousJob: AutonomousJob?
+    public var authorizedMediaFolders: [AuthorizedMediaFolder]?
+    public var removedMedia: [RemovedMediaArchive]?
+    public var packagedMediaPaths: [UUID: String]?
+    public var packagedFilePaths: [String: String]?
+    /// Exact unfinished request and its last durable build checkpoint.
+    public var filmBuildRecovery: FilmBuildRecovery?
+    public var filmBuildContentRevision: UUID?
+    public var editorialDevelopmentEnabled: Bool?
+    public var editorialHumanEvaluation: EditorialHumanEvaluation?
+    public var intentLedger: IntentLedger?
     public var id: UUID
     public var name: String
     public var projectVersion: Int

@@ -22,7 +22,8 @@ public struct MusicPromptInterpreter: Sendable {
         ].contains(where: value.contains)
         if changesOnlyVolume && !alsoSelectsTrack { return nil }
 
-        let asksForMusic = [
+        let searches = MusicSearchRequest.parse(prompt)
+        let asksForMusic = !searches.isEmpty || [
             "музык", "саундтр", "трек", "песн", "мелоди",
             "подбери другой", "выбери другой", "хочу поживее", "сделай поживее"
         ].contains { value.contains($0) }
@@ -50,7 +51,7 @@ public struct MusicPromptInterpreter: Sendable {
             case .story: style = .acoustic
             }
         }
-        let bpm: Double
+        var bpm: Double
         switch style {
         case .energetic: bpm = 118
         case .cinematic: bpm = 82
@@ -59,12 +60,17 @@ public struct MusicPromptInterpreter: Sendable {
         case .electronic: bpm = 116
         case .acoustic: bpm = 94
         }
+        if let regex = try? NSRegularExpression(pattern: "(?i)([0-9]{2,3})\\s*(?:bpm|удар[а-я]*\\s*(?:в|/)\\s*мин)"),
+           let match = regex.firstMatch(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)),
+           let range = Range(match.range(at: 1), in: prompt), let requestedBPM = Double(prompt[range]) {
+            bpm = requestedBPM
+        }
         let wantsReplacement = [
             "другой", "другую", "поживее",
             "смени трек", "замени трек", "смени музыку", "замени музыку",
             "change music", "replace music", "another track"
         ].contains(where: value.contains)
-        return MusicDirective(style: style, bpm: bpm, preferDifferentTrack: wantsReplacement ? true : nil)
+        return MusicDirective(style: style, bpm: bpm, preferDifferentTrack: wantsReplacement ? true : nil, searchRequests: searches.isEmpty ? nil : searches)
     }
 }
 
@@ -80,22 +86,22 @@ public struct OriginalAudioPromptInterpreter: Sendable {
             "убери звук исход", "убрать звук исход", "без исходного звук",
             "без звука исход", "отключи звук исход", "выключи звук исход",
             "заглуши оригинал", "убери оригинальный звук", "убери звук у видео",
-            "mute original", "no original audio"
+            "mute original", "no original audio", "убери исходный звук", "убрать исходный звук", "remove original audio", "звук исходников: убрать", "звук исходников убран"
         ], in: text)
         let restore = lastPosition(of: [
             "верни звук исход", "оставь звук исход", "включи звук исход",
-            "верни оригинальный звук", "не убирай звук", "original audio on"
+            "верни оригинальный звук", "не убирай звук", "original audio on", "верни исходный звук", "оставь исходный звук", "keep original audio"
         ], in: text)
         let quieter = lastPosition(of: [
             "приглуши звук исход", "приглушить звук исход", "приглушить. сколько титров",
             "звук исходников? приглуш", "звук исходников: приглуш", "звук исходников приглуш",
             "звуком исходников? приглуш", "звуком исходников: приглуш", "звуком исходников приглуш",
             "сделай звук исходников тише", "исходный звук тише", "оригинальный звук тише",
-            "убавь звук исходников", "lower original audio", "original audio quieter"
+            "убавь звук исходников", "lower original audio", "original audio quieter", "приглуши исходный звук", "duck original"
         ], in: text)
         let decisions: [(position: Int, volume: Double)] = [
             mute.map { ($0, 0) },
-            quieter.map { ($0, 0.30) },
+            quieter.map { ($0, DirectorSourceAudioPolicy.duck.volume) },
             restore.map { ($0, 1) }
         ].compactMap { $0 }
         return decisions.max(by: { $0.position < $1.position })?.volume

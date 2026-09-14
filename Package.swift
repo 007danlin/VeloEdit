@@ -38,6 +38,10 @@ let package = Package(
         .testTarget(
             name: "VeloEditCoreTests",
             dependencies: ["VeloEditCore"]
+        ),
+        .testTarget(
+            name: "VeloEditAppTests",
+            dependencies: ["VeloEdit"]
         )
     ],
     swiftLanguageModes: [.v5]

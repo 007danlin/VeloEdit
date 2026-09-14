@@ -1,0 +1,339 @@
+import Foundation
+
+/// Injectable decoding/vision boundary. Production always probes the actual
+/// composition; deterministic test doubles are supplied explicitly by tests.
+public protocol EditorialRenderedProbing: Sendable {
+    func frames(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL) async throws -> [PerceptualRenderedFrameEvidence]
+}
+
+public struct LocalEditorialRenderedProber: EditorialRenderedProbing {
+    public var verifyExport: Bool
+    public var maximumSamples: Int
+    public init(verifyExport: Bool = true, maximumSamples: Int = 4096) {
+        self.verifyExport = verifyExport
+        self.maximumSamples = max(4, maximumSamples)
+    }
+    public func frames(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL) async throws -> [PerceptualRenderedFrameEvidence] {
+        // Completed preview inspection survives a later interruption during
+        // the much longer control export. It is not production evidence until
+        // independent delivery verification has also succeeded.
+        let previewCache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialPreviewFrames-\(maximumSamples)"))
+        let cachedFrames = await previewCache.load(timeline: timeline, assets: assets, tracks: tracks)
+        let cachePaths = CachePaths(root: cacheURL.deletingLastPathComponent().deletingLastPathComponent())
+        let stableSources = cachePaths.stableRenderSources(for: assets)
+        let sourceWarnings = stableSources.keys.compactMap { id in
+            assets.first(where: { $0.id == id }).map { "\($0.displayName): production-проверка использует декодируемую копию" }
+        }
+        let playback: TimelinePlayback
+        do {
+            playback = try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings, derivedMediaCacheURL: cacheURL, forceVideoComposition: true)
+        } catch {
+            let value = error as NSError
+            throw EditorialGenerationError.unsatisfiedIntent("Playback build: \(value.domain) \(value.code): \(value.localizedDescription)")
+        }
+        var frames: [PerceptualRenderedFrameEvidence]
+        if let cachedFrames {
+            frames = cachedFrames
+            await FilmBuildReporting.report(FilmBuildProgress(.previewFrames, completed: frames.count, total: frames.count, detail: "Использую сохранённую проверку кадров"))
+        } else {
+            frames = await PerceptualRenderInspector().inspectAsync(playback: playback, timeline: timeline, maximumSamples: maximumSamples)
+            try Task.checkCancellation()
+            try await previewCache.store(frames, timeline: timeline, assets: assets, tracks: tracks)
+        }
+        if !frames.isEmpty {
+            frames[0].audioMasteringReport = playback.audioMasteringReport
+            if verifyExport {
+                do {
+                    frames[0].exportVerification = try await EditorialDeliveryVerifier.verify(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preview: frames, cacheURL: cacheURL, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings)
+                    frames[0].audioMasteringReport = frames[0].exportVerification?.encodedAudio
+                } catch {
+                    let value = error as NSError
+                    throw EditorialGenerationError.unsatisfiedIntent("Delivery verify: \(value.domain) \(value.code): \(value.localizedDescription)")
+                }
+            }
+        }
+        return frames
+    }
+}
+
+public protocol RenderedTimelineReviewing: Sendable {
+    func review(timeline: Timeline, plan: StoryPlan, playback: TimelinePlayback, analyses: [AnalysisResult]) async -> EditorialReview
+}
+
+public struct RenderedEditorialReviewer: RenderedTimelineReviewing {
+    public init() {}
+    public func review(timeline: Timeline, plan: StoryPlan, playback: TimelinePlayback, analyses: [AnalysisResult]) async -> EditorialReview {
+        let probes = await PerceptualRenderInspector().inspectAsync(playback: playback, timeline: timeline)
+        return EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, renderedFrames: probes, requireRenderedEvidence: true)
+    }
+}
+
+enum EditorialRenderDependencies {
+    // Track allocation is part of the render contract, including the audio
+    // tracks used by connected clips. Old probes/mixes must be recomputed.
+    // v5 also preserves requested source attenuation through export mastering.
+    static let compositionVersion = 5
+    static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack]) -> String {
+        let used = Set(timeline.items.compactMap(\.assetID) + timeline.effectiveAudioClips.map(\.assetID))
+        let hashes = assets.filter { used.contains($0.id) }.map(\.contentHash)
+        let musicIDs = Set([timeline.music?.trackID].compactMap { $0 } + (timeline.effectiveAdaptiveSoundtrack?.segments.compactMap(\.directive.trackID) ?? []))
+        let music = tracks.filter { musicIDs.contains($0.id) }.map { track in
+            // URL.resourceValues caches metadata on the URL instance. Stat the
+            // current file so replacing it invalidates the review immediately.
+            let values = try? FileManager.default.attributesOfItem(atPath: track.localFileURL.path)
+            let size = (values?[.size] as? NSNumber)?.int64Value ?? 0
+            let modified = (values?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            return "\(track.id)|\(track.localFileURL.path)|\(size)|\(modified)"
+        }
+        return EditorialIdentity.hash("composition-\(compositionVersion)|canvas-\(timeline.width)x\(timeline.height)|evidence-\(EditorialEvidenceVerifier.version)|" + EditorialRenderSignature.signature(timeline) + "|" + (hashes + music).sorted().joined(separator: "|"))
+    }
+}
+
+public actor RenderedProbeCache {
+    public static let version = 12
+    private let directory: URL
+    public init(directory: URL) { self.directory = directory }
+    private func url(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack]) -> URL {
+        let key = EditorialIdentity.hash("\(Self.version)|" + EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks))
+        return directory.appendingPathComponent(key + ".json")
+    }
+    public func load(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = []) -> [PerceptualRenderedFrameEvidence]? {
+        guard let data = try? Data(contentsOf: url(timeline: timeline, assets: assets, tracks: tracks)) else { return nil }
+        return try? JSONDecoder().decode([PerceptualRenderedFrameEvidence].self, from: data)
+    }
+    public func store(_ frames: [PerceptualRenderedFrameEvidence], timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = []) throws {
+        guard !frames.isEmpty, frames.allSatisfy({ $0.decodeFailed != true }) else { return }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(frames).write(to: url(timeline: timeline, assets: assets, tracks: tracks), options: .atomic)
+    }
+}
+
+extension VeloEditPipeline {
+    static func editorialRenderReview(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false) async -> Timeline {
+        var plan = inputPlan
+        // Materialize legacy/default framing before deriving the render
+        // signature or decoding a preview. RenderEngine applies the same
+        // migration before export; persisting it here makes preview, evidence
+        // and delivery operate on one exact composition instead of allowing
+        // nil adjustments to mean fill in one path and fit in another.
+        var timeline = AutomaticFramingPolicy.applying(to: source, assets: assets, analyses: analyses)
+        if analyzeChapterTransitions {
+            timeline = await NaturalChapterTransitionPlanner().applying(to: timeline, plan: plan, assets: assets, analyses: analyses)
+        }
+        // Structural repair can trim or remove shots. Re-anchor generated
+        // headings before deriving a signature or inspecting pixels, keeping
+        // any presentation that already received a rendered readability fix.
+        timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true)
+        let cache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialProbes"))
+        // A deliberately sparse ranking probe is not production evidence and
+        // must never poison the full-render cache used by the final winner.
+        let isPreliminaryProbe = (prober as? LocalEditorialRenderedProber)?.verifyExport == false
+        var frames = isPreliminaryProbe
+            ? nil
+            : await cache.load(timeline: timeline, assets: assets, tracks: tracks)
+        var recoveryNotes: [String] = []
+        if frames == nil {
+            for attempt in 1...2 {
+                do {
+                    try Task.checkCancellation()
+                    let probed = try await prober.frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
+                    try Task.checkCancellation()
+                    frames = probed
+                    if probed.isEmpty || probed.contains(where: { $0.decodeFailed == true }) {
+                        recoveryNotes.append("Проверка кадров, попытка \(attempt): декодирование неполное")
+                        continue
+                    }
+                    if !isPreliminaryProbe {
+                        try? await cache.store(probed, timeline: timeline, assets: assets, tracks: tracks)
+                    }
+                    break
+                } catch is CancellationError {
+                    // Cancellation is a user action, not a recoverable fault.
+                    return timeline
+                } catch {
+                    let value = error as NSError
+                    recoveryNotes.append("Проверка кадров, попытка \(attempt): \(value.domain) \(value.code): \(value.localizedDescription)")
+                    if Task.isCancelled { return timeline }
+                }
+            }
+        }
+        if var verifiedFrames = frames, !verifiedFrames.isEmpty,
+           !verifiedFrames.contains(where: { !($0.editorialClaims?.isEmpty ?? true) }) {
+            // Production semantic evidence is derived here because this layer
+            // owns both the rendered probes and the actual plan/analysis used
+            // to build the candidate. The low-level decoder stays reusable.
+            verifiedFrames[0].editorialClaims = EditorialLocalSemanticVerifier.claims(
+                timeline: timeline,
+                plan: plan,
+                analyses: analyses,
+                frames: verifiedFrames,
+                tracks: tracks
+            )
+            frames = verifiedFrames
+        }
+        let fallback = timeline.editorialReview?.conservativeFallback ?? false
+        timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, renderedFrames: frames, requireRenderedEvidence: true, requireCompleteEvidence: !isPreliminaryProbe, musicTracks: tracks)
+        timeline.editorialReview?.conservativeFallback = fallback
+        for note in recoveryNotes {
+            timeline.directorRun?.rejectedOperations.append(note)
+            if frames?.isEmpty != false || frames?.contains(where: { $0.decodeFailed == true }) == true {
+                timeline.editorialReview?.findings.append(.init(kind: .renderedEvidenceUnavailable, severity: 1, itemIDs: [], repair: .technical, reason: note))
+            }
+        }
+        timeline.directorRun?.editorialReview = timeline.editorialReview
+        // Removing a measured duplicate can expose another duplicate at the
+        // newly-created cut. Give the verifier enough bounded passes to reach
+        // a fixed point instead of stopping after two otherwise-successful
+        // repairs. Every recursive pass below must change the render signature,
+        // so this budget cannot turn into an unchanged retry loop.
+        // A source-edge framing defect legitimately needs two distinct states:
+        // fill/reframe -> full fit -> exclusion if the complete source remains
+        // unsafe. Duplicate removal needs at most one state per primary.
+        let repairsRemaining = min(6, suppliedRepairBudget ?? 6)
+        if !Task.isCancelled, repairsRemaining > 0,
+           timeline.editorialReview?.findings.contains(where: { [.unreadableTitle, .unsafeReframe, .hardDuplicate].contains($0.kind) }) == true {
+            var repaired = timeline
+            let unsafeIDs = Set(timeline.editorialReview?.findings.filter { $0.kind == .unsafeReframe }.flatMap(\.itemIDs) ?? [])
+            var unrepairableUnsafeIDs = Set<UUID>()
+            for index in repaired.items.indices where unsafeIDs.contains(repaired.items[index].id) {
+                var adjustments = repaired.items[index].effectiveVideoAdjustments
+                if adjustments.crop == .fit && adjustments.subjectReframe == nil {
+                    // The complete source frame was already shown and the
+                    // rendered detector still sees an unsafe body cut. Pixels
+                    // outside the source do not exist, so this shot cannot be
+                    // repaired by another framing pass.
+                    unrepairableUnsafeIDs.insert(repaired.items[index].id)
+                    continue
+                }
+                // Restoring a nil subject plan still leaves a wide source in
+                // center-crop fill. The independent rendered detector has
+                // already proved that this loses a person, so the safe repair
+                // is an explicit full-frame fit.
+                adjustments.crop = .fit
+                adjustments.subjectReframe = nil
+                repaired.items[index].videoAdjustments = adjustments
+                repaired.items[index].explanation.append("Rendered safety repair: сохранён полный исходный кадр")
+            }
+            let duplicateIDs = Set(timeline.editorialReview?.findings.filter { $0.kind == .hardDuplicate }.flatMap(\.itemIDs) ?? [])
+            let removalIDs = duplicateIDs.union(unrepairableUnsafeIDs)
+            if !removalIDs.isEmpty {
+                var pendingDuplicateIDs = removalIDs
+                var removedCandidateIDs = Set<UUID>()
+                let maximumStructuralPasses = max(1, repaired.items.filter { $0.overlay == nil && $0.kind != .title }.count)
+                for _ in 0..<maximumStructuralPasses {
+                    removedCandidateIDs.formUnion(repaired.items.filter { pendingDuplicateIDs.contains($0.id) }.compactMap(\.candidateID))
+                    let removedPrimaryIDs = Set(repaired.items.filter { pendingDuplicateIDs.contains($0.id) && $0.overlay == nil }.map(\.id))
+                    let previousCount = repaired.items.count
+                    repaired.items.removeAll { item in
+                        pendingDuplicateIDs.contains(item.id) || item.overlay?.baseItemID.map(removedPrimaryIDs.contains) == true
+                    }
+                    guard repaired.items.count < previousCount else { break }
+                    repaired.items = TimelineTiming.retimed(repaired.items)
+                    // The measured removal changes neighbourhoods. Eliminate
+                    // any newly-exposed deterministic shot-family duplicate
+                    // before paying for another full control export.
+                    let structural = EditorialQualityGate().review(timeline: repaired, plan: plan, analyses: analyses)
+                    pendingDuplicateIDs = Set(structural.findings.filter { $0.kind == .hardDuplicate }.flatMap(\.itemIDs))
+                    if pendingDuplicateIDs.isEmpty { break }
+                }
+                if var beatPlan = repaired.editorialBeatPlan, !removedCandidateIDs.isEmpty {
+                    beatPlan.beats.removeAll { removedCandidateIDs.contains($0.candidateID) }
+                    beatPlan.reasons.append(EditorialContentBudgetPolicy.renderedSafetyRepairMarker)
+                    repaired.editorialBeatPlan = beatPlan
+                }
+                // Recover only unused, analysed source range on surviving
+                // unique clips. This keeps the honest content floor without
+                // loops, duplicated shots or manufactured freeze-frame padding.
+                let requiredDuration = min(timeline.duration, plan.contentBudget?.budget.safeRange.lowerBound ?? timeline.duration)
+                var missingDuration = max(0, requiredDuration - repaired.duration)
+                if missingDuration > 0.000_1 {
+                    let units = Dictionary(uniqueKeysWithValues: EditorialAnalysisContext(analyses: analyses).units.map { ($0.id, $0) })
+                    for index in repaired.items.indices.reversed() where missingDuration > 0.000_1 && repaired.items[index].overlay == nil && repaired.items[index].kind != .title {
+                        guard let candidateID = repaired.items[index].candidateID,
+                              let unit = units[candidateID] else { continue }
+                        let candidate = unit.candidate
+                        let availableInCandidate = max(0, candidate.sourceStart + candidate.sourceDuration - repaired.items[index].sourceStart - repaired.items[index].sourceDuration)
+                        let availableInUsableRange = max(0, unit.usableDuration - repaired.items[index].sourceDuration)
+                        let availableSource = min(availableInCandidate, availableInUsableRange)
+                        let sourcePerTimelineSecond = repaired.items[index].sourceDuration / max(0.000_1, repaired.items[index].timelineDuration)
+                        let addedTimeline = min(missingDuration, availableSource / max(0.000_1, sourcePerTimelineSecond))
+                        guard addedTimeline > 0.000_1 else { continue }
+                        repaired.items[index].sourceDuration += addedTimeline * sourcePerTimelineSecond
+                        repaired.items[index].timelineDuration += addedTimeline
+                        repaired.items[index].explanation.append("Content-budget repair: использован дополнительный подтверждённый source range")
+                        missingDuration -= addedTimeline
+                    }
+                    repaired.items = TimelineTiming.retimed(repaired.items)
+                }
+                if var beatPlan = repaired.editorialBeatPlan {
+                    let primaryByCandidate: [UUID: TimelineItem] = Dictionary(uniqueKeysWithValues: repaired.items.compactMap { item -> (UUID, TimelineItem)? in
+                        guard item.overlay == nil, item.kind != .title, let candidateID = item.candidateID else { return nil }
+                        return (candidateID, item)
+                    })
+                    for index in beatPlan.beats.indices {
+                        if let item = primaryByCandidate[beatPlan.beats[index].candidateID] {
+                            beatPlan.beats[index].allocatedDuration = item.timelineDuration
+                        }
+                    }
+                    repaired.editorialBeatPlan = beatPlan
+                }
+                if repaired.editorialBeatPlan?.reasons.contains(AutomaticEditorialAssembly.marker) == true {
+                    let assembled = AutomaticEditorialAssembly.prepare(timeline: repaired, plan: plan, analyses: analyses, events: events, assets: assets, excluded: removedCandidateIDs)
+                    repaired = assembled.timeline
+                    plan = assembled.plan
+                }
+                let survivingIDs = Set(repaired.items.map(\.id))
+                repaired.transitionItems = repaired.effectiveTransitionItems.filter {
+                    survivingIDs.contains($0.incomingClipID) && survivingIDs.contains($0.outgoingClipID)
+                }
+                if let firstPrimary = repaired.items.firstIndex(where: { $0.overlay == nil }) {
+                    repaired.items[firstPrimary].transition = nil
+                }
+                // A duration-bound multi-track soundtrack is no longer valid
+                // after a redundant shot is removed. Keep the selected music
+                // itself and let normal single-track looping cover the result.
+                repaired.adaptiveSoundtrack = nil
+                repaired = await applyingAdaptiveSoundtrack(to: repaired, plan: plan, tracks: tracks, analyses: analyses)
+                let newDuration = repaired.duration
+                repaired.titleItems = repaired.effectiveTitleItems.compactMap { title in
+                    guard newDuration >= 0.05 else { return nil }
+                    var value = title
+                    value.startTime = min(value.startTime, max(0, newDuration - value.duration))
+                    value.duration = min(value.duration, max(0.05, newDuration - value.startTime))
+                    return value
+                }
+            }
+            if timeline.editorialReview?.findings.contains(where: { $0.kind == .unreadableTitle }) == true {
+                let titles = timeline.effectiveTitleItems
+                let alreadyHardened = titles.allSatisfy { $0.templateID == "title.minimal-clean.v1" && ($0.style.backgroundOpacity ?? 0) >= 0.99 && $0.animation.entrance == .none }
+                if alreadyHardened {
+                    // Keep a required heading and report the failed check.
+                    // Deleting it would hide the symptom and publish a film
+                    // with a missing chapter title.
+                    return timeline
+                } else {
+                    repaired.titleItems = titles.map(EditorialPresentationPolicy.hardeningReadability)
+                }
+            }
+            guard EditorialRenderSignature.signature(repaired) != EditorialRenderSignature.signature(timeline) else { return timeline }
+            if let store = AutonomousJobContext.store,
+               (try? await store.claimCompositionRepair(signature: EditorialRenderSignature.signature(repaired))) != true { return timeline }
+            repaired = await editorialRenderReview(timeline: repaired, plan: plan, assets: assets, analyses: analyses, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL, prober: prober, repairsRemaining: repairsRemaining - 1, events: events, analyzeChapterTransitions: analyzeChapterTransitions)
+            if let before = timeline.editorialReview, let after = repaired.editorialReview,
+               after.criticalCount < before.criticalCount ||
+               after.criticalCount == before.criticalCount &&
+                   (after.blockingUnknowns.count < before.blockingUnknowns.count || after.highCount < before.highCount || after.candidateEligible) {
+                return repaired
+            }
+        }
+        if ProcessInfo.processInfo.environment["VELOEDIT_EDITORIAL_DIAGNOSTICS"] == "1",
+           timeline.editorialReview?.candidateEligible != true,
+           let data = try? JSONEncoder().encode(timeline) {
+            let directory = cacheURL.appendingPathComponent("EditorialRejected", isDirectory: true)
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let signature = EditorialRenderSignature.signature(timeline)
+            try? data.write(to: directory.appendingPathComponent(signature + ".json"), options: .atomic)
+        }
+        return timeline
+    }
+}

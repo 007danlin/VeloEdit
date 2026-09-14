@@ -869,9 +869,9 @@ public struct DirectorEditingTools: Sendable {
                         adjustments.crop = .fill
                         adjustments.subjectReframe = reframe
                     } else {
-                        // Without a reliable subject track, fitting is safer
-                        // than silently cutting a face or important object.
-                        adjustments.crop = .fit
+                        // A format conversion still has to fill the requested
+                        // canvas. Without tracking, use a stable center crop.
+                        adjustments.crop = .fill
                     }
                     timeline.items[index].videoAdjustments = adjustments.isNeutral ? nil : adjustments
                 }
@@ -954,6 +954,7 @@ public struct DirectorReview: Codable, Hashable, Sendable {
 }
 
 public struct DirectorRunSummary: Codable, Hashable, Sendable {
+    public var editorialReview: EditorialReview?
     public var reviewIterations: Int
     public var appliedToolNames: [String]
     public var decisionReasons: [String]
@@ -1111,7 +1112,7 @@ public struct TimelineSelfReviewer: Sendable {
             $0.0.storyRole == .climax &&
                 (preferredClimaxTags.isEmpty || !preferredClimaxTags.isDisjoint(with: $0.1.tags))
         }
-        if let strongestAction = eligibleClimaxCandidates.max(by: { Self.climaxScore($0.1) < Self.climaxScore($1.1) }) {
+        if plan.narrativeBeatPlan == nil, let strongestAction = eligibleClimaxCandidates.max(by: { Self.climaxScore($0.1) < Self.climaxScore($1.1) }) {
             let current = climaxItems.map { Self.climaxScore($0.1) }.max() ?? 0
             if current + 0.10 < Self.climaxScore(strongestAction.1) {
                 issues.append(DirectorReviewIssue(kind: .weakClimax, severity: 0.84, itemIDs: climaxItems.map { $0.0.id }, message: "Лучший action-момент не работает как кульминация"))
@@ -1144,6 +1145,11 @@ public struct TimelineSelfReviewer: Sendable {
         }
 
         for item in primaries where item.timelineDuration > Self.maximumDuration(for: item.storyRole, pacing: plan.constraints.pacing) * 1.35 {
+            if item.kind == .photo && item.timelineDuration <= PhotoPresentationPolicy.duration { continue }
+            if let candidate = item.candidateID.flatMap({ candidateByID[$0] }) {
+                let unit = EditorialUnit(candidate: candidate)
+                if (unit.evidence.hasProgression || unit.speechSeconds > 0), item.sourceDuration <= unit.usableDuration + 0.05 { continue }
+            }
             issues.append(DirectorReviewIssue(kind: .overlongClip, severity: 0.58, itemIDs: [item.id], message: "Фрагмент длиннее, чем допускает его роль и темп фильма"))
         }
 
@@ -1171,7 +1177,7 @@ public struct TimelineSelfReviewer: Sendable {
             issues.append(DirectorReviewIssue(kind: .transitionOverload, severity: 0.55, itemIDs: primaries.filter { $0.transition != nil }.map(\.id), message: "Переходы используются чаще, чем требуют история и темп"))
         }
         let roles = Set(primaries.compactMap(\.storyRole))
-        if primaries.count >= 5 && (!roles.contains(.intro) || !roles.contains(.climax) || !roles.contains(.outro)) {
+        if plan.narrativeBeatPlan == nil && timeline.editorialBeatPlan == nil, primaries.count >= 5 && (!roles.contains(.intro) || !roles.contains(.climax) || !roles.contains(.outro)) {
             issues.append(DirectorReviewIssue(kind: .missingStoryArc, severity: 0.82, itemIDs: primaries.map(\.id), message: "В Timeline отсутствует полный сюжетный контур intro–climax–outro"))
         }
 
@@ -1216,12 +1222,12 @@ public struct AIDirectorEngine: Sendable {
         analyses: [AnalysisResult]
     ) -> Timeline {
         let tools = DirectorEditingTools()
-        var timeline = initialTimeline
+        var timeline = EditorialIntentEnforcer.enforce(initialTimeline, plan: plan)
         var applied: [DirectorToolCall] = []
         var rejected: [String] = []
 
         var decisions = initialDecisions(timeline: timeline, plan: plan, assets: assets, analyses: analyses)
-        if Self.hasSatisfiedExplicitDuration(timeline, plan: plan) {
+        if Self.hasSatisfiedExplicitDuration(timeline, plan: plan) || plan.narrativeBeatPlan != nil {
             // The rough cut already satisfies the user's exact duration.
             // Styling, audio, transitions and replacements remain available,
             // but an automatic taste-driven trim must not break that contract.
@@ -1329,6 +1335,12 @@ public struct AIDirectorEngine: Sendable {
         let titleQualityDiagnostics = titleQuality.diagnostics.map {
             "Title quality gate [\($0.code)]: \($0.message)"
         }
+        if plan.narrativeBeatPlan != nil {
+            timeline = EditorialSpeechContinuityPolicy.applying(to: timeline, plan: plan, assets: assets, analyses: analyses)
+            timeline = EditorialStructuralRepair.repair(timeline: timeline, plan: plan, assets: assets, analyses: analyses, forceReplan: finalReview.issues.contains { $0.kind == .missingStoryArc })
+            timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses)
+        }
+        timeline = EditorialIntentEnforcer.enforce(timeline, plan: plan)
         finalReview = reviewer.review(timeline, plan: plan, analyses: analyses)
 
         timeline.directorRun = DirectorRunSummary(
@@ -1386,7 +1398,7 @@ public struct AIDirectorEngine: Sendable {
             let maximum = min(legacyMaximum, grammarMaximum ?? legacyMaximum)
             let minimum = role == .action ? 1.15 : 1.6
             let desired = min(candidate.sourceDuration, max(minimum, maximum * (0.58 + candidate.scores.interest * 0.42)))
-            if item.sourceDuration > desired + 0.35 {
+            if item.kind != .photo && item.sourceDuration > desired + 0.35 {
                 let range = MomentPhaseTrimmer().range(for: candidate, desiredDuration: desired)
                 calls.append(.trim(itemID: item.id, sourceStart: range.sourceStart, sourceDuration: range.sourceDuration, reason: "Длительность выбрана по роли \(role?.localizedTitle ?? "сцены") с сохранением anticipation и reaction вокруг peak"))
             }
@@ -1408,27 +1420,18 @@ public struct AIDirectorEngine: Sendable {
                 decidedVideo.subjectReframe = reframe
                 videoReasons.append(contentsOf: reframe.reasons)
             } else {
-                // A blind center crop is never an acceptable fallback for a
-                // format conversion. It is better to letterbox/pillarbox the
-                // full frame than lose an untracked face or action.
-                decidedVideo.crop = .fit
+                // Fill is the normal NLE behavior for a requested canvas. A
+                // reliable track upgrades the center crop to a camera move.
+                decidedVideo.crop = abs(sourceAspect - targetAspect) > 0.04 ? .fit : .fill
                 decidedVideo.subjectReframe = nil
                 if abs(sourceAspect - targetAspect) > 0.04 {
-                    videoReasons.append("Нет надёжного subject track — исходный кадр сохранён целиком")
+                    videoReasons.append("Безопасный fill не подтверждён — сохранён полный кадр")
                 }
             }
             if item.kind == .photo {
-                let motion: ClipEffect
-                if let reframe {
-                    if reframe.endCenterX > reframe.startCenterX + 0.025 { motion = .panRight }
-                    else if reframe.endCenterX < reframe.startCenterX - 0.025 { motion = .panLeft }
-                    else { motion = .kenBurns }
-                } else {
-                    let motions: [ClipEffect] = [.kenBurns, .panLeft, .zoomOut, .panRight]
-                    motion = motions[position % motions.count]
-                }
-                calls.append(.setMotion(itemID: item.id, effect: motion, reason: reframe == nil ? "Фото получает спокойное осмысленное движение" : "Subject-aware Ken Burns удерживает главный объект"))
-                if let semanticEffect,
+                calls.append(.setMotion(itemID: item.id, effect: .zoomIn, reason: "Спокойное увеличение фото без боковых панорам"))
+                if prompt.contains("эффект") || prompt.contains("effect"),
+                   let semanticEffect, semanticEffect.confidence >= 0.72,
                    Self.shouldApply(density: grammar?.effectDensity ?? 0.18, position: position, salt: 19) {
                     calls.append(.addEffect(
                         type: semanticEffect.type,
@@ -1463,7 +1466,9 @@ public struct AIDirectorEngine: Sendable {
                     decidedVideo.stabilization = min(0.72, max(0.30, 1 - candidate.scores.stability))
                     videoReasons.append("стабилизация технически слабого кадра")
                 }
-                if let semanticEffect,
+                if DirectorRequestContract.requestsEffects(plan.prompt),
+                   let semanticEffect, semanticEffect.confidence >= 0.72,
+                   semanticEffect.type.category != .color || DirectorRequestContract.requestsColorCorrection(plan.prompt),
                    Self.shouldApply(density: grammar?.effectDensity ?? 0.12, position: position, salt: 47) {
                     calls.append(.addEffect(
                         type: semanticEffect.type,
@@ -1475,7 +1480,8 @@ public struct AIDirectorEngine: Sendable {
                 }
             }
 
-            if candidate.scores.quality < 0.62 || (candidate.insights?.exposureQuality ?? 1) < 0.58 {
+            if DirectorRequestContract.requestsColorCorrection(plan.prompt),
+               candidate.scores.quality < 0.62 || (candidate.insights?.exposureQuality ?? 1) < 0.58 {
                 decidedVideo.exposure = max(decidedVideo.exposure ?? 0, 0.12)
                 decidedVideo.contrast = max(decidedVideo.contrast, 1.06)
                 decidedVideo.saturation = max(decidedVideo.saturation, 1.04)
@@ -1491,7 +1497,8 @@ public struct AIDirectorEngine: Sendable {
 
             let audioUsefulness = candidate.insights?.originalAudioUsefulness
                 ?? (candidate.tags.contains("people") || candidate.tags.contains("action") ? 0.72 : 0.35)
-            if assetsByID[candidate.assetID]?.metadata.hasAudio == true {
+            if assetsByID[candidate.assetID]?.metadata.hasAudio == true,
+               ExplicitDeliveryRequirements(plan: plan).originalAudioVolume != 0 {
                 let speech = candidate.insights?.speech
                 let usefulEvent = candidate.insights?.audioEvents?.contains { [.impact, .splash, .laughter, .applause, .scream].contains($0.kind) && $0.confidence >= 0.52 } == true
                 let audible = role == .action || role == .climax || audioUsefulness >= 0.68 || (speech?.confidence ?? 0) >= 0.48 || usefulEvent
@@ -1517,7 +1524,8 @@ public struct AIDirectorEngine: Sendable {
             }
         }
 
-        if timeline.music != nil, primaries.contains(where: { ($0.effectiveAudioAdjustments.effectiveVolume) > 0.55 }) {
+        if (ExplicitDeliveryRequirements(plan: plan).originalAudioVolume ?? timeline.effectiveOriginalAudioVolume) >= 1,
+           timeline.music != nil, primaries.contains(where: { ($0.effectiveAudioAdjustments.effectiveVolume) > 0.55 }) {
             calls.append(.setDucking(AudioDuckingSettings(enabled: true, attenuation: 0.34, attack: 0.16, release: 0.34), reason: "Музыка автоматически уступает полезному оригинальному звуку"))
         }
         if let music = timeline.music,
@@ -1544,7 +1552,8 @@ public struct AIDirectorEngine: Sendable {
                 dateAddsContext: (plan.eventStory?.entries.count ?? 0) > 1,
                 usedTitles: timeline.effectiveTitleItems.map(\.text),
                 avoidRegions: avoidRegions,
-                preferredTemplateID: plan.preset == .cinematic ? "title.cinematic.v1" : nil
+                preferredTemplateID: plan.preset == .cinematic ? "title.cinematic.v1" : nil,
+                mood: DirectorVisualStyle(plan: plan).mood
             ))
             if let decision, let template = TitleTemplateRegistry.template(id: decision.templateID) {
                 calls.append(.addTitleObject(
@@ -1575,11 +1584,14 @@ public struct AIDirectorEngine: Sendable {
         let bases = primaries.filter { $0.storyRole == .setup || $0.storyRole == .buildup || $0.storyRole == .action }
         let desiredBroll = grammar.map { Int((Double(primaries.count) * $0.bRollFrequency).rounded()) }
             ?? max(0, primaries.count / 7)
-        let overlayCount = min(unusedBroll.count, min(3, desiredBroll))
+        let overlayCount = DirectorRequestContract.requestsCutaways(plan.prompt)
+            ? min(unusedBroll.count, min(3, desiredBroll)) : 0
         for index in 0..<overlayCount where bases.indices.contains(index) {
             let base = bases[index]
             guard let baseCandidateID = base.candidateID, let baseCandidate = candidatesByID[baseCandidateID],
-                  let candidate = unusedBroll.max(by: {
+                  let candidate = unusedBroll.filter({
+                      EditorialCutawayPolicy.allows($0, over: base, plan: plan, analyses: analyses)
+                  }).max(by: {
                       Self.bRollFit($0, base: baseCandidate, role: base.storyRole) < Self.bRollFit($1, base: baseCandidate, role: base.storyRole)
                   }) else { continue }
             unusedBroll.removeAll { $0.id == candidate.id }
@@ -1675,7 +1687,8 @@ public struct AIDirectorEngine: Sendable {
             case .overlongClip:
                 for id in issue.itemIDs {
                     guard let item = timeline.items.first(where: { $0.id == id }) else { continue }
-                    let duration = min(item.sourceDuration, TimelineSelfReviewer.maximumDuration(for: item.storyRole, pacing: plan.constraints.pacing))
+                    let maximum = TimelineSelfReviewer.maximumDuration(for: item.storyRole, pacing: plan.constraints.pacing)
+                    let duration = min(item.sourceDuration, item.kind == .photo ? max(PhotoPresentationPolicy.duration, maximum) : maximum)
                     if let candidateID = item.candidateID, let candidate = allCandidates.first(where: { $0.id == candidateID }) {
                         let range = phaseRange(candidate, maximum: duration)
                         calls.append(.trim(itemID: id, sourceStart: range.sourceStart, sourceDuration: range.sourceDuration, reason: "Self-review сокращает затянутый участок, сохраняя peak и reaction"))

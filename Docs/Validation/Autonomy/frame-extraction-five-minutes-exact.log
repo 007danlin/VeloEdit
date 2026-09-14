@@ -1,0 +1,17 @@
+/tmp/veloedit-extract-frames-acceptance.swift:15:31: warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
+13 | for second in CommandLine.arguments.dropFirst(3).compactMap(Double.init) {
+14 |     var actual = CMTime.zero
+15 |     let frame = try generator.copyCGImage(at: CMTime(seconds: second, preferredTimescale: 600), actualTime: &actual)
+   |                               `- warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
+16 |     let path = output.appendingPathComponent("frame-\(Int(second)).png")
+17 |     let writer = CGImageDestinationCreateWithURL(path as CFURL, UTType.png.identifier as CFString, 1, nil)!
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+requested=1.0, actual=1.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-1.png
+requested=81.0, actual=81.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-81.png
+requested=82.0, actual=82.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-82.png
+requested=83.0, actual=83.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-83.png
+requested=131.0, actual=131.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-131.png
+requested=150.0, actual=150.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-150.png
+requested=220.0, actual=220.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-220.png
+requested=295.0, actual=295.0: /Users/daniellineckij/VeloEdit/Docs/Validation/Autonomy/frames-five-minutes-exact/frame-295.png

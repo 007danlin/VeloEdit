@@ -50,13 +50,13 @@ import Testing
     #expect(interpreter.volume(prompt: "убери звук исходный у видео") == 0)
     #expect(interpreter.volume(prompt: "без звука исходников") == 0)
     #expect(interpreter.volume(prompt: "убери звук исходный у видео, потом верни звук исходников") == 1)
-    #expect(interpreter.volume(prompt: "Что делать со звуком исходников? Приглушить.") == 0.30)
+    #expect(interpreter.volume(prompt: "Что делать со звуком исходников? Приглушить.") == DirectorSourceAudioPolicy.duck.volume)
     #expect(interpreter.volume(prompt: "сделай монтаж динамичнее") == nil)
 }
 
 @Test func sourceAudioQuestionnaireAnswerAndPlaceholderTitlesAreHandledLiterally() {
     let commands = EditorCommandParser().parse("Что делать со звуком исходников? Приглушить.")
-    #expect(commands.contains(.setOriginalAudioVolume(0.30)))
+    #expect(commands.contains(.setOriginalAudioVolume(DirectorSourceAudioPolicy.duck.volume)))
 
     let video = TimelineItem(kind: .video, sourceDuration: 12, timelineStart: 0, timelineDuration: 12)
     let timeline = Timeline(storyPlanID: UUID(), items: [video])
@@ -145,7 +145,7 @@ import Testing
         TimelineItem.self,
         from: JSONSerialization.data(withJSONObject: oldObject)
     )
-    #expect(oldDecoded.effectiveVideoAdjustments.crop == .fit)
+    #expect(oldDecoded.effectiveVideoAdjustments.crop == .fill)
     #expect(oldDecoded.effectiveVideoAdjustments.isNeutral)
     #expect(oldDecoded.effectiveAudioAdjustments.isNeutral)
 }
@@ -237,11 +237,10 @@ import Testing
     let audioJSON = Data(#"{"volume":1,"muted":false,"fadeIn":0,"fadeOut":0}"#.utf8)
     let video = try JSONDecoder.veloEdit.decode(VideoAdjustments.self, from: videoJSON)
     let audio = try JSONDecoder.veloEdit.decode(AudioAdjustments.self, from: audioJSON)
-    // `fill` is now an explicit crop. Projects without a crop use `.fit`, so
-    // an older serialized fill value must remain intentional and must not be
-    // discarded as a neutral adjustment.
+    // Fill is the normal canvas behavior. Fit remains an explicit choice that
+    // is persisted when the user wants the whole source frame visible.
     #expect(video.crop == .fill)
-    #expect(!video.isNeutral)
+    #expect(video.isNeutral)
     #expect(audio.isNeutral)
     #expect(video.filterIntensity ?? 1 == 1)
     #expect(audio.preservePitch ?? true)
@@ -461,7 +460,11 @@ import Testing
 @Test func parserExtractsQuotedTitleAndGlobalMovieCommands() {
     let commands = EditorCommandParser().parse("Добавь титр «Наше лето» в конце, поставь спокойную музыку и убери звук")
     #expect(commands.contains(.addTitle("Наше лето", .end)))
-    #expect(commands.contains(.setMusic(MusicDirective(style: .calm, bpm: 68))))
+    #expect(commands.contains { command in
+        guard case .setMusic(let directive?) = command else { return false }
+        return directive.style == .calm && directive.bpm == 68
+            && directive.searchRequests?.contains(where: { $0.query == "Наше лето" }) != true
+    })
     #expect(commands.contains(.setOriginalAudioVolume(0)))
 }
 

@@ -63,7 +63,6 @@ struct TelemetryLibraryView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 13, pinnedViews: [.sectionHeaders]) {
                 sourcePanel
-                sourceManager
                 styleStrip
                 categoryStrip
                 if visibleKinds.isEmpty {
@@ -106,30 +105,6 @@ struct TelemetryLibraryView: View {
                     .buttonStyle(.borderless)
                     .help("Импортировать GPX, FIT, SRT, CSV, VBO или видео")
             }
-            if let source = targetSource {
-                Label("Данные фрагмента: \(source.displayName)", systemImage: "link")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
-            } else if model.canInsertTelemetryPreset {
-                Label("Используются данные выбранного видеофрагмента", systemImage: "link")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
-            } else {
-                Label("Выберите видеофрагмент с телеметрией", systemImage: "waveform.path.ecg.rectangle")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
-            }
-            TextField("Найти виджет или вид", text: $search)
-                .textFieldStyle(.roundedBorder)
         }
     }
 

@@ -9,7 +9,7 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
 
     public func interpret(prompt: String, preset: FilmPreset, base: StoryConstraints? = nil) -> StoryConstraints {
         let lower = prompt.lowercased()
-        var result = base ?? Self.defaults(for: preset)
+        var result = Self.removingOverlayTopic(from: base ?? Self.defaults(for: preset), prompt: prompt)
         if let seconds = Self.duration(from: lower) { result.targetDuration = seconds }
         if let clipCount = Self.requestedClipCount(from: lower) { result.targetClipCount = clipCount }
         let tags: [(String, [String])] = [
@@ -20,7 +20,7 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
             ("g-force", ["перегруз", "g-force", "сильный удар"]),
             ("elevation-change", ["прыж", "перепад", "спуск", "подъём"]),
             ("turn", ["поворот", "вираж"]),
-            ("telemetry-event", ["телеметри"]),
+            ("telemetry-event", Self.telemetryEventPhrases),
             ("action", ["экшен", "трюк", "action"])
         ]
         func lastNegativePosition(for words: [String], in text: String) -> Int? {
@@ -127,6 +127,25 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
         result.preferredIntroTags = result.preferredIntroTags.map { $0.subtracting(explicitlyExcludedTags) }
         result.preferredClimaxTags = result.preferredClimaxTags.map { $0.subtracting(explicitlyExcludedTags) }
         result.preferredOutroTags = result.preferredOutroTags.map { $0.subtracting(explicitlyExcludedTags) }
+        result.targetDuration = AutomaticFilmDurationPolicy.normalizedRequest(result.targetDuration)
+        return result
+    }
+
+    private static let telemetryEventPhrases = ["телеметрические события", "телеметрических событий", "по телеметрии", "telemetry event", "using telemetry"]
+
+    /// A HUD preference must not include/exclude footage from a sensor-equipped
+    /// camera. Also repairs constraints saved by earlier versions for a retry.
+    static func removingOverlayTopic(from constraints: StoryConstraints, prompt: String) -> StoryConstraints {
+        let text = prompt.lowercased()
+        guard ["телеметри", "telemetry"].contains(where: text.contains),
+              !telemetryEventPhrases.contains(where: text.contains) else { return constraints }
+        var result = constraints
+        result.includeTags.remove("telemetry-event")
+        result.excludeTags.remove("telemetry-event")
+        result.maximumTagShares.removeValue(forKey: "telemetry-event")
+        result.preferredIntroTags?.remove("telemetry-event")
+        result.preferredClimaxTags?.remove("telemetry-event")
+        result.preferredOutroTags?.remove("telemetry-event")
         return result
     }
 
@@ -348,7 +367,8 @@ public struct StoryHierarchyQualityGate: Sendable {
         chapters source: [StoryChapter],
         events: [Event],
         candidates: [UUID: Candidate],
-        chapterCardsEnabled: Bool
+        chapterCardsEnabled: Bool,
+        titleEveryActivityBlock: Bool = false
     ) -> StoryHierarchyQualityResult {
         let titleEngine = SmartTitleEngine()
         var assignmentByCandidate: [UUID: Assignment] = [:]
@@ -388,8 +408,9 @@ public struct StoryHierarchyQualityGate: Sendable {
         let confirmedActivityKeys = Set(selectedIDs.compactMap { candidateID in
             assignmentByCandidate[candidateID]?.confirmedTitle.map(Self.titleKey)
         })
-        let usesActivityCards = chapterCardsEnabled && confirmedActivityKeys.count > 1
+        let usesActivityCards = chapterCardsEnabled && (titleEveryActivityBlock || confirmedActivityKeys.count > 1)
         var emittedActivityCards = Set<String>()
+        var previousActivityCardIdentity: String?
         var emittedEventCards = Set<UUID>()
         var repaired: [StoryChapter] = []
         var diagnostics: [StoryHierarchyQualityDiagnostic] = []
@@ -454,14 +475,19 @@ public struct StoryHierarchyQualityGate: Sendable {
                        let assignment,
                        let confirmedTitle = assignment.confirmedTitle {
                         let identity = "\(assignment.eventID.uuidString)|\(Self.titleKey(confirmedTitle))"
-                        if emittedActivityCards.insert(identity).inserted {
+                        let shouldTitle = titleEveryActivityBlock
+                            ? identity != previousActivityCardIdentity
+                            : emittedActivityCards.insert(identity).inserted
+                        if shouldTitle {
                             chapter.chapterCardTitle = confirmedTitle
                         }
+                        previousActivityCardIdentity = identity
                     } else if let eventID = chapter.eventID,
                               let confirmedTitle = assignment?.confirmedTitle ?? eventTitleByID[eventID],
                               emittedEventCards.insert(eventID).inserted {
                         chapter.chapterCardTitle = confirmedTitle
                     }
+                    if assignment?.confirmedTitle == nil { previousActivityCardIdentity = nil }
                 }
 
                 if original.chapterCardTitle != nil, chapter.chapterCardTitle == nil, runIndex == 0 {
@@ -493,8 +519,8 @@ public struct StoryHierarchyQualityGate: Sendable {
     }
 }
 
-/// Applies the questionnaire's title density as a deterministic editorial
-/// policy. Captions are a separate accessibility layer and do not count as
+/// Key titles describe every story part; only the minimal mode limits density.
+/// Captions are a separate accessibility layer and do not count as
 /// opening/chapter titles; the `.none` choice intentionally removes both.
 public enum DirectorTitlePolicyEngine {
     public static func applying(
@@ -505,7 +531,8 @@ public enum DirectorTitlePolicyEngine {
         guard policy != .none else { return [] }
 
         let captions = source.filter { isCaption($0.kind) }
-        var editorial = source.filter { !isCaption($0.kind) }.filter {
+        let edited = source.filter { !isCaption($0.kind) && $0.userEdited == true }
+        let editorial = source.filter { !isCaption($0.kind) && $0.userEdited != true }.filter {
             !SmartTitleEngine.isMeaningless($0.text)
                 && !SmartTitleEngine.isStructuralPlaceholder($0.text)
         }.sorted(by: titleOrder)
@@ -523,9 +550,9 @@ public enum DirectorTitlePolicyEngine {
             let keyKinds: Set<TitleTimelineKind> = [
                 .cinematicTitle, .location, .date, .chapter, .titleCard, .endCard
             ]
-            editorial = editorial.filter { keyKinds.contains($0.kind) }
-            maximumCount = max(1, Int(ceil(duration / 60)))
-            minimumGap = 30
+            // Part boundaries determine the count and spacing. A short film
+            // can contain several distinct activities, all needing a label.
+            return (editorial.filter { keyKinds.contains($0.kind) } + captions + edited).sorted(by: titleOrder)
         }
 
         var selected: [TitleTimelineItem] = []
@@ -539,7 +566,7 @@ public enum DirectorTitlePolicyEngine {
                 selected.append(item)
             }
         }
-        return (selected + captions).sorted(by: titleOrder)
+        return (selected + captions + edited).sorted(by: titleOrder)
     }
 
     private static func isCaption(_ kind: TitleTimelineKind) -> Bool {
@@ -554,10 +581,12 @@ public enum DirectorTitlePolicyEngine {
 }
 
 public struct StoryEngine: Sendable {
+    private let editorialIntelligenceEnabled: Bool
     private let ranker: any HighlightRanking
 
-    public init(ranker: any HighlightRanking = ContextualHighlightRanker()) {
+    public init(ranker: any HighlightRanking = ContextualHighlightRanker(), editorialIntelligenceEnabled: Bool = true) {
         self.ranker = ranker
+        self.editorialIntelligenceEnabled = editorialIntelligenceEnabled
     }
 
     public func createPlan(prompt: String, preset: FilmPreset, constraints: StoryConstraints, assets: [MediaAsset], analyses: [AnalysisResult], events: [Event] = [], eventDiagnostics: EventRunDiagnostics? = nil, autonomousDecision: AutonomousDirectorDecision? = nil, directorBrief: DirectorBrief? = nil) -> StoryPlan {
@@ -566,7 +595,8 @@ public struct StoryEngine: Sendable {
         }
         var fallbackConstraints = constraints
         if let directorBrief {
-            fallbackConstraints.targetDuration = directorBrief.requestedDuration
+            fallbackConstraints.targetDuration = autonomousDecision?.duration.seconds
+                ?? directorBrief.requestedDuration
             fallbackConstraints.pacing = directorBrief.mood.pacing
         }
         return StoryPlan(
@@ -619,6 +649,7 @@ public struct StoryEngine: Sendable {
             return constraints.excludeTags.isDisjoint(with: candidate.tags)
         }
         let candidates = deduplicatedSourceRanges(filteredCandidates)
+        let editorialContext = EditorialAnalysisContext(analyses: analyses, events: events)
         let baseStrategies = [
             "contextual", "story", "action", "technical", "emotional",
             "scenic", "original-audio", "novelty", "contrast", "chronology",
@@ -663,9 +694,13 @@ public struct StoryEngine: Sendable {
             }
             // Opening questionnaire choices are delivery requirements, not
             // suggestions for variant search. A creative variant may change
-            // structure, but never the requested runtime or pacing mood.
+            // structure, but never the feasible runtime or pacing mood. The
+            // autonomous duration equals the requested value when source
+            // capacity covers it and is material-bounded otherwise.
             if let directorBrief {
-                variantConstraints.targetDuration = directorBrief.requestedDuration
+                variantConstraints.targetDuration = variantDecision?.duration.seconds
+                    ?? autonomousDecision?.duration.seconds
+                    ?? directorBrief.requestedDuration
                 variantConstraints.pacing = directorBrief.mood.pacing
             }
             if lockedConstraints.contains(.targetDuration) {
@@ -708,7 +743,7 @@ public struct StoryEngine: Sendable {
             ordered.forEach { usageCounts[$0.id, default: 0] += 1 }
             let chapters = eventAware?.chapters
                 ?? makeChapters(selected: ordered, constraints: variantConstraints, story: variantDecision?.story)
-            let plan = StoryPlan(
+            let seedPlan = StoryPlan(
                 prompt: prompt,
                 preset: preset,
                 constraints: variantConstraints,
@@ -717,6 +752,12 @@ public struct StoryEngine: Sendable {
                 eventStory: eventAware?.story,
                 directorBrief: directorBrief
             )
+            let allowedIDs = Set(candidates.map(\.id))
+            var eligibleContext = editorialContext
+            eligibleContext.units.removeAll { !allowedIDs.contains($0.id) }
+            eligibleContext.families = ShotFamilyClusterer().cluster(units: eligibleContext.units)
+            let editorialPriority = Dictionary(uniqueKeysWithValues: ranked.enumerated().map { ($0.element.id, 0.6 * (1 - Double($0.offset) / Double(max(1, ranked.count)))) })
+            let plan = editorialIntelligenceEnabled ? EditorialStoryPlanner.applying(to: seedPlan, context: eligibleContext, events: events, strategy: strategy, priority: editorialPriority) : seedPlan
             let rough = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
             let nearest = roughTimelines.indices.map { index in
                 (index, distanceCalculator.distance(between: rough, and: roughTimelines[index], candidates: candidateByID))
@@ -853,16 +894,20 @@ public struct StoryEngine: Sendable {
                 provenanceConfidence: scene.confidence
             )?.primaryText
         }
-        let hasMultipleNamedActivities = selectedEvents.contains { event in
+        let activityTitleKeysByEvent = selectedEvents.map { event in
             Set(event.effectiveScenes.compactMap { scene -> String? in
                 confirmedActivityTitle(scene).map(activityTitleKey)
-            }).count > 1
+            })
         }
+        let hasMultipleNamedActivities = activityTitleKeysByEvent.contains { $0.count > 1 }
+        let titleEveryActivityBlock = directorBrief?.titlePolicy == .keyOnly
         let titlePolicyAllowsChapterCards = directorBrief?.titlePolicy != DirectorTitlePolicy.none
         let chapterCardsEnabled = titlePolicyAllowsChapterCards
             && !titlesExplicitlyDisabled
-            && chapterPreference > -0.60
-            && (selectedEvents.count > 1 || (constraints.targetDuration >= 20 && hasMultipleNamedActivities))
+            && (titleEveryActivityBlock
+                ? activityTitleKeysByEvent.contains { !$0.isEmpty }
+                : chapterPreference > -0.60
+                    && (selectedEvents.count > 1 || (constraints.targetDuration >= 20 && hasMultipleNamedActivities)))
         let projectTitle: String?
         if directorBrief?.titlePolicy == DirectorTitlePolicy.none {
             projectTitle = nil
@@ -1018,7 +1063,8 @@ public struct StoryEngine: Sendable {
             chapters: chapters,
             events: selectedEvents,
             candidates: candidateByID,
-            chapterCardsEnabled: chapterCardsEnabled
+            chapterCardsEnabled: chapterCardsEnabled,
+            titleEveryActivityBlock: titleEveryActivityBlock
         )
         chapters = hierarchyReview.chapters
         let ordered = chapters.flatMap(\.candidateIDs).compactMap { candidateByID[$0] }

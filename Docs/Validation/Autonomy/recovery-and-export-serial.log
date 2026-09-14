@@ -1,0 +1,27 @@
+error: Process '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec/swift/pm/swiftpm-testing-helper --test-bundle-path /Users/daniellineckij/Library/Caches/VeloEditBuild/swift/arm64-apple-macosx/debug/VeloEditPackageTests.xctest/Contents/MacOS/VeloEditPackageTests --disable-sandbox --enable-swift-testing --disable-xctest --scratch-path /Users/daniellineckij/Library/Caches/VeloEditBuild/swift --skip-build --no-parallel --filter ProjectInteractionTests|ExportSettingsTests|FilmBuildRecovery /Users/daniellineckij/Library/Caches/VeloEditBuild/swift/arm64-apple-macosx/debug/VeloEditPackageTests.xctest/Contents/MacOS/VeloEditPackageTests --testing-library swift-testing' exited with unexpected signal code 10
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ProjectInteractionTests started.
+◇ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() started.
+✔ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() passed after 0.019 seconds.
+◇ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() started.
+✔ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() passed after 0.041 seconds.
+◇ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() started.
+✔ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() passed after 0.016 seconds.
+◇ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() started.
+PERF optimistic-trim maximum_ms=0.48100948333740234
+✔ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() passed after 0.062 seconds.
+✔ Suite ProjectInteractionTests passed after 0.139 seconds.
+◇ Suite ExportSettingsTests started.
+◇ Test maximumUsesOnlyEditedOriginalsAndHonorsExplicitFrameRate() started.
+✔ Test maximumUsesOnlyEditedOriginalsAndHonorsExplicitFrameRate() passed after 0.001 seconds.
+◇ Test actualMP4MatchesEveryResolutionAndFractionalFrameRate() started.
+✔ Test actualMP4MatchesEveryResolutionAndFractionalFrameRate() passed after 2.882 seconds.
+◇ Test originalsWinOverPreviewCopiesAndHighQualityPreservesFineDetail() started.
+✔ Test originalsWinOverPreviewCopiesAndHighQualityPreservesFineDetail() passed after 2.566 seconds.
+◇ Test mismatchedFileIsRejectedAndTitleCardsKeepFullResolution() started.
+✔ Test mismatchedFileIsRejectedAndTitleCardsKeepFullResolution() passed after 0.504 seconds.
+➜ Test realGoProExportsAtOriginal5KAndFractionalFPS() skipped.
+✔ Suite ExportSettingsTests passed after 5.953 seconds.
+◇ Test filmBuildRecoveryReopensAndCommitsExactWinnerOnlyOnce() started.

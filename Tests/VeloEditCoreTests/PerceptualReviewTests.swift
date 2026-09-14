@@ -266,22 +266,25 @@ private func p6Timeline(_ candidates: [Candidate], ranges: [(Double, Double)], r
             metadata: MediaMetadata(duration: 8, frameRate: 30, hasAudio: true, creationDate: Date(timeIntervalSince1970: 1_700_000_000 + Double(index * 40)))
         )
         let phase = index % 6
+        let verifiedDuration = 1.4 + Double(phase) * 0.55
         let candidate = Candidate(
-            assetID: asset.id, sourceStart: 0, sourceDuration: 5.2,
+            assetID: asset.id, sourceStart: 0, sourceDuration: verifiedDuration,
             scores: ClipScores(quality: 0.72 + Double(index % 4) * 0.05, interest: 0.68 + Double(index % 5) * 0.05, action: Double(phase) / 5, stability: 0.82, uniqueness: 0.9),
             tags: ["archive", "phase-\(phase)"],
             insights: CandidateInsights(sceneSummary: "archive scene \(phase)", dynamics: Double(phase) / 5, visualAppeal: 0.8, composition: 0.8, sharpness: 0.82, exposureQuality: 0.82, storyValue: 0.78, roleScores: [.intro: phase == 0 ? 0.95 : 0.3, .climax: phase == 4 ? 0.98 : 0.4, .outro: phase == 5 ? 0.94 : 0.3]),
-            momentBoundary: MomentBoundary(anticipationStart: 0, peakTime: 2.1, completionEnd: 5.2, confidence: 0.88)
+            momentBoundary: MomentBoundary(anticipationStart: 0, peakTime: verifiedDuration * 0.4, completionEnd: verifiedDuration, confidence: 0.88)
         )
         assets.append(asset)
         analyses.append(AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash, sceneTags: candidate.tags, candidates: [candidate]))
     }
+    assets = try await materializeEditorialFixtureMedia(assets, at: root)
     try await store.update { project in
         project.assets = assets
-        project.analyses = analyses
+        project.analyses = preparedFixtureAnalyses(analyses, preferences: project.preferences)
     }
-    let pipeline = VeloEditPipeline(store: store, personalTasteStore: LocalPersonalTasteStore(url: taste))
-    let timeline = try await pipeline.createFilm(prompt: "Без музыки. Автоматическая история архива.", preset: .story, targetDuration: 28)
+    try await store.update { $0.editorialDevelopmentEnabled = true }
+    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(), analyzer: FixtureEditorialAnalyzer(analyses: analyses), personalTasteStore: LocalPersonalTasteStore(url: taste))
+    let timeline = try await pipeline.createFilm(prompt: "Без музыки. Автоматическая история архива.", preset: .story)
     let run = try #require(timeline.directorRun)
     let summary = try #require(run.perceptualReview)
 

@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Continuous editorial coordinates used by AI Director 3.0. Presets remain a
 /// weak fallback, but never become a closed list of styles.
@@ -218,6 +219,8 @@ public struct PersonalTasteProfile: Codable, Hashable, Sendable {
     public var titleTaste: TitleTasteProfile?
     public var structurePatterns: [TasteStructurePattern]?
     public var regressionSamples: [TasteRegressionSample]?
+    /// Receipts for explicitly approved examples, not automatic generations.
+    public var approvedReferenceFingerprints: [String]? = nil
     public var lastDecayAt: Date?
 
     public init(
@@ -366,7 +369,8 @@ public actor LocalPersonalTasteStore {
     }
 
     public func profile() -> PersonalTasteProfile {
-        if let cached { return cached }
+        // Other projects and the CLI share this file. A per-actor cache can
+        // otherwise overwrite a newly imported reference with stale taste.
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder.veloEdit.decode(PersonalTasteProfile.self, from: data) else {
             let empty = PersonalTasteProfile()
@@ -382,8 +386,28 @@ public actor LocalPersonalTasteStore {
         try recordValidated(signals, regressionSample: nil, now: now).profile
     }
 
-    public func recordValidated(_ signals: [PreferenceSignal], regressionSample: TasteRegressionSample?, now: Date = Date()) throws -> TasteLearningCommit {
+    public func recordValidated(_ signals: [PreferenceSignal], regressionSample: TasteRegressionSample?, now: Date = Date(), approvedReferenceFingerprint: String? = nil) throws -> TasteLearningCommit {
+        try withExclusiveAccess {
+            try recordUnlocked(signals, regressionSample: regressionSample, now: now, approvedReferenceFingerprint: approvedReferenceFingerprint)
+        }
+    }
+
+    private func withExclusiveAccess<T>(_ operation: () throws -> T) throws -> T {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let descriptor = Darwin.open(url.appendingPathExtension("lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { Darwin.close(descriptor) }
+        guard flock(descriptor, LOCK_EX) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { flock(descriptor, LOCK_UN) }
+        return try operation()
+    }
+
+    private func recordUnlocked(_ signals: [PreferenceSignal], regressionSample: TasteRegressionSample?, now: Date, approvedReferenceFingerprint: String?) throws -> TasteLearningCommit {
         let previous = profile()
+        if let fingerprint = approvedReferenceFingerprint,
+           previous.approvedReferenceFingerprints?.contains(fingerprint) == true {
+            return TasteLearningCommit(profile: previous, report: TasteRegressionReport(committed: false, previousAgreement: 1, proposedAgreement: 1, qualityFloorPassed: true, evaluatedSamples: 0, reasons: ["Этот одобренный пример уже учтён; повторного обучения нет"]))
+        }
         var proposed = PreferenceLearningEngine().updating(previous, with: signals, now: now)
         var samples = previous.regressionSamples ?? []
         if let regressionSample { samples.append(regressionSample) }
@@ -391,6 +415,11 @@ public actor LocalPersonalTasteStore {
         proposed.regressionSamples = samples
         let report = TasteRegressionGuard().evaluate(previous: previous, proposed: proposed, samples: samples)
         var updated = report.committed ? proposed : previous
+        if report.committed, let fingerprint = approvedReferenceFingerprint {
+            var receipts = previous.approvedReferenceFingerprints ?? []
+            receipts.append(fingerprint)
+            updated.approvedReferenceFingerprints = receipts
+        }
         // A rejected learning update must not erase the automatic evidence
         // that exposed the regression; retain the bounded anonymous sample so
         // future proposed profiles are checked against it as well.
@@ -407,9 +436,23 @@ public actor LocalPersonalTasteStore {
         try JSONEncoder.veloEdit.encode(profile()).write(to: destination, options: .atomic)
     }
 
+    /// Replaces the device-local profile with a previously exported VeloEdit
+    /// profile. Re-encoding the decoded value keeps the on-disk file canonical
+    /// and rejects unrelated or damaged JSON before touching the current data.
+    @discardableResult
+    public func importProfile(from source: URL) throws -> PersonalTasteProfile {
+        let data = try Data(contentsOf: source, options: [.mappedIfSafe])
+        let imported = try JSONDecoder.veloEdit.decode(PersonalTasteProfile.self, from: data)
+        try withExclusiveAccess { try JSONEncoder.veloEdit.encode(imported).write(to: url, options: .atomic) }
+        cached = imported
+        return imported
+    }
+
     @discardableResult
     public func reset() throws -> PersonalTasteProfile {
-        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        try withExclusiveAccess {
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
         let empty = PersonalTasteProfile()
         cached = empty
         return empty
@@ -417,6 +460,7 @@ public actor LocalPersonalTasteStore {
 }
 
 public struct OptimalDurationDecision: Codable, Hashable, Sendable {
+    public var contentBudgetDecision: ContentBudgetDecision?
     public var seconds: Double
     public var confidence: Double
     public var safeRange: ClosedRange<Double>
@@ -715,98 +759,16 @@ public struct AutonomousDurationOptimizer: Sendable {
         events: [Event] = [],
         assets: [MediaAsset] = []
     ) -> OptimalDurationDecision {
-        let candidates = analyses.flatMap(\.directorCandidates).filter { !$0.excluded }
-        let sceneScopeByCandidate = events.reduce(into: [UUID: UUID]()) { index, event in
-            for scene in event.effectiveScenes {
-                for candidateID in scene.candidateIDs where index[candidateID] == nil {
-                    index[candidateID] = scene.id
-                }
-            }
-        }
-        let unique = Dictionary(grouping: candidates, by: { candidate -> String in
-            let sceneScope = sceneScopeByCandidate[candidate.id].map { "scene:\($0.uuidString):" } ?? ""
-            if let event = candidate.insights?.semanticEventID, !event.isEmpty { return "\(sceneScope)event:\(event)" }
-            if let summary = candidate.insights?.sceneSummary, !summary.isEmpty {
-                return "\(sceneScope)legacy:\(candidate.assetID.uuidString):\(summary.lowercased())"
-            }
-            return "\(sceneScope)legacy:\(candidate.assetID.uuidString):\(candidate.tags.sorted().joined(separator: "|"))"
-        }).compactMap { group in
-            group.value.max { editorialStrength($0) < editorialStrength($1) }
-        }
-        let strong = unique.filter { editorialStrength($0) >= 0.54 }
-        let averageShot = 1.8 + style.shotDuration * 5.8
-        let usableSeconds = strong.reduce(0) { result, candidate in
-            let quality = editorialStrength(candidate)
-            let completeness = candidate.momentBoundary?.duration ?? candidate.sourceDuration
-            let desired = averageShot * (0.72 + quality * 0.48)
-            return result + min(candidate.sourceDuration, completeness > 0 ? completeness : candidate.sourceDuration, max(1.0, desired))
-        }
-        let structuralAllowance = strong.count >= 4 ? min(18, Double(strong.count) * (0.45 + project.sceneVariety * 0.45)) : 0
-        var optimal = max(5, usableSeconds + structuralAllowance)
-        // A low-confidence decision stays on the shorter safe side.
-        let confidence = (min(1, Double(strong.count) / 12) * 0.48 + project.sceneVariety * 0.24 + project.confidence * 0.28).clamped01
-        if confidence < 0.42 { optimal *= 0.82 }
-        let analyzedMomentCeiling = max(5, candidates.reduce(0) { $0 + min($1.sourceDuration, averageShot * 1.45) })
-        let candidateAssetIDs = Set(candidates.map(\.assetID))
-        let sourceMaterialCeiling = assets.reduce(0) { partial, asset in
-            guard candidateAssetIDs.contains(asset.id), !asset.excluded, !asset.missing else { return partial }
-            switch asset.kind {
-            case .video:
-                return partial + max(0, asset.metadata.duration ?? 0)
-            case .photo:
-                return partial + 8
-            }
-        }
-        // Candidate windows locate the best editorial moments; they are not a
-        // declaration that the rest of a long camera take does not exist. For
-        // a duration explicitly chosen by the user, Story/Timeline may extend
-        // those selected moments into adjacent source material, without reuse.
-        let contentCeiling = requestIsExplicit && sourceMaterialCeiling > 0
-            ? max(analyzedMomentCeiling, sourceMaterialCeiling)
-            : analyzedMomentCeiling
-        optimal = min(optimal, contentCeiling)
-        let explicitTarget = requestIsExplicit ? requestedDuration.map { max(5, $0) } : nil
-        if let explicitTarget {
-            // A duration explicitly chosen by the user is a hard target when
-            // the analyzed candidate pool can cover it. Only a genuine
-            // material ceiling may shorten the film; creative optimization
-            // must not silently blend five requested minutes into a shorter
-            // "preferred" duration.
-            optimal = min(contentCeiling, explicitTarget)
-        }
-        let lower: Double
-        let upper: Double
-        if let explicitTarget, contentCeiling + 0.001 >= explicitTarget {
-            lower = explicitTarget
-            upper = explicitTarget
-        } else {
-            lower = max(5, optimal * (confidence < 0.45 ? 0.78 : 0.86))
-            upper = max(lower, min(contentCeiling, optimal * (confidence < 0.45 ? 1.08 : 1.18)))
-        }
-        return OptimalDurationDecision(
-            seconds: optimal, confidence: confidence, safeRange: lower...upper, strongMomentCount: strong.count,
-            reasons: [
-                "сильных уникальных моментов: \(strong.count)",
-                "usable editorial duration: \(Int(usableSeconds.rounded())) с",
-                explicitTarget.map { target in
-                    optimal + 0.5 < target
-                        ? "заданная длина сокращена: пригодного материала недостаточно"
-                        : "явно заданная длительность обеспечена пригодным материалом"
-                } ?? "длина покрывает сильные моменты без искусственного растягивания"
-            ]
-        )
+        let context = EditorialAnalysisContext(analyses: analyses, events: events)
+        let decision = ContentBudgetEngine().budget(units: context.units, families: context.families, requestedDuration: requestedDuration, requestIsExplicit: requestIsExplicit, style: style)
+        let target = decision.requestedDuration.map { min($0, decision.supportedDuration) } ?? decision.budget.idealDuration
+        var result = OptimalDurationDecision(seconds: target, confidence: decision.budget.confidence, safeRange: decision.budget.safeRange, strongMomentCount: decision.budget.strongUnitCount, reasons: [decision.reason, "Монтаж без искусственного растягивания; при невозможной длине материала недостаточно"])
+        result.contentBudgetDecision = decision
+        return result
     }
 
     public static func requestContainsExplicitDuration(_ prompt: String) -> Bool {
-        let lower = prompt.lowercased()
-        // Do not rely on `\b` after Cyrillic abbreviations: ICU treats that
-        // boundary inconsistently before punctuation, so the questionnaire
-        // answer “5 мин.” was previously lost as a soft preference.
-        let patterns = [
-            #"\d+(?:[\.,]\d+)?\s*(?:минут(?:а|ы)?|мин\.?|min\.?)"#,
-            #"\d+(?:[\.,]\d+)?\s*(?:секунд(?:а|ы)?|сек\.?|sec\.?)"#
-        ]
-        return patterns.contains { (try? NSRegularExpression(pattern: $0))?.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)) != nil }
+        FilmDurationRequirement.parse(prompt: prompt).mode != .automatic
     }
 
     private func editorialStrength(_ candidate: Candidate) -> Double {
@@ -1085,8 +1047,11 @@ public struct AutonomousMusicTrackScorer: Sendable {
     public init() {}
 
     public func score(track: LocalMusicTrack, structure: MusicStructure?, intent: AutonomousMusicIntent) -> Double {
+        guard AutomaticSoundtrackSuitability.accepts(track, directive: MusicDirective(style: intent.style, bpm: intent.desiredBPM)) else { return -1 }
         let tokens = Set((track.genres + track.moods).map { $0.lowercased() })
-        let semantic = Double(tokens.intersection(intent.moodTokens).count) / Double(max(1, intent.moodTokens.count))
+        let strongGenre = tokens.contains { token in ["western", "showdown", "horror", "suspense", "battle"].contains(where: token.contains) }
+        if intent.desiredEnergy < 0.48 && strongGenre && tokens.intersection(intent.moodTokens).isEmpty { return 0 }
+        let semantic = AutomaticSoundtrackSuitability.semanticMatch(genres: track.genres, moods: track.moods, tags: track.tags ?? [], desired: intent.moodTokens)
         let tempo = max(0, 1 - abs(track.bpm - intent.desiredBPM) / 72)
         let energy = max(0, 1 - abs(track.energy - intent.desiredEnergy))
         let duration = track.duration <= 0 ? 0.45 : min(1, track.duration / max(5, intent.desiredDuration))
@@ -1102,7 +1067,8 @@ public struct AutonomousMusicTrackScorer: Sendable {
             editability = track.bpmIsEstimated == false ? 0.52 : 0.32
             narrative = 0.42
         }
-        return (semantic * 0.18 + tempo * 0.13 + energy * 0.18 + duration * 0.10 + editability * 0.19 + narrative * 0.22).clamped01
+        let character = AutomaticSoundtrackSuitability.characterAdjustment(genres: track.genres, moods: track.moods, tags: track.tags ?? [], desired: intent.moodTokens)
+        return (semantic * 0.18 + tempo * 0.13 + energy * 0.18 + duration * 0.10 + editability * 0.19 + narrative * 0.22 + character).clamped01
     }
 
     private static func curveSimilarity(_ source: [Double], _ target: [Double]) -> Double {

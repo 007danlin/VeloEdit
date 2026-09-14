@@ -1,0 +1,1575 @@
+[0/1] Planning build
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ProjectInteractionTests started.
+◇ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() started.
+✔ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() passed after 0.019 seconds.
+◇ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() started.
+✔ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() passed after 0.042 seconds.
+◇ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() started.
+✔ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() passed after 0.016 seconds.
+◇ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() started.
+PERF optimistic-trim maximum_ms=0.4500150680541992
+✔ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() passed after 0.063 seconds.
+✔ Suite ProjectInteractionTests passed after 0.142 seconds.
+◇ Test automaticDirectorKeepsOriginalColorsAndDoesNotInsertCutaways() started.
+✔ Test automaticDirectorKeepsOriginalColorsAndDoesNotInsertCutaways() passed after 0.326 seconds.
+◇ Test directorDoesNotLowerMusicWhenUserAskedToLowerCameraAudio() started.
+✔ Test directorDoesNotLowerMusicWhenUserAskedToLowerCameraAudio() passed after 0.250 seconds.
+◇ Test autonomousDirectorRequiresEvidenceForClimaxAndAutomaticDecoration() started.
+✔ Test autonomousDirectorRequiresEvidenceForClimaxAndAutomaticDecoration() passed after 0.313 seconds.
+◇ Test directorEditingToolsValidateAndExecuteStructuralTimelineChanges() started.
+✔ Test directorEditingToolsValidateAndExecuteStructuralTimelineChanges() passed after 0.001 seconds.
+◇ Test semanticToolCatalogCoversTheDirectorSpecification() started.
+✔ Test semanticToolCatalogCoversTheDirectorSpecification() passed after 0.001 seconds.
+◇ Test directorAddTitleUsesTheSharedTemplateTimelineObject() started.
+✔ Test directorAddTitleUsesTheSharedTemplateTimelineObject() passed after 0.001 seconds.
+◇ Test editorCommandsExposeStabilizationCleanupAndDetachedAudio() started.
+✔ Test editorCommandsExposeStabilizationCleanupAndDetachedAudio() passed after 0.003 seconds.
+◇ Test persistentAICheckpointCanRestoreThePreviousTimeline() started.
+✔ Test persistentAICheckpointCanRestoreThePreviousTimeline() passed after 0.013 seconds.
+◇ Test musicStructureMapsStoryEnergyAndBeatDensity() started.
+✔ Test musicStructureMapsStoryEnergyAndBeatDensity() passed after 0.001 seconds.
+◇ Test selfReviewRemovesAnUnjustifiedTechnicallyWeakShot() started.
+✔ Test selfReviewRemovesAnUnjustifiedTechnicallyWeakShot() passed after 0.021 seconds.
+◇ Test selfReviewTransactionRejectsAWorseSpeculativeTimeline() started.
+✔ Test selfReviewTransactionRejectsAWorseSpeculativeTimeline() passed after 0.176 seconds.
+◇ Test directorRuntimeQualityGateRepairsGeneratedTitlesBeforeReturningTimeline() started.
+✔ Test directorRuntimeQualityGateRepairsGeneratedTitlesBeforeReturningTimeline() passed after 0.212 seconds.
+◇ Test globalVariantSelectorChoosesTheStrongerCompleteMontage() started.
+✔ Test globalVariantSelectorChoosesTheStrongerCompleteMontage() passed after 0.193 seconds.
+◇ Test productionCreateFilmBuildsAndReportsDistinctDirectedVariants() started.
+✘ Test productionCreateFilmBuildsAndReportsDistinctDirectedVariants() recorded an issue at AIDirectorEngineTests.swift:415:2: Caught error: .verificationFailed("Сохранён черновик: длительность 18.83 с пока не соответствует заданию 38.00 с.")
+✘ Test productionCreateFilmBuildsAndReportsDistinctDirectedVariants() failed after 8.556 seconds with 1 issue.
+◇ Test fastInstructModeIsTheEffectiveDefault() started.
+✔ Test fastInstructModeIsTheEffectiveDefault() passed after 0.001 seconds.
+◇ Test maximumDoesNotSelectThirtyBillionParametersOnBaseMemory() started.
+✔ Test maximumDoesNotSelectThirtyBillionParametersOnBaseMemory() passed after 0.001 seconds.
+◇ Test friendlyModesUseExplicitInstructVisionModels() started.
+✔ Test friendlyModesUseExplicitInstructVisionModels() passed after 0.001 seconds.
+◇ Test thermalPressureReducesSamplingWithoutInvalidatingCacheIdentity() started.
+✔ Test thermalPressureReducesSamplingWithoutInvalidatingCacheIdentity() passed after 0.001 seconds.
+◇ Test adaptivePlanIsSparseThenAddsDenseCandidateFrames() started.
+✔ Test adaptivePlanIsSparseThenAddsDenseCandidateFrames() passed after 0.001 seconds.
+◇ Test manualModelAndQuantizationOverrideTheFriendlyMode() started.
+✔ Test manualModelAndQuantizationOverrideTheFriendlyMode() passed after 0.001 seconds.
+◇ Test activityEstimateRevisesSlowerProgress() started.
+✔ Test activityEstimateRevisesSlowerProgress() passed after 0.001 seconds.
+◇ Test activityEstimateDoesNotCarryTimingAcrossStages() started.
+✔ Test activityEstimateDoesNotCarryTimingAcrossStages() passed after 0.001 seconds.
+◇ Test activityEstimateWaitsForMeasuredWorkAndResetsOnRestart() started.
+✔ Test activityEstimateWaitsForMeasuredWorkAndResetsOnRestart() passed after 0.001 seconds.
+◇ Test activityEstimateLabelsExpiredForecastWithoutFalseOneSecond() started.
+✔ Test activityEstimateLabelsExpiredForecastWithoutFalseOneSecond() passed after 0.001 seconds.
+◇ Test analysisEstimateRecoversAfterForecastExpires() started.
+✔ Test analysisEstimateRecoversAfterForecastExpires() passed after 0.001 seconds.
+◇ Test analysisEstimateCorrectsOptimisticCountdownBeforeExpiry() started.
+✔ Test analysisEstimateCorrectsOptimisticCountdownBeforeExpiry() passed after 0.001 seconds.
+◇ Test adaptiveSoundtrackFollowsConfidentActivityJourney() started.
+✔ Test adaptiveSoundtrackFollowsConfidentActivityJourney() passed after 0.003 seconds.
+◇ Test adaptiveSoundtrackKeepsOneTrackForOneActivity() started.
+✔ Test adaptiveSoundtrackKeepsOneTrackForOneActivity() passed after 0.001 seconds.
+◇ Test adaptiveSoundtrackKeepsPreviousMusicWhenSemanticBoundaryIsUncertain() started.
+✔ Test adaptiveSoundtrackKeepsPreviousMusicWhenSemanticBoundaryIsUncertain() passed after 0.001 seconds.
+◇ Test explicitTrackPolicyDisablesAdaptiveSoundtrack() started.
+✔ Test explicitTrackPolicyDisablesAdaptiveSoundtrack() passed after 0.001 seconds.
+◇ Test adaptiveSoundtrackInvalidatesAfterManualTrackOrTimingChange() started.
+✔ Test adaptiveSoundtrackInvalidatesAfterManualTrackOrTimingChange() passed after 0.001 seconds.
+◇ Test dynamicMusicAcquisitionUsesSceneBoundariesBeforeTracksExist() started.
+✔ Test dynamicMusicAcquisitionUsesSceneBoundariesBeforeTracksExist() passed after 0.002 seconds.
+◇ Test dynamicMusicUsesSeveralNamedSongsEvenWithinOneActivity() started.
+✔ Test dynamicMusicUsesSeveralNamedSongsEvenWithinOneActivity() passed after 0.001 seconds.
+◇ Test unrelatedEditsDoNotTeachAnUnchangedEnding() started.
+✔ Test unrelatedEditsDoNotTeachAnUnchangedEnding() passed after 0.001 seconds.
+◇ Test approvedReferenceIsOneObservationPerFeatureAndPersistsItsReceipt() started.
+✔ Test approvedReferenceIsOneObservationPerFeatureAndPersistsItsReceipt() passed after 0.002 seconds.
+◇ Test emptyAutomaticOutputCannotBeAnApprovedExample() started.
+✔ Test emptyAutomaticOutputCannotBeAnApprovedExample() passed after 0.001 seconds.
+◇ Test separateProjectsCannotLoseOrDoubleAnApprovedReference() started.
+✔ Test separateProjectsCannotLoseOrDoubleAnApprovedReference() passed after 0.001 seconds.
+◇ Test adaptiveConfidencePolarityAndDecayAreCalibrated() started.
+✔ Test adaptiveConfidencePolarityAndDecayAreCalibrated() passed after 0.001 seconds.
+◇ Test adaptiveSignalsCaptureSemanticDeleteTrimEffectsMusicAndStructure() started.
+✔ Test adaptiveSignalsCaptureSemanticDeleteTrimEffectsMusicAndStructure() passed after 0.001 seconds.
+◇ Test contextualTasteDoesNotLeakStronglyAcrossDifferentActivities() started.
+✔ Test contextualTasteDoesNotLeakStronglyAcrossDifferentActivities() passed after 0.001 seconds.
+◇ Test learnedDurationAndMusicInfluenceRealAutonomousDecisionGradually() started.
+✔ Test learnedDurationAndMusicInfluenceRealAutonomousDecisionGradually() passed after 0.003 seconds.
+◇ Test personalizedScorerRewardsTasteButCannotHideTechnicalFailure() started.
+✔ Test personalizedScorerRewardsTasteButCannotHideTechnicalFailure() passed after 0.001 seconds.
+◇ Test explorationPolicyIsDeterministicAndNearTheExploitationStyle() started.
+✔ Test explorationPolicyIsDeterministicAndNearTheExploitationStyle() passed after 0.001 seconds.
+◇ Test automaticRegressionGateRejectsDegradingModelWithoutHumanRatings() started.
+✔ Test automaticRegressionGateRejectsDegradingModelWithoutHumanRatings() passed after 0.001 seconds.
+◇ Test tasteStorePersistsExportsAndResetsEntirelyOffline() started.
+✔ Test tasteStorePersistsExportsAndResetsEntirelyOffline() passed after 0.001 seconds.
+◇ Test tenIndependentEditContextsInfluenceFullDirectorVariantSelection() started.
+✔ Test tenIndependentEditContextsInfluenceFullDirectorVariantSelection() passed after 0.538 seconds.
+◇ Test adaptiveTitlePreservesReadableSceneryPixelForPixel() started.
+✔ Test adaptiveTitlePreservesReadableSceneryPixelForPixel() passed after 0.164 seconds.
+◇ Test adaptiveTitleUsesEdgesOnFlatSkyAndSupportsDarkText() started.
+✔ Test adaptiveTitleUsesEdgesOnFlatSkyAndSupportsDarkText() passed after 0.031 seconds.
+◇ Test immediateTitleHasReadabilitySupportFromItsFirstFrame() started.
+✔ Test immediateTitleHasReadabilitySupportFromItsFirstFrame() passed after 0.029 seconds.
+◇ Test adaptiveTitleEscalatesOnlyForUnreadableTextureAndProtectsAction() started.
+✔ Test adaptiveTitleEscalatesOnlyForUnreadableTextureAndProtectsAction() passed after 0.001 seconds.
+◇ Test adaptiveTitleMasksHaveSoftEdgesAndLeaveSubjectsAndDistantPixelsAlone() started.
+✔ Test adaptiveTitleMasksHaveSoftEdgesAndLeaveSubjectsAndDistantPixelsAlone() passed after 0.263 seconds.
+◇ Test adaptiveTitleRespectsExistingPanelAndActualTextContrast() started.
+✔ Test adaptiveTitleRespectsExistingPanelAndActualTextContrast() passed after 0.015 seconds.
+◇ Test adaptiveTitleSmoothsStrengthAndResetsOnSeekAndAtBoundaries() started.
+✔ Test adaptiveTitleSmoothsStrengthAndResetsOnSeekAndAtBoundaries() passed after 0.458 seconds.
+◇ Test adaptiveTitleFullRendererAndNativePreviewAgreeAcrossFormats() started.
+✔ Test adaptiveTitleFullRendererAndNativePreviewAgreeAcrossFormats() passed after 0.796 seconds.
+◇ Test adaptiveTitleSceneExamplesCanBeRenderedForVisualQA() started.
+✔ Test adaptiveTitleSceneExamplesCanBeRenderedForVisualQA() passed after 0.001 seconds.
+◇ Test adaptiveTitleExportCompositionActuallyProcessesItsSourceFrame() started.
+✔ Test adaptiveTitleExportCompositionActuallyProcessesItsSourceFrame() passed after 0.203 seconds.
+◇ Test adaptiveTitleContourDoesNotDoubleTheFillDuringFade() started.
+✔ Test adaptiveTitleContourDoesNotDoubleTheFillDuringFade() passed after 0.095 seconds.
+◇ Test powerModesChangeTheAnalysisAlgorithm() started.
+✔ Test powerModesChangeTheAnalysisAlgorithm() passed after 0.001 seconds.
+◇ Test audioReaderUsesAVFoundationSupportedSampleRates() started.
+✔ Test audioReaderUsesAVFoundationSupportedSampleRates() passed after 0.001 seconds.
+◇ Test proxyPlannerAvoidsFastFullEncodeAndLimitsBalanceToExpensiveSources() started.
+✔ Test proxyPlannerAvoidsFastFullEncodeAndLimitsBalanceToExpensiveSources() passed after 0.001 seconds.
+◇ Test frameCacheReusesOneDecodeAcrossProcessingPurposes() started.
+✔ Test frameCacheReusesOneDecodeAcrossProcessingPurposes() passed after 0.001 seconds.
+◇ Test sceneDetectorUsesVisualBoundariesAndAlwaysCoversTheClip() started.
+✔ Test sceneDetectorUsesVisualBoundariesAndAlwaysCoversTheClip() passed after 0.001 seconds.
+◇ Test analysisQueuePrioritizesSelectedAssetAndPersistsCancellation() started.
+✔ Test analysisQueuePrioritizesSelectedAssetAndPersistsCancellation() passed after 0.001 seconds.
+◇ Test etaDoesNotPretendToKnowTheAnswerFromMetadataMilliseconds() started.
+✔ Test etaDoesNotPretendToKnowTheAnswerFromMetadataMilliseconds() passed after 0.001 seconds.
+◇ Test etaForThreeVideosDoesNotExplodeOrCountUpDuringSparseStages() started.
+✔ Test etaForThreeVideosDoesNotExplodeOrCountUpDuringSparseStages() passed after 0.001 seconds.
+◇ Test thermalSchedulerUsesHysteresisBeforeRestoringLoad() started.
+✔ Test thermalSchedulerUsesHysteresisBeforeRestoringLoad() passed after 0.001 seconds.
+◇ Test deeperAnalysisCanSatisfyALighterModeWithoutRerun() started.
+✔ Test deeperAnalysisCanSatisfyALighterModeWithoutRerun() passed after 0.001 seconds.
+◇ Test maximumCrossVideoPassPenalizesDuplicateMoments() started.
+✔ Test maximumCrossVideoPassPenalizesDuplicateMoments() passed after 0.001 seconds.
+◇ Test aiDirectorProjectsCanonicalSceneEvidenceOntoCandidates() started.
+✔ Test aiDirectorProjectsCanonicalSceneEvidenceOntoCandidates() passed after 0.001 seconds.
+◇ Test momentBoundaryIncludesAnticipationPeakAndCompletion() started.
+✔ Test momentBoundaryIncludesAnticipationPeakAndCompletion() passed after 0.001 seconds.
+◇ Suite AutomaticEditorialAssemblyTests started.
+◇ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() started.
+✔ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() passed after 0.016 seconds.
+◇ Test duplicateFastPathPreservesOverlapAndInformationThresholds() started.
+✔ Test duplicateFastPathPreservesOverlapAndInformationThresholds() passed after 0.001 seconds.
+◇ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() started.
+✔ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() passed after 0.010 seconds.
+◇ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() started.
+✔ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() passed after 0.001 seconds.
+◇ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() started.
+✔ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() passed after 0.001 seconds.
+◇ Test impossibleRequestRemainsAnHonestCompromise() started.
+✘ Test impossibleRequestRemainsAnHonestCompromise() recorded an issue at AutomaticEditorialAssemblyTests.swift:129:9: Expectation failed: (result.plan.exactDurationRequirement → 42.0) == nil
+✘ Test impossibleRequestRemainsAnHonestCompromise() failed after 0.015 seconds with 1 issue.
+◇ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum() started.
+✔ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum() passed after 0.051 seconds.
+◇ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() started.
+✔ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() passed after 0.019 seconds.
+◇ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() started.
+✔ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() passed after 0.001 seconds.
+✘ Suite AutomaticEditorialAssemblyTests failed after 0.116 seconds with 1 issue.
+◇ Suite AutomaticFilmDurationTests started.
+◇ Test requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 0.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 2.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 5.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 9.5 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 10.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 30.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+✔ Test requestedRuntimeHasTenSecondFloor(_:) with 6 test cases passed after 0.019 seconds.
+◇ Test oldConstraintValuesCannotBypassPromptNormalization() started.
+✔ Test oldConstraintValuesCannotBypassPromptNormalization() passed after 0.003 seconds.
+◇ Test deliveryMeasuresTheRenderedRuntimeAfterTransitions() started.
+✔ Test deliveryMeasuresTheRenderedRuntimeAfterTransitions() passed after 0.008 seconds.
+◇ Test selectorRejectsShortVariantsEvenWithoutEditorialReview() started.
+✔ Test selectorRejectsShortVariantsEvenWithoutEditorialReview() passed after 0.001 seconds.
+◇ Test compromisedBudgetCannotAuthorizeASubTenSecondFilm() started.
+✔ Test compromisedBudgetCannotAuthorizeASubTenSecondFilm() passed after 0.002 seconds.
+✔ Suite AutomaticFilmDurationTests passed after 0.033 seconds.
+◇ Suite AutomaticSoundtrackSuitabilityTests started.
+◇ Test highEnergyAndMatchingTempoDoNotAdmitHarshOrFunerealMusic() started.
+✔ Test highEnergyAndMatchingTempoDoNotAdmitHarshOrFunerealMusic() passed after 0.001 seconds.
+◇ Test exhaustedNoveltyPrefersASuitableRepeatAndNeverUsesAnUnsafeFirstTrack() started.
+✔ Test exhaustedNoveltyPrefersASuitableRepeatAndNeverUsesAnUnsafeFirstTrack() passed after 0.001 seconds.
+◇ Test genuineMoodOutranksTempoAndDescriptionTagStuffingOnlineAndOffline() started.
+✔ Test genuineMoodOutranksTempoAndDescriptionTagStuffingOnlineAndOffline() passed after 0.001 seconds.
+◇ Test instrumentsDoNotInventEmotionalToneInTheOfficialCatalogue() started.
+✔ Test instrumentsDoNotInventEmotionalToneInTheOfficialCatalogue() passed after 0.001 seconds.
+◇ Test calmAndCinematicPreferPositiveCharacterAndExcludeSadnessAndSuspense() started.
+✔ Test calmAndCinematicPreferPositiveCharacterAndExcludeSadnessAndSuspense() passed after 0.001 seconds.
+◇ Test explicitSadRequestIsHonoredButNegationNeverEnablesSadness() started.
+✔ Test explicitSadRequestIsHonoredButNegationNeverEnablesSadness() passed after 0.002 seconds.
+◇ Test descriptionWarningsOverrideOptimisticLabelsAndCinemaRequiresGenreEvidence() started.
+✔ Test descriptionWarningsOverrideOptimisticLabelsAndCinemaRequiresGenreEvidence() passed after 0.001 seconds.
+◇ Test liveTravelSelectionFindsNewMusicWithoutNamingTheApprovedTrack() started.
+✔ Test liveTravelSelectionFindsNewMusicWithoutNamingTheApprovedTrack() passed after 0.001 seconds.
+◇ Test liveCalmAndCinematicSelection() started.
+✔ Test liveCalmAndCinematicSelection() passed after 0.001 seconds.
+✔ Suite AutomaticSoundtrackSuitabilityTests passed after 0.008 seconds.
+◇ Test autonomousStyleInferenceUsesProjectEvidenceInsteadOfPresetLabel() started.
+✔ Test autonomousStyleInferenceUsesProjectEvidenceInsteadOfPresetLabel() passed after 0.001 seconds.
+◇ Test autonomousDurationDoesNotPadWeakOrSparseMaterialToTheRequestedNumber() started.
+✔ Test autonomousDurationDoesNotPadWeakOrSparseMaterialToTheRequestedNumber() passed after 0.001 seconds.
+◇ Test explicitDurationIsExactWhenCandidateMaterialCanCoverIt() started.
+✔ Test explicitDurationIsExactWhenCandidateMaterialCanCoverIt() passed after 0.003 seconds.
+◇ Test abbreviatedQuestionnaireDurationIsStillAHardConstraint() started.
+✔ Test abbreviatedQuestionnaireDurationIsStillAHardConstraint() passed after 0.006 seconds.
+◇ Test typedQuestionnaireDurationIsHardWithoutRepeatingItInPrompt() started.
+✔ Test typedQuestionnaireDurationIsHardWithoutRepeatingItInPrompt() passed after 0.001 seconds.
+◇ Test explicitDurationStillShortensWhenCandidateMaterialCannotCoverIt() started.
+✔ Test explicitDurationStillShortensWhenCandidateMaterialCannotCoverIt() passed after 0.001 seconds.
+◇ Test fullDirectorPathKeepsExplicitDurationWhenMaterialIsSufficient() started.
+✔ Test fullDirectorPathKeepsExplicitDurationWhenMaterialIsSufficient() passed after 0.591 seconds.
+◇ Test fiveMinuteBriefCompromisesUnsupportedDurationWithoutExtendingSourceRanges() started.
+✔ Test fiveMinuteBriefCompromisesUnsupportedDurationWithoutExtendingSourceRanges() passed after 0.545 seconds.
+◇ Test typedFiveMinuteBriefRespectsEditorialCapacityAndSurvivesDirectorReview() started.
+✘ Test typedFiveMinuteBriefRespectsEditorialCapacityAndSurvivesDirectorReview() recorded an issue at AutonomousDirectorTests.swift:362:5: Expectation failed: (delivery → TimelineDeliveryValidation(timeline: VeloEditCore.Timeline(editorialRegeneration: nil, editorialBeatPlan: Optional(VeloEditCore.NarrativeBeatPlan(discardedCandidates: Optional([:]), pattern: VeloEditCore.EditorialNarrativePattern.eventChapters, beats: [VeloEditCore.EditorialNarrativeBeat(candidateID: 41AFDC53-80EA-4DB6-B97C-DB3D6DF7D380, purpose: VeloEditCore.EditorialNarrativePurpose.hook, viewerInformation: "trip setup", requiredChange: 0.0, familyID: Optional("family-8543dc65c6e73df57dd50ab9b60f5e296ff2de66fd533a2e0bfb10c0f3f1f9b0"), minimumEvidence: 0.38, durationRange: ClosedRange(0.5...5.342), allocatedDuration: 3.1916, fulfilled: true), VeloEditCore.EditorialNarrativeBeat(candidateID: ABD91A48-539A-4937-A6F8-46426911130A, purpose: VeloEditCore.EditorialNarrativePurpose.closure, viewerInformation: "long journey", requiredChange: 0.0, familyID: Optional("family-7757deef01597ab5d2eb9c3b9b22b1051a408a1d762d127c6dad0652f1f6dbdd"), minimumEvidence: 0.38, durationRange: ClosedRange(0.5...5.342), allocatedDuration: 3.1916, fulfilled: true)], reasons: ["Подтверждены отдельные события; переходы требуют глав или визуальных связок"])), editorialReview: Optional(VeloEditCore.EditorialReview(evidenceVersion: Optional(3), evidenceDomains: Optional([VeloEditCore.EditorialDomainEvidence(domain: VeloEditCore.EditorialEvidenceDomain.primaryMediaPresence, status: VeloEditCore.EditorialEvidenceState.passed, required: true, confidence: 1.0, coverage: 1.0, itemIDs: [D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221], probeTimes: [], provenance: ["deterministic-verifier-v3", "53eddca23c5c8dcfaa7630cce9722cf2889ba05672936e84db546e6e10aae538"], reason: "Проверено наличие основной последовательности", finding: nil), VeloEditCore.EditorialDomainEvidence(domain: VeloEditCore.EditorialEvidenceDomain.renderDecode, status: VeloEditCore.EditorialEvidenceState.unknown, required: true, confidence: 0.0, coverage: 0.0, itemIDs: [D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221], probeTimes: [], provenance: [], reason: "Независимое измерение отсутствует", finding: nil), VeloEditCore.EditorialDomainEvidence(domain: VeloEditCore.EditorialEvidenceDomain.subjectCoverage, status: VeloEditCore.EditorialEvidenceState.unknown, required: false, confidence: 0.0, coverage: 0.0, itemIDs: [D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221], probeTimes: [], provenance: [], reason: "Область не применяется к этой композиции", finding: nil), VeloEditCore.EditorialDomainEvidence(domain: VeloEditCore.EditorialEvidenceDomain.faceSafety, status: VeloEditCore.EditorialEvidenceState.unknown, required: false, confidence: 0.0, coverage: 0.0, itemIDs: [D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221], probeTimes: [], provenance: [], reason: "Область не применяется к этой композиции", finding: nil), VeloEditCore.EditorialDomainEvidence(domain: VeloEditCore.EditorialEvidenceDomain.bodySafety, status: VeloEditCore.EditorialEvidenceState.unknown, required: false, confidence: 0.0, coverage: 0.0, itemIDs: [D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221], probeTimes: [], provenance: [], reason: "Область не применяется к этой композиции", finding: nil), VeloEditCore.EditorialDomainEvidence(domain: VeloEditCore.EditorialEvidenceDomain.foregroundOcclusion, status: VeloEditCore.EditorialEvidenceState.unknown, required: true, confidence: 0.0, coverage: 0.0, itemIDs: [D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221], probeTimes: [], provenance: [], reason: "Независимое измерение отсутствует", fobeTimes: [], provenance: [], reason: "Независимое измерение отсутствует", finding: nil)]), familyDistribution: Optional(VeloEditCore.EditorialFamilyDistribution(familyCount: 2, maxFamilyShare: 0.5342, dominanceExcess: 0.03420000000000001, normalizedEntropy: 0.9966224958207522, effectiveFamilyCount: 1.9953232615114396, maximumRun: 5.342, excessive: false)), exportVerification: nil, findings: [], familyHistogram: ["family-8543dc65c6e73df57dd50ab9b60f5e296ff2de66fd533a2e0bfb10c0f3f1f9b0": 5.342, "family-7757deef01597ab5d2eb9c3b9b22b1051a408a1d762d127c6dad0652f1f6dbdd": 4.658], maximumFamilyRun: 5.342, informationDensity: 0.8199999999999998, narrativeCoherence: 0.0, framingSafety: 0.0, audioCoherence: 0.3333333333333333, shotFamilyDiversity: 0.85, rhythmQuality: 0.9, audioMasteringReport: nil, scoreComponents: Optional(["audioCoherence": 0.3333333333333333, "informationDensity": 0.8199999999999998, "momentCompleteness": 0.9, "rhythmQuality": 0.9, "titleQuality": 1.0, "musicNarrativeFit": 0.9, "narrativeCoherence": 0.0, "continuity": 1.0, "shotFamilyDiversity": 0.85, "framingSafety": 0.0, "technicalQuality": 0.8119999999999999, "styleFit": 0.9]), editorialScore: 0.20231630768629358, duration: Optional(VeloEditCore.ContentBudgetDecision(budget: VeloEditCore.ContentBudget(idealDuration: 10.0, safeRange: ClosedRange(10.0...10.684), absoluteCeiling: 10.684, strongUnitCount: 2, distinctEventCount: 2, distinctSceneCount: 2, distinctShotFamilyCount: 2, usableActionSeconds: 10.684, usableAtmosphereSeconds: 0.0, usableSpeechSeconds: 0.0, confidence: 0.15, limitingFactors: [VeloEditCore.EditorialLimitingFactor.weakEvidence, VeloEditCore.EditorialLimitingFactor.insufficientContent]), requestedDuration: Optional(300.0), supportedDuration: 10.684, committedDuration: Optional(10.0), durationConstraintStatus: VeloEditCore.DurationConstraintStatus.compromisedInsufficientContent, requiresExpandedMining: true, feasibility: 0.03561333333333333, reason: "Запрошено 300 с; поддерживается 11 с: 2 сильных моментов, 2 разных camera setups. Цель 11 с; минимум фильма — 10 с; расширение пустых диапазонов запрещено. Ограничения последовательности поддерживают 11 с. Последовательность 6.3832 с ниже безопасного минимума 10.0 с; необходим дополнительный поиск, автоматический pass запрещён.")), renderedProbeCount: 0, editorialSignature: nil, conservativeFallback: false, discardedCandidates: [:])), id: 7E7014D4-39E5-4502-B5B4-4E830BC1334B, storyPlanID: AB8ACDD0-93AB-439A-9E7B-588333ECE98C, width: 1920, height: 1080, frameRate: 30.0, items: [VeloEditCore.TimelineItem(id: D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, candidateID: Optional(41AFDC53-80EA-4DB6-B97C-DB3D6DF7D380), assetID: Optional(F8A18E2D-CB19-48BF-A7B6-7CD1A791AF1D), kind: VeloEditCore.TimelineItemKind.video, sourceStart: 45.0, sourceDuration: 5.342, timelineStart: 0.0, timelineDuration: 5.342, speed: 1.0, title: nil, transition: nil, effect: nil, videoAdjustments: nil, audioAdjustments: Optional(VeloEditCore.AudioAdjustments(volume: 1.0, muted: false, fadeIn: 0.12, fadeOut: 0.18, noiseReduction: Optional(0.0), eqPreset: Optional(VeloEditCore.AudioEQPreset.flat), normalize: Optional(false), duckOthers: Optional(false), duckingAmount: Optional(0.5), preservePitch: Optional(true), effect: Optional(VeloEditCore.AudioEffect.none))), titleStyle: nil, overlay: nil, freezeFrame: nil, reversePlayback: nil, speedRamp: nil, telemetryOverlay: nil, storyRole: Optional(VeloEditCore.StoryRole.intro), editorialPurpose: Optional("trip setup"), incomingEditDecision: nil, eventID: Optional(C861AB1B-CE4D-4D15-B2B1-5FF62313F6D6), eventSceneID: Optional(457E249E-5CBE-4E48-8E3B-3FE41888B63B), locked: false, explanation: ["trip setup"]), VeloEditCore.TimelineItem(id: EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221, candidateID: Optional(ABD91A48-539A-4937-A6F8-46426911130A), assetID: Optional(A24FD80F-7920-4C4F-BB82-6AB44E73A11F), kind: VeloEditCore.TimelineItemKind.video, sourceStart: 120.0, sourceDuration: 4.658, timelineStart: 5.342, timelineDuration: 4.658, speed: 1.0, title: nil, transition: nil, effect: nil, videoAdjustments: nil, audioAdjustments: Optional(VeloEditCore.AudioAdjustments(volume: 1.0, muted: false, fadeIn: 0.12, fadeOut: 0.18, noiseReduction: Optional(0.0), eqPreset: Optional(VeloEditCore.AudioEQPreset.flat), normalize: Optional(false), duckOthers: Optional(false), duckingAmount: Optional(0.5), preservePitch: Optional(true), effect: Optional(VeloEditCore.AudioEffect.none))), titleStyle: nil, overlay: nil, freezeFrame: nil, reversePlayback: nil, speedRamp: nil, telemetryOverlay: nil, storyRole: Optional(VeloEditCore.StoryRole.outro), editorialPurpose: Optional("long journey"), incomingEditDecision: Optional(VeloEditCore.EditorialBoundaryDecision(choice: VeloEditCore.EditorialEditChoice.cut, motivation: "Пользователь явно запросил только прямые склейки", confidence: 0.98, transitionStyle: nil, naturalTransition: nil)), eventID: Optional(E611146B-405F-4576-8654-2E773D3C40F9), eventSceneID: Optional(5A66CCC1-6935-4079-AF0F-2AFFA8C89595), locked: false, explanation: ["long journey", "Пользователь явно запросил только прямые склейки"])], audioClips: Optional([]), telemetryItems: Optional([]), effects: Optional([]), titleItems: Optional([]), transitionItems: Optional([]), music: nil, adaptiveSoundtrack: nil, originalAudioVolume: Optional(0.2), endingFadeDuration: Optional(3.0), audioDucking: Optional(VeloEditCore.AudioDuckingSettings(enabled: false, attenuation: 0.38, attack: 0.18, release: 0.35)), versionName: nil, directorRun: Optional(VeloEditCore.DirectorRunSummary(editorialReview: nil, reviewIterations: 0, appliedToolNames: ["volume", "volume"], decisionReasons: ["Фоновый звук уступает место музыке", "ProjectStyle ACTION_EVENT, confidence 24%", "Personal Taste influence 0% from 0 implicit signals", "Оптимальная длительность 11 с, confidence 15%", "Story pattern: minimal-montage; music: calm 113 BPM", "Taste context: action_event|mixed-event", "Deterministic 90% exploit: strongest learned preferences", "Запрошено 300 с; поддерживается 11 с: 2 сильных моментов, 2 разных camera setups. Цель 11 с; минимум фильма — 10 с; расширение пустых диапазонов запрещено.", "Монтаж без искусственного растягивания; при невозможной длине материала недостаточно", "clean cut остаётся базовым переходом", "средняя длина кадра 4.7 с", "плотность переходов 2%", "Вариант contextual исследует отдельную область непрерывного style space", "Delivery contract: Уровень исходного звука приведён к явно заданному значению 20%."], rejectedOperations: ["Delivery contract: Запрошена точная длительность 300.000 с, но монтаж длится 10.000 с."], initialReview: VeloEditCore.DirectorReview(score: 1.0, issues: []), finalReview: VeloEditCore.DirectorReview(score: 1.0, issues: []), evaluatedVariantCount: nil, globalScore: nil, variantDiagnostics: nil, deepMediaDiagnostics: Optional(VeloEditCore.DeepMediaDiagnostics(stages: [], embeddedCandidateCount: 0, trackedCandidateCount: 0, transcribedCandidateCount: 0, audioEventCandidateCount: 0, nearDuplicateCandidateIDs: [], discardedCandidateIDs: [], totalDuration: 0.0)), autonomousDecision: Optional(VeloEditCore.AutonomousDirectorDecision(projectStyle: VeloEditCore.ProjectStyleProfile(internalLabel: "ACTION_EVENT", vector: VeloEditCore.DirectorStyleVector(energy: 0.43011822222222224, cinematic: 0.39945244444444444, emotional: 0.12320000000000002, action: 0.68, intimmax–reaction arc", itemIDs: [D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221], suggestedRepairs: [])], highSeverityFindings: 1, repairsAttempted: 0, repairsAccepted: 0, repairsRejected: 0, rollbackCount: 0, perceptualScoreBefore: 0.6781132048148008, perceptualScoreAfter: 0.6781132048148008, initialScore: VeloEditCore.PerceptualScore(total: 0.6781132048148008, continuity: 0.7891520000000001, composition: 0.5, momentCompleteness: 0.58, pacing: 0.7524477572014903, musicAlignment: 0.72, audioContinuity: 0.7986666666666666, visualVariety: 0.7984, storyCoherence: 0.07542, effectQuality: 1.0, titleQuality: 1.0, technicalIntegrity: 0.7445999999999999), finalScore: VeloEditCore.PerceptualScore(total: 0.6781132048148008, continuity: 0.7891520000000001, composition: 0.5, momentCompleteness: 0.58, pacing: 0.7524477572014903, musicAlignment: 0.72, audioContinuity: 0.7986666666666666, visualVariety: 0.7984, storyCoherence: 0.07542, effectQuality: 1.0, titleQuality: 1.0, technicalIntegrity: 0.7445999999999999), cutScores: [VeloEditCore.CutQualityScore(id: ECAF95A4-5315-4F05-B5BE-9D206EFAB3C6, outgoingItemID: D7673733-FFEC-4CFB-ABD6-9EAEA4EB8E9D, incomingItemID: EF2B88F7-0FA8-4BB4-95A9-D6FB2199B221, timelineTime: 5.342, continuity: 0.7722, motionMatch: 0.62, compositionMatch: 1.0, subjectContinuity: 0.6, actionCompletion: 0.68, audioContinuity: 1.0, technicalContinuity: 1.0, total: 0.7891520000000001)], repairAttempts: [], renderedFrameSampleCount: 0, renderReviewStatus: "metadata-and-analysis")), completedAt: 2026-09-13 14:33:11 +0000)), naturalLanguageHistory: nil, createdAt: 2026-09-13 14:33:11 +0000), issues: [VeloEditCore.TimelineDeliveryIssue(kind: VeloEditCore.TimelineDeliveryIssueKind.originalAudioVolume, resolution: VeloEditCore.TimelineDeliveryIssueResolution.repaired, message: "Уровень исходного звука приведён к явно заданному значению 20%."), VeloEditCore.TimelineDeliveryIssue(kind: VeloEditCore.TimelineDeliveryIssueKind.exactDuration, resolution: VeloEditCore.TimelineDeliveryIssueResolution.blocking, message: "Запрошена точная длительность 300.000 с, но монтаж длится 10.000 с.")])).canPersist → false
+✘ Test typedFiveMinuteBriefRespectsEditorialCapacityAndSurvivesDirectorReview() failed after 0.223 seconds with 1 issue.
+◇ Test explicitDurationRejectsContainedDuplicateAnchorsWithoutPadding() started.
+✔ Test explicitDurationRejectsContainedDuplicateAnchorsWithoutPadding() passed after 0.135 seconds.
+◇ Test generatedActivityTitlesStayInsideTheirOwnReadableBlock() started.
+✔ Test generatedActivityTitlesStayInsideTheirOwnReadableBlock() passed after 0.005 seconds.
+◇ Test eventAwareDirectorPathKeepsExplicitDurationWhenMaterialIsSufficient() started.
+✔ Test eventAwareDirectorPathKeepsExplicitDurationWhenMaterialIsSufficient() passed after 0.784 seconds.
+◇ Test autonomousDurationPreservesUniqueMomentsAcrossSourceActivityGroups() started.
+✔ Test autonomousDurationPreservesUniqueMomentsAcrossSourceActivityGroups() passed after 0.001 seconds.
+◇ Test preferenceLearningIsGradualContextualAndCanReverse() started.
+✔ Test preferenceLearningIsGradualContextualAndCanReverse() passed after 0.001 seconds.
+◇ Test personalTasteInfluenceGrowsOnlyAfterRepeatedImplicitSignals() started.
+✔ Test personalTasteInfluenceGrowsOnlyAfterRepeatedImplicitSignals() passed after 0.006 seconds.
+◇ Test autonomousMusicScoringRewardsEditableStructureAndNarrativeDrop() started.
+✔ Test autonomousMusicScoringRewardsEditableStructureAndNarrativeDrop() passed after 0.001 seconds.
+◇ Test autonomousGrammarUsesCleanCutsAndConfidenceSafety() started.
+✔ Test autonomousGrammarUsesCleanCutsAndConfidenceSafety() passed after 0.001 seconds.
+◇ Test autonomousVariantIntentsProduceDifferentStyleGrammarAndStory() started.
+✔ Test autonomousVariantIntentsProduceDifferentStyleGrammarAndStory() passed after 0.003 seconds.
+◇ Test implicitSignalExtractorReadsRealTimelineBehavior() started.
+✔ Test implicitSignalExtractorReadsRealTimelineBehavior() passed after 0.001 seconds.
+◇ Test paretoAnalyzerRejectsMultiObjectiveDominatedVariant() started.
+✔ Test paretoAnalyzerRejectsMultiObjectiveDominatedVariant() passed after 0.001 seconds.
+◇ Test productionPipelineRunsEndToEndAutonomouslyAndPersistsDiagnostics() started.
+✘ Test productionPipelineRunsEndToEndAutonomouslyAndPersistsDiagnostics() recorded an issue at AutonomousDirectorTests.swift:752:2: Caught error: .verificationFailed("Сохранён черновик: длительность 20.83 с пока не соответствует заданию 180.00 с.")
+✘ Test productionPipelineRunsEndToEndAutonomouslyAndPersistsDiagnostics() failed after 1.362 seconds with 1 issue.
+◇ Test autonomousDecisionsAreExplainableWithoutManualRatingUI() started.
+✔ Test autonomousDecisionsAreExplainableWithoutManualRatingUI() passed after 0.001 seconds.
+◇ Suite AutonomousOperationTests started.
+◇ Test localJournalRestoresAfterPrimaryOutageAndRestart() started.
+✔ Test localJournalRestoresAfterPrimaryOutageAndRestart() passed after 0.005 seconds.
+◇ Test failureOfBothStoresDoesNotClaimDurability() started.
+✔ Test failureOfBothStoresDoesNotClaimDurability() passed after 0.003 seconds.
+◇ Test recoveryMergesIndependentFieldsAndRefusesOverlappingEdits() started.
+✔ Test recoveryMergesIndependentFieldsAndRefusesOverlappingEdits() passed after 0.007 seconds.
+◇ Test recoveryBudgetSurvivesRestartAndCancellationIsExplicit() started.
+✔ Test recoveryBudgetSurvivesRestartAndCancellationIsExplicit() passed after 0.005 seconds.
+◇ Test operationLeasePreventsConcurrentWritersAndReleases() started.
+✔ Test operationLeasePreventsConcurrentWritersAndReleases() passed after 0.002 seconds.
+◇ Test exactApproximateRangeAndAutomaticDurationContracts() started.
+✔ Test exactApproximateRangeAndAutomaticDurationContracts() passed after 0.003 seconds.
+◇ Test relinkingVerifiesContentAndRejectsAmbiguousCopies() started.
+✔ Test relinkingVerifiesContentAndRejectsAmbiguousCopies() passed after 0.004 seconds.
+◇ Test duplicateImportDoesNotInvalidateFilmOrSourceMap() started.
+✔ Test duplicateImportDoesNotInvalidateFilmOrSourceMap() passed after 0.005 seconds.
+◇ Test corruptedThumbnailIsRegeneratedFromOriginal() started.
+✔ Test corruptedThumbnailIsRegeneratedFromOriginal() passed after 0.004 seconds.
+◇ Test encoderFailureRecoversAndVerifiedExportSurvivesRestart() started.
+✔ Test encoderFailureRecoversAndVerifiedExportSurvivesRestart() passed after 0.356 seconds.
+◇ Test removalUndoRestoresAnalysisClipsAndOriginal() started.
+✔ Test removalUndoRestoresAnalysisClipsAndOriginal() passed after 0.005 seconds.
+◇ Test orphanCacheCleanupRetainsSourceHistoryAndExports() started.
+✔ Test orphanCacheCleanupRetainsSourceHistoryAndExports() passed after 0.004 seconds.
+✔ Suite AutonomousOperationTests passed after 0.409 seconds.
+◇ Suite AutopilotArchiveAuditTests started.
+◇ Test freshAssemblyFromAnalyzedArchivePreservesCaptureOrder() started.
+✔ Test freshAssemblyFromAnalyzedArchivePreservesCaptureOrder() passed after 0.001 seconds.
+✔ Suite AutopilotArchiveAuditTests passed after 0.001 seconds.
+◇ Suite AutopilotDefaultsTests started.
+◇ Test movieHeaderClockHandlesLargeBoxesBothVersionsAndInvalidData() started.
+✔ Test movieHeaderClockHandlesLargeBoxesBothVersionsAndInvalidData() passed after 0.001 seconds.
+◇ Test datesOutrankCameraNumbersAndSeparateRepeatedActivities() started.
+✔ Test datesOutrankCameraNumbersAndSeparateRepeatedActivities() passed after 0.002 seconds.
+◇ Test requiredTitlesKeepReferenceFontThroughOCRAndRepeatedPartNames() started.
+✔ Test requiredTitlesKeepReferenceFontThroughOCRAndRepeatedPartNames() passed after 0.012 seconds.
+◇ Test cinematicBriefCannotAuthorizeFiltersOrAudioEffects() started.
+✔ Test cinematicBriefCannotAuthorizeFiltersOrAudioEffects() passed after 0.008 seconds.
+◇ Test telemetryQuestionIgnoresCameraSensorsAndHUDCannotCrossDataGaps() started.
+✔ Test telemetryQuestionIgnoresCameraSensorsAndHUDCannotCrossDataGaps() passed after 0.001 seconds.
+◇ Test adaptiveMusicRequestsRespectTheSelectedMood() started.
+✔ Test adaptiveMusicRequestsRespectTheSelectedMood() passed after 0.001 seconds.
+✔ Suite AutopilotDefaultsTests passed after 0.025 seconds.
+◇ Test localVisualEmbeddingSeparatesDifferentEventsWithTheSameSamplingContract() started.
+✔ Test localVisualEmbeddingSeparatesDifferentEventsWithTheSameSamplingContract() passed after 0.001 seconds.
+◇ Test semanticIndexFindsNearDuplicatesAndChoosesTheTechnicallyBetterTake() started.
+✔ Test semanticIndexFindsNearDuplicatesAndChoosesTheTechnicallyBetterTake() passed after 0.001 seconds.
+◇ Test activityCompatibilityContractIsFamilyBasedAndConservative() started.
+✔ Test activityCompatibilityContractIsFamilyBasedAndConservative() passed after 0.002 seconds.
+◇ Test crossAssetNearDuplicatesRequireSemanticCorroborationAndRepairLegacyClusters() started.
+✔ Test crossAssetNearDuplicatesRequireSemanticCorroborationAndRepairLegacyClusters() passed after 0.001 seconds.
+◇ Test genericContextCannotTransitivelyBridgeDifferentActivityFamilies() started.
+✔ Test genericContextCannotTransitivelyBridgeDifferentActivityFamilies() passed after 0.028 seconds.
+◇ Test validCrossCameraSameTakeClustersAcrossActivityAliasesAndPreservesLegacyID() started.
+✔ Test validCrossCameraSameTakeClustersAcrossActivityAliasesAndPreservesLegacyID() passed after 0.001 seconds.
+◇ Test crossVideoRefinementPreservesValidSameAssetSemanticGroup() started.
+✔ Test crossVideoRefinementPreservesValidSameAssetSemanticGroup() passed after 0.001 seconds.
+◇ Test crossVideoEmbeddingClusterBecomesOneStoryEventAndDiscardsTheWeakerTake() started.
+✔ Test crossVideoEmbeddingClusterBecomesOneStoryEventAndDiscardsTheWeakerTake() passed after 0.001 seconds.
+◇ Test subjectTrackingSelectsThePersistentCyclistAndReframeLeavesMotionLeadRoom() started.
+✔ Test subjectTrackingSelectsThePersistentCyclistAndReframeLeavesMotionLeadRoom() passed after 0.001 seconds.
+◇ Test matchingAspectVideoDoesNotReceiveAnUnnecessaryDigitalReframe() started.
+✔ Test matchingAspectVideoDoesNotReceiveAnUnnecessaryDigitalReframe() passed after 0.001 seconds.
+◇ Test productionDirectorCommitsSubjectReframeAndFCPXMLPreservesTheIntent() started.
+✔ Test productionDirectorCommitsSubjectReframeAndFCPXMLPreservesTheIntent() passed after 0.010 seconds.
+◇ Test productionEnricherUsesASRAudioTelemetryAndVisualEvidenceForBoundaries() started.
+✔ Test productionEnricherUsesASRAudioTelemetryAndVisualEvidenceForBoundaries() passed after 0.001 seconds.
+◇ Test audioEventClassifierSeparatesSilenceImpactAndWind() started.
+✔ Test audioEventClassifierSeparatesSilenceImpactAndWind() passed after 0.001 seconds.
+◇ Test measuredMusicAnalysisFindsNonFourFourMeterPhrasesAndDropConfidence() started.
+✔ Test measuredMusicAnalysisFindsNonFourFourMeterPhrasesAndDropConfidence() passed after 0.001 seconds.
+◇ Test expandedGlobalScorerRewardsSpeechSubjectAudioAndDropClimaxEvidence() started.
+✔ Test expandedGlobalScorerRewardsSpeechSubjectAudioAndDropClimaxEvidence() passed after 0.001 seconds.
+◇ Test persistentDeepCacheRoundTripsAllExpensiveFeatures() started.
+✔ Test persistentDeepCacheRoundTripsAllExpensiveFeatures() passed after 0.001 seconds.
+◇ Test preP2GlobalScoreDecodesWithNeutralNewComponents() started.
+✔ Test preP2GlobalScoreDecodesWithNeutralNewComponents() passed after 0.001 seconds.
+◇ Test semanticIndexStaysBoundedForThreeHundredCameraFiles() started.
+✔ Test semanticIndexStaysBoundedForThreeHundredCameraFiles() passed after 1.441 seconds.
+◇ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() started.
+✔ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() passed after 0.887 seconds.
+◇ Test keyTitlePolicyKeepsEveryPartWithoutCountOrSpacingLimits() started.
+✔ Test keyTitlePolicyKeepsEveryPartWithoutCountOrSpacingLimits() passed after 0.001 seconds.
+◇ Test directorBriefRoundTripsEveryOpeningChoice() started.
+✔ Test directorBriefRoundTripsEveryOpeningChoice() passed after 0.001 seconds.
+◇ Test legacyStoryPlanWithoutDirectorBriefStillDecodes() started.
+✔ Test legacyStoryPlanWithoutDirectorBriefStillDecodes() passed after 0.001 seconds.
+◇ Test unreadableMetadataFallbackLeavesRecoverableIntentWithoutFakeTimeline() started.
+✔ Test unreadableMetadataFallbackLeavesRecoverableIntentWithoutFakeTimeline() passed after 0.449 seconds.
+◇ Test directorReportsMissingReadableMediaInsteadOfZeroDurationContractFailure() started.
+✔ Test directorReportsMissingReadableMediaInsteadOfZeroDurationContractFailure() passed after 0.181 seconds.
+◇ Test displayAspectUsesVideoPreferredTransformOnlyOnceAndPhotoEXIFOnce() started.
+✔ Test displayAspectUsesVideoPreferredTransformOnlyOnceAndPhotoEXIFOnce() passed after 0.001 seconds.
+➜ Test directorRealProjectRepairAndRenderOnCopy() skipped.
+◇ Test questionnaireTitleRequirementSurvivesIntentParsing() started.
+✔ Test questionnaireTitleRequirementSurvivesIntentParsing() passed after 0.001 seconds.
+◇ Test chapterTitlesStartAtZeroAndEveryPartWithoutDependingOnNarrativeBeats() started.
+✔ Test chapterTitlesStartAtZeroAndEveryPartWithoutDependingOnNarrativeBeats() passed after 0.032 seconds.
+◇ Test chapterRepairReanchorsAfterShorteningWithoutUndoingReadabilityFix() started.
+✔ Test chapterRepairReanchorsAfterShorteningWithoutUndoingReadabilityFix() passed after 0.029 seconds.
+◇ Test chapterHeadingReplacesOverlappingAutomaticOpenerButKeepsManualText() started.
+✔ Test chapterHeadingReplacesOverlappingAutomaticOpenerButKeepsManualText() passed after 0.003 seconds.
+◇ Test unknownPartStillGetsLabelAndRepeatedEventTitleSurvivesCleanup() started.
+✔ Test unknownPartStillGetsLabelAndRepeatedEventTitleSurvivesCleanup() passed after 0.003 seconds.
+◇ Test tooShortPartCannotSilentlyPassTitleContract() started.
+✔ Test tooShortPartCannotSilentlyPassTitleContract() passed after 0.014 seconds.
+◇ Test cinematicMoodDoesNotAuthorizeCutawaysOrColorChanges() started.
+✔ Test cinematicMoodDoesNotAuthorizeCutawaysOrColorChanges() passed after 0.012 seconds.
+◇ Test genericOutdoorTagsDoNotAuthorizeCrossEventCutaway() started.
+✔ Test genericOutdoorTagsDoNotAuthorizeCrossEventCutaway() passed after 0.001 seconds.
+◇ Test generationDoesNotReplayMusicSelectionFromPendingQuestionnaire() started.
+✔ Test generationDoesNotReplayMusicSelectionFromPendingQuestionnaire() passed after 0.002 seconds.
+◇ Suite DirectorVisualStyleTests started.
+◇ Test everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+◇ Test case passing 1 argument mood → .calm to everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+◇ Test case passing 1 argument mood → .cinematic to everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+◇ Test case passing 1 argument mood → .dynamic to everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+✔ Test everyPartGetsCompactReadableHeadingsAcrossMoods(_:) with 3 test cases passed after 0.132 seconds.
+◇ Test longerTextGetsMoreReadingTimeWithoutLeakingIntoTheNextPart() started.
+✔ Test longerTextGetsMoreReadingTimeWithoutLeakingIntoTheNextPart() passed after 0.022 seconds.
+◇ Test subtitlesAndManualTitleEditsKeepTheirOwnTimingAndTypography() started.
+✔ Test subtitlesAndManualTitleEditsKeepTheirOwnTimingAndTypography() passed after 0.003 seconds.
+◇ Test inspectorEditsSurviveAutomaticChapterReviewAndProjectReload() started.
+✔ Test inspectorEditsSurviveAutomaticChapterReviewAndProjectReload() passed after 0.039 seconds.
+◇ Test rebuildingFilmCarriesEditedTitlesWithTheirSourceClips() started.
+✔ Test rebuildingFilmCarriesEditedTitlesWithTheirSourceClips() passed after 0.033 seconds.
+◇ Test cinematicChoiceOverridesAnAdventurePresetForTitlesAndTransitions() started.
+✔ Test cinematicChoiceOverridesAnAdventurePresetForTitlesAndTransitions() passed after 0.029 seconds.
+◇ Test chapterHeadingOccupiesLessPictureAndHoldsForReading() started.
+✔ Test chapterHeadingOccupiesLessPictureAndHoldsForReading() passed after 0.104 seconds.
+◇ Test generatedChapterPixelsMatchTheApprovedReferenceAndMigrateThePreviousAutomaticStyle() started.
+✔ Test generatedChapterPixelsMatchTheApprovedReferenceAndMigrateThePreviousAutomaticStyle() passed after 0.033 seconds.
+✔ Suite DirectorVisualStyleTests passed after 0.398 seconds.
+◇ Suite DynamicMusicTests started.
+◇ Test namedTracksReachEverySearchProviderUnchanged() started.
+✔ Test namedTracksReachEverySearchProviderUnchanged() passed after 0.001 seconds.
+◇ Test sceneRequestsAndSeveralSongsSurvivePersistence() started.
+✔ Test sceneRequestsAndSeveralSongsSurvivePersistence() passed after 0.002 seconds.
+◇ Test archiveSkipsStreamingRestrictedAndIncompatibleLicenses() started.
+✔ Test archiveSkipsStreamingRestrictedAndIncompatibleLicenses() passed after 0.001 seconds.
+◇ Test exactSearchDoesNotAcceptUnrelatedLocalMusicAndReusesDownload() started.
+✔ Test exactSearchDoesNotAcceptUnrelatedLocalMusicAndReusesDownload() passed after 0.044 seconds.
+◇ Test sharedCacheMaterializesIndependentProjectFileOffline() started.
+✔ Test sharedCacheMaterializesIndependentProjectFileOffline() passed after 0.072 seconds.
+◇ Test corruptDownloadFallsThroughToNextSourceCandidate() started.
+✔ Test corruptDownloadFallsThroughToNextSourceCandidate() passed after 0.042 seconds.
+◇ Test webDiscoveryAcceptsIndependentArtistDomainsAndRejectsUnlicensedStreams() started.
+✔ Test webDiscoveryAcceptsIndependentArtistDomainsAndRejectsUnlicensedStreams() passed after 0.001 seconds.
+◇ Test webDiscoveryRespectsRobotsRules() started.
+✔ Test webDiscoveryRespectsRobotsRules() passed after 0.001 seconds.
+◇ Test liveGeneralWebMusicSearchWhenEnabled() started.
+✔ Test liveGeneralWebMusicSearchWhenEnabled() passed after 0.001 seconds.
+◇ Test dynamicMusicRendersLocalSectionsWithCrossfadesOffline() started.
+2026-09-13 17:33:18.731 swiftpm-testing-helper[56853:14239687] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test dynamicMusicRendersLocalSectionsWithCrossfadesOffline() passed after 0.874 seconds.
+✔ Suite DynamicMusicTests passed after 1.039 seconds.
+◇ Test musicRequestSelectsMoodAndRespectsOptOut() started.
+✔ Test musicRequestSelectsMoodAndRespectsOptOut() passed after 0.003 seconds.
+◇ Test originalAudioInstructionIsExecutableAndLatestCommandWins() started.
+✔ Test originalAudioInstructionIsExecutableAndLatestCommandWins() passed after 0.001 seconds.
+◇ Test sourceAudioQuestionnaireAnswerAndPlaceholderTitlesAreHandledLiterally() started.
+✔ Test sourceAudioQuestionnaireAnswerAndPlaceholderTitlesAreHandledLiterally() passed after 0.002 seconds.
+◇ Test automatedTitlePolicyRepairsOldGeneratedOverlapWithoutTouchingManualLayers() started.
+✔ Test automatedTitlePolicyRepairsOldGeneratedOverlapWithoutTouchingManualLayers() passed after 0.001 seconds.
+◇ Test editorCatalogValuesSurviveProjectEncoding() started.
+✔ Test editorCatalogValuesSurviveProjectEncoding() passed after 0.001 seconds.
+◇ Test clipAdjustmentsSurviveEncodingAndOldItemsUseNeutralDefaults() started.
+✔ Test clipAdjustmentsSurviveEncodingAndOldItemsUseNeutralDefaults() passed after 0.001 seconds.
+◇ Test viewerToolAdjustmentsSurviveEncodingAndTriggerRealMediaProcessing() started.
+✔ Test viewerToolAdjustmentsSurviveEncodingAndTriggerRealMediaProcessing() passed after 0.001 seconds.
+◇ Test processedAudioRenderingStartsAndProducesSamples() started.
+2026-09-13 17:33:18.968 swiftpm-testing-helper[56853:14239497] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test processedAudioRenderingStartsAndProducesSamples() passed after 0.035 seconds.
+◇ Test oldExtendedAdjustmentsDecodeWithNeutralViewerToolDefaults() started.
+✔ Test oldExtendedAdjustmentsDecodeWithNeutralViewerToolDefaults() passed after 0.001 seconds.
+◇ Test extendedImageAudioAndSpeedRampCommandsAreExecutable() started.
+✔ Test extendedImageAudioAndSpeedRampCommandsAreExecutable() passed after 0.003 seconds.
+◇ Test expandedCatalogContainsRequestedMotionAndTransitions() started.
+✔ Test expandedCatalogContainsRequestedMotionAndTransitions() passed after 0.001 seconds.
+◇ Test transitionPlaybackClockMapsBackToVisibleTimelineBoundaries() started.
+✔ Test transitionPlaybackClockMapsBackToVisibleTimelineBoundaries() passed after 0.001 seconds.
+◇ Test shortTimelineRegionsKeepTheirRealDuration() started.
+✔ Test shortTimelineRegionsKeepTheirRealDuration() passed after 0.001 seconds.
+◇ Test telemetryCommandCreatesRenderableTimelineIntent() started.
+✔ Test telemetryCommandCreatesRenderableTimelineIntent() passed after 0.002 seconds.
+◇ Test freeToUseProviderUsesTheOfficialAPIAndStoresAttribution() started.
+✔ Test freeToUseProviderUsesTheOfficialAPIAndStoresAttribution() passed after 0.001 seconds.
+◇ Test freeToUseTrackDecodesOfficialTupleMetadata() started.
+✔ Test freeToUseTrackDecodesOfficialTupleMetadata() passed after 0.001 seconds.
+◇ Test localMusicSelectorUsesMoodBPMEnergyAndCanExcludeCurrentTrack() started.
+✔ Test localMusicSelectorUsesMoodBPMEnergyAndCanExcludeCurrentTrack() passed after 0.001 seconds.
+◇ Test conversationalMusicChangesAreRecognizedWithoutGeneratingMusic() started.
+✔ Test conversationalMusicChangesAreRecognizedWithoutGeneratingMusic() passed after 0.001 seconds.
+◇ Test generatedCutsSnapToTheSelectedLocalTracksBeatGrid() started.
+✔ Test generatedCutsSnapToTheSelectedLocalTracksBeatGrid() passed after 0.001 seconds.
+◇ Test changingSelectedMusicOnlyRefreshesBeatStructure() started.
+✔ Test changingSelectedMusicOnlyRefreshesBeatStructure() passed after 0.001 seconds.
+◇ Test russianEditorRequestBecomesTypedCommandsAndChangesTheRequestedClip() started.
+✔ Test russianEditorRequestBecomesTypedCommandsAndChangesTheRequestedClip() passed after 0.002 seconds.
+◇ Test titleSplitDuplicateAndMoveCommandsReallyRewriteTimeline() started.
+✔ Test titleSplitDuplicateAndMoveCommandsReallyRewriteTimeline() passed after 0.001 seconds.
+◇ Test parserExtractsQuotedTitleAndGlobalMovieCommands() started.
+✔ Test parserExtractsQuotedTitleAndGlobalMovieCommands() passed after 0.003 seconds.
+◇ Test naturalAudioRequestsDistinguishMusicSpeechAndNoise() started.
+✔ Test naturalAudioRequestsDistinguishMusicSpeechAndNoise() passed after 0.003 seconds.
+◇ Test multiClauseRequestKeepsTargetsSeparateAndResolvesPronouns() started.
+✔ Test multiClauseRequestKeepsTargetsSeparateAndResolvesPronouns() passed after 0.002 seconds.
+◇ Test naturalCreativeRequestActuallyAddsVariedTransitionsAndMotion() started.
+✔ Test naturalCreativeRequestActuallyAddsVariedTransitionsAndMotion() passed after 0.003 seconds.
+◇ Test russianLocativeTargetAndTransitionBoundaryResolveToRenderedClip() started.
+✔ Test russianLocativeTargetAndTransitionBoundaryResolveToRenderedClip() passed after 0.002 seconds.
+◇ Test repeatedVisualCommandIsReportedAsNoOpInsteadOfClaimingAChange() started.
+✔ Test repeatedVisualCommandIsReportedAsNoOpInsteadOfClaimingAChange() passed after 0.001 seconds.
+◇ Test overlayRequestCreatesARealSecondLayerWithoutLengtheningMovie() started.
+✔ Test overlayRequestCreatesARealSecondLayerWithoutLengtheningMovie() passed after 0.001 seconds.
+◇ Test overlayStylesAndReferencesSurviveProjectEncoding() started.
+✔ Test overlayStylesAndReferencesSurviveProjectEncoding() passed after 0.001 seconds.
+◇ Test freezeFrameCommandInsertsARealTimedStill() started.
+✔ Test freezeFrameCommandInsertsARealTimedStill() passed after 0.001 seconds.
+◇ Test reverseAndAutoEnhanceCommandsChangeTheSelectedClip() started.
+✔ Test reverseAndAutoEnhanceCommandsChangeTheSelectedClip() passed after 0.001 seconds.
+◇ Test instantReplayDuplicatesTheMomentAndSlowsOnlyTheCopy() started.
+✔ Test instantReplayDuplicatesTheMomentAndSlowsOnlyTheCopy() passed after 0.001 seconds.
+◇ Test conversationalDirectorWordingStillBecomesExecutableCommands() started.
+✔ Test conversationalDirectorWordingStillBecomesExecutableCommands() passed after 0.002 seconds.
+◇ Test titleAppearanceCanBeChangedByRequest() started.
+✔ Test titleAppearanceCanBeChangedByRequest() passed after 0.004 seconds.
+◇ Test editorCommandsCreateAndEditTemplateTitleObjects() started.
+✔ Test editorCommandsCreateAndEditTemplateTitleObjects() passed after 0.001 seconds.
+◇ Test turquoiseTitleBackgroundIsUnderstoodInRussian() started.
+✔ Test turquoiseTitleBackgroundIsUnderstoodInRussian() passed after 0.001 seconds.
+◇ Suite EditorPerformanceTests started.
+➜ Test largeProjectOpenPlaybackAndFirstFrame() skipped.
+✔ Suite EditorPerformanceTests passed after 0.001 seconds.
+◇ Suite EditorPreviewParityTests started.
+◇ Test everyTitleTemplateAndInspectorEditMatchesEncodedFilm() started.
+✔ Test everyTitleTemplateAndInspectorEditMatchesEncodedFilm() passed after 3.847 seconds.
+◇ Test everyEffectAndStackChangesPreviewAndSurvivesVideoExport() started.
+✔ Test everyEffectAndStackChangesPreviewAndSurvivesVideoExport() passed after 2.847 seconds.
+◇ Test editsBypassParametersAndKeyframesChangePausedCompositionFrames() started.
+✔ Test editsBypassParametersAndKeyframesChangePausedCompositionFrames() passed after 0.154 seconds.
+◇ Test titlesTelemetryAndEffectsKeepEditorTimeAfterMultipleTransitions() started.
+✔ Test titlesTelemetryAndEffectsKeepEditorTimeAfterMultipleTransitions() passed after 0.154 seconds.
+◇ Test allAudioEffectsAndEqualizersProcessMonoVoiceWithoutCrashingOrChangingDuration() started.
+2026-09-13 17:33:26.024 swiftpm-testing-helper[56853:14239665] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.035 swiftpm-testing-helper[56853:14239665] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.045 swiftpm-testing-helper[56853:14239071] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.055 swiftpm-testing-helper[56853:14239075] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.065 swiftpm-testing-helper[56853:14239665] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.075 swiftpm-testing-helper[56853:14239075] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.085 swiftpm-testing-helper[56853:14239665] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.095 swiftpm-testing-helper[56853:14239665] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.104 swiftpm-testing-helper[56853:14239071] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.114 swiftpm-testing-helper[56853:14239071] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.124 swiftpm-testing-helper[56853:14239068] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.133 swiftpm-testing-helper[56853:14239068] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.143 swiftpm-testing-helper[56853:14239071] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.153 swiftpm-testing-helper[56853:14239071] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test allAudioEffectsAndEqualizersProcessMonoVoiceWithoutCrashingOrChangingDuration() passed after 0.162 seconds.
+◇ Test replacingPlaybackCannotDeleteNewPhotoTitleOrProcessedAudioSources() started.
+2026-09-13 17:33:26.322 swiftpm-testing-helper[56853:14239705] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:33:26.416 swiftpm-testing-helper[56853:14239071] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test replacingPlaybackCannotDeleteNewPhotoTitleOrProcessedAudioSources() passed after 0.279 seconds.
+◇ Test pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) started.
+◇ Test case passing 1 argument editsTitle → false to pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) started.
+◇ Test case passing 1 argument editsTitle → true to pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) started.
+✔ Test pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) with 2 test cases passed after 0.295 seconds.
+✔ Suite EditorPreviewParityTests passed after 7.742 seconds.
+◇ Test editorialLoudnessUsesKWeightingAndStereoChannelEnergy() started.
+✔ Test editorialLoudnessUsesKWeightingAndStereoChannelEnergy() passed after 0.024 seconds.
+◇ Test editorialLoudnessGatesSilenceAndLimitsIntersamplePeaks() started.
+✔ Test editorialLoudnessGatesSilenceAndLimitsIntersamplePeaks() passed after 0.020 seconds.
+◇ Test editorialMasteringPreservesVolumeStepsRampsAndTail() started.
+✔ Test editorialMasteringPreservesVolumeStepsRampsAndTail() passed after 0.001 seconds.
+◇ Test editorialMasteringAttenuationCeilingStillProtectsPeaks() started.
+✔ Test editorialMasteringAttenuationCeilingStillProtectsPeaks() passed after 0.001 seconds.
+◇ Test editorialMasteringChangesTheActualCompositionMix() started.
+✔ Test editorialMasteringChangesTheActualCompositionMix() passed after 0.035 seconds.
+◇ Test editorialMasteringAcceptsTrackShorterThanMovie() started.
+✔ Test editorialMasteringAcceptsTrackShorterThanMovie() passed after 0.018 seconds.
+◇ Test editorialBudgetNeverCountsFullSourceMetadata() started.
+✔ Test editorialBudgetNeverCountsFullSourceMetadata() passed after 0.001 seconds.
+◇ Test editorialBudgetUsesTenSecondMinimumWithoutInventingCapacity() started.
+✔ Test editorialBudgetUsesTenSecondMinimumWithoutInventingCapacity() passed after 0.001 seconds.
+◇ Test editorialBudgetCountsVisuallyChangingJourneyOnOneCameraMount() started.
+✔ Test editorialBudgetCountsVisuallyChangingJourneyOnOneCameraMount() passed after 0.028 seconds.
+◇ Test editorialMinerUsesQualityWindowsEvenWhenBoundaryConfidenceIsOrdinary() started.
+✔ Test editorialMinerUsesQualityWindowsEvenWhenBoundaryConfidenceIsOrdinary() passed after 0.001 seconds.
+◇ Test editorialMinerProductionizesLegacyAnalysesExactlyOnce() started.
+✔ Test editorialMinerProductionizesLegacyAnalysesExactlyOnce() passed after 0.001 seconds.
+◇ Test editorialMinerInspectsTheTailBeforeMarkingALongSourceComplete() started.
+✔ Test editorialMinerInspectsTheTailBeforeMarkingALongSourceComplete() passed after 0.001 seconds.
+◇ Test editorialMinerDoesNotTreatOneCompletedSourceAsACompleteArchive() started.
+✔ Test editorialMinerDoesNotTreatOneCompletedSourceAsACompleteArchive() passed after 0.001 seconds.
+◇ Test editorialMinerDoesNotMarkFailedSourceAsComplete() started.
+✔ Test editorialMinerDoesNotMarkFailedSourceAsComplete() passed after 0.001 seconds.
+◇ Test editorialFamiliesIgnoreAssetIDAndSeparateReaction() started.
+✔ Test editorialFamiliesIgnoreAssetIDAndSeparateReaction() passed after 0.001 seconds.
+◇ Test editorialHardOverlapThresholdAndRepeatedStartAreEnforced() started.
+✔ Test editorialHardOverlapThresholdAndRepeatedStartAreEnforced() passed after 0.001 seconds.
+◇ Test editorialLabelsCannotInventClimaxAndEmptyFilmCannotWin() started.
+✔ Test editorialLabelsCannotInventClimaxAndEmptyFilmCannotWin() passed after 0.003 seconds.
+◇ Test editorialMechanicalCadenceDetectsThirtyOneOfThirtyThree() started.
+✔ Test editorialMechanicalCadenceDetectsThirtyOneOfThirtyThree() passed after 0.022 seconds.
+◇ Test editorialMuteRemovesDetachedAndSurvivesDirector() started.
+✔ Test editorialMuteRemovesDetachedAndSurvivesDirector() passed after 0.015 seconds.
+◇ Test editorialExactDurationIsNotFundedByEmptySourceHandles() started.
+✘ Test editorialExactDurationIsNotFundedByEmptySourceHandles() recorded an issue at EditorialIntelligenceTests.swift:262:5: Expectation failed: !((plan → StoryPlan(chapterTitleReference: nil, approvedSourceChapterLabels: nil, explicitMusicTrackID: nil, contentBudget: Optional(VeloEditCore.ContentBudgetDecision(budget: VeloEditCore.ContentBudget(idealDuration: 40.0, safeRange: ClosedRange(32.0...40.0), absoluteCeiling: 40.0, strongUnitCount: 4, distinctEventCount: 0, distinctSceneCount: 0, distinctShotFamilyCount: 4, usableActionSeconds: 40.0, usableAtmosphereSeconds: 0.0, usableSpeechSeconds: 0.0, confidence: 0.95, limitingFactors: [VeloEditCore.EditorialLimitingFactor.insufficientContent]), requestedDuration: Optional(300.0), supportedDuration: 40.0, committedDuration: nil, durationConstraintStatus: VeloEditCore.DurationConstraintStatus.compromisedInsufficientContent, requiresExpandedMining: true, feasibility: 0.13333333333333333, reason: "Запрошено 300 с; поддерживается 40 с: 4 сильных моментов, 4 разных camera setups. Цель 40 с; минимум фильма — 10 с; расширение пустых диапазонов запрещено. Ограничения последовательности поддерживают 40 с.")), narrativeBeatPlan: Optional(VeloEditCore.NarrativeBeatPlan(discardedCandidates: Optional([:]), pattern: VeloEditCore.EditorialNarrativePattern.placePeopleActivity, beats: [VeloEditCore.EditorialNarrativeBeat(candidateID: 37E2476F-4F7C-410B-9A81-B3E3A00D5FDA, purpose: VeloEditCore.EditorialNarrativePurpose.hook, viewerInformation: "different-scene-3", requiredChange: 0.0, familyID: Optional("family-0af049dd0c990b313531a2249a2c3be28cd6dc2812799503beb9fe7512d79bf4"), minimumEvidence: 0.38, durationRange: ClosedRange(0.5...10.0), allocatedDuration: 10.0, fulfilled: true), VeloEditCore.EditorialNarrativeBeat(candidateID: 995183C4-CBE8-472A-9434-5F633DAB7CFE, purpose: VeloEditCore.EditorialNarrativePurpose.peak, viewerInformation: "different-scene-0", requiredChange: 0.18, familyID: Optional("family-445da14f52757e6d94e8f1fbc3f9848634cf749ea6fd54bab4b36dd44db667e2"), minimumEvidence: 0.65, durationRange: ClosedRange(0.5...10.0), allocatedDuration: 10.0, fulfilled: true), VeloEditCore.EditorialNarrativeBeat(candidateID: D8792419-F5F5-4C36-BABD-7EC69BA7305C, purpose: VeloEditCore.EditorialNarrativePurpose.peak, viewerInformation: "different-scene-2", requiredChange: 0.18, familyID: Optional("family-061296905084c075803895e6aa4a2b3bc3563113205452a8e49d26bc169ff12b"), minimumEvidence: 0.65, durationRange: ClosedRange(0.5...10.0), allocatedDuration: 10.0, fulfilled: true), VeloEditCore.EditorialNarrativeBeat(candidateID: 04D9684D-C06C-4E22-840C-5252BBBA4A24, purpose: VeloEditCore.EditorialNarrativePurpose.closure, viewerInformation: "different-scene-1", requiredChange: 0.0, familyID: Optional("family-8366b62de845cd456998d9e17a00d50817eeab50a0fdb8347eef4b637940a9d1"), minimumEvidence: 0.38, durationRange: ClosedRange(0.5...10.0), allocatedDuration: 10.0, fulfilled: true)], reasons: ["Подтверждены место, люди, действие и завершение"])), id: 9E6822EF-E33E-422C-A4CF-D7122F2202F9, version: 1, prompt: "Фильм ровно 300 секунд", preset: VeloEditCore.FilmPreset.story, constraints: VeloEditCore.StoryConstraints(targetDuration: 40.0, targetClipCount: nil, includeTags: Set([]), excludeTags: Set([]), maximumTagShares: [:], preferPhotos: false, allowSlowMotion: true, transitionFrequency: 0.15, pacing: 0.45, preferredIntroTags: nil, preferredClimaxTags: nil, preferredOutroTags: nil), chapters: [VeloEditCore.StoryChapter(id: 2BBB57EF-7DA7-4617-9676-9781786742E7, title: "", candidateIDs: [37E2476F-4F7C-410B-9A81-B3E3A00D5FDA], role: Optional(VeloEditCore.StoryRole.intro), purpose: Optional("different-scene-3"), eventID: nil, eventSceneID: nil, chapterCardTitle: nil, isColdOpen: nil, allocatedDuration: Optional(10.0), coveragePlan: nil), VeloEditCore.StoryChapter(id: C2AFD1AF-0E57-45D9-9EDC-B05E6FAAACC4, title: "", candidateIDs: [995183C4-CBE8-472A-9434-5F633DAB7CFE], role: Optional(VeloEditCore.StoryRole.climax), purpose: Optional("different-scene-0"), eventID: nil, eventSceneID: nil, chapterCardTitle: nil, isColdOpen: nil, allocatedDuration: Optional(10.0), coveragePlan: nil), VeloEditCore.StoryChapter(id: C7C2D15F-6FB6-4D31-B124-DE99429C7B86, title: "", candidateIDs: [D8792419-F5F5-4C36-BABD-7EC69BA7305C], role: Optional(VeloEditCore.StoryRole.climax), purpose: Optional("different-scene-2"), eventID: nil, eventSceneID: nil, chapterCardTitle: nil, isColdOpen: nil, allocatedDuration: Optional(10.0), coveragePlan: nil), VeloEditCore.StoryChapter(id: F595443C-E3FA-45B7-BD26-89260204FD0D, title: "", candidateIDs: [04D9684D-C06C-4E22-840C-5252BBBA4A24], role: Optional(VeloEditCore.StoryRole.outro), purpose: Optional("different-scene-1"), eventID: nil, eventSceneID: nil, chapterCardTitle: nil, isColdOpen: nil, allocatedDuration: Optional(10.0), coveragePlan: nil)], autonomousDecision: nil, eventStory: nil, beatGraph: Optional(VeloEditCore.NarrativeBeatGraph(beats: [])), directorBrief: Optional(VeloEditCore.DirectorBrief(durationMode: Optional(VeloEditCore.FilmDurationMode.exact), canvasFormat: VeloEditCore.DirectorCanvasFormat(width: 1920, height: 1080, label: "16:9", subjectAware: true, safeAreasEnabled: true), canvasFormatIsAutomatic: Optional(false), requestedDuration: 300.0, mood: VeloEditCore.DirectorNarrativeMood.cinematic, musicPolicy: VeloEditCore.DirectorMusicPolicy.none, musicTrackID: nil, sourceAudioPolicy: VeloEditCore.DirectorSourceAudioPolicy.preserve, titlePolicy: VeloEditCore.DirectorTitlePolicy.none)), createdAt: 2026-09-13 14:33:26 +0000)).requiresExactDuration → true → true)
+✘ Test editorialExactDurationIsNotFundedByEmptySourceHandles() failed after 0.012 seconds with 1 issue.
+◇ Test editorialBudgetRequestsSecondMiningOnlyNearFeasibleTarget() started.
+✔ Test editorialBudgetRequestsSecondMiningOnlyNearFeasibleTarget() passed after 0.001 seconds.
+◇ Test editorialSignatureDetectsAudioAndIntermediateCropChanges() started.
+✔ Test editorialSignatureDetectsAudioAndIntermediateCropChanges() passed after 0.001 seconds.
+◇ Test editorialGroupFramingPrefersPeopleAndSafeFit() started.
+✔ Test editorialGroupFramingPrefersPeopleAndSafeFit() passed after 0.001 seconds.
+◇ Test editorialIntermediateKeyframeFollowsCrossingAndReturns() started.
+✔ Test editorialIntermediateKeyframeFollowsCrossingAndReturns() passed after 0.001 seconds.
+◇ Test editorialRenderedGateCannotBeClosedByMissingOrFailedProbes() started.
+✔ Test editorialRenderedGateCannotBeClosedByMissingOrFailedProbes() passed after 0.006 seconds.
+◇ Test editorialIntentOnlyFulfillsActualNewTitleAndEvaluatesPhoto() started.
+✔ Test editorialIntentOnlyFulfillsActualNewTitleAndEvaluatesPhoto() passed after 0.001 seconds.
+◇ Test editorialCancelledGenerationPersistsRecoverableLedgerAndNoTimeline() started.
+✔ Test editorialCancelledGenerationPersistsRecoverableLedgerAndNoTimeline() passed after 0.004 seconds.
+◇ Test editorialNewOptionalFieldsDecodeOldManifests() started.
+✔ Test editorialNewOptionalFieldsDecodeOldManifests() passed after 0.001 seconds.
+◇ Test editorialGeometricCoreCannotHideZeroFraming() started.
+✔ Test editorialGeometricCoreCannotHideZeroFraming() passed after 0.001 seconds.
+◇ Test editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .RepeatedPOVCyclingFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .StaticFishingFiveMinuteFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .BuggyGroupVerticalFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .MultiDayChapterFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .MutePolicyFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .CalmStyleEffectFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .ImpossibleExactDurationFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+◇ Test case passing 1 argument fixture → .LongSpeechFixture to editorialRegressionRunsThroughRenderedWinner(_:) started.
+✔ Test editorialRegressionRunsThroughRenderedWinner(_:) with 8 test cases passed after 5.796 seconds.
+◇ Test editorialRolloutDefaultsOnAndKeepsEvaluationIndependent() started.
+✔ Test editorialRolloutDefaultsOnAndKeepsEvaluationIndependent() passed after 0.001 seconds.
+◇ Test editorialNewGenerationSupersedesOldCommitAtomically() started.
+✔ Test editorialNewGenerationSupersedesOldCommitAtomically() passed after 0.004 seconds.
+◇ Test editorialSummaryDoesNotAdvertiseSourceAsFilm() started.
+✔ Test editorialSummaryDoesNotAdvertiseSourceAsFilm() passed after 0.002 seconds.
+◇ Test editorialLongSpeechKeepsPhraseAndAddsRelatedCutaways() started.
+✔ Test editorialLongSpeechKeepsPhraseAndAddsRelatedCutaways() passed after 0.007 seconds.
+◇ Test editorialCurrentPromptAddsTypedTitleAndMuteIntent() started.
+✔ Test editorialCurrentPromptAddsTypedTitleAndMuteIntent() passed after 0.001 seconds.
+◇ Test editorialRenderedCacheInvalidatesReplacedMusicFile() started.
+✔ Test editorialRenderedCacheInvalidatesReplacedMusicFile() passed after 0.001 seconds.
+◇ Test editorialVisionLabelFlickerDoesNotInventActionProgression() started.
+✔ Test editorialVisionLabelFlickerDoesNotInventActionProgression() passed after 0.001 seconds.
+◇ Test editorialUnrelatedDocumentHasDiscardEvidenceWithoutExcludingMusicCoverage() started.
+✔ Test editorialUnrelatedDocumentHasDiscardEvidenceWithoutExcludingMusicCoverage() passed after 0.001 seconds.
+◇ Test editorialAutomaticChapterHasNoTemplateDemoNumberAndRejectsGenericLabel() started.
+✔ Test editorialAutomaticChapterHasNoTemplateDemoNumberAndRejectsGenericLabel() passed after 0.006 seconds.
+◇ Test editorialConnectedClipNeverShiftsPrimaryMediaSegments(hasBase:) started.
+◇ Test case passing 1 argument hasBase → true to editorialConnectedClipNeverShiftsPrimaryMediaSegments(hasBase:) started.
+◇ Test case passing 1 argument hasBase → false to editorialConnectedClipNeverShiftsPrimaryMediaSegments(hasBase:) started.
+✔ Test editorialConnectedClipNeverShiftsPrimaryMediaSegments(hasBase:) with 2 test cases passed after 0.612 seconds.
+◇ Test editorialChapterSearchNeverReopensAClosedSceneAfterContinuityChanges() started.
+✔ Test editorialChapterSearchNeverReopensAClosedSceneAfterContinuityChanges() passed after 0.001 seconds.
+◇ Test editorialFallbackPreservesVerifiedEventOrderWithoutEventObjects() started.
+✔ Test editorialFallbackPreservesVerifiedEventOrderWithoutEventObjects() passed after 0.006 seconds.
+◇ Test chapterSearchReservesSpaceForLaterActivities(useScenes:) started.
+◇ Test case passing 1 argument useScenes → false to chapterSearchReservesSpaceForLaterActivities(useScenes:) started.
+◇ Test case passing 1 argument useScenes → true to chapterSearchReservesSpaceForLaterActivities(useScenes:) started.
+✔ Test chapterSearchReservesSpaceForLaterActivities(useScenes:) with 2 test cases passed after 0.811 seconds.
+◇ Test editorialTemporalPeopleProtectFramingBeyondOldSparseTracking() started.
+✔ Test editorialTemporalPeopleProtectFramingBeyondOldSparseTracking() passed after 0.001 seconds.
+◇ Test editorialRenderedProbeRecoversTransientFailure(emptyFirst:) started.
+◇ Test case passing 1 argument emptyFirst → false to editorialRenderedProbeRecoversTransientFailure(emptyFirst:) started.
+✘ Test editorialRenderedProbeRecoversTransientFailure(emptyFirst:) recorded an issue with 1 argument emptyFirst → false at EditorialIntelligenceTests.swift:749:5: Expectation failed: (result.editorialReview?.findings.contains { $0.kind == .renderedEvidenceUnavailable && $0.severity == 1 } → false) == true
+◇ Test case passing 1 argument emptyFirst → true to editorialRenderedProbeRecoversTransientFailure(emptyFirst:) started.
+✘ Test editorialRenderedProbeRecoversTransientFailure(emptyFirst:) recorded an issue with 1 argument emptyFirst → true at EditorialIntelligenceTests.swift:749:5: Expectation failed: (result.editorialReview?.findings.contains { $0.kind == .renderedEvidenceUnavailable && $0.severity == 1 } → false) == true
+✘ Test editorialRenderedProbeRecoversTransientFailure(emptyFirst:) with 2 test cases failed after 0.021 seconds with 2 issues.
+◇ Test editorialRenderedProbePersistentFailureIsBoundedAndVisible() started.
+✔ Test editorialRenderedProbePersistentFailureIsBoundedAndVisible() passed after 0.005 seconds.
+◇ Test editorialFallbackSearchContinuesWithoutPriorDecodedFrames() started.
+✔ Test editorialFallbackSearchContinuesWithoutPriorDecodedFrames() passed after 0.054 seconds.
+◇ Test enrichedBudgetSafeFloorBecomesTheSequenceTarget() started.
+✔ Test enrichedBudgetSafeFloorBecomesTheSequenceTarget() passed after 0.004 seconds.
+◇ Test fullyMinedSequenceCapacityReconcilesAnUnreachableGlobalFloor() started.
+✘ Test fullyMinedSequenceCapacityReconcilesAnUnreachableGlobalFloor() recorded an issue at EditorialIntelligenceTests.swift:827:5: Expectation failed: (plan.exactDurationRequirement → 300.0) == nil
+✘ Test fullyMinedSequenceCapacityReconcilesAnUnreachableGlobalFloor() failed after 0.002 seconds with 1 issue.
+◇ Test editorialReviewMaterializesAutomaticFramingBeforeProbeAndPersistence() started.
+✔ Test editorialReviewMaterializesAutomaticFramingBeforeProbeAndPersistence() passed after 0.008 seconds.
+◇ Test editorialRenderedRepairFitsUnsafeBodyAndRemovesMeasuredDuplicate() started.
+✔ Test editorialRenderedRepairFitsUnsafeBodyAndRemovesMeasuredDuplicate() passed after 0.076 seconds.
+◇ Test editorialRenderedProbeDoesNotRetryCancellation() started.
+✔ Test editorialRenderedProbeDoesNotRetryCancellation() passed after 0.001 seconds.
+➜ Test editorialProductionizationAudit() skipped.
+◇ Test migrationRequiresExactHumanReviewAndPreservesPreviousTimeline() started.
+✔ Test migrationRequiresExactHumanReviewAndPreservesPreviousTimeline() passed after 0.025 seconds.
+◇ Test migrationRejectsExternalManifestChangeEvenWithPassingReview() started.
+✔ Test migrationRejectsExternalManifestChangeEvenWithPassingReview() passed after 0.022 seconds.
+◇ Test migrationCanActivateExactProductionCandidateWithoutFabricatingHumanReview() started.
+✔ Test migrationCanActivateExactProductionCandidateWithoutFabricatingHumanReview() passed after 0.023 seconds.
+◇ Test migrationLiveStoreCannotOverwriteAnotherStoreOrOfflineActivation() started.
+✘ Test migrationLiveStoreCannotOverwriteAnotherStoreOrOfflineActivation() recorded an issue at EditorialProjectMigrationTests.swift:93:2: Caught error: .externalModification
+✘ Test migrationLiveStoreCannotOverwriteAnotherStoreOrOfflineActivation() failed after 0.004 seconds with 1 issue.
+◇ Test openingHealthyProjectWithTerminalIntentLedgerIsReadOnlyAndParallelSafe() started.
+✔ Test openingHealthyProjectWithTerminalIntentLedgerIsReadOnlyAndParallelSafe() passed after 0.003 seconds.
+◇ Test reloadRefreshesManifestFingerprintBeforeTheNextWrite() started.
+✔ Test reloadRefreshesManifestFingerprintBeforeTheNextWrite() passed after 0.004 seconds.
+➜ Test editorialRealProjectAcceptanceOnCopies() skipped.
+➜ Test editorialRealProjectContactSheetsOnCopies() skipped.
+◇ Test verificationReusesUnitsWithoutChangingAnyEvidenceDomain() started.
+✔ Test verificationReusesUnitsWithoutChangingAnyEvidenceDomain() passed after 0.004 seconds.
+◇ Test verificationEvidenceStatesRoundTripWithoutOptimisticMigration() started.
+✔ Test verificationEvidenceStatesRoundTripWithoutOptimisticMigration() passed after 0.007 seconds.
+◇ Test verificationMissingEvidenceCannotBeCompensatedByScoresOrPlannerLabels() started.
+✔ Test verificationMissingEvidenceCannotBeCompensatedByScoresOrPlannerLabels() passed after 0.010 seconds.
+◇ Test verificationRecordedShortFilmRegressionsFailIndependently(_:) started.
+◇ Test case passing 1 argument values → (15.66, 24.51, 34.88) to verificationRecordedShortFilmRegressionsFailIndependently(_:) started.
+◇ Test case passing 1 argument values → (26.83, 30.68, 45.02) to verificationRecordedShortFilmRegressionsFailIndependently(_:) started.
+✔ Test verificationRecordedShortFilmRegressionsFailIndependently(_:) with 2 test cases passed after 0.029 seconds.
+◇ Test verificationUpperBudgetAndShortExplicitIntent() started.
+✔ Test verificationUpperBudgetAndShortExplicitIntent() passed after 0.007 seconds.
+◇ Test verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 2 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 3 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 4 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 8 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 20 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+✔ Test verificationEqualFamiliesAreMathematicallyFeasible(_:) with 5 test cases passed after 0.001 seconds.
+◇ Test verificationCoverageCountsRiskZonesNotArbitraryProbeQuantity() started.
+✔ Test verificationCoverageCountsRiskZonesNotArbitraryProbeQuantity() passed after 0.004 seconds.
+◇ Test verificationPreliminaryRankingDoesNotReportIntentionallyMissingProductionChecks() started.
+✔ Test verificationPreliminaryRankingDoesNotReportIntentionallyMissingProductionChecks() passed after 0.020 seconds.
+◇ Test verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument text → "Съёмка на озере" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument text → "Фильм о рыбалке" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument text → "Съёмка · 11 июля 2026" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument text → "Часть 1" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument text → "Chapter by the lake" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+✔ Test verificationDescriptiveTitlesAreNotPlaceholders(text:) with 5 test cases passed after 0.029 seconds.
+◇ Test verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "Съёмка" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "Глава 1" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "Фильм" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "Untitled" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "123" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "Кульминация" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+✔ Test verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) with 6 test cases passed after 0.033 seconds.
+◇ Test verificationFailureMessageSummarizesDistinctProblemsWithoutDumpingEvidence() started.
+✔ Test verificationFailureMessageSummarizesDistinctProblemsWithoutDumpingEvidence() passed after 0.001 seconds.
+➜ Test verificationRealProjectRecoveryCommitsFullyVerifiedFilm() skipped.
+◇ Test verificationScopedClaimsNeedDecodedFramesAndMatchingSignature() started.
+✔ Test verificationScopedClaimsNeedDecodedFramesAndMatchingSignature() passed after 0.015 seconds.
+◇ Test verificationEncodedLoudnessFailsBothBounds(_:) started.
+◇ Test case passing 1 argument lufs → -28.0 to verificationEncodedLoudnessFailsBothBounds(_:) started.
+◇ Test case passing 1 argument lufs → -9.0 to verificationEncodedLoudnessFailsBothBounds(_:) started.
+✔ Test verificationEncodedLoudnessFailsBothBounds(_:) with 2 test cases passed after 0.024 seconds.
+◇ Test verificationAcceptsOnlyMeasuredPeakLimitedDynamicLoudnessException() started.
+✔ Test verificationAcceptsOnlyMeasuredPeakLimitedDynamicLoudnessException() passed after 0.001 seconds.
+◇ Test verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) started.
+◇ Test case passing 1 argument lufs → -32.0 to verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) started.
+◇ Test case passing 1 argument lufs → -9.0 to verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) started.
+✔ Test verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) with 2 test cases passed after 0.027 seconds.
+◇ Test verificationEveryRequiredUnknownAndEvidenceRemovalBlocksProduction() started.
+✔ Test verificationEveryRequiredUnknownAndEvidenceRemovalBlocksProduction() passed after 0.011 seconds.
+◇ Test verificationParityUsesNormalizedPixelsAndRejectsMissingComparison() started.
+✔ Test verificationParityUsesNormalizedPixelsAndRejectsMissingComparison() passed after 0.001 seconds.
+◇ Test verificationLowerBoundRepairUsesOnlyMeasuredSelectedHandles() started.
+✔ Test verificationLowerBoundRepairUsesOnlyMeasuredSelectedHandles() passed after 0.011 seconds.
+◇ Test verificationDetectsNarrowHighContrastVerticalOccluder() started.
+✔ Test verificationDetectsNarrowHighContrastVerticalOccluder() passed after 0.002 seconds.
+◇ Test verificationDoesNotTreatBackgroundOrClothingBoundaryAsOcclusion() started.
+✔ Test verificationDoesNotTreatBackgroundOrClothingBoundaryAsOcclusion() passed after 0.002 seconds.
+◇ Test verificationLocalSemanticClaimsAreBoundToExactRenderAndRequiredScopes() started.
+✔ Test verificationLocalSemanticClaimsAreBoundToExactRenderAndRequiredScopes() passed after 0.005 seconds.
+◇ Test verificationIgnoresOneFrameVisionNoiseButRejectsPersistentOcclusion() started.
+✔ Test verificationIgnoresOneFrameVisionNoiseButRejectsPersistentOcclusion() passed after 0.005 seconds.
+◇ Test sourceSequenceDetectorSupportsCameraIndependentPatterns() started.
+✔ Test sourceSequenceDetectorSupportsCameraIndependentPatterns() passed after 0.001 seconds.
+◇ Test reliableEmbeddedTimestampsRemainAboveFilenameSequence() started.
+✔ Test reliableEmbeddedTimestampsRemainAboveFilenameSequence() passed after 0.001 seconds.
+◇ Test sourceTimelineRestoresTest3OrderAndKeepsBuggyFilesTogether() started.
+✔ Test sourceTimelineRestoresTest3OrderAndKeepsBuggyFilesTogether() passed after 0.251 seconds.
+◇ Test twoCameraBuggyBlockBeatsAStrayBicycleLabel() started.
+✔ Test twoCameraBuggyBlockBeatsAStrayBicycleLabel() passed after 0.001 seconds.
+◇ Test twoMountainBikeFilesDoNotBecomeBuggyFromGenericVehicleTags() started.
+✔ Test twoMountainBikeFilesDoNotBecomeBuggyFromGenericVehicleTags() passed after 0.001 seconds.
+◇ Test oneLongSourceSplitsConfirmedCyclingAndBuggyRunsIntoEventScenes() started.
+✔ Test oneLongSourceSplitsConfirmedCyclingAndBuggyRunsIntoEventScenes() passed after 0.003 seconds.
+◇ Test oneLongSourceDoesNotSplitGenericOrIsolatedActivityLabels() started.
+✔ Test oneLongSourceDoesNotSplitGenericOrIsolatedActivityLabels() passed after 0.001 seconds.
+◇ Test longSingleEventKeepsActivityBlocksAndCreatesDistinctKeyTitles() started.
+✔ Test longSingleEventKeepsActivityBlocksAndCreatesDistinctKeyTitles() passed after 0.437 seconds.
+◇ Test keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) started.
+◇ Test case passing 1 argument duration → 16.0 to keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) started.
+◇ Test case passing 1 argument duration → 60.0 to keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) started.
+✔ Test keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) with 2 test cases passed after 1.082 seconds.
+◇ Test keyTitlesSurviveNarrativePresentationAcrossShortShotsAndReturningParts() started.
+✔ Test keyTitlesSurviveNarrativePresentationAcrossShortShotsAndReturningParts() passed after 0.031 seconds.
+◇ Test shortActivityBlockOmitsUnreadableTitleAndKeepsNeighborsInsideTheirScenes() started.
+✔ Test shortActivityBlockOmitsUnreadableTitleAndKeepsNeighborsInsideTheirScenes() passed after 0.282 seconds.
+◇ Test structuralScenePhasesDoNotBecomeActivityTitles() started.
+✔ Test structuralScenePhasesDoNotBecomeActivityTitles() passed after 0.275 seconds.
+◇ Test storyHierarchyQualityGateRestoresFlattenedActivityBoundaries() started.
+✔ Test storyHierarchyQualityGateRestoresFlattenedActivityBoundaries() passed after 0.001 seconds.
+◇ Test timelineSafetyRejectsDirectorRepairThatDropsAPlannedSceneBlock() started.
+✔ Test timelineSafetyRejectsDirectorRepairThatDropsAPlannedSceneBlock() passed after 0.001 seconds.
+◇ Test overlappingEventScenesConsumeEachCandidateOnlyOnce() started.
+✔ Test overlappingEventScenesConsumeEachCandidateOnlyOnce() passed after 0.170 seconds.
+◇ Test eventDiscoveryMergesOneCrossDeviceMomentAndEstimatesClockOffset() started.
+✔ Test eventDiscoveryMergesOneCrossDeviceMomentAndEstimatesClockOffset() passed after 0.002 seconds.
+◇ Test oneContinuousOutingKeepsDifferentActivitiesAsScenesInsideOneMacroEvent() started.
+✔ Test oneContinuousOutingKeepsDifferentActivitiesAsScenesInsideOneMacroEvent() passed after 0.001 seconds.
+◇ Test incompatibleActivitiesRejectUncorroboratedLegacyIDWithWeakClockAndNoGPS() started.
+✔ Test incompatibleActivitiesRejectUncorroboratedLegacyIDWithWeakClockAndNoGPS() passed after 0.001 seconds.
+◇ Test eventDiscoverySplitsFourDifferentEventsRecordedOnOneDay() started.
+✔ Test eventDiscoverySplitsFourDifferentEventsRecordedOnOneDay() passed after 0.015 seconds.
+◇ Test eventDiscoveryKeepsAContinuousMultiDayTripAsOneEvent() started.
+✔ Test eventDiscoveryKeepsAContinuousMultiDayTripAsOneEvent() passed after 0.003 seconds.
+◇ Test sameLocationWeeksLaterDoesNotBecomeTheSameEvent() started.
+✔ Test sameLocationWeeksLaterDoesNotBecomeTheSameEvent() passed after 0.001 seconds.
+◇ Test sameCameraAtDifferentTimesAndPlacesDoesNotForceMerge() started.
+✔ Test sameCameraAtDifferentTimesAndPlacesDoesNotForceMerge() passed after 0.002 seconds.
+◇ Test eventScenesRecoverSetupActionPeakReactionAndConclusion() started.
+✔ Test eventScenesRecoverSetupActionPeakReactionAndConclusion() passed after 0.009 seconds.
+◇ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() started.
+✔ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() passed after 5.753 seconds.
+◇ Test eventTitleAndDateFallbackAreExplainable() started.
+✔ Test eventTitleAndDateFallbackAreExplainable() passed after 0.001 seconds.
+◇ Test lowConfidenceImportDatesDoNotMergeUnrelatedAssets() started.
+✔ Test lowConfidenceImportDatesDoNotMergeUnrelatedAssets() passed after 0.001 seconds.
+◇ Test eventAndSceneIdentityRemainStableAcrossRediscovery() started.
+✔ Test eventAndSceneIdentityRemainStableAcrossRediscovery() passed after 0.003 seconds.
+◇ Test goproChapterNamesJoinPartsOfOneRecordingWithoutStrongMetadata() started.
+✔ Test goproChapterNamesJoinPartsOfOneRecordingWithoutStrongMetadata() passed after 0.001 seconds.
+◇ Test phoneLivePhotoAndTimestampNamesProvideConservativeEventEvidence() started.
+✔ Test phoneLivePhotoAndTimestampNamesProvideConservativeEventEvidence() passed after 0.002 seconds.
+◇ Test eventDurationAllocationFavorsStrongMaterialAndCapsWeakEvents() started.
+✔ Test eventDurationAllocationFavorsStrongMaterialAndCapsWeakEvents() passed after 0.001 seconds.
+◇ Test eventDurationAllocationUsesTheStoryTargetForOneMultiActivityEvent() started.
+✔ Test eventDurationAllocationUsesTheStoryTargetForOneMultiActivityEvent() passed after 0.001 seconds.
+◇ Test exactEventDurationAllocationPreservesTheRequestedTotalDespiteQualityCaps() started.
+✔ Test exactEventDurationAllocationPreservesTheRequestedTotalDespiteQualityCaps() passed after 0.001 seconds.
+◇ Test productionPipelineUsesEventsBeforeScenesAndPersistsEventAwareScoring() started.
+✘ Test productionPipelineUsesEventsBeforeScenesAndPersistsEventAwareScoring() recorded an issue at EventIntelligenceTests.swift:1211:2: Caught error: .verificationFailed("Сохранён черновик: длительность 30.27 с пока не соответствует заданию 48.00 с.")
+✘ Test productionPipelineUsesEventsBeforeScenesAndPersistsEventAwareScoring() failed after 3.323 seconds with 1 issue.
+◇ Suite ExportSettingsTests started.
+◇ Test maximumUsesOnlyEditedOriginalsAndHonorsExplicitFrameRate() started.
+✔ Test maximumUsesOnlyEditedOriginalsAndHonorsExplicitFrameRate() passed after 0.001 seconds.
+◇ Test actualMP4MatchesEveryResolutionAndFractionalFrameRate() started.
+✔ Test actualMP4MatchesEveryResolutionAndFractionalFrameRate() passed after 2.638 seconds.
+◇ Test originalsWinOverPreviewCopiesAndHighQualityPreservesFineDetail() started.
+✔ Test originalsWinOverPreviewCopiesAndHighQualityPreservesFineDetail() passed after 2.577 seconds.
+◇ Test mismatchedFileIsRejectedAndTitleCardsKeepFullResolution() started.
+✔ Test mismatchedFileIsRejectedAndTitleCardsKeepFullResolution() passed after 0.544 seconds.
+➜ Test realGoProExportsAtOriginal5KAndFractionalFPS() skipped.
+✔ Suite ExportSettingsTests passed after 5.761 seconds.
+◇ Test exportGeometryPreservesPortraitAndLandscapeAspectRatios() started.
+✔ Test exportGeometryPreservesPortraitAndLandscapeAspectRatios() passed after 0.001 seconds.
+◇ Test overlappingFadeAndDuckingRampsDoNotCrashPlaybackBuild() started.
+✔ Test overlappingFadeAndDuckingRampsDoNotCrashPlaybackBuild() passed after 0.048 seconds.
+◇ Test originalURLAndSourceRangeArePreserved() started.
+✔ Test originalURLAndSourceRangeArePreserved() passed after 0.001 seconds.
+◇ Test tenRequiredFixturesAreWellFormed() started.
+✔ Test tenRequiredFixturesAreWellFormed() passed after 0.006 seconds.
+◇ Test fcpxmlCarriesSpeedTransformOpacityAudioAndUnsupportedIntent() started.
+✔ Test fcpxmlCarriesSpeedTransformOpacityAudioAndUnsupportedIntent() passed after 0.001 seconds.
+◇ Test fcpxmlCarriesReverseAndFreezeTiming() started.
+✔ Test fcpxmlCarriesReverseAndFreezeTiming() passed after 0.001 seconds.
+◇ Test fcpxmlCarriesEditableSpeedRampAndRenderedFallbackReference() started.
+✔ Test fcpxmlCarriesEditableSpeedRampAndRenderedFallbackReference() passed after 0.001 seconds.
+◇ Test gpmfDecodesGPSRouteSpeedAltitudeDistanceAndGForce() started.
+✔ Test gpmfDecodesGPSRouteSpeedAltitudeDistanceAndGForce() passed after 0.001 seconds.
+◇ Test parsesPaddedKLVAndSummary() started.
+✔ Test parsesPaddedKLVAndSummary() passed after 0.001 seconds.
+◇ Test rejectsTruncatedPayload() started.
+✔ Test rejectsTruncatedPayload() passed after 0.001 seconds.
+◇ Test stillPhotoBecomesPlayableKenBurnsVideo() started.
+✔ Test stillPhotoBecomesPlayableKenBurnsVideo() passed after 0.214 seconds.
+◇ Test aiTransitionAndMotionIntentsForceARealVideoComposition() started.
+✔ Test aiTransitionAndMotionIntentsForceARealVideoComposition() passed after 0.056 seconds.
+◇ Test realtimeTitlePreviewPreservesDecorationsInTheSharedCompositor() started.
+✔ Test realtimeTitlePreviewPreservesDecorationsInTheSharedCompositor() passed after 0.027 seconds.
+◇ Test titleCardIsRenderedIntoPlaybackInsteadOfBeingSkipped() started.
+✔ Test titleCardIsRenderedIntoPlaybackInsteadOfBeingSkipped() passed after 0.024 seconds.
+◇ Test unavailableSoundtrackIsANonFatalPlaybackWarning() started.
+✔ Test unavailableSoundtrackIsANonFatalPlaybackWarning() passed after 0.001 seconds.
+◇ Test colorAdjustedIntermediateRemainsPlayable() started.
+✔ Test colorAdjustedIntermediateRemainsPlayable() passed after 0.061 seconds.
+◇ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) started.
+◇ Test case passing 1 argument regenerate → false to filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) started.
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) recorded an issue with 1 argument regenerate → false at FilmBuildProgressTests.swift:30:9: Expectation failed: (updates.map(\.stage) → [VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.preparing]) == ([.preparing] → [VeloEditCore.FilmBuildProgress.Stage.preparing])
+± inserted [VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis]
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) recorded an issue with 1 argument regenerate → false at FilmBuildProgressTests.swift:31:9: Expectation failed: updates.allSatisfy { $0.completed == nil && $0.total == nil }
+◇ Test case passing 1 argument regenerate → true to filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) started.
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) recorded an issue with 1 argument regenerate → true at FilmBuildProgressTests.swift:30:9: Expectation failed: (updates.map(\.stage) → [VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.preparing]) == ([.preparing] → [VeloEditCore.FilmBuildProgress.Stage.preparing])
+± inserted [VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis, VeloEditCore.FilmBuildProgress.Stage.analysis]
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) recorded an issue with 1 argument regenerate → true at FilmBuildProgressTests.swift:31:9: Expectation failed: updates.allSatisfy { $0.completed == nil && $0.total == nil }
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) with 2 test cases failed after 0.019 seconds with 4 issues.
+◇ Test filmBuildRecoveryReopensAndCommitsExactWinnerOnlyOnce() started.
+✔ Test filmBuildRecoveryReopensAndCommitsExactWinnerOnlyOnce() passed after 0.636 seconds.
+◇ Test filmBuildRecoveryRejectsChangedInputsButPreservesNavigation() started.
+✔ Test filmBuildRecoveryRejectsChangedInputsButPreservesNavigation() passed after 0.031 seconds.
+◇ Test filmBuildRecoveryRejectsStaleCheckpointAndRetainsCancelledWork() started.
+✔ Test filmBuildRecoveryRejectsStaleCheckpointAndRetainsCancelledWork() passed after 0.009 seconds.
+◇ Test filmBuildRecoveryKeepsRequestAfterReusableAnalysisIsSaved() started.
+✔ Test filmBuildRecoveryKeepsRequestAfterReusableAnalysisIsSaved() passed after 0.003 seconds.
+◇ Test filmBuildProgressDrainsNestedUpdatesBeforeReturning() started.
+✔ Test filmBuildProgressDrainsNestedUpdatesBeforeReturning() passed after 0.021 seconds.
+◇ Test filmBuildRecoveryReusesOnlyCompletedControlExports() started.
+✔ Test filmBuildRecoveryReusesOnlyCompletedControlExports() passed after 0.761 seconds.
+◇ Test filmBuildEstimateIncludesWorkAfterAnalysis() started.
+✔ Test filmBuildEstimateIncludesWorkAfterAnalysis() passed after 0.001 seconds.
+◇ Test filmBuildEstimateTracksControlExportPaceAndSlowdowns() started.
+✔ Test filmBuildEstimateTracksControlExportPaceAndSlowdowns() passed after 0.001 seconds.
+◇ Test filmBuildEstimateNestedFramesDoNotSkipRemainingVariants() started.
+✔ Test filmBuildEstimateNestedFramesDoNotSkipRemainingVariants() passed after 0.001 seconds.
+◇ Test filmBuildEstimateRevisesUnmeasuredWorkInsteadOfExpiring() started.
+✔ Test filmBuildEstimateRevisesUnmeasuredWorkInsteadOfExpiring() passed after 0.001 seconds.
+◇ Test filmBuildEstimateHandlesExportSetupAndRestartedVerification() started.
+✔ Test filmBuildEstimateHandlesExportSetupAndRestartedVerification() passed after 0.001 seconds.
+◇ Test filmBuildEstimateLearnsCompletedWorkAndSupportsResume() started.
+✔ Test filmBuildEstimateLearnsCompletedWorkAndSupportsResume() passed after 0.001 seconds.
+◇ Test filmBuildEstimateColdStartUsesWorkloadAndHandlesInvalidHistory() started.
+✔ Test filmBuildEstimateColdStartUsesWorkloadAndHandlesInvalidHistory() passed after 0.001 seconds.
+◇ Suite FilmMusicEndingTests started.
+◇ Test finishPreservesDuckingAndClipFadesWithoutOverlappingRamps() started.
+✔ Test finishPreservesDuckingAndClipFadesWithoutOverlappingRamps() passed after 0.005 seconds.
+◇ Test shortFilmsKeepTheFullAvailableFade(_:) started.
+◇ Test case passing 1 argument duration → 2.0 to shortFilmsKeepTheFullAvailableFade(_:) started.
+◇ Test case passing 1 argument duration → 4.0 to shortFilmsKeepTheFullAvailableFade(_:) started.
+✔ Test shortFilmsKeepTheFullAvailableFade(_:) with 2 test cases passed after 0.001 seconds.
+◇ Test decodedPreviewAndExportFinishMusicGradually(_:) started.
+◇ Test case passing 1 argument mode → "ordinary" to decodedPreviewAndExportFinishMusicGradually(_:) started.
+2026-09-13 17:33:54.610 swiftpm-testing-helper[56853:14243958] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+◇ Test case passing 1 argument mode → "adaptive" to decodedPreviewAndExportFinishMusicGradually(_:) started.
+2026-09-13 17:33:55.864 swiftpm-testing-helper[56853:14243826] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+◇ Test case passing 1 argument mode → "manual" to decodedPreviewAndExportFinishMusicGradually(_:) started.
+2026-09-13 17:33:57.095 swiftpm-testing-helper[56853:14240324] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+◇ Test case passing 1 argument mode → "short" to decodedPreviewAndExportFinishMusicGradually(_:) started.
+2026-09-13 17:33:58.128 swiftpm-testing-helper[56853:14243649] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test decodedPreviewAndExportFinishMusicGradually(_:) with 4 test cases passed after 4.291 seconds.
+✔ Suite FilmMusicEndingTests passed after 4.297 seconds.
+◇ Test photoPresentationDefaultsAllowTimeToLookAndFinishTheFilm() started.
+✔ Test photoPresentationDefaultsAllowTimeToLookAndFinishTheFilm() passed after 0.011 seconds.
+◇ Test filmEndingFadeReachesBlackInPreviewAndExportWithoutExtendingTimeline(_:) started.
+◇ Test case passing 1 argument duration → 2.0 to filmEndingFadeReachesBlackInPreviewAndExportWithoutExtendingTimeline(_:) started.
+◇ Test case passing 1 argument duration → 6.0 to filmEndingFadeReachesBlackInPreviewAndExportWithoutExtendingTimeline(_:) started.
+✔ Test filmEndingFadeReachesBlackInPreviewAndExportWithoutExtendingTimeline(_:) with 2 test cases passed after 2.387 seconds.
+◇ Test photoDefaultZoomKeepsCenterStationary() started.
+✔ Test photoDefaultZoomKeepsCenterStationary() passed after 0.105 seconds.
+◇ Test pendingBriefInvalidatesOldMontageAndPlaybackReadiness() started.
+✔ Test pendingBriefInvalidatesOldMontageAndPlaybackReadiness() passed after 0.001 seconds.
+◇ Test activeFilmBuildUsesItsRealProgress() started.
+✔ Test activeFilmBuildUsesItsRealProgress() passed after 0.001 seconds.
+◇ Test mixedMediaFilmPreservesEveryFrameAndClipOrder() started.
+✔ Test mixedMediaFilmPreservesEveryFrameAndClipOrder() passed after 1.047 seconds.
+◇ Suite MusicCascadeTests started.
+◇ Test successfulPrimaryDoesNotStartLaterStages() started.
+✔ Test successfulPrimaryDoesNotStartLaterStages() passed after 0.001 seconds.
+◇ Test failuresAndEmptyCataloguesAdvanceWithoutWaitingForTimers() started.
+✔ Test failuresAndEmptyCataloguesAdvanceWithoutWaitingForTimers() passed after 0.001 seconds.
+◇ Test slowPrimaryStartsReserveAndIsCancelledAfterSuccess() started.
+✔ Test slowPrimaryStartsReserveAndIsCancelledAfterSuccess() passed after 0.105 seconds.
+◇ Test globalDeadlineStopsCascadeBeforeUnneededStages() started.
+✔ Test globalDeadlineStopsCascadeBeforeUnneededStages() passed after 0.103 seconds.
+◇ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() started.
+✔ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() passed after 0.532 seconds.
+◇ Test cancellationDoesNotStartRemainingCascade() started.
+✔ Test cancellationDoesNotStartRemainingCascade() passed after 0.055 seconds.
+◇ Test defaultSourcesFormFourCascadeStages() started.
+✔ Test defaultSourcesFormFourCascadeStages() passed after 0.001 seconds.
+◇ Test audionautixParsesRealMarkupAndSkipsShortOrForeignFiles() started.
+✔ Test audionautixParsesRealMarkupAndSkipsShortOrForeignFiles() passed after 0.002 seconds.
+◇ Test scottBuckleyRequiresPerTrackLicenseAndFullMix() started.
+✔ Test scottBuckleyRequiresPerTrackLicenseAndFullMix() passed after 0.002 seconds.
+◇ Test liveNewSourcesEachDownloadTwoDifferentFullTracksThroughCascade() started.
+✔ Test liveNewSourcesEachDownloadTwoDifferentFullTracksThroughCascade() passed after 0.001 seconds.
+✔ Suite MusicCascadeTests passed after 0.806 seconds.
+◇ Suite MusicNetworkReliabilityTests started.
+◇ Test temporaryHTTPFailureRetriesButForbiddenDoesNot() started.
+✔ Test temporaryHTTPFailureRetriesButForbiddenDoesNot() passed after 0.511 seconds.
+◇ Test oversizedAPIResponseIsRejected() started.
+✔ Test oversizedAPIResponseIsRejected() passed after 0.001 seconds.
+◇ Test oneBrokenFreeToUseRecordDoesNotDiscardValidResults() started.
+✔ Test oneBrokenFreeToUseRecordDoesNotDiscardValidResults() passed after 0.001 seconds.
+◇ Test incompetechCataloguePreservesLicenseAndRejectsInvalidFiles() started.
+✔ Test incompetechCataloguePreservesLicenseAndRejectsInvalidFiles() passed after 0.001 seconds.
+◇ Test audionautixNegotiatesPublicPHPRouteAndCachesCatalogue() started.
+✔ Test audionautixNegotiatesPublicPHPRouteAndCachesCatalogue() passed after 3.101 seconds.
+◇ Test liveIndependentProviderDownloadsTwoDifferentPlayableTracks() started.
+✔ Test liveIndependentProviderDownloadsTwoDifferentPlayableTracks() passed after 0.001 seconds.
+✔ Suite MusicNetworkReliabilityTests passed after 3.616 seconds.
+◇ Test testAOfflineFilmResolutionUsesBundledMusicWithoutTouchingNetwork() started.
+✔ Test testAOfflineFilmResolutionUsesBundledMusicWithoutTouchingNetwork() passed after 0.021 seconds.
+◇ Test pipelineResolvesMusicAtFilmBuildStageWithoutNetworkDependency() started.
+✔ Test pipelineResolvesMusicAtFilmBuildStageWithoutNetworkDependency() passed after 0.019 seconds.
+◇ Test newProjectRotationAvoidsRecentlySelectedRealTracksAndPersistsHistory() started.
+✔ Test newProjectRotationAvoidsRecentlySelectedRealTracksAndPersistsHistory() passed after 0.012 seconds.
+◇ Test exhaustedRotationFallsBackToAPlayableAuthoredTrackOffline() started.
+✔ Test exhaustedRotationFallsBackToAPlayableAuthoredTrackOffline() passed after 0.007 seconds.
+◇ Test everyBundledTrackIsAReadableHoliznaCC0AudioAsset() started.
+✔ Test everyBundledTrackIsAReadableHoliznaCC0AudioAsset() passed after 0.009 seconds.
+◇ Test existingProjectBundledRecordsMigrateToHoliznaCatalog() started.
+✔ Test existingProjectBundledRecordsMigrateToHoliznaCatalog() passed after 0.005 seconds.
+◇ Test testBFreeToUseFailureFallsBackWithoutMontageError() started.
+✔ Test testBFreeToUseFailureFallsBackWithoutMontageError() passed after 0.005 seconds.
+◇ Test testCAllOnlineProvidersUnavailableStillReturnsOfflineTrack() started.
+✔ Test testCAllOnlineProvidersUnavailableStillReturnsOfflineTrack() passed after 0.007 seconds.
+◇ Test testDUserFolderTrackIsIndexedAndSelectableLikeBundledMusic() started.
+✔ Test testDUserFolderTrackIsIndexedAndSelectableLikeBundledMusic() passed after 0.168 seconds.
+◇ Test testEAndFDownloadedOnlineTrackUsesCacheAcrossRepeatedResolution() started.
+✔ Test testEAndFDownloadedOnlineTrackUsesCacheAcrossRepeatedResolution() passed after 0.195 seconds.
+◇ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() started.
+✔ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() passed after 0.219 seconds.
+◇ Test onlineProvidersRaceAndCancelAStalledServiceAfterFastFallbackSucceeds() started.
+✔ Test onlineProvidersRaceAndCancelAStalledServiceAfterFastFallbackSucceeds() passed after 0.195 seconds.
+◇ Test newAutomaticFilmDownloadsFreshOnlineMusicBeforeUsingPlayableLocalTracks() started.
+✔ Test newAutomaticFilmDownloadsFreshOnlineMusicBeforeUsingPlayableLocalTracks() passed after 0.200 seconds.
+◇ Test onlineReplacementExcludesThePreviouslyDownloadedProviderTrack() started.
+✔ Test onlineReplacementExcludesThePreviouslyDownloadedProviderTrack() passed after 0.392 seconds.
+◇ Test onlineProviderTriesTheNextCandidateWhenTheBestDownloadIsBroken() started.
+✔ Test onlineProviderTriesTheNextCandidateWhenTheBestDownloadIsBroken() passed after 0.196 seconds.
+◇ Test anonymousOpenverseSearchUsesSupportedPageSize() started.
+✔ Test anonymousOpenverseSearchUsesSupportedPageSize() passed after 0.001 seconds.
+◇ Test freeToUseSearchStartsWithShortProviderSpecificQuery() started.
+✔ Test freeToUseSearchStartsWithShortProviderSpecificQuery() passed after 0.001 seconds.
+◇ Test liveOnlineReplacementDownloadsTwoDifferentAudioFilesWhenEnabled() started.
+✔ Test liveOnlineReplacementDownloadsTwoDifferentAudioFilesWhenEnabled() passed after 0.001 seconds.
+◇ Test newAutomaticFilmUsesLocalMusicOnlyAfterEveryOnlineProviderFails() started.
+✔ Test newAutomaticFilmUsesLocalMusicOnlyAfterEveryOnlineProviderFails() passed after 0.006 seconds.
+◇ Test testGAttributionSurvivesProjectMetadataRoundTrip() started.
+✔ Test testGAttributionSurvivesProjectMetadataRoundTrip() passed after 0.001 seconds.
+◇ Test unavailableProviderCircuitBreakerTemporarilyStopsRepeatedRequests() started.
+✔ Test unavailableProviderCircuitBreakerTemporarilyStopsRepeatedRequests() passed after 0.001 seconds.
+◇ Test onlineDeadlineCancelsSlowProviderAndUsesLocalAudio() started.
+✔ Test onlineDeadlineCancelsSlowProviderAndUsesLocalAudio() passed after 0.114 seconds.
+◇ Test freshOnlineFailureStillImportsUnheardSharedCache() started.
+✔ Test freshOnlineFailureStillImportsUnheardSharedCache() passed after 0.410 seconds.
+◇ Test historyRecognizesTheSameRecordingFromAnotherProvider() started.
+✔ Test historyRecognizesTheSameRecordingFromAnotherProvider() passed after 0.401 seconds.
+◇ Suite NaturalChapterTransitionTests started.
+◇ Test detectsRealCoverAndRevealButNotDarknessOrFlash() started.
+✔ Test detectsRealCoverAndRevealButNotDarknessOrFlash() passed after 0.262 seconds.
+◇ Test verifiesDirectionSpeedAndTemporalMotionInsteadOfActionTags() started.
+✔ Test verifiesDirectionSpeedAndTemporalMotionInsteadOfActionTags() passed after 1.204 seconds.
+◇ Test shapeMatchNeedsStructureAndCompletePreciselyTimedWindows() started.
+✔ Test shapeMatchNeedsStructureAndCompletePreciselyTimedWindows() passed after 0.410 seconds.
+◇ Test searchesSafeHandlesAndPreservesFilmClockTitlesAndChronology() started.
+✔ Test searchesSafeHandlesAndPreservesFilmClockTitlesAndChronology() passed after 4.962 seconds.
+◇ Test missingEvidenceAndUserRestrictionsKeepOrdinaryEdits() started.
+✔ Test missingEvidenceAndUserRestrictionsKeepOrdinaryEdits() passed after 0.001 seconds.
+◇ Test protectsSpeechActionsTelemetryAndRepeatedSourceRanges() started.
+✔ Test protectsSpeechActionsTelemetryAndRepeatedSourceRanges() passed after 0.001 seconds.
+◇ Test semanticChapterNamesWorkWithoutSceneIDsAndStaleChapterClaimsDisappear() started.
+✔ Test semanticChapterNamesWorkWithoutSceneIDsAndStaleChapterClaimsDisappear() passed after 5.197 seconds.
+◇ Test ordinaryDissolveAndDisabledTransitionRemainIntactWithoutAMatch() started.
+✔ Test ordinaryDissolveAndDisabledTransitionRemainIntactWithoutAMatch() passed after 0.001 seconds.
+◇ Test oldDecisionsDecodeWithoutNewEvidence() started.
+✔ Test oldDecisionsDecodeWithoutNewEvidence() passed after 0.001 seconds.
+➜ Test existingArchiveReceivesOnlyEvidenceBackedChapterEdits() skipped.
+◇ Test realSourceDecodeAndExportRetainMatchedBoundaryAndDuration() started.
+✔ Test realSourceDecodeAndExportRetainMatchedBoundaryAndDuration() passed after 6.706 seconds.
+✔ Suite NaturalChapterTransitionTests passed after 18.745 seconds.
+◇ Test perceptualCutReviewPenalizesOppositeScreenDirection() started.
+✔ Test perceptualCutReviewPenalizesOppositeScreenDirection() passed after 0.001 seconds.
+◇ Test perceptualMomentReviewDetectsLateEntryAndCutClimax() started.
+✔ Test perceptualMomentReviewDetectsLateEntryAndCutClimax() passed after 0.001 seconds.
+◇ Test perceptualAudioReviewDetectsCutSpeechAndLaughter() started.
+✔ Test perceptualAudioReviewDetectsCutSpeechAndLaughter() passed after 0.001 seconds.
+◇ Test perceptualMusicReviewAlignsVideoPeakWithMeasuredDrop() started.
+✔ Test perceptualMusicReviewAlignsVideoPeakWithMeasuredDrop() passed after 0.001 seconds.
+◇ Test perceptualOverlayReviewFindsSubjectOcclusion() started.
+✔ Test perceptualOverlayReviewFindsSubjectOcclusion() passed after 0.001 seconds.
+◇ Test perceptualRenderedEvidenceDetectsBlackAndUnintentionalFreeze() started.
+✔ Test perceptualRenderedEvidenceDetectsBlackAndUnintentionalFreeze() passed after 0.001 seconds.
+◇ Test perceptualTransactionCommitsCompleteMomentAndRollsBackUnsafeRepair() started.
+✔ Test perceptualTransactionCommitsCompleteMomentAndRollsBackUnsafeRepair() passed after 0.001 seconds.
+◇ Test aiDirectorProductionPathPersistsPerceptualDiagnosticsAndChangesBadTimeline() started.
+✔ Test aiDirectorProductionPathPersistsPerceptualDiagnosticsAndChangesBadTimeline() passed after 0.027 seconds.
+◇ Test selectiveRenderInspectorReadsActualCompositionFrames() started.
+✔ Test selectiveRenderInspectorReadsActualCompositionFrames() passed after 0.094 seconds.
+◇ Test productionPipelineWithMoreThanThreeHundredAssetsRunsP6EndToEnd() started.
+✘ Test productionPipelineWithMoreThanThreeHundredAssetsRunsP6EndToEnd() recorded an issue at PerceptualReviewTests.swift:252:2: Caught error: .verificationFailed("Сохранён черновик: длительность 14.63 с пока не соответствует заданию 28.00 с.")
+✘ Test productionPipelineWithMoreThanThreeHundredAssetsRunsP6EndToEnd() failed after 53.233 seconds with 1 issue.
+◇ Suite ProcessedAudioCacheTests started.
+◇ Test cacheSurvivesNewGeneratorsAndIgnoresLiveGainAndFades() started.
+2026-09-13 17:35:21.049 swiftpm-testing-helper[56853:14243958] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.078 swiftpm-testing-helper[56853:14243649] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test cacheSurvivesNewGeneratorsAndIgnoresLiveGainAndFades() passed after 0.035 seconds.
+◇ Test changesToRangeDSPOrSourceInvalidateOnlyTheirOwnCacheEntry() started.
+2026-09-13 17:35:21.084 swiftpm-testing-helper[56853:14243826] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.112 swiftpm-testing-helper[56853:14243834] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.130 swiftpm-testing-helper[56853:14243649] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.146 swiftpm-testing-helper[56853:14243826] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.164 swiftpm-testing-helper[56853:14243834] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test changesToRangeDSPOrSourceInvalidateOnlyTheirOwnCacheEntry() passed after 0.085 seconds.
+◇ Test corruptCacheIsRepairedAndConcurrentWritersPublishCompleteAudio() started.
+2026-09-13 17:35:21.169 swiftpm-testing-helper[56853:14243958] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.197 swiftpm-testing-helper[56853:14243834] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.221 swiftpm-testing-helper[56853:14243958] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-13 17:35:21.221 swiftpm-testing-helper[56853:14243826] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test corruptCacheIsRepairedAndConcurrentWritersPublishCompleteAudio() passed after 0.057 seconds.
+✔ Suite ProcessedAudioCacheTests passed after 0.178 seconds.
+◇ Test optimisticTimelineMutationsAreSynchronousAndKeepMagneticTiming() started.
+✔ Test optimisticTimelineMutationsAreSynchronousAndKeepMagneticTiming() passed after 0.001 seconds.
+◇ Test optimisticTimelineInsertionsAppearImmediatelyAndStayNormalized() started.
+✔ Test optimisticTimelineInsertionsAppearImmediatelyAndStayNormalized() passed after 0.001 seconds.
+◇ Test previewInvalidationDistinguishesOverlayOnlyAndStructuralEdits() started.
+✔ Test previewInvalidationDistinguishesOverlayOnlyAndStructuralEdits() passed after 0.001 seconds.
+◇ Test projectStoreRejectsStaleBackgroundCommit() started.
+✔ Test projectStoreRejectsStaleBackgroundCommit() passed after 0.002 seconds.
+◇ Test workspaceAutosaveDoesNotInvalidateBackgroundCommit() started.
+✔ Test workspaceAutosaveDoesNotInvalidateBackgroundCommit() passed after 0.003 seconds.
+◇ Test pipelineDiscardsOutOfOrderOptimisticCommits() started.
+✔ Test pipelineDiscardsOutOfOrderOptimisticCommits() passed after 0.007 seconds.
+◇ Test productionCachesHaveHardMemoryBounds() started.
+✔ Test productionCachesHaveHardMemoryBounds() passed after 0.004 seconds.
+◇ Test frameQualityRejectsTrueBlackButKeepsDarkTexture() started.
+✔ Test frameQualityRejectsTrueBlackButKeepsDarkTexture() passed after 0.001 seconds.
+◇ Test interactionLatencySummaryUsesP95BudgetsAndBoundedHistory() started.
+✔ Test interactionLatencySummaryUsesP95BudgetsAndBoundedHistory() passed after 0.001 seconds.
+◇ Test productionCacheIdentityIsStableAndInputSensitive() started.
+✔ Test productionCacheIdentityIsStableAndInputSensitive() passed after 0.001 seconds.
+◇ Test productionPlaybackActuallyReusesDerivedPhotoMedia() started.
+✔ Test productionPlaybackActuallyReusesDerivedPhotoMedia() passed after 0.027 seconds.
+◇ Test previewGeometryContractKeepsTheWholeCameraFrame() started.
+✔ Test previewGeometryContractKeepsTheWholeCameraFrame() passed after 0.001 seconds.
+◇ Test deliveryContractRepairsExplicitMusicTitleAndSourceAudioRequirements() started.
+✔ Test deliveryContractRepairsExplicitMusicTitleAndSourceAudioRequirements() passed after 0.007 seconds.
+◇ Test deliveryContractBlocksMismatchedExactDurationAndMomentCount() started.
+✔ Test deliveryContractBlocksMismatchedExactDurationAndMomentCount() passed after 0.006 seconds.
+◇ Test directorBriefContractRepairsFormatSpecificMusicAudioAndTitlesButBlocksOriginalRequestedDuration() started.
+✔ Test directorBriefContractRepairsFormatSpecificMusicAudioAndTitlesButBlocksOriginalRequestedDuration() passed after 0.006 seconds.
+◇ Test directorBriefContractEnforcesSoftMusicDuckAndPreservesEveryKeyTitle() started.
+✔ Test directorBriefContractEnforcesSoftMusicDuckAndPreservesEveryKeyTitle() passed after 0.017 seconds.
+◇ Test deliveryContractRemovesPlaceholderAndCollidingAutomaticTitles() started.
+✔ Test deliveryContractRemovesPlaceholderAndCollidingAutomaticTitles() passed after 0.006 seconds.
+◇ Test deliveryContractRequiresStableRealtimePathForDecorated5KCameraMedia() started.
+✔ Test deliveryContractRequiresStableRealtimePathForDecorated5KCameraMedia() passed after 0.010 seconds.
+◇ Test deliveryContractBlocksConfirmedRenderedBlackFramesButNotMissingSamples() started.
+✔ Test deliveryContractBlocksConfirmedRenderedBlackFramesButNotMissingSamples() passed after 0.008 seconds.
+◇ Test deliveryContractRejectsCroppingPreviewConfiguration() started.
+✔ Test deliveryContractRejectsCroppingPreviewConfiguration() passed after 0.003 seconds.
+◇ Test deliveryContractValidatesCanonicalTagCoverageSharesAndRoleAnchors() started.
+✔ Test deliveryContractValidatesCanonicalTagCoverageSharesAndRoleAnchors() passed after 0.022 seconds.
+◇ Test deliveryContractReappliesEventSceneTitleContainmentAfterMusicSync() started.
+✔ Test deliveryContractReappliesEventSceneTitleContainmentAfterMusicSync() passed after 0.005 seconds.
+◇ Test oldMomentBoundaryJSONDecodesAndNewPhaseContractProtectsPeak() started.
+✔ Test oldMomentBoundaryJSONDecodesAndNewPhaseContractProtectsPeak() passed after 0.001 seconds.
+◇ Test storyPlanPersistsReactionBeatAndCoveragePurpose() started.
+✔ Test storyPlanPersistsReactionBeatAndCoveragePurpose() passed after 0.001 seconds.
+◇ Test composerUsesCleanCutsUnlessBoundaryHasAReason() started.
+✔ Test composerUsesCleanCutsUnlessBoundaryHasAReason() passed after 0.004 seconds.
+◇ Test composerBuildsEditableJLCutForUsefulDialogue() started.
+✔ Test composerBuildsEditableJLCutForUsefulDialogue() passed after 0.004 seconds.
+◇ Test composerKeepsUsefulContainedDialogueSynchronous() started.
+✔ Test composerKeepsUsefulContainedDialogueSynchronous() passed after 0.004 seconds.
+◇ Test perceptualReviewFlagsUnnecessaryCutAndJumpCutRisk() started.
+✔ Test perceptualReviewFlagsUnnecessaryCutAndJumpCutRisk() passed after 0.001 seconds.
+◇ Test tz16RegistryIsCompleteTypedAndCapabilityAware() started.
+✔ Test tz16RegistryIsCompleteTypedAndCapabilityAware() passed after 0.001 seconds.
+◇ Test tz16TypedValuesAndLegacyScalarsRoundTripTogether() started.
+✔ Test tz16TypedValuesAndLegacyScalarsRoundTripTogether() passed after 0.001 seconds.
+◇ Test tz16EasingCurvesAreStableAndBounded() started.
+✔ Test tz16EasingCurvesAreStableAndBounded() passed after 0.001 seconds.
+◇ Test tz16EffectStackReordersAndPresetStaysEditable() started.
+✔ Test tz16EffectStackReordersAndPresetStaysEditable() passed after 0.001 seconds.
+◇ Test tz16AIAnimationCreatesRealValidatedKeyframesAndBudgetsEffects() started.
+✔ Test tz16AIAnimationCreatesRealValidatedKeyframesAndBudgetsEffects() passed after 0.001 seconds.
+◇ Test tz16TransitionDirectionEasingAndFCPXMLCapabilityPersist() started.
+✔ Test tz16TransitionDirectionEasingAndFCPXMLCapabilityPersist() passed after 0.001 seconds.
+◇ Test tz16NaturalLanguageUsesEditableEffectAndAnimationTools() started.
+✔ Test tz16NaturalLanguageUsesEditableEffectAndAnimationTools() passed after 0.009 seconds.
+◇ Test hdrColorPolicyPreservesPQAndTenBit() started.
+✔ Test hdrColorPolicyPreservesPQAndTenBit() passed after 0.001 seconds.
+◇ Test mixedHDRSDRChoosesManagedHDRWorkingProfile() started.
+✔ Test mixedHDRSDRChoosesManagedHDRWorkingProfile() passed after 0.001 seconds.
+◇ Test oldMediaMetadataDecodesWithoutColorTags() started.
+✔ Test oldMediaMetadataDecodesWithoutColorTags() passed after 0.001 seconds.
+◇ Test exportPreflightBlocksMissingSourceAndWarnsAboutUnsafeTitle() started.
+✔ Test exportPreflightBlocksMissingSourceAndWarnsAboutUnsafeTitle() passed after 0.005 seconds.
+◇ Test persistentJobStateSurvivesAStoreRestart() started.
+✔ Test persistentJobStateSurvivesAStoreRestart() passed after 0.001 seconds.
+◇ Test exportPreflightDoesNotTreatAPFSZeroCapacityHintAsFullDisk() started.
+✔ Test exportPreflightDoesNotTreatAPFSZeroCapacityHintAsFullDisk() passed after 0.004 seconds.
+◇ Test renderUsesExplicitCodecAndPreservesPortraitGeometry() started.
+✔ Test renderUsesExplicitCodecAndPreservesPortraitGeometry() passed after 0.001 seconds.
+◇ Test exportReserveMatchesActualSDRDeliveryForHDRSources() started.
+✔ Test exportReserveMatchesActualSDRDeliveryForHDRSources() passed after 0.001 seconds.
+◇ Test previewExportContractAllowsResolutionChangeButRejectsFPSOrColorMismatch() started.
+✔ Test previewExportContractAllowsResolutionChangeButRejectsFPSOrColorMismatch() passed after 0.001 seconds.
+◇ Test newProjectsUseBundledFastAIAndSeparateMusicLibraries() started.
+✔ Test newProjectsUseBundledFastAIAndSeparateMusicLibraries() passed after 0.014 seconds.
+◇ Test createFilmUsesExplicitUserTrackEvenWhenBriefDisablesAutomaticMusic() started.
+✘ Test createFilmUsesExplicitUserTrackEvenWhenBriefDisablesAutomaticMusic() recorded an issue at ProjectStoreTests.swift:47:2: Caught error: .verificationFailed("Сохранён черновик: длительность 12.83 с пока не соответствует заданию 16.00 с.")
+✘ Test createFilmUsesExplicitUserTrackEvenWhenBriefDisablesAutomaticMusic() failed after 0.797 seconds with 1 issue.
+◇ Test projectRoundTripAndCacheLookup() started.
+✔ Test projectRoundTripAndCacheLookup() passed after 0.003 seconds.
+◇ Test projectSummaryTracksTheActualTimelineCoverAndAssetCount() started.
+✔ Test projectSummaryTracksTheActualTimelineCoverAndAssetCount() passed after 0.002 seconds.
+◇ Test projectCacheRejectsAnOutdatedDeepAnalysisContract() started.
+✔ Test projectCacheRejectsAnOutdatedDeepAnalysisContract() passed after 0.002 seconds.
+◇ Test builtInBackgroundBecomesReusableTimelineMedia() started.
+✔ Test builtInBackgroundBecomesReusableTimelineMedia() passed after 0.030 seconds.
+◇ Test legacyBackgroundAssetMigratesWithoutBreakingTimelineReference() started.
+✔ Test legacyBackgroundAssetMigratesWithoutBreakingTimelineReference() passed after 0.011 seconds.
+◇ Test everyNonSolidBackgroundHasMotionAndCategory() started.
+✔ Test everyNonSolidBackgroundHasMotionAndCategory() passed after 0.001 seconds.
+◇ Test projectRoundTripPreservesDirectorConversation() started.
+✔ Test projectRoundTripPreservesDirectorConversation() passed after 0.002 seconds.
+◇ Test projectRoundTripPreservesDirectorMusicChoice() started.
+✔ Test projectRoundTripPreservesDirectorMusicChoice() passed after 0.002 seconds.
+◇ Test legacyWorkspaceStateDecodesWithoutDirectorConversation() started.
+✔ Test legacyWorkspaceStateDecodesWithoutDirectorConversation() passed after 0.001 seconds.
+◇ Test cacheKeyChangesWithSchema() started.
+✔ Test cacheKeyChangesWithSchema() passed after 0.001 seconds.
+◇ Test timelineFilmstripsUseRetinaSizedTilesAndVersionedCache() started.
+✔ Test timelineFilmstripsUseRetinaSizedTilesAndVersionedCache() passed after 0.001 seconds.
+◇ Test expansionFiltersSupportedFiles() started.
+✔ Test expansionFiltersSupportedFiles() passed after 0.001 seconds.
+◇ Test streamingHashIsStable() started.
+✔ Test streamingHashIsStable() passed after 0.001 seconds.
+◇ Test quickFingerprintIsStableAndDetectsChangedTail() started.
+✔ Test quickFingerprintIsStableAndDetectsChangedTail() passed after 0.001 seconds.
+◇ Test legacyAssetJSONDecodesWithoutFullHash() started.
+✔ Test legacyAssetJSONDecodesWithoutFullHash() passed after 0.001 seconds.
+◇ Test pipelinePersistsAssetAndTimelineEdits() started.
+✔ Test pipelinePersistsAssetAndTimelineEdits() passed after 0.006 seconds.
+◇ Test timelineSupportsDirectReorderingAndSpeedAwareEdgeTrimming() started.
+✔ Test timelineSupportsDirectReorderingAndSpeedAwareEdgeTrimming() passed after 0.005 seconds.
+◇ Test connectedClipKeepsItsOffsetWhenPrimaryStorylineReorders() started.
+✔ Test connectedClipKeepsItsOffsetWhenPrimaryStorylineReorders() passed after 0.001 seconds.
+◇ Test pipelineSplitsSelectedClipAtAnExactTimelineFrame() started.
+✔ Test pipelineSplitsSelectedClipAtAnExactTimelineFrame() passed after 0.004 seconds.
+◇ Test detachedAudioMovesIndependentlyAndSurvivesMagneticVideoReorder() started.
+✔ Test detachedAudioMovesIndependentlyAndSurvivesMagneticVideoReorder() passed after 0.006 seconds.
+◇ Test productionTimelineSequenceStaysGapFreeAndPersistsAfterManyEdits() started.
+✔ Test productionTimelineSequenceStaysGapFreeAndPersistsAfterManyEdits() passed after 0.011 seconds.
+◇ Test magicBrushSlicesBoundariesAndChangesOnlyTheRequestedRange() started.
+✔ Test magicBrushSlicesBoundariesAndChangesOnlyTheRequestedRange() passed after 0.005 seconds.
+◇ Test magicBrushRejectsCommandsThatWouldLeakAcrossTheWholeFilm() started.
+✔ Test magicBrushRejectsCommandsThatWouldLeakAcrossTheWholeFilm() passed after 0.004 seconds.
+◇ Test magicBrushSlicesAndUpdatesEveryStandaloneTrack() started.
+✔ Test magicBrushSlicesAndUpdatesEveryStandaloneTrack() passed after 0.004 seconds.
+◇ Test removingAssetCleansDependentProjectData() started.
+✔ Test removingAssetCleansDependentProjectData() passed after 0.003 seconds.
+◇ Suite ProxyPlaybackRegressionTests started.
+◇ Test optimisticPreviewDoesNotWaitForTheProjectStore() started.
+PERF preview-during-store-write ms=0.903010368347168
+✔ Test optimisticPreviewDoesNotWaitForTheProjectStore() passed after 0.046 seconds.
+◇ Test hundredCutsReuseCameraMetadataAndDecodeTheEditedFrame() started.
+PERF hundred-cuts-build ms=2.1229982376098633
+✔ Test hundredCutsReuseCameraMetadataAndDecodeTheEditedFrame() passed after 0.043 seconds.
+◇ Test chapterTitleRemainsInCompositionAfterItsFirstShotEnds() started.
+✔ Test chapterTitleRemainsInCompositionAfterItsFirstShotEnds() passed after 0.044 seconds.
+◇ Test playbackReusesAnalysisAndManualCachesWithoutWarning() started.
+✔ Test playbackReusesAnalysisAndManualCachesWithoutWarning() passed after 0.045 seconds.
+◇ Test missingAndInvalidCachesUseOriginalWithoutTranscodingOrFalseWarning() started.
+✔ Test missingAndInvalidCachesUseOriginalWithoutTranscodingOrFalseWarning() passed after 0.041 seconds.
+◇ Test corruptOrTruncatedPreferredCopyCannotHideAValidLowerPriorityCache() started.
+✔ Test corruptOrTruncatedPreferredCopyCannotHideAValidLowerPriorityCache() passed after 0.053 seconds.
+➜ Test realProjectReusesExistingCameraCopiesAndDecodesPlayback() skipped.
+✔ Suite ProxyPlaybackRegressionTests passed after 0.274 seconds.
+◇ Test fitBackgroundPreservesShadowLevelsAndColor() started.
+✔ Test fitBackgroundPreservesShadowLevelsAndColor() passed after 0.002 seconds.
+◇ Test reducedCompositorSurfaceKeepsEntireCanvas() started.
+✔ Test reducedCompositorSurfaceKeepsEntireCanvas() passed after 0.001 seconds.
+◇ Test singleClipCompositionHasNoEmptyReservedTracks() started.
+✔ Test singleClipCompositionHasNoEmptyReservedTracks() passed after 0.034 seconds.
+◇ Test subjectReframeCentersFocusUsingAspectFillSourceDimensions() started.
+✔ Test subjectReframeCentersFocusUsingAspectFillSourceDimensions() passed after 0.001 seconds.
+◇ Test subjectReframeClampsExtremeFocusWithoutExposingCanvas() started.
+✔ Test subjectReframeClampsExtremeFocusWithoutExposingCanvas() passed after 0.001 seconds.
+◇ Test safeFitBackgroundExpandsLetterboxedFrameToCoverCanvas() started.
+✔ Test safeFitBackgroundExpandsLetterboxedFrameToCoverCanvas() passed after 0.001 seconds.
+◇ Test canvasChangeUsesDisplayAspectAndChoosesSubjectAwareFill() started.
+✔ Test canvasChangeUsesDisplayAspectAndChoosesSubjectAwareFill() passed after 0.001 seconds.
+◇ Test canvasChangeClearsStaleReframeAndUsesCenterFillWithoutTracking() started.
+✔ Test canvasChangeClearsStaleReframeAndUsesCenterFillWithoutTracking() passed after 0.001 seconds.
+◇ Test legacyPortraitTimelineRecoversSubjectAwareFillFromAnalysis() started.
+✔ Test legacyPortraitTimelineRecoversSubjectAwareFillFromAnalysis() passed after 0.001 seconds.
+◇ Test explicitFitIsPreservedByAutomaticFraming() started.
+✔ Test explicitFitIsPreservedByAutomaticFraming() passed after 0.001 seconds.
+◇ Test wideTrackedGroupRequiresSafeFitInsteadOfCroppingPeople() started.
+✔ Test wideTrackedGroupRequiresSafeFitInsteadOfCroppingPeople() passed after 0.001 seconds.
+◇ Test stillImageGeometryIncludesAspectFillBaseScale() started.
+✔ Test stillImageGeometryIncludesAspectFillBaseScale() passed after 0.001 seconds.
+◇ Test stillImageFitGeometryPreservesFullFrame() started.
+✔ Test stillImageFitGeometryPreservesFullFrame() passed after 0.001 seconds.
+◇ Test stillImageLoaderAppliesExifOrientation() started.
+✔ Test stillImageLoaderAppliesExifOrientation() passed after 0.001 seconds.
+◇ Test dynamicSubjectReframeRequiresRenderedFcpxmlFallback() started.
+✔ Test dynamicSubjectReframeRequiresRenderedFcpxmlFallback() passed after 0.001 seconds.
+◇ Test smartTelemetryIsATimedAccentAtTheRealMaximumSpeed() started.
+✔ Test smartTelemetryIsATimedAccentAtTheRealMaximumSpeed() passed after 0.001 seconds.
+◇ Test smartTelemetryAvoidsTheSubjectAndItsDirectionOfTravel() started.
+✔ Test smartTelemetryAvoidsTheSubjectAndItsDirectionOfTravel() passed after 0.001 seconds.
+◇ Test smartTelemetryDoesNotPromoteQuietSensorNoiseWithoutARequest() started.
+✔ Test smartTelemetryDoesNotPromoteQuietSensorNoiseWithoutARequest() passed after 0.001 seconds.
+◇ Test telemetryOverlayRequiresAnActualDisplayRequest() started.
+✔ Test telemetryOverlayRequiresAnActualDisplayRequest() passed after 0.001 seconds.
+◇ Test timelineComposerNeverAddsTelemetryWithoutAnExplicitRequest() started.
+✔ Test timelineComposerNeverAddsTelemetryWithoutAnExplicitRequest() passed after 0.012 seconds.
+◇ Test storyRegenerationDoesNotRestoreALegacyAutomaticTelemetryHUD() started.
+✔ Test storyRegenerationDoesNotRestoreALegacyAutomaticTelemetryHUD() passed after 0.001 seconds.
+◇ Test telemetrySourceSelectionUsesGPMFForMotionAndFITForSportSensors() started.
+✔ Test telemetrySourceSelectionUsesGPMFForMotionAndFITForSportSensors() passed after 0.001 seconds.
+◇ Test customTelemetryFieldsSurviveEncodingAndInterpolation() started.
+✔ Test customTelemetryFieldsSurviveEncodingAndInterpolation() passed after 0.001 seconds.
+◇ Test csvColumnMappingNormalizesTimeCoordinatesAndUnitsWithoutDroppingOriginals() started.
+✔ Test csvColumnMappingNormalizesTimeCoordinatesAndUnitsWithoutDroppingOriginals() passed after 0.001 seconds.
+◇ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() started.
+✔ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() passed after 0.002 seconds.
+◇ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() started.
+✔ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() passed after 0.001 seconds.
+◇ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() started.
+✔ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() passed after 0.001 seconds.
+◇ Test contentConfirmedActivityTitleIgnoresStructuralOrInventedSceneNames() started.
+✔ Test contentConfirmedActivityTitleIgnoresStructuralOrInventedSceneNames() passed after 0.001 seconds.
+◇ Test automatedTitleQualityGateEnforcesProvenanceContainmentAndOneTrack() started.
+✔ Test automatedTitleQualityGateEnforcesProvenanceContainmentAndOneTrack() passed after 0.001 seconds.
+◇ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() started.
+✔ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() passed after 0.001 seconds.
+◇ Test semanticTemplateSelectionUsesExistingCategoryAndSubjectAvoidance() started.
+✔ Test semanticTemplateSelectionUsesExistingCategoryAndSubjectAvoidance() passed after 0.001 seconds.
+◇ Test timelineComposerProducesTemplateTitlesInsteadOfLegacyTitleCards() started.
+✔ Test timelineComposerProducesTemplateTitlesInsteadOfLegacyTitleCards() passed after 0.005 seconds.
+◇ Suite SourceAudioMixPolicyTests started.
+◇ Test sourceRequestRepairsOldMixToTwentyPercentWithoutBlocking() started.
+✔ Test sourceRequestRepairsOldMixToTwentyPercentWithoutBlocking() passed after 0.018 seconds.
+◇ Test mutedSourcesDoNotPreventMusicMasteringButDetachedAttenuationDoes() started.
+✔ Test mutedSourcesDoNotPreventMusicMasteringButDetachedAttenuationDoes() passed after 0.001 seconds.
+◇ Test decodedTwentyPercentSourceMatchesPreviewAndExport(_:) started.
+◇ Test case passing 1 argument mode → "embedded" to decodedTwentyPercentSourceMatchesPreviewAndExport(_:) started.
+Source audio embedded, window 0: preview=0.04000000100038199, export=0.040000133023372866, expected=0.04
+Source audio embedded, window 1: preview=0.04000000078700173, export=0.03999980466240097, expected=0.04
+◇ Test case passing 1 argument mode → "detached" to decodedTwentyPercentSourceMatchesPreviewAndExport(_:) started.
+Source audio detached, window 0: preview=0.0400000005868153, export=0.04000013313400481, expected=0.04
+Source audio detached, window 1: preview=0.04000000039884453, export=0.03999980407315483, expected=0.04
+◇ Test case passing 1 argument mode → "adaptive" to decodedTwentyPercentSourceMatchesPreviewAndExport(_:) started.
+Source audio adaptive, window 0: preview=0.04000000097197859, export=0.04000004494024432, expected=0.04
+Source audio adaptive, window 1: preview=0.04000000076531126, export=0.040000010660867974, expected=0.04
+◇ Test case passing 1 argument mode → "manual" to decodedTwentyPercentSourceMatchesPreviewAndExport(_:) started.
+Source audio manual, window 0: preview=0.04000000100038199, export=0.040000133023372866, expected=0.04
+Source audio manual, window 1: preview=0.04000000078700173, export=0.03999980466240097, expected=0.04
+◇ Test case passing 1 argument mode → "no-music" to decodedTwentyPercentSourceMatchesPreviewAndExport(_:) started.
+Source audio no-music, window 0: preview=0.040000000951343616, export=0.039999857664283066, expected=0.04
+Source audio no-music, window 1: preview=0.04000000095134433, export=0.040000015897944614, expected=0.04
+✔ Test decodedTwentyPercentSourceMatchesPreviewAndExport(_:) with 5 test cases passed after 4.388 seconds.
+✔ Suite SourceAudioMixPolicyTests passed after 4.407 seconds.
+◇ Test hidingTelemetryDoesNotExcludeTheCameraFootage(_:) started.
+◇ Test case passing 1 argument prompt → "Без телеметрии" to hidingTelemetryDoesNotExcludeTheCameraFootage(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь титры. Без фильтров и телеметрии" to hidingTelemetryDoesNotExcludeTheCameraFootage(_:) started.
+◇ Test case passing 1 argument prompt → "Убери телеметрию" to hidingTelemetryDoesNotExcludeTheCameraFootage(_:) started.
+◇ Test case passing 1 argument prompt → "Without telemetry" to hidingTelemetryDoesNotExcludeTheCameraFootage(_:) started.
+◇ Test case passing 1 argument prompt → "No filters and telemetry" to hidingTelemetryDoesNotExcludeTheCameraFootage(_:) started.
+✔ Test hidingTelemetryDoesNotExcludeTheCameraFootage(_:) with 5 test cases passed after 1.184 seconds.
+◇ Test explicitTelemetryEventSelectionRemainsAContentInstruction() started.
+✔ Test explicitTelemetryEventSelectionRemainsAContentInstruction() passed after 0.003 seconds.
+◇ Test russianPromptParsesDurationAndShare() started.
+✔ Test russianPromptParsesDurationAndShare() passed after 0.004 seconds.
+◇ Test explicitTagNegationOverridesPositiveMentionsAndInheritedAnchors() started.
+✔ Test explicitTagNegationOverridesPositiveMentionsAndInheritedAnchors() passed after 0.007 seconds.
+◇ Test roleAnchorsBindOnlyToTagsInTheirLocalClause() started.
+✔ Test roleAnchorsBindOnlyToTagsInTheirLocalClause() passed after 0.003 seconds.
+◇ Test latestPositiveOrNegativeTagInstructionWins() started.
+✔ Test latestPositiveOrNegativeTagInstructionWins() passed after 0.007 seconds.
+◇ Test naturalRussianPacingFormsAreUnderstood() started.
+✔ Test naturalRussianPacingFormsAreUnderstood() passed after 0.006 seconds.
+◇ Test exactMomentCountIsUnderstoodAndApplied() started.
+✔ Test exactMomentCountIsUnderstoodAndApplied() passed after 0.195 seconds.
+◇ Test latestDirectorInstructionReplacesEarlierNumbersAndPacing() started.
+✔ Test latestDirectorInstructionReplacesEarlierNumbersAndPacing() passed after 0.004 seconds.
+◇ Test feedbackReplacesEarlierExactMomentCountInTheActualTimeline() started.
+✔ Test feedbackReplacesEarlierExactMomentCountInTheActualTimeline() passed after 0.388 seconds.
+◇ Test directorFallbackAlwaysAcknowledgesBriefAndReportsReadiness() started.
+✔ Test directorFallbackAlwaysAcknowledgesBriefAndReportsReadiness() passed after 0.004 seconds.
+◇ Test fallbackDoesNotInventPacingAndAcknowledgesChangedClipCount() started.
+✔ Test fallbackDoesNotInventPacingAndAcknowledgesChangedClipCount() passed after 0.003 seconds.
+◇ Test adviceRequestsAreReadOnlyEvenWhenTheyMentionMusicAndTitles() started.
+✔ Test adviceRequestsAreReadOnlyEvenWhenTheyMentionMusicAndTitles() passed after 0.001 seconds.
+◇ Test fallbackCanRecommendFromAnalysisWithoutPromisingAnEdit() started.
+✔ Test fallbackCanRecommendFromAnalysisWithoutPromisingAnEdit() passed after 0.001 seconds.
+◇ Test storyRespectsDiversityAndCreatesTimeline() started.
+✔ Test storyRespectsDiversityAndCreatesTimeline() passed after 0.196 seconds.
+◇ Test technicalTagsDoNotCollapseTimelineToOneClip() started.
+✔ Test technicalTagsDoNotCollapseTimelineToOneClip() passed after 0.719 seconds.
+◇ Test shortTargetStillSelectsAPlayableClipWithoutPaddingTheSource() started.
+✔ Test shortTargetStillSelectsAPlayableClipWithoutPaddingTheSource() passed after 0.106 seconds.
+◇ Test excludedAssetsNeverParticipateInStorySelection() started.
+✔ Test excludedAssetsNeverParticipateInStorySelection() passed after 0.099 seconds.
+◇ Test favoriteAssetsReceiveARealSelectionBoost() started.
+✔ Test favoriteAssetsReceiveARealSelectionBoost() passed after 0.108 seconds.
+◇ Test feedbackLocksSelectedCandidateWithoutReanalysis() started.
+✔ Test feedbackLocksSelectedCandidateWithoutReanalysis() passed after 0.003 seconds.
+◇ Test timecodeRoundTrip() started.
+✔ Test timecodeRoundTrip() passed after 0.001 seconds.
+◇ Test contextualRankerChangesPreferenceWithFilmIntent() started.
+✔ Test contextualRankerChangesPreferenceWithFilmIntent() passed after 0.001 seconds.
+◇ Test storyEngineExposesCompleteVariantsForGlobalEvaluation() started.
+✔ Test storyEngineExposesCompleteVariantsForGlobalEvaluation() passed after 0.143 seconds.
+◇ Test directorBriefOverridesEveryStoryVariantAndComposerDeliveryChoices() started.
+✔ Test directorBriefOverridesEveryStoryVariantAndComposerDeliveryChoices() passed after 0.044 seconds.
+◇ Test composerPreservesSpecificTrackFromDirectorBrief() started.
+✔ Test composerPreservesSpecificTrackFromDirectorBrief() passed after 0.225 seconds.
+◇ Test portraitBriefRanksNativeAndSafelyReframedFootageAheadOfUnsafeLandscape() started.
+✔ Test portraitBriefRanksNativeAndSafelyReframedFootageAheadOfUnsafeLandscape() passed after 0.015 seconds.
+◇ Test legacyCandidateDecodesWithoutMomentBoundaryEvidence() started.
+✔ Test legacyCandidateDecodesWithoutMomentBoundaryEvidence() passed after 0.001 seconds.
+◇ Test resourcePolicyBacksOffForHeatLoadAndLowPower() started.
+✔ Test resourcePolicyBacksOffForHeatLoadAndLowPower() passed after 0.001 seconds.
+◇ Test resourceCoolingRequiresContinuousRecoveryAndCannotBeRushedByCallers() started.
+✔ Test resourceCoolingRequiresContinuousRecoveryAndCannotBeRushedByCallers() passed after 0.001 seconds.
+◇ Test resourceCPULoadHasSeparateRecoveryThresholdAndUnknownIsNotIdle() started.
+✔ Test resourceCPULoadHasSeparateRecoveryThresholdAndUnknownIsNotIdle() passed after 0.001 seconds.
+◇ Test resourceCPUPercentUsesDeltasAndHandlesCounterWrap() started.
+✔ Test resourceCPUPercentUsesDeltasAndHandlesCounterWrap() passed after 0.001 seconds.
+◇ Test resourceMonitorReadsActualMachineWithoutInventingInitialCPU() started.
+✔ Test resourceMonitorReadsActualMachineWithoutInventingInitialCPU() passed after 1.064 seconds.
+◇ Test resourceCoolingWaitRemainsCancellable() started.
+✔ Test resourceCoolingWaitRemainsCancellable() passed after 0.001 seconds.
+◇ Test resourceCoolingWaitResumesAtSameWorkBoundary() started.
+✔ Test resourceCoolingWaitResumesAtSameWorkBoundary() passed after 0.529 seconds.
+◇ Test processGPULoadUsesElapsedTimeAndKeepsUnavailableDistinctFromIdle() started.
+✔ Test processGPULoadUsesElapsedTimeAndKeepsUnavailableDistinctFromIdle() passed after 0.001 seconds.
+◇ Test processGPULoadHandlesClientChurnCounterResetsAndParallelWork() started.
+✔ Test processGPULoadHandlesClientChurnCounterResetsAndParallelWork() passed after 0.001 seconds.
+◇ Test systemGPUReadsOnlyActualDriverPercentages() started.
+✔ Test systemGPUReadsOnlyActualDriverPercentages() passed after 0.001 seconds.
+◇ Test systemMemoryCountsPhysicalUseWithoutCacheOrDoubleCountingCompression() started.
+✔ Test systemMemoryCountsPhysicalUseWithoutCacheOrDoubleCountingCompression() passed after 0.001 seconds.
+◇ Test gpxImportsOfflineAndDerivesUnifiedMetrics() started.
+✔ Test gpxImportsOfflineAndDerivesUnifiedMetrics() passed after 0.007 seconds.
+◇ Test vendoredOVRLEYBridgeParsesCSVLocally() started.
+✔ Test vendoredOVRLEYBridgeParsesCSVLocally() passed after 0.208 seconds.
+◇ Test ovrleyCameraVendorMetadataIsPreserved() started.
+✔ Test ovrleyCameraVendorMetadataIsPreserved() passed after 0.001 seconds.
+◇ Test telemetryTimelineObjectsRemainIndependentAndCodable() started.
+✔ Test telemetryTimelineObjectsRemainIndependentAndCodable() passed after 0.001 seconds.
+◇ Test automaticTelemetrySynchronizationUsesAbsoluteTimestamps() started.
+✔ Test automaticTelemetrySynchronizationUsesAbsoluteTimestamps() passed after 0.001 seconds.
+◇ Test ovrleyVisualCatalogueCoversTemplatesAndDisplayVariants() started.
+✔ Test ovrleyVisualCatalogueCoversTemplatesAndDisplayVariants() passed after 0.001 seconds.
+◇ Test editedClipClockDrivesTelemetryClock() started.
+✔ Test editedClipClockDrivesTelemetryClock() passed after 0.001 seconds.
+◇ Test telemetryPresetBindsAndRebindsToTheVideoFragmentUnderIt() started.
+✔ Test telemetryPresetBindsAndRebindsToTheVideoFragmentUnderIt() passed after 0.005 seconds.
+◇ Test telemetryCatalogueOnlyExposesDecodedValues() started.
+✔ Test telemetryCatalogueOnlyExposesDecodedValues() passed after 0.001 seconds.
+◇ Test smartphoneQuickTimeLocationBecomesRealTelemetryWithoutFakeRoute() started.
+✔ Test smartphoneQuickTimeLocationBecomesRealTelemetryWithoutFakeRoute() passed after 0.001 seconds.
+◇ Test telemetryRendererProducesVisibleChangingValues() started.
+✔ Test telemetryRendererProducesVisibleChangingValues() passed after 0.080 seconds.
+◇ Test originalOVRLEYRustRendererProducesTheSharedFrame() started.
+✔ Test originalOVRLEYRustRendererProducesTheSharedFrame() passed after 0.004 seconds.
+◇ Test telemetryDetectorFindsTheSynchronizedActionPeak() started.
+✔ Test telemetryDetectorFindsTheSynchronizedActionPeak() passed after 0.001 seconds.
+◇ Test telemetryDetectorDoesNotPromoteSensorNoise() started.
+✔ Test telemetryDetectorDoesNotPromoteSensorNoise() passed after 0.001 seconds.
+◇ Test telemetryTimelineRemainsBackwardCompatibleWhenMissing() started.
+✔ Test telemetryTimelineRemainsBackwardCompatibleWhenMissing() passed after 0.001 seconds.
+◇ Test telemetryWordsInTheBriefPrioritizeSensorEvents() started.
+✔ Test telemetryWordsInTheBriefPrioritizeSensorEvents() passed after 0.004 seconds.
+◇ Test timelineAICommentsMixedDeepAndTypedRequestKeepsBothPlanParts() started.
+✔ Test timelineAICommentsMixedDeepAndTypedRequestKeepsBothPlanParts() passed after 0.007 seconds.
+◇ Test timelineAICommentsStoryRebuildKeepsTypedMusicRemoval() started.
+✔ Test timelineAICommentsStoryRebuildKeepsTypedMusicRemoval() passed after 0.004 seconds.
+◇ Test timelineAICommentsDistinguishesFilmDurationFromClipDuration() started.
+✔ Test timelineAICommentsDistinguishesFilmDurationFromClipDuration() passed after 0.017 seconds.
+◇ Test timelineAICommentsNegativeDirectivesAreNotInverted() started.
+✔ Test timelineAICommentsNegativeDirectivesAreNotInverted() passed after 0.022 seconds.
+◇ Test timelineAICommentsMagicBrushAllTargetDoesNotEscapeRange() started.
+✔ Test timelineAICommentsMagicBrushAllTargetDoesNotEscapeRange() passed after 0.004 seconds.
+◇ Test timelineAICommentsMagicBrushSlicingKeepsAttachmentsAndOutsideSegmentsStable() started.
+✔ Test timelineAICommentsMagicBrushSlicingKeepsAttachmentsAndOutsideSegmentsStable() passed after 0.004 seconds.
+◇ Test timelineAICommentsNoOpDoesNotCreateCheckpointOrRevision() started.
+✔ Test timelineAICommentsNoOpDoesNotCreateCheckpointOrRevision() passed after 0.008 seconds.
+◇ Test timelineAICommentsLocalRemoveTitlesPreservesModernTitlesOutsideRange() started.
+✔ Test timelineAICommentsLocalRemoveTitlesPreservesModernTitlesOutsideRange() passed after 0.003 seconds.
+◇ Test timelineAICommentsExecutorRemovesOnlyTargetedModernTransitionAndEffectObjects() started.
+✔ Test timelineAICommentsExecutorRemovesOnlyTargetedModernTransitionAndEffectObjects() passed after 0.001 seconds.
+◇ Test timelineAICommentsMagicBrushPatternsAlternateInsideRange() started.
+✔ Test timelineAICommentsMagicBrushPatternsAlternateInsideRange() passed after 0.003 seconds.
+◇ Test timelineAICommentsVariantSearchPreservesExplicitGrammarConstraints() started.
+✔ Test timelineAICommentsVariantSearchPreservesExplicitGrammarConstraints() passed after 0.108 seconds.
+◇ Test timelineAICommentsPreserveAssetBackedFreezeFrameDuration() started.
+✔ Test timelineAICommentsPreserveAssetBackedFreezeFrameDuration() passed after 0.009 seconds.
+◇ Test timelineAICommentsRejectLocalSplitWithoutDamagingAttachments() started.
+✔ Test timelineAICommentsRejectLocalSplitWithoutDamagingAttachments() passed after 0.003 seconds.
+◇ Test standaloneTimelineObjectsRoundTripAndInterpolate() started.
+✔ Test standaloneTimelineObjectsRoundTripAndInterpolate() passed after 0.001 seconds.
+◇ Test musicSyncBuildsStructureAndSnapsEditableObjects() started.
+✔ Test musicSyncBuildsStructureAndSnapsEditableObjects() passed after 0.001 seconds.
+◇ Test measuredMusicBuildsDownbeatsPhrasesDropsAndRealAccents() started.
+✔ Test measuredMusicBuildsDownbeatsPhrasesDropsAndRealAccents() passed after 0.001 seconds.
+◇ Test directorToolsMutateIndependentObjects() started.
+✔ Test directorToolsMutateIndependentObjects() passed after 0.001 seconds.
+◇ Test fcpxmlCarriesEditableObjectMetadataAndFallbackSignal() started.
+✔ Test fcpxmlCarriesEditableObjectMetadataAndFallbackSignal() passed after 0.001 seconds.
+◇ Test titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Добавь титры" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Сделай ролик с титрами" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Add a title" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Include captions" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+✔ Test titleRecoveryRecognizesExplicitRequests(prompt:) with 4 test cases passed after 0.001 seconds.
+◇ Test titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Добавь музыку. Титры оставить как есть" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Добавь музыку, титры не нужны" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Убрать титры" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Do not add titles" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Without captions" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Количество титров изменено — примените правки к фильму" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+✔ Test titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) with 6 test cases passed after 0.001 seconds.
+◇ Test titleRecoveryUsesLatestInstructionAndUpdatesBriefBothWays() started.
+✔ Test titleRecoveryUsesLatestInstructionAndUpdatesBriefBothWays() passed after 0.001 seconds.
+◇ Test titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+◇ Test case passing 1 argument kinds → [VeloEditCore.TimelineItemKind.photo] to titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+◇ Test case passing 1 argument kinds → [VeloEditCore.TimelineItemKind.video] to titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+◇ Test case passing 1 argument kinds → [VeloEditCore.TimelineItemKind.photo, VeloEditCore.TimelineItemKind.video] to titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+✔ Test titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) with 3 test cases passed after 0.020 seconds.
+◇ Test titleRecoveryRejectsInvisibleAndUnreadableTitles() started.
+✔ Test titleRecoveryRejectsInvisibleAndUnreadableTitles() passed after 0.017 seconds.
+◇ Test professionalTitleTemplateCatalogIsDataDrivenAndDistinct() started.
+✔ Test professionalTitleTemplateCatalogIsDataDrivenAndDistinct() passed after 0.001 seconds.
+◇ Test titleTimelineItemPersistsTemplateAndMigratesLegacyKind() started.
+✔ Test titleTimelineItemPersistsTemplateAndMigratesLegacyKind() passed after 0.001 seconds.
+◇ Test oneRendererHandlesCyrillicLongTextAndEveryRequiredAspectRatio() started.
+✔ Test oneRendererHandlesCyrillicLongTextAndEveryRequiredAspectRatio() passed after 2.603 seconds.
+◇ Test titleRendererScalesDeterministicallyTo4KAndPreviewUsesIt() started.
+✔ Test titleRendererScalesDeterministicallyTo4KAndPreviewUsesIt() passed after 0.007 seconds.
+◇ Test adaptiveTitleLayoutCoversRequiredFormatsSafeAreasAndUndistortedCircles() started.
+✔ Test adaptiveTitleLayoutCoversRequiredFormatsSafeAreasAndUndistortedCircles() passed after 0.001 seconds.
+◇ Test timelineCanvasAutomaticallyUsesRealPrimaryVideoDimensions() started.
+✔ Test timelineCanvasAutomaticallyUsesRealPrimaryVideoDimensions() passed after 0.001 seconds.
+◇ Test templateAnimationOwnsMotionInsteadOfLegacyFallback() started.
+✔ Test templateAnimationOwnsMotionInsteadOfLegacyFallback() passed after 0.016 seconds.
+◇ Test titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.minimal-clean.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.cinematic.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.modern.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.bold.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.elegant.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.dynamic.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.travel.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.chapter.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.location.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.lower-third.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.date.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "title.end-card.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "caption.clean.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+◇ Test case passing 1 argument id → "caption.word-focus.v1" to titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) started.
+✔ Test titleInspectorSizeColorAndOpacityChangeEveryTemplate(_:) with 14 test cases passed after 1.427 seconds.
+◇ Test transparentTitleLeavesNoAdaptiveOutlineOrBackground() started.
+✔ Test transparentTitleLeavesNoAdaptiveOutlineOrBackground() passed after 0.120 seconds.
+◇ Test chapterTitleWithImmediateEntranceIsVisibleInTheFirstRenderedFrame() started.
+✔ Test chapterTitleWithImmediateEntranceIsVisibleInTheFirstRenderedFrame() passed after 0.101 seconds.
+◇ Test everyBuiltInTitleIsPixelStableDuringItsHoldPhase() started.
+✔ Test everyBuiltInTitleIsPixelStableDuringItsHoldPhase() passed after 0.011 seconds.
+◇ Test titleTemplateCatalogCanBeRenderedForVisualQA() started.
+✔ Test titleTemplateCatalogCanBeRenderedForVisualQA() passed after 0.004 seconds.
+◇ Test professionalTransitionAndEffectCatalogsCoverTZ14Families() started.
+✔ Test professionalTransitionAndEffectCatalogsCoverTZ14Families() passed after 0.001 seconds.
+◇ Test sharedRendererKeepsExactTransitionEndpointsAndProducesLiveCards() started.
+✔ Test sharedRendererKeepsExactTransitionEndpointsAndProducesLiveCards() passed after 0.230 seconds.
+◇ Test nonMotionEffectCardsDoNotInheritAnAbsentZeroScale() started.
+✔ Test nonMotionEffectCardsDoNotInheritAnAbsentZeroScale() passed after 0.001 seconds.
+◇ Test basicEffectCardsRenderVisiblePixels() started.
+✔ Test basicEffectCardsRenderVisiblePixels() passed after 0.004 seconds.
+◇ Test effectCardsAreDistinctWithinEachCategory() started.
+✔ Test effectCardsAreDistinctWithinEachCategory() passed after 0.029 seconds.
+◇ Test legacyTransitionDecodesWithMetadataDefaults() started.
+✔ Test legacyTransitionDecodesWithMetadataDefaults() passed after 0.001 seconds.
+◇ Test transitionReplacementPreservesPositionAndDurationAndDeleteRestoresCut() started.
+✔ Test transitionReplacementPreservesPositionAndDurationAndDeleteRestoresCut() passed after 0.004 seconds.
+◇ Test semanticSelectorUsesMotionAndGuardsCreativeAccents() started.
+✔ Test semanticSelectorUsesMotionAndGuardsCreativeAccents() passed after 0.001 seconds.
+◇ Suite TransitionPlaybackRegressionTests started.
+◇ Test explicitDurationsDriveBothClocksIncludingDisabledAndCutObjects() started.
+✔ Test explicitDurationsDriveBothClocksIncludingDisabledAndCutObjects() passed after 0.009 seconds.
+◇ Test shortClipsCannotReuseATrackBeforeThePreviousClipEnds() started.
+✔ Test shortClipsCannotReuseATrackBeforeThePreviousClipEnds() passed after 0.001 seconds.
+◇ Test staleObjectsDoNotOverrideAnotherBoundaryAndLegacyCutHasNoOverlap() started.
+✔ Test staleObjectsDoNotOverrideAnotherBoundaryAndLegacyCutHasNoOverlap() passed after 0.001 seconds.
+◇ Test movingTransitionsDoNotDimTheIncomingPanel() started.
+✔ Test movingTransitionsDoNotDimTheIncomingPanel() passed after 0.045 seconds.
+◇ Test everyPresetUsesTheFullRendererInStablePreviewAndExport() started.
+✔ Test everyPresetUsesTheFullRendererInStablePreviewAndExport() passed after 0.122 seconds.
+◇ Test overlayAndEffectBoundariesDoNotRestartOrDisableTheTransition() started.
+✔ Test overlayAndEffectBoundariesDoNotRestartOrDisableTheTransition() passed after 0.062 seconds.
+◇ Test encodedTransitionMatchesPreviewFramesAndDuration() started.
+✔ Test encodedTransitionMatchesPreviewFramesAndDuration() passed after 0.488 seconds.
+➜ Test highResolutionCameraTransitionDeliversLivePlayerFrames() skipped.
+✔ Suite TransitionPlaybackRegressionTests passed after 0.729 seconds.
+◇ Test variantDistanceMeasuresSelectionSourceSemanticsOrderAndRhythm() started.
+✔ Test variantDistanceMeasuresSelectionSourceSemanticsOrderAndRhythm() passed after 0.001 seconds.
+◇ Test storySearchKeepsOnlySubstantiallyDifferentCompleteCuts() started.
+✔ Test storySearchKeepsOnlySubstantiallyDifferentCompleteCuts() passed after 0.184 seconds.
+◇ Test pairwiseComparatorPrefersBroadEditorialStrengthOverOneSpikyAbsoluteScore() started.
+✔ Test pairwiseComparatorPrefersBroadEditorialStrengthOverOneSpikyAbsoluteScore() passed after 0.001 seconds.
+◇ Test storySelectionUsesSceneEnrichedDirectorCandidates() started.
+✔ Test storySelectionUsesSceneEnrichedDirectorCandidates() passed after 0.105 seconds.
+◇ Test phaseAwareTrimKeepsAnticipationPeakAndReactionHandles() started.
+✔ Test phaseAwareTrimKeepsAnticipationPeakAndReactionHandles() passed after 0.001 seconds.
+◇ Test transactionalRepairCannotTradeAwayLockedEditorialSafety() started.
+✔ Test transactionalRepairCannotTradeAwayLockedEditorialSafety() passed after 0.004 seconds.
+◇ Test expandedGlobalScorerPrefersCompleteDiverseArcOverPlausibleFlatCut() started.
+✔ Test expandedGlobalScorerPrefersCompleteDiverseArcOverPlausibleFlatCut() passed after 0.006 seconds.
+◇ Suite VisionBatchContractTests started.
+◇ Test schemaCarriesActualIndicesAndExactSceneCountWithoutPlaceholderScores() started.
+✔ Test schemaCarriesActualIndicesAndExactSceneCountWithoutPlaceholderScores() passed after 0.001 seconds.
+◇ Test validBatchKeepsIdentityAndDoesNotTurnCalmnessIntoBadQuality() started.
+✔ Test validBatchKeepsIdentityAndDoesNotTurnCalmnessIntoBadQuality() passed after 0.001 seconds.
+◇ Test invalidSceneIdentityNeverCrashesOrSilentlyLabelsAnotherClip() started.
+✔ Test invalidSceneIdentityNeverCrashesOrSilentlyLabelsAnotherClip() passed after 0.001 seconds.
+✔ Suite VisionBatchContractTests passed after 0.001 seconds.
+✘ Test run with 689 tests in 21 suites failed after 161.042 seconds with 16 issues.

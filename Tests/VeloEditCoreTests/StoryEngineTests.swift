@@ -2,6 +2,30 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
+@Test(arguments: ["Без телеметрии", "Добавь титры. Без фильтров и телеметрии", "Убери телеметрию", "Without telemetry", "No filters and telemetry"])
+func hidingTelemetryDoesNotExcludeTheCameraFootage(_ prompt: String) {
+    var base = StoryConstraints(includeTags: ["telemetry-event"], excludeTags: ["telemetry-event"], preferredIntroTags: ["telemetry-event"])
+    base.maximumTagShares["telemetry-event"] = 0
+    let constraints = PromptInterpreter().interpret(prompt: prompt, preset: .story, base: base)
+    #expect(!constraints.excludeTags.contains("telemetry-event"))
+    #expect(!constraints.includeTags.contains("telemetry-event"))
+    #expect(constraints.maximumTagShares["telemetry-event"] == nil)
+    #expect(constraints.preferredIntroTags?.contains("telemetry-event") != true)
+    #expect(!TelemetryOverlayRequestPolicy.requestsOverlay(in: prompt))
+    let (assets, source) = storyFixture()
+    var analyses = source
+    for index in analyses.indices {
+        for candidate in analyses[index].candidates.indices { analyses[index].candidates[candidate].tags.insert("telemetry-event") }
+    }
+    let plan = StoryEngine().createPlan(prompt: prompt, preset: .story, constraints: constraints, assets: assets, analyses: analyses)
+    #expect(!plan.chapters.flatMap(\.candidateIDs).isEmpty)
+}
+
+@Test func explicitTelemetryEventSelectionRemainsAContentInstruction() {
+    let constraints = PromptInterpreter().interpret(prompt: "Без телеметрических событий", preset: .story)
+    #expect(constraints.excludeTags.contains("telemetry-event"))
+}
+
 private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
     let date = Date(timeIntervalSince1970: 1_700_000_000)
     let assets = (0..<8).map { index in
@@ -110,7 +134,14 @@ private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
 }
 
 @Test func feedbackReplacesEarlierExactMomentCountInTheActualTimeline() {
-    let (assets, analyses) = storyFixture()
+    let (assets, originalAnalyses) = storyFixture()
+    // Five requested moments need five distinct setups, not five copies of bike.
+    var analyses = originalAnalyses
+    for i in analyses.indices {
+        for j in analyses[i].candidates.indices {
+            analyses[i].candidates[j].tags = ["activity-\(i)"]
+        }
+    }
     let originalConstraints = PromptInterpreter().interpret(prompt: "Фильм из 3 моментов", preset: .story)
     let original = StoryEngine().createPlan(
         prompt: "Фильм из 3 моментов",
@@ -255,7 +286,7 @@ private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
     #expect(timeline.duration > 50)
 }
 
-@Test func shortTargetStillSelectsAPlayableClip() {
+@Test func shortTargetStillSelectsAPlayableClipWithoutPaddingTheSource() {
     let asset = MediaAsset(
         originalURL: URL(fileURLWithPath: "/tmp/short-target.mov"),
         kind: .video,
@@ -274,7 +305,9 @@ private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
     let timeline = TimelineComposer().compose(plan: plan, assets: [asset], analyses: [analysis])
     #expect(timeline.items.count == 1)
     #expect(timeline.duration > 0)
-    #expect(timeline.duration <= 5)
+    #expect(timeline.duration <= plan.constraints.targetDuration)
+    #expect(timeline.duration <= analysis.candidates[0].sourceDuration)
+    #expect(!AutomaticFilmDurationPolicy.meetsMinimum(timeline))
 }
 
 @Test func excludedAssetsNeverParticipateInStorySelection() {
@@ -447,11 +480,11 @@ private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
     let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
 
     #expect(variants.allSatisfy { $0.plan.directorBrief == brief })
-    #expect(variants.allSatisfy { abs($0.plan.constraints.targetDuration - 37) < 0.000_1 })
+    #expect(variants.allSatisfy { $0.plan.contentBudget?.requestedDuration == 37 && $0.plan.constraints.targetDuration <= 37 })
     #expect(variants.allSatisfy { abs($0.plan.constraints.pacing - DirectorNarrativeMood.dynamic.pacing) < 0.000_1 })
     #expect(timeline.width == 1080)
     #expect(timeline.height == 1920)
-    #expect(abs(timeline.effectiveOriginalAudioVolume - 0.28) < 0.000_1)
+    #expect(abs(timeline.effectiveOriginalAudioVolume - DirectorSourceAudioPolicy.duck.volume) < 0.000_1)
     #expect(timeline.music == nil)
     #expect(timeline.effectiveTitleItems.isEmpty)
 }

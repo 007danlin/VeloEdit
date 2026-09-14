@@ -21,15 +21,24 @@ VeloEdit — видеоредактор для macOS с локальным ис�
 - macOS 14 или новее;
 - Mac с Apple Silicon;
 - Xcode Command Line Tools или Xcode;
+- Git LFS — для загрузки встроенных бинарных ресурсов Ollama;
 - Rust и Cargo — для сборки встроенного движка телеметрии OVRLEY.
 
 ## Сборка и запуск
+
+Установите и включите Git LFS:
+
+```bash
+brew install git-lfs
+git lfs install
+```
 
 Склонируйте репозиторий и перейдите в его папку:
 
 ```bash
 git clone https://github.com/007danlin/VeloEdit.git
 cd VeloEdit
+git lfs pull
 ```
 
 Соберите полное приложение:

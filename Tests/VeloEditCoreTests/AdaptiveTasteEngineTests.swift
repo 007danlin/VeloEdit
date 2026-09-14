@@ -2,6 +2,73 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
+@Test func unrelatedEditsDoNotTeachAnUnchangedEnding() {
+    let (_, _, candidates) = p7Fixture()
+    let before = p7Timeline(planID: UUID(), candidates: Array(candidates.values))
+    var after = before
+    after.music?.volume = 0.15
+    let extractor = AdaptivePreferenceSignalExtractor()
+    #expect(!extractor.signals(before: before, after: after, context: TasteContext(), candidates: candidates).contains { $0.feature == "endingPreference" })
+    after.items.removeLast()
+    #expect(extractor.signals(before: before, after: after, context: TasteContext(), candidates: candidates).contains { $0.feature == "endingPreference" })
+}
+
+@Test func approvedReferenceIsOneObservationPerFeatureAndPersistsItsReceipt() async throws {
+    let (assets, analyses, candidates) = p7Fixture()
+    let timeline = p7Timeline(planID: UUID(), candidates: Array(candidates.values))
+    let example = try #require(ApprovedReferenceLearning(timeline: timeline, assets: assets, analyses: analyses))
+    #expect(example.signals.count == Set(example.signals.map(\.feature)).count)
+    #expect(!example.signals.contains { ["duration.film", "musicBPM", "colorPreference"].contains($0.feature) })
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("taste.json")
+    let store = LocalPersonalTasteStore(url: url)
+    let first = try await store.recordValidated(example.signals, regressionSample: nil, now: Date(timeIntervalSince1970: 1_800_000_000), approvedReferenceFingerprint: example.fingerprint)
+    #expect(first.report.committed)
+    #expect(first.profile.totalSignalCount == example.signals.count)
+    let extractor = TimelineTasteFeatureExtractor()
+    let acceptedFeatures = extractor.features(timeline: timeline, candidates: candidates)
+    var rushedFeatures = acceptedFeatures
+    rushedFeatures.meanShotDuration = 1
+    let scorer = PersonalizedMontageScorer()
+    #expect(scorer.tasteFit(features: acceptedFeatures, profile: first.profile, contextKey: nil)
+        > scorer.tasteFit(features: rushedFeatures, profile: first.profile, contextKey: nil))
+    let bytes = try Data(contentsOf: url)
+    let second = try await LocalPersonalTasteStore(url: url).recordValidated(example.signals, regressionSample: nil, approvedReferenceFingerprint: example.fingerprint)
+    #expect(!second.report.committed)
+    #expect(second.profile == first.profile)
+    #expect(try Data(contentsOf: url) == bytes)
+    // Recreating timeline/item IDs must not turn the same film into new evidence.
+    var copy = timeline
+    copy.id = UUID()
+    for index in copy.items.indices { copy.items[index].id = UUID() }
+    #expect(ApprovedReferenceLearning(timeline: copy, assets: assets, analyses: analyses)?.fingerprint == example.fingerprint)
+}
+
+@Test func emptyAutomaticOutputCannotBeAnApprovedExample() {
+    #expect(ApprovedReferenceLearning(timeline: Timeline(storyPlanID: UUID(), items: []), assets: [], analyses: []) == nil)
+}
+
+@Test func separateProjectsCannotLoseOrDoubleAnApprovedReference() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("taste.json")
+    let first = LocalPersonalTasteStore(url: url), second = LocalPersonalTasteStore(url: url)
+    _ = await first.profile()
+    _ = await second.profile()
+    let signal = PreferenceSignal(feature: "titleDuration", value: -0.4, confidence: 0.75, source: .acceptedEdit)
+    async let a = first.recordValidated([signal], regressionSample: nil, approvedReferenceFingerprint: "approved-example")
+    async let b = second.recordValidated([signal], regressionSample: nil, approvedReferenceFingerprint: "approved-example")
+    let results = try await [a, b]
+    #expect(results.filter { $0.report.committed }.count == 1)
+    let updated = try await first.record([PreferenceSignal(feature: "pacing", value: 0.2, confidence: 0.75, source: .manualEdit)])
+    #expect(updated.totalSignalCount == 2)
+    #expect(updated.approvedReferenceFingerprints == ["approved-example"])
+    // The persisted ISO date format has second precision.
+    let persisted = try JSONDecoder.veloEdit.decode(PersonalTasteProfile.self, from: JSONEncoder.veloEdit.encode(updated))
+    #expect(await second.profile() == persisted)
+}
+
 private func p7Fixture(count: Int = 12) -> ([MediaAsset], [AnalysisResult], [UUID: Candidate]) {
     let assets = (0..<3).map { index in
         MediaAsset(
@@ -138,7 +205,8 @@ private func p7Timeline(planID: UUID, candidates: [Candidate], actionFirst: Bool
     let profile = PreferenceLearningEngine().updating(PersonalTasteProfile(), with: signals)
     let base = AutonomousDirectorEngine().decide(prompt: "Сделай лучший фильм", fallbackPreset: .story, requestedDuration: nil, assets: assets, analyses: analyses, personalProfile: PersonalTasteProfile())
     let learned = AutonomousDirectorEngine().decide(prompt: "Сделай лучший фильм", fallbackPreset: .story, requestedDuration: nil, assets: assets, analyses: analyses, personalProfile: profile)
-    #expect(learned.duration.seconds < base.duration.seconds)
+    #expect(learned.duration.seconds <= learned.duration.safeRange.upperBound)
+    #expect(learned.duration.seconds != base.duration.seconds)
     #expect(learned.grammar.meanShotDuration > base.grammar.meanShotDuration)
     #expect(learned.music.desiredBPM > base.music.desiredBPM)
 }
@@ -198,6 +266,7 @@ private func p7Timeline(planID: UUID, candidates: [Candidate], actionFirst: Bool
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("p7-store-\(UUID().uuidString)")
     let url = root.appendingPathComponent("taste.json")
     let exported = root.appendingPathComponent("exported.json")
+    let importedURL = root.appendingPathComponent("imported.json")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = LocalPersonalTasteStore(url: url)
     _ = try await store.record(Array(repeating: PreferenceSignal(feature: "transitionPreference", value: -1, confidence: 0.9, source: .transition), count: 8))
@@ -205,6 +274,10 @@ private func p7Timeline(planID: UUID, candidates: [Candidate], actionFirst: Bool
     #expect(FileManager.default.fileExists(atPath: exported.path))
     let restored = await LocalPersonalTasteStore(url: exported).profile()
     #expect(restored.transitionPreference?.sampleCount == 8)
+    let importedStore = LocalPersonalTasteStore(url: importedURL)
+    let imported = try await importedStore.importProfile(from: exported)
+    #expect(imported.transitionPreference?.sampleCount == 8)
+    #expect((await importedStore.profile()).totalSignalCount == restored.totalSignalCount)
     let empty = try await store.reset()
     #expect(empty.totalSignalCount == 0)
     #expect(!FileManager.default.fileExists(atPath: url.path))

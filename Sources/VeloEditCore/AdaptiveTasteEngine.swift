@@ -659,7 +659,11 @@ public struct AdaptivePreferenceSignalExtractor: Sendable {
         if roles != old.compactMap(\.storyRole), !roles.isEmpty {
             result.append(PreferenceSignal(feature: "structure:\(roles.map(\.rawValue).joined(separator: ">"))", value: 0.72, confidence: 0.66, source: .reorder, contextKey: context.key))
         }
-        if let last = new.last, let candidate = last.candidateID.flatMap({ candidates[$0] }) {
+        // A title, volume or colour edit does not approve the existing ending.
+        // Learn it only when the closing source or its selected range changed.
+        if let last = new.last,
+           old.last?.assetID != last.assetID || old.last?.sourceStart != last.sourceStart || old.last?.sourceDuration != last.sourceDuration,
+           let candidate = last.candidateID.flatMap({ candidates[$0] }) {
             let energy = candidate.insights?.dynamics ?? candidate.scores.action
             append("endingPreference", energy * 2 - 1, 0.58, source, item: last)
         }

@@ -1,0 +1,35 @@
+    Finished `release` profile [optimized] target(s) in 0.06s
+[0/1] Planning build
+Building for production...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling VeloEditCore AIDirectorEngine.swift
+/private/tmp/veloedit-cascade-verified/Sources/VeloEditCore/EditorialAudioMastering.swift:312:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+310 |         let effectiveMix: AVAudioMix = mix ?? {
+311 |             let unity = AVMutableAudioMix()
+312 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+313 |             return unity
+314 |         }()
+
+/private/tmp/veloedit-cascade-verified/Sources/VeloEditCore/WebMusicProvider.swift:29:25: warning: consider using asynchronous alternative function
+ 27 |             if !probe.pending {
+ 28 |                 probe.pending = true
+ 29 |                 browser.evaluateJavaScript("""
+    |                         `- warning: consider using asynchronous alternative function
+ 30 |                 JSON.stringify({
+ 31 |                   blocked: !!document.querySelector('form[action*="anomaly"], #challenge-form'),
+
+WebKit.WKWebView.evaluateJavaScript:2:11: note: 'evaluateJavaScript' declared here
+1 | class WKWebView {
+2 | open func evaluateJavaScript(_ javaScriptString: String) async throws -> Any?}
+  |           `- note: 'evaluateJavaScript' declared here
+3 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[4/6] Compiling VeloEdit AppModel.swift
+[4/6] Write Objects.LinkFileList
+[5/6] Linking VeloEdit
+Build of product 'VeloEdit' complete! (146.29s)
+/tmp/veloedit-app.AIoxjO/VeloEdit.app: replacing existing signature
+/private/tmp/veloedit-cascade-verified/Build/VeloEdit.app

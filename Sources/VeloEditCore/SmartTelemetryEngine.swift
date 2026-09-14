@@ -13,6 +13,10 @@ enum TelemetryOverlayRequestPolicy {
             "убери телеметри", "скрой телеметри", "no telemetry", "without telemetry"
         ]
         guard !forbidden.contains(where: text.contains) else { return false }
+        // Negation may cover a coordinated list: “без фильтров и телеметрии”.
+        // Do this before detecting “добавь” elsewhere in the same brief.
+        let coordinatedNegation = #"(?:без|не\s+(?:добавляй|показывай)|убери|скрой|no|without)[^,;.!?\n]{0,48}(?:телеметри|telemetry)"#
+        if text.range(of: coordinatedNegation, options: .regularExpression) != nil { return false }
 
         let directPhrases = [
             "с телеметри", "телеметрия:", "telemetry overlay", "telemetry hud",
@@ -103,12 +107,14 @@ public struct SmartTelemetryEngine: Sendable {
     public init() {}
 
     public func decide(_ context: SmartTelemetryContext) -> SmartTelemetryDecision? {
+        var context = context
         guard context.telemetry.hasTelemetry, context.clip.kind == .video else { return nil }
         let sourceRange = context.clip.sourceStart...(context.clip.sourceStart + context.clip.sourceDuration)
         let samplesInRange = (context.telemetry.timedSamples ?? []).filter { sourceRange.contains($0.timestamp) }
         // A summary maximum is not enough to place an editorial accent: its
         // exact time must come from a real decoded sample inside this clip.
         guard !samplesInRange.isEmpty else { return nil }
+        context.telemetry = AutomaticTelemetryPolicy.scoped(context.telemetry, samples: samplesInRange)
         let moments = TelemetryHighlightDetector().moments(
             from: context.telemetry,
             duration: context.telemetry.timedSamples?.last?.timestamp
@@ -117,20 +123,35 @@ public struct SmartTelemetryEngine: Sendable {
         let bestMoment = moments.max(by: { eventScore($0, request: requested) < eventScore($1, request: requested) })
         let explicit = !requested.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let score = bestMoment.map { eventScore($0, request: requested) } ?? 0
-        guard explicit || score >= 0.30 else { return nil }
+        guard explicit || score >= 0.65 else { return nil }
 
         let kind = chooseKind(context: context, moment: bestMoment, request: requested)
         guard let kind,
               context.telemetry.supports(kind, presentation: kind.defaultPresentation) else { return nil }
+        if kind == .gForce {
+            let peak = samplesInRange.compactMap { sample -> Double? in
+                if let value = sample.gForce { return abs(value) }
+                if let x = sample.gForceX, let y = sample.gForceY { return hypot(x, y) }
+                return nil
+            }.max() ?? 0
+            guard explicit || peak > 0.15 else { return nil }
+        }
         let presentation = presentation(for: kind, context: context)
         guard context.telemetry.supports(kind, presentation: presentation) else { return nil }
 
-        let sourceMoment = bestMoment?.timestamp ?? fallbackMoment(context)
+        let proposedMoment = bestMoment?.timestamp ?? fallbackMoment(context)
+        let covered = AutomaticTelemetryPolicy.ranges(in: samplesInRange, kind: kind)
+        guard let interval = covered.filter({ $0.upperBound - $0.lowerBound >= 1 }).min(by: {
+            abs(($0.lowerBound + $0.upperBound) / 2 - proposedMoment) < abs(($1.lowerBound + $1.upperBound) / 2 - proposedMoment)
+        }) else { return nil }
+        let sourceMoment = min(interval.upperBound, max(interval.lowerBound, proposedMoment))
         let timelineMoment = timelineTime(forSourceTime: sourceMoment, clip: context.clip)
-        let duration = min(context.clip.timelineDuration, preferredDuration(for: kind, score: score))
+        let coverageStart = timelineTime(forSourceTime: interval.lowerBound, clip: context.clip)
+        let coverageEnd = timelineTime(forSourceTime: interval.upperBound, clip: context.clip)
+        let duration = min(context.clip.timelineDuration, preferredDuration(for: kind, score: score), coverageEnd - coverageStart)
         let start = min(
-            context.clip.timelineStart + context.clip.timelineDuration - duration,
-            max(context.clip.timelineStart, timelineMoment - min(0.55, duration * 0.22))
+            coverageEnd - duration,
+            max(coverageStart, timelineMoment - min(0.55, duration * 0.22))
         )
         let style = style(for: kind, context: context)
         let layout = placement(
@@ -172,10 +193,11 @@ public struct SmartTelemetryEngine: Sendable {
             (.speedValue, ["скорост", "speed", "разгон"])
         ]
         for (kind, words) in requestedOrder where words.contains(where: request.contains) {
-            if context.telemetry.supports(kind, presentation: kind.defaultPresentation) { return kind }
+            return context.telemetry.supports(kind, presentation: kind.defaultPresentation) ? kind : nil
         }
+        if !request.isEmpty, AutomaticTelemetryPolicy.usefulKinds(in: context.telemetry).isEmpty { return nil }
         if let moment {
-            if (moment.tags.contains("turn") || moment.tags.contains("g-force")), context.telemetry.supports(.gForce, presentation: .gForce) { return .gForce }
+            if request.isEmpty, (moment.tags.contains("turn") || moment.tags.contains("g-force")), context.telemetry.supports(.gForce, presentation: .gForce) { return .gForce }
             if moment.tags.contains("elevation-change"), context.telemetry.supports(.elevationProfile, presentation: .elevationPlot) { return .elevationProfile }
             if (moment.tags.contains("high-speed") || moment.tags.contains("acceleration")), context.telemetry.supports(.speedValue, presentation: .arc) { return .speedValue }
         }
@@ -183,7 +205,7 @@ public struct SmartTelemetryEngine: Sendable {
         if semantic.contains(where: { $0.contains("cycling") || $0.contains("велосип") }) {
             for kind in [TelemetryWidgetKind.power, .cadence, .speedValue, .distance] where context.telemetry.supports(kind, presentation: kind.defaultPresentation) { return kind }
         }
-        return [.speedValue, .gForce, .elevationProfile, .routeMap, .heartRate, .cadence, .power, .distance]
+        return [.speedValue, .elevationProfile, .routeMap, .heartRate, .cadence, .power, .distance]
             .first { context.telemetry.supports($0, presentation: $0.defaultPresentation) }
     }
 

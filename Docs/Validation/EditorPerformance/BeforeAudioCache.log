@@ -1,0 +1,171 @@
+[0/1] Planning build
+Building for debugging...
+[0/7] Write sources
+[1/7] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling VeloEditCoreTests EditorPerformanceTests.swift
+[4/5] Emitting module VeloEditCoreTests
+[4/6] Write Objects.LinkFileList
+[5/6] Linking VeloEditPackageTests
+Build complete! (4.81s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite EditorPerformanceTests started.
+◇ Test largeProjectOpenPlaybackAndFirstFrame() started.
+2026-09-12 20:45:47.644 swiftpm-testing-helper[31834:13393032] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:47.686 swiftpm-testing-helper[31834:13393033] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:47.755 swiftpm-testing-helper[31834:13393036] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:47.822 swiftpm-testing-helper[31834:13393034] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:47.900 swiftpm-testing-helper[31834:13393034] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:48.136 swiftpm-testing-helper[31834:13393034] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:48.177 swiftpm-testing-helper[31834:13393034] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:48.242 swiftpm-testing-helper[31834:13393034] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:48.311 swiftpm-testing-helper[31834:13393034] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:48.386 swiftpm-testing-helper[31834:13393036] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+PERF real-project=тест 4.veloedit bytes=37885133 clips=10 open_ms=938.0930662155151 build_ms=409.6490144729614 edit_preview_ms=326.759934425354 three_frames_ms=139.96899127960205 cache_hits=0 cache_misses=0 warnings=0
+PERF real-project=тест 5.veloedit bytes=54740018 clips=50 open_ms=1319.1419839859009 build_ms=82.40199089050293 edit_preview_ms=74.38302040100098 three_frames_ms=78.76300811767578 cache_hits=0 cache_misses=0 warnings=0
+2026-09-12 20:45:53.318 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.406 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.487 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.566 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.643 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.715 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.796 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.871 swiftpm-testing-helper[31834:13393036] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:53.955 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.026 swiftpm-testing-helper[31834:13393032] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.083 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.145 swiftpm-testing-helper[31834:13393036] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.208 swiftpm-testing-helper[31834:13393032] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.246 swiftpm-testing-helper[31834:13393152] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.315 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.390 swiftpm-testing-helper[31834:13393036] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.466 swiftpm-testing-helper[31834:13393032] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.544 swiftpm-testing-helper[31834:13393155] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.620 swiftpm-testing-helper[31834:13393036] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.698 swiftpm-testing-helper[31834:13393032] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.781 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.869 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:54.950 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.007 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.074 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.163 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.250 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.308 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.381 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.458 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.538 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.614 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.685 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.767 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.842 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.910 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:55.984 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.070 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.146 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.225 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.297 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.379 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.450 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.532 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.603 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.689 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.737 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.797 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.862 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:56.932 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.017 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.095 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.162 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.232 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.306 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.389 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.462 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.498 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.556 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.615 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.670 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.715 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.769 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.838 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.876 swiftpm-testing-helper[31834:13393154] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:57.939 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.013 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.077 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.124 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.383 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.470 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.552 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.632 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.708 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.778 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.861 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:58.937 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.022 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.097 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.150 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.212 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.275 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.315 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.384 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.459 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.536 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.613 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.691 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.770 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.853 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:45:59.943 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.024 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.081 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.148 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.228 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.312 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.371 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.448 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.524 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.611 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.683 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.758 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.838 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.917 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:00.983 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.060 swiftpm-testing-helper[31834:13393035] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.143 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.225 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.301 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.377 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.456 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.531 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.611 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.686 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.770 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.821 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.881 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:01.942 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.018 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.100 swiftpm-testing-helper[31834:13393480] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.184 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.248 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.323 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.395 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.479 swiftpm-testing-helper[31834:13393153] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.552 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.590 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.648 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.708 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.764 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.810 swiftpm-testing-helper[31834:13393037] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.864 swiftpm-testing-helper[31834:13393483] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.932 swiftpm-testing-helper[31834:13393482] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:02.970 swiftpm-testing-helper[31834:13393483] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:03.033 swiftpm-testing-helper[31834:13393034] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:03.108 swiftpm-testing-helper[31834:13393482] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:03.173 swiftpm-testing-helper[31834:13393156] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-12 20:46:03.219 swiftpm-testing-helper[31834:13393481] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✘ Test largeProjectOpenPlaybackAndFirstFrame() recorded an issue at EditorPerformanceTests.swift:49:13: Expectation failed: (editSeconds → 5.010357975959778) < (3 → 3.0)
+PERF real-project=тест 6.veloedit bytes=133676261 clips=105 open_ms=3186.5659952163696 build_ms=4987.0500564575195 edit_preview_ms=5010.357975959778 three_frames_ms=84.55300331115723 cache_hits=0 cache_misses=0 warnings=0
+✘ Test largeProjectOpenPlaybackAndFirstFrame() failed after 16.808 seconds with 1 issue.
+↳ /// Set to a directory of disposable project copies. Original user projects
+↳ /// must not be used: opening can migrate recovery state and cached media.
+✘ Suite EditorPerformanceTests failed after 16.808 seconds with 1 issue.
+✘ Test run with 1 test in 1 suite failed after 16.808 seconds with 1 issue.

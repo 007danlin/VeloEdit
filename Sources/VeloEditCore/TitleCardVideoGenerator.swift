@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import CoreGraphics
 import CoreText
 import ImageIO
@@ -14,22 +15,25 @@ public actor TitleCardVideoGenerator {
         width: Int,
         height: Int,
         frameRate: Int32,
-        destination: URL
+        destination: URL,
+        codec: AVVideoCodecType = .h264
     ) async throws -> URL {
+        let encodedWidth = max(2, width / 2 * 2)
+        let encodedHeight = max(2, height / 2 * 2)
         let imageURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("veloedit-title-\(UUID().uuidString).png")
         defer { try? FileManager.default.removeItem(at: imageURL) }
-        try Self.draw(text: text, style: style, width: width, height: height, destination: imageURL)
+        try Self.draw(text: text, style: style, width: encodedWidth, height: encodedHeight, destination: imageURL)
         return try await StillImageVideoGenerator().generate(
             imageURL: imageURL,
             duration: duration,
-            width: width,
-            height: height,
+            width: encodedWidth,
+            height: encodedHeight,
             frameRate: frameRate,
             destination: destination,
-            // Motion JPEG has a software encoder in command-line and signed
-            // app hosts, unlike H.264 on some macOS CLI environments.
-            codec: .jpeg,
+            // StillImageVideoGenerator explicitly requests software H.264,
+            // avoiding the host's failing hardware VideoToolbox path.
+            codec: codec,
             // A title card is a static graphic. The still-image generator's
             // default Ken Burns motion is intended for photos, not titles.
             motion: nil
@@ -64,27 +68,56 @@ public actor TitleCardVideoGenerator {
             )
             return CTParagraphStyleCreate(&setting, 1)
         }
-        let fontSize = CGFloat(style.fontSize) * min(CGFloat(width) / 1920, CGFloat(height) / 1080)
-        let attributes: [NSAttributedString.Key: Any] = [
-            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica Neue Bold" as CFString, max(18, fontSize), nil),
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String): color(style.textColorHex, fallback: CGColor(gray: 1, alpha: 1)),
-            NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraph
-        ]
-        let string = NSAttributedString(string: text, attributes: attributes)
-        let framesetter = CTFramesetterCreateWithAttributedString(string)
-        let margin = CGFloat(width) * 0.10
-        let suggested = CTFramesetterSuggestFrameSizeWithConstraints(
-            framesetter,
-            CFRange(location: 0, length: string.length),
-            nil,
-            CGSize(width: CGFloat(width) - margin * 2, height: CGFloat(height) * 0.7),
-            nil
+        let geometry = VideoFrameGeometry(width: width, height: height)
+        let shortSideScale = CGFloat(min(width, height)) / 1080
+        let readabilityBoost = 1 + CGFloat(geometry.portraitInfluence) * 0.16
+        let desiredFontSize = CGFloat(style.fontSize) * shortSideScale * readabilityBoost
+        let minimumFontSize = max(12 * shortSideScale, desiredFontSize * 0.48)
+        let horizontalMargin = CGFloat(width) * (0.08 + CGFloat(geometry.portraitInfluence) * 0.04)
+        let verticalMargin = CGFloat(height) * (0.08 + CGFloat(geometry.portraitInfluence) * 0.04)
+        let available = CGSize(
+            width: max(1, CGFloat(width) - horizontalMargin * 2),
+            height: max(1, CGFloat(height) - verticalMargin * 2)
         )
+        let foreground = color(style.textColorHex, fallback: CGColor(gray: 1, alpha: 1))
+
+        func fittedString(_ value: String, size: CGFloat) -> (NSAttributedString, CGSize) {
+            let attributes: [NSAttributedString.Key: Any] = [
+                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName(style.effectiveFontFamily as CFString, max(1, size), nil),
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): foreground,
+                NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraph
+            ]
+            let string = NSAttributedString(string: value, attributes: attributes)
+            let framesetter = CTFramesetterCreateWithAttributedString(string)
+            let suggested = CTFramesetterSuggestFrameSizeWithConstraints(
+                framesetter,
+                CFRange(location: 0, length: string.length),
+                nil,
+                CGSize(width: available.width, height: .greatestFiniteMagnitude),
+                nil
+            )
+            return (string, suggested)
+        }
+
+        var fontSize = desiredFontSize
+        var fitted = fittedString(text, size: fontSize)
+        while fitted.1.height > available.height, fontSize > minimumFontSize + 0.1 {
+            fontSize = max(minimumFontSize, fontSize * 0.91)
+            fitted = fittedString(text, size: fontSize)
+        }
+        var visibleText = text
+        while fitted.1.height > available.height, visibleText.count > 1 {
+            visibleText.removeLast()
+            fitted = fittedString(visibleText.trimmingCharacters(in: .whitespacesAndNewlines) + "…", size: minimumFontSize)
+        }
+        let string = fitted.0
+        let suggested = fitted.1
+        let framesetter = CTFramesetterCreateWithAttributedString(string)
         let frameRect = CGRect(
-            x: margin,
-            y: max(CGFloat(height) * 0.15, (CGFloat(height) - suggested.height) / 2),
-            width: CGFloat(width) - margin * 2,
-            height: min(CGFloat(height) * 0.7, suggested.height + fontSize * 0.4)
+            x: horizontalMargin,
+            y: max(verticalMargin, (CGFloat(height) - suggested.height) / 2),
+            width: available.width,
+            height: min(available.height, suggested.height + fontSize * 0.4)
         )
         let path = CGMutablePath()
         path.addRect(frameRect)

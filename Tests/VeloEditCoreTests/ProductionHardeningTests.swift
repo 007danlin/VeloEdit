@@ -37,6 +37,80 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     #expect(milliseconds < 50)
 }
 
+@Test func optimisticTimelineInsertionsAppearImmediatelyAndStayNormalized() {
+    var timeline = productionTimeline(itemCount: 3)
+    let inserted = TimelineItem(
+        assetID: UUID(),
+        kind: .video,
+        sourceDuration: 2,
+        timelineStart: 99,
+        timelineDuration: 2
+    )
+    #expect(TimelineMutationEngine.insertPrimaryItem(in: &timeline, item: inserted, atPrimaryIndex: 1))
+    #expect(timeline.items.filter { $0.overlay == nil }[1].id == inserted.id)
+    #expect(zip(timeline.items.filter { $0.overlay == nil }, timeline.items.filter { $0.overlay == nil }.dropFirst()).allSatisfy {
+        abs(($0.timelineStart + $0.timelineDuration) - $1.timelineStart) < 0.000_1
+    })
+
+    let connected = TimelineItem(
+        assetID: UUID(),
+        kind: .video,
+        sourceDuration: 20,
+        timelineStart: 0,
+        timelineDuration: 20,
+        overlay: OverlaySettings(style: .cutaway)
+    )
+    #expect(TimelineMutationEngine.insertConnectedItem(in: &timeline, item: connected, atTimelineStart: 1.1))
+    let connectedResult = timeline.items.first { $0.id == connected.id }
+    #expect(connectedResult?.overlay?.baseItemID != nil)
+    #expect(abs((connectedResult?.timelineStart ?? -1) - 1.1) < 0.04)
+    #expect((connectedResult?.timelineStart ?? 0) + (connectedResult?.timelineDuration ?? 0) <= timeline.duration + 0.000_1)
+
+    let audio = TimelineAudioClip(
+        trackID: UUID(),
+        title: "Drop",
+        role: .music,
+        sourceDuration: 30,
+        timelineStart: 2,
+        timelineDuration: 30
+    )
+    #expect(TimelineMutationEngine.insertAudioClip(in: &timeline, clip: audio))
+    #expect(timeline.effectiveAudioClips.contains {
+        $0.id == audio.id && abs($0.timelineStart - 2) < 0.000_1 && $0.timelineEnd <= timeline.duration + 0.000_1
+    })
+
+    let telemetry = TimelineTelemetryItem(
+        targetClipID: inserted.id,
+        linkedAssetID: inserted.assetID,
+        timelineStart: 0,
+        timelineDuration: 30
+    )
+    #expect(TimelineMutationEngine.insertTelemetry(in: &timeline, item: telemetry))
+    #expect(timeline.effectiveTelemetryItems.contains { $0.id == telemetry.id && $0.timelineEnd <= timeline.duration + 0.000_1 })
+
+    let effect = EffectTimelineItem(effectType: .vignette, startTime: 1, duration: 2)
+    let title = TitleTimelineItem(kind: .title, text: "Сразу", startTime: 1, duration: 2)
+    #expect(TimelineMutationEngine.insertEffect(in: &timeline, effect: effect))
+    #expect(TimelineMutationEngine.insertTitle(in: &timeline, title: title))
+    #expect(timeline.effectiveEffects.contains { $0.id == effect.id })
+    #expect(timeline.effectiveTitleItems.contains { $0.id == title.id })
+
+    let primaries = timeline.items.filter { $0.overlay == nil }
+    let transition = TimelineTransitionItem(
+        style: .crossDissolve,
+        outgoingClipID: primaries[0].id,
+        incomingClipID: primaries[1].id,
+        startTime: 0
+    )
+    #expect(TimelineMutationEngine.replaceTransition(
+        in: &timeline,
+        incomingClipID: primaries[1].id,
+        with: transition
+    ))
+    #expect(timeline.effectiveTransitionItems.contains { $0.id == transition.id })
+    #expect(timeline.items.first { $0.id == primaries[1].id }?.transition == TransitionStyle.crossDissolve.rawValue)
+}
+
 @Test func previewInvalidationDistinguishesOverlayOnlyAndStructuralEdits() {
     let original = productionTimeline()
     var titleOnly = original
@@ -76,6 +150,31 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
         }
     }
     #expect(await store.manifest.name == "Новая ручная правка")
+}
+
+@Test func workspaceAutosaveDoesNotInvalidateBackgroundCommit() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Background build")
+    let workspaceState = ProjectWorkspaceState(
+        prompt: "Собери динамичный фильм",
+        preset: .adventure,
+        targetMinutes: 2
+    )
+
+    try await store.updateWorkspaceState(workspaceState)
+    let snapshot = await store.snapshot()
+    var auxiliary = workspaceState
+    auxiliary.directorDraft = "Черновик"
+    try await store.updateWorkspaceState(auxiliary)
+    try await store.update(ifRevision: snapshot.revision) { project in
+        project.name = "Готовый фоновый результат"
+    }
+
+    let manifest = await store.manifest
+    #expect(manifest.name == "Готовый фоновый результат")
+    #expect(manifest.workspaceState == auxiliary)
 }
 
 @Test func pipelineDiscardsOutOfOrderOptimisticCommits() async throws {
@@ -281,8 +380,8 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     #expect(result.timeline.music == nil)
     #expect(result.timeline.effectiveAudioClips.count == 1)
     #expect(result.timeline.effectiveAudioClips.first?.role == .dialogue)
-    #expect(abs((result.timeline.effectiveAudioClips.first?.adjustments.effectiveVolume ?? 1) - 0.3) < 0.000_1)
-    #expect(abs(result.timeline.effectiveOriginalAudioVolume - 0.3) < 0.000_1)
+    #expect(abs((result.timeline.effectiveAudioClips.first?.adjustments.effectiveVolume ?? 1) - DirectorSourceAudioPolicy.duck.volume) < 0.000_1)
+    #expect(abs(result.timeline.effectiveOriginalAudioVolume - DirectorSourceAudioPolicy.duck.volume) < 0.000_1)
     #expect(result.timeline.effectiveTitleItems.isEmpty)
     #expect(result.issues.contains { $0.kind == .forbiddenMusic && $0.resolution == .repaired })
     #expect(result.issues.contains { $0.kind == .forbiddenTitles && $0.resolution == .repaired })
@@ -384,7 +483,7 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     #expect(result.timeline.music?.trackID == requestedTrackID)
     #expect(result.timeline.effectiveOriginalAudioVolume == 0)
     #expect(result.timeline.items.first?.effectiveAudioAdjustments.muted == true)
-    #expect(result.timeline.effectiveAudioClips.first?.adjustments.muted == true)
+    #expect(result.timeline.effectiveAudioClips.isEmpty)
     #expect(result.timeline.effectiveTitleItems.isEmpty)
     #expect(!result.canPersist)
     #expect(result.blockingIssues.contains { $0.kind == .exactDuration })
@@ -392,7 +491,7 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     #expect(result.issues.contains { $0.kind == .musicPolicy && $0.resolution == .repaired })
 }
 
-@Test func directorBriefContractEnforcesSoftMusicDuckAndSparseKeyTitles() {
+@Test func directorBriefContractEnforcesSoftMusicDuckAndPreservesEveryKeyTitle() {
     let brief = DirectorBrief(
         requestedDuration: 120,
         musicPolicy: .soft,
@@ -407,10 +506,10 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
         directorBrief: brief
     )
     let assetID = UUID()
-    let titles = [0.0, 10, 45, 80].map { start in
+    let titles = zip([0.0, 10, 45, 80], ["Старт маршрута", "Первый подъём", "Главный спуск", "Финиш"]).map { start, text in
         TitleTimelineItem(
             kind: .chapter,
-            text: "Глава \(Int(start))",
+            text: text,
             startTime: start,
             duration: 2,
             explanation: ["Автоматический режиссёрский титр"]
@@ -447,9 +546,10 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     #expect(result.canPersist)
     #expect(result.timeline.music?.style == .calm)
     #expect((result.timeline.music?.volume ?? 1) <= 0.14)
-    #expect(abs(result.timeline.effectiveOriginalAudioVolume - 0.28) < 0.000_1)
-    #expect(abs((result.timeline.effectiveAudioClips.first?.adjustments.effectiveVolume ?? 1) - 0.28) < 0.000_1)
-    #expect(result.timeline.effectiveTitleItems.count == 2)
+    #expect(abs(result.timeline.effectiveOriginalAudioVolume - DirectorSourceAudioPolicy.duck.volume) < 0.000_1)
+    #expect(abs((result.timeline.effectiveAudioClips.first?.adjustments.effectiveVolume ?? 1) - DirectorSourceAudioPolicy.duck.volume) < 0.000_1)
+    #expect(result.timeline.audioDucking?.enabled == false)
+    #expect(result.timeline.effectiveTitleItems.map(\.id) == titles.map(\.id))
     #expect(result.timeline.effectiveTitleItems.allSatisfy {
         !SmartTitleEngine.isMeaningless($0.text) && !SmartTitleEngine.isStructuralPlaceholder($0.text)
     })
@@ -512,14 +612,14 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     let plan = StoryPlan(
         prompt: "Кинематографичный фильм",
         preset: .cinematic,
-        constraints: StoryConstraints(targetDuration: 5),
+        constraints: StoryConstraints(targetDuration: 10),
         chapters: []
     )
     let timeline = Timeline(
         storyPlanID: plan.id,
         width: 1_920,
         height: 1_080,
-        items: [TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)],
+        items: [TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 10, timelineStart: 0, timelineDuration: 10)],
         titleItems: [TitleTimelineItem(
             kind: .chapter,
             text: "Поездка на багги",
@@ -558,12 +658,12 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     let plan = StoryPlan(
         prompt: "Короткий фильм",
         preset: .story,
-        constraints: StoryConstraints(targetDuration: 5),
+        constraints: StoryConstraints(targetDuration: 10),
         chapters: []
     )
     var timeline = Timeline(
         storyPlanID: plan.id,
-        items: [TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)]
+        items: [TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 10, timelineStart: 0, timelineDuration: 10)]
     )
     let score = PerceptualScore(
         continuity: 1,
@@ -627,12 +727,12 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     let plan = StoryPlan(
         prompt: "Фильм",
         preset: .story,
-        constraints: StoryConstraints(targetDuration: 5),
+        constraints: StoryConstraints(targetDuration: 10),
         chapters: []
     )
     let timeline = Timeline(
         storyPlanID: plan.id,
-        items: [TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)]
+        items: [TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 10, timelineStart: 0, timelineDuration: 10)]
     )
     let profile = PreviewDeliveryProfile(
         sourcePreviewContentMode: .aspectFill,

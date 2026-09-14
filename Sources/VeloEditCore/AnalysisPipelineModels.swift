@@ -399,11 +399,13 @@ public actor AnalysisETAEngine {
             return rawEstimate
         }
 
-        // Once calibrated, ETA behaves as remaining time. New sparse milestone
-        // reports may lower it faster, but cannot make it count upwards.
+        // Count down between sparse milestones, but allow measured slowdowns
+        // to correct an optimistic forecast. An expired forecast is recalibrated.
         let elapsedSinceUpdate = max(0, now.timeIntervalSince(previousDate))
         let countdown = max(0, previous - elapsedSinceUpdate)
-        let result = min(rawEstimate, countdown)
+        let result = countdown > 0
+            ? (rawEstimate <= countdown ? rawEstimate : countdown * 0.75 + rawEstimate * 0.25)
+            : rawEstimate
         stableEstimate = result
         stableEstimateUpdatedAt = now
         return result

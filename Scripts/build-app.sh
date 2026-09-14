@@ -17,10 +17,11 @@ build_cache_root="${VELOEDIT_BUILD_CACHE_ROOT:-$HOME/Library/Caches/VeloEditBuil
 app_scratch_path="${VELOEDIT_SCRATCH_PATH:-$build_cache_root/swift}"
 mkdir -p /tmp/veloedit-build-temp "$app_scratch_path/ModuleCache"
 build_package_dir="$repo_dir"
-if [[ "$repo_dir" == "$HOME/Documents/"* ]]; then
+if [[ "$repo_dir" == "$HOME/Documents/"* || "${VELOEDIT_BUILD_SNAPSHOT:-0}" == "1" ]]; then
   # Files in Documents may be rematerialized by File Provider while Swift is
   # compiling them. Use an immutable snapshot only while the repository still
-  # lives in that managed folder. Normal builds use the stable source path so
+  # lives in that managed folder, or when explicitly requested while other
+  # editor tasks are changing sources. Normal builds use the stable path so
   # SwiftPM and Cargo can reuse their caches without conflict copies.
   mkdir -p "$source_snapshot"
   cp "$repo_dir/Package.swift" "$source_snapshot/Package.swift"
@@ -49,18 +50,37 @@ CARGO_HOME="$ovrley_cargo_home" CARGO_TARGET_DIR="$ovrley_target" \
 ovrley_binary="$ovrley_target/release/veloedit_ovrley_bridge"
 
 scratch_args=(--scratch-path "$app_scratch_path")
-swift build --package-path "$build_package_dir" --disable-sandbox "${scratch_args[@]}" --jobs "${VELOEDIT_BUILD_JOBS:-2}" -c "$configuration" --product VeloEdit
 binary_path="$(swift build --package-path "$build_package_dir" --disable-sandbox "${scratch_args[@]}" -c "$configuration" --show-bin-path)/VeloEdit"
+product_args=(--product VeloEdit)
+if [[ "${VELOEDIT_BUILD_CLI:-0}" == "1" ]]; then
+  # Both executables belong to one SwiftPM build. Releasing its build lock
+  # between app and CLI lets another snapshot replace the shared outputs.
+  product_args=()
+fi
+swift build --package-path "$build_package_dir" --disable-sandbox "${scratch_args[@]}" --jobs "${VELOEDIT_BUILD_JOBS:-2}" -c "$configuration" "${product_args[@]}"
+cp "$binary_path" "$staging_root/VeloEdit"
+
+# Optional acceptance runner built from exactly the same immutable sources.
+# Separate scratch paths let concurrent tasks validate without compiler races.
+if [[ "${VELOEDIT_BUILD_CLI:-0}" == "1" ]]; then
+  mkdir -p "$output_dir"
+  # Publish atomically, including while a validation process is running the
+  # previous executable. Its mapped binary must remain intact until it exits.
+  cp "${binary_path:h}/veloedit-cli" "$output_dir/.veloedit-cli-$$"
+  mv -f "$output_dir/.veloedit-cli-$$" "$output_dir/veloedit-cli"
+fi
 
 mkdir -p "$staging_app/Contents/MacOS" "$staging_app/Contents/Resources"
-cp "$binary_path" "$staging_app/Contents/MacOS/VeloEdit"
+cp "$staging_root/VeloEdit" "$staging_app/Contents/MacOS/VeloEdit"
 cp "$ovrley_binary" "$staging_app/Contents/MacOS/VeloEditOVRLEY"
 cp "$build_package_dir/Resources/Info.plist" "$staging_app/Contents/Info.plist"
 cp "$build_package_dir/Resources/AppIcon.icns" "$staging_app/Contents/Resources/AppIcon.icns"
 cp -R "$build_package_dir/Resources/Backgrounds" "$staging_app/Contents/Resources/Backgrounds"
 cp -R "$build_package_dir/Resources/TransitionPreviews" "$staging_app/Contents/Resources/TransitionPreviews"
 cp -R "$build_package_dir/Resources/Music" "$staging_app/Contents/Resources/Music"
+cp -R "$build_package_dir/Resources/Ollama" "$staging_app/Contents/Resources/Ollama"
 cp -R "$build_package_dir/ThirdParty/OVRLEY" "$staging_app/Contents/Resources/OVRLEY-Source"
+python3 "$repo_dir/Scripts/write-build-identity.py" "$build_package_dir" "$staging_app"
 if [[ "$configuration" == "release" ]]; then
   /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEdit"
   /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEditOVRLEY"
@@ -96,7 +116,10 @@ fi
 # marker before strict verification. Clearing it immediately after `cp` races
 # the asynchronous metadata write on managed Documents folders.
 sleep 1
-xattr -cr "$app_dir"
+# Some APFS/File Provider combinations return EINVAL for individual copied
+# resource xattrs even though the bundle itself has no invalid attributes.
+# The explicit removals and signature verification below remain authoritative.
+xattr -cr "$app_dir" 2>/dev/null || true
 xattr -d com.apple.FinderInfo "$app_dir" 2>/dev/null || true
 xattr -d 'com.apple.fileprovider.fpfs#P' "$app_dir" 2>/dev/null || true
 if ! cmp "$staging_app/Contents/MacOS/VeloEdit" "$app_dir/Contents/MacOS/VeloEdit"; then

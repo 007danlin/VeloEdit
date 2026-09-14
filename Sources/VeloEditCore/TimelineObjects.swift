@@ -623,6 +623,7 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
     public var text: String
     public var additionalText: String?
     public var callToAction: String?
+    public var chapterNumber: Int?
     public var startTime: Double
     public var duration: Double
     public var track: Int
@@ -633,6 +634,9 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
     public var enabled: Bool
     public var targetClipID: UUID?
     public var explanation: [String]
+    /// An edited automatic title is now authoritative user content. Optional
+    /// so existing project files continue to decode without migration.
+    public var userEdited: Bool?
 
     public init(
         id: UUID = UUID(),
@@ -641,6 +645,7 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
         text: String,
         additionalText: String? = nil,
         callToAction: String? = nil,
+        chapterNumber: Int? = nil,
         startTime: Double,
         duration: Double,
         track: Int = 0,
@@ -658,6 +663,7 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
         self.text = text
         self.additionalText = additionalText
         self.callToAction = callToAction
+        self.chapterNumber = chapterNumber.map { min(999, max(1, $0)) }
         self.startTime = max(0, startTime)
         self.duration = max(0.05, duration)
         self.track = max(0, track)
@@ -668,6 +674,7 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
         self.enabled = enabled
         self.targetClipID = targetClipID
         self.explanation = explanation
+        self.userEdited = nil
     }
 
     public var endTime: Double { startTime + duration }
@@ -677,6 +684,26 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
     public var primaryText: String {
         get { text }
         set { text = newValue }
+    }
+    public var effectiveChapterNumber: Int {
+        if let chapterNumber { return min(999, max(1, chapterNumber)) }
+        // Older Chapter items kept their only editable number in the subtitle.
+        if let additionalText,
+           additionalText.range(of: #"(?i)^\s*(глава|chapter)\s+\d{1,3}\s*$"#, options: .regularExpression) != nil,
+           let number = additionalText.split(whereSeparator: { !$0.isNumber }).last.flatMap({ Int($0) }) {
+            return min(999, max(1, number))
+        }
+        return 1
+    }
+
+    public var formattedChapterNumber: String { String(format: "%02d", effectiveChapterNumber) }
+
+    public mutating func setChapterNumber(_ number: Int) {
+        chapterNumber = min(999, max(1, number))
+        if let additionalText,
+           additionalText.range(of: #"(?i)^\s*(глава|chapter)\s+\d{1,3}\s*$"#, options: .regularExpression) != nil {
+            self.additionalText = additionalText.replacingOccurrences(of: #"\d{1,3}"#, with: formattedChapterNumber, options: .regularExpression)
+        }
     }
     public var secondaryText: String? {
         get { additionalText }

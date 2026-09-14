@@ -175,11 +175,16 @@ public struct MontageScoringFeatures: Sendable {
     public var candidates: [UUID: Candidate]
     public var assets: [UUID: MediaAsset]
     public var semanticIndex: SemanticSceneIndex
+    public var editorialContext: EditorialAnalysisContext
 
     public init(assets: [MediaAsset], analyses: [AnalysisResult]) {
         self.candidates = Dictionary(uniqueKeysWithValues: analyses.flatMap(\.directorCandidates).map { ($0.id, $0) })
         self.assets = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
         self.semanticIndex = SemanticSceneIndex(candidates: Array(self.candidates.values))
+        // Shot-family clustering compares temporal visual evidence and is the
+        // expensive, immutable part of scoring. Perceptual review evaluates
+        // many transactions against the same analyses, so compute it once.
+        self.editorialContext = EditorialAnalysisContext(analyses: analyses)
     }
 }
 
@@ -271,7 +276,8 @@ public struct DefaultMontageGlobalScorer: MontageGlobalScoring, Sendable {
         let eventAggregate = eventScores.order * 0.23 + eventScores.diversity * 0.13
             + eventScores.coverage * 0.18 + eventScores.chronology * 0.22
             + eventScores.sceneDiversity * 0.11 + eventScores.separation * 0.13
-        let total = plan.eventStory == nil ? baseTotal : baseTotal * 0.84 + eventAggregate * 0.16
+        let legacyTotal = plan.eventStory == nil ? baseTotal : baseTotal * 0.84 + eventAggregate * 0.16
+        let total = plan.narrativeBeatPlan == nil ? legacyTotal : EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, context: features.editorialContext).editorialScore
         return MontageGlobalScore(
             total: total,
             highlightQuality: highlight,
@@ -1050,12 +1056,17 @@ public struct MontageVariantSelector: Sendable {
         searchDiagnostics: VariantSelectionDiagnostics? = nil,
         personalTasteProfile: PersonalTasteProfile? = nil,
         tasteContext: TasteContext? = nil,
-        avoidingTimeline: Timeline? = nil
+        avoidingTimeline: Timeline? = nil,
+        requireProductionEvidence: Bool = false
     ) -> DirectedMontageVariant? {
         let features = MontageScoringFeatures(assets: assets, analyses: analyses)
         let candidates = features.candidates
         var personalScores: [String: PersonalTasteScore] = [:]
-        let variants = zip(stories, timelines).map { story, timeline in
+        let variants = zip(stories, timelines).map { story, source in
+            var timeline = source
+            if story.plan.narrativeBeatPlan != nil {
+                timeline.editorialReview = source.editorialReview ?? EditorialQualityGate().review(timeline: source, plan: story.plan, analyses: analyses)
+            }
             let baseScore: MontageGlobalScore
             if let defaultScorer = scorer as? DefaultMontageGlobalScorer {
                 baseScore = defaultScorer.score(plan: story.plan, timeline: timeline, features: features, analyses: analyses)
@@ -1081,9 +1092,26 @@ public struct MontageVariantSelector: Sendable {
         guard !variants.isEmpty else { return nil }
         let distanceCalculator = VariantDistanceCalculator()
         let requiredDistance = searchDiagnostics?.minimumRequiredDistance ?? 0.16
-        let sorted = variants.sorted { $0.score.total > $1.score.total }
+        let sorted = variants.filter { variant in
+            guard AutomaticFilmDurationPolicy.meetsMinimum(variant.timeline) else { return false }
+            guard let review = variant.timeline.editorialReview else { return !requireProductionEvidence }
+            return requireProductionEvidence ? review.candidateEligible : review.rankingEligible
+        }.sorted { lhs, rhs in
+            if let a = lhs.timeline.editorialReview, let b = rhs.timeline.editorialReview {
+                if a.criticalCount != b.criticalCount { return a.criticalCount < b.criticalCount }
+                if a.highCount != b.highCount { return a.highCount < b.highCount }
+                if abs(a.editorialScore - b.editorialScore) > 0.001 { return a.editorialScore > b.editorialScore }
+            }
+            return lhs.score.total > rhs.score.total
+        }
+        guard !sorted.isEmpty else { return nil }
         var diverse: [DirectedMontageVariant] = []
         var rejectionRecords = searchDiagnostics?.rejectedVariants ?? []
+        for variant in variants where variant.timeline.editorialReview.map({ requireProductionEvidence ? !$0.candidateEligible : !$0.rankingEligible }) == true {
+            let review = variant.timeline.editorialReview!
+            let reasons = review.findings.filter { $0.severity >= 2 }.map(\.reason)
+            rejectionRecords.append(VariantRejectionRecord(strategy: variant.story.strategy, stage: "editorial quality gate", reason: reasons.isEmpty ? "Editorial score/components ниже production thresholds" : reasons.joined(separator: "; "), absoluteScore: review.editorialScore))
+        }
         var finalRejectedAsSimilar = 0
         for variant in sorted {
             let nearest = diverse.map { existing in
@@ -1240,6 +1268,11 @@ public struct MontageVariantSelector: Sendable {
             tournamentScores[strategy] = pairwiseUtility * 0.68 + variant.score.total * 0.32
         }
         guard var winner = viable.max(by: {
+            if let a = $0.timeline.editorialReview, let b = $1.timeline.editorialReview {
+                if a.criticalCount != b.criticalCount { return a.criticalCount > b.criticalCount }
+                if a.highCount != b.highCount { return a.highCount > b.highCount }
+                if abs(a.editorialScore - b.editorialScore) > 0.001 { return a.editorialScore < b.editorialScore }
+            }
             let left = tournamentScores[$0.story.strategy, default: 0]
             let right = tournamentScores[$1.story.strategy, default: 0]
             return left == right ? $0.score.total < $1.score.total : left < right

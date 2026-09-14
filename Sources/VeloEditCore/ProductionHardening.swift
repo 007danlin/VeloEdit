@@ -9,6 +9,160 @@ import CoreGraphics
 /// not execute two subtly different edit algorithms.
 public enum TimelineMutationEngine {
     @discardableResult
+    public static func insertPrimaryItem(
+        in timeline: inout Timeline,
+        item proposedItem: TimelineItem,
+        atPrimaryIndex requestedIndex: Int? = nil
+    ) -> Bool {
+        guard !timeline.items.contains(where: { $0.id == proposedItem.id }) else { return false }
+        let previousItems = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
+        var item = proposedItem
+        item.overlay = nil
+        normalize(item: &item)
+        var primaries = timeline.items.filter { $0.overlay == nil }
+        let connected = timeline.items.filter { $0.overlay != nil }
+        let index = min(max(0, requestedIndex ?? primaries.count), primaries.count)
+        primaries.insert(item, at: index)
+        timeline.items = TimelineTiming.retimed(primaries + connected)
+        alignTelemetry(in: &timeline, previousItems: previousItems)
+        return true
+    }
+
+    @discardableResult
+    public static func insertConnectedItem(
+        in timeline: inout Timeline,
+        item proposedItem: TimelineItem,
+        atTimelineStart requestedStart: Double
+    ) -> Bool {
+        guard !timeline.items.contains(where: { $0.id == proposedItem.id }) else { return false }
+        timeline.items = TimelineTiming.retimed(timeline.items)
+        let primaries = timeline.items.filter { $0.overlay == nil }
+        guard !primaries.isEmpty else { return false }
+
+        var item = proposedItem
+        normalize(item: &item)
+        let start = clampedInsertionStart(
+            requestedStart,
+            timelineDuration: timeline.duration,
+            frameRate: timeline.frameRate
+        )
+        guard let base = primaries.first(where: {
+            start >= $0.timelineStart && start < $0.timelineStart + $0.timelineDuration
+        }) ?? primaries.min(by: {
+            abs($0.timelineStart - start) < abs($1.timelineStart - start)
+        }) else { return false }
+
+        item.timelineStart = start
+        let style = item.overlay?.style ?? .cutaway
+        item.overlay = OverlaySettings(
+            style: style,
+            baseItemID: base.id,
+            corner: item.overlay?.corner ?? .topRight,
+            scale: item.overlay?.scale ?? 0.34,
+            startOffset: start - base.timelineStart
+        )
+        item.timelineDuration = min(item.timelineDuration, max(0.05, timeline.duration - start))
+        item.sourceDuration = min(item.sourceDuration, item.timelineDuration * item.speed)
+        timeline.items.append(item)
+        timeline.items = TimelineTiming.retimed(timeline.items)
+        return true
+    }
+
+    @discardableResult
+    public static func insertAudioClip(in timeline: inout Timeline, clip proposedClip: TimelineAudioClip) -> Bool {
+        guard !timeline.effectiveAudioClips.contains(where: { $0.id == proposedClip.id }), timeline.duration > 0 else { return false }
+        var clip = proposedClip
+        clip.sourceStart = finiteNonNegative(clip.sourceStart)
+        clip.sourceDuration = max(0.05, finiteNonNegative(clip.sourceDuration))
+        clip.timelineDuration = max(0.05, finiteNonNegative(clip.timelineDuration))
+        clip.timelineStart = clampedInsertionStart(
+            clip.timelineStart,
+            timelineDuration: timeline.duration,
+            frameRate: timeline.frameRate
+        )
+        clip.timelineDuration = min(clip.timelineDuration, max(0.05, timeline.duration - clip.timelineStart))
+        clip.sourceDuration = min(clip.sourceDuration, clip.timelineDuration * clip.effectiveSpeed)
+        timeline.audioClips = timeline.effectiveAudioClips + [clip]
+        return true
+    }
+
+    @discardableResult
+    public static func insertTelemetry(in timeline: inout Timeline, item proposedItem: TimelineTelemetryItem) -> Bool {
+        guard !timeline.effectiveTelemetryItems.contains(where: { $0.id == proposedItem.id }),
+              proposedItem.targetClipID.map({ id in timeline.items.contains(where: { $0.id == id }) }) ?? true else { return false }
+        var item = proposedItem
+        item.sourceStart = finiteNonNegative(item.sourceStart)
+        item.timelineDuration = max(0.05, finiteNonNegative(item.timelineDuration))
+        item.timelineStart = clampedInsertionStart(
+            item.timelineStart,
+            timelineDuration: timeline.duration,
+            frameRate: timeline.frameRate
+        )
+        item.timelineDuration = min(item.timelineDuration, max(0.05, timeline.duration - item.timelineStart))
+        timeline.telemetryItems = timeline.effectiveTelemetryItems + [item]
+        return true
+    }
+
+    @discardableResult
+    public static func insertEffect(in timeline: inout Timeline, effect proposedEffect: EffectTimelineItem) -> Bool {
+        guard !timeline.effectiveEffects.contains(where: { $0.id == proposedEffect.id }),
+              proposedEffect.targetClipID.map({ id in timeline.items.contains(where: { $0.id == id }) }) ?? true else { return false }
+        var effect = proposedEffect
+        effect.duration = max(0.05, finiteNonNegative(effect.duration))
+        effect.startTime = clampedInsertionStart(
+            effect.startTime,
+            timelineDuration: timeline.duration,
+            frameRate: timeline.frameRate
+        )
+        effect.duration = min(effect.duration, max(0.05, timeline.duration - effect.startTime))
+        effect.intensity = min(max(0, effect.intensity.isFinite ? effect.intensity : 0), 1)
+        timeline.effects = timeline.effectiveEffects + [effect]
+        return true
+    }
+
+    @discardableResult
+    public static func insertTitle(in timeline: inout Timeline, title proposedTitle: TitleTimelineItem) -> Bool {
+        let clean = proposedTitle.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty,
+              !timeline.effectiveTitleItems.contains(where: { $0.id == proposedTitle.id }),
+              proposedTitle.targetClipID.map({ id in timeline.items.contains(where: { $0.id == id }) }) ?? true else { return false }
+        var title = proposedTitle
+        title.text = clean
+        title.startTime = clampedInsertionStart(
+            title.startTime,
+            timelineDuration: timeline.duration,
+            frameRate: timeline.frameRate
+        )
+        title.duration = min(max(0.05, title.duration), max(0.05, timeline.duration - title.startTime))
+        timeline.titleItems = timeline.effectiveTitleItems + [title]
+        return true
+    }
+
+    @discardableResult
+    public static func replaceTransition(
+        in timeline: inout Timeline,
+        incomingClipID: UUID,
+        with proposedTransition: TimelineTransitionItem?
+    ) -> Bool {
+        guard let incomingIndex = timeline.items.firstIndex(where: { $0.id == incomingClipID }) else { return false }
+        let previousItems = timeline.effectiveTransitionItems
+        var items = previousItems.filter { $0.incomingClipID != incomingClipID }
+        if var transition = proposedTransition {
+            guard transition.incomingClipID == incomingClipID,
+                  timeline.items.contains(where: { $0.id == transition.outgoingClipID }) else { return false }
+            transition.startTime = timeline.items[incomingIndex].timelineStart
+            transition.duration = min(max(0.08, transition.duration), 4)
+            items.append(transition)
+            timeline.items[incomingIndex].transition = transition.enabled ? transition.style.rawValue : nil
+        } else {
+            timeline.items[incomingIndex].transition = nil
+        }
+        guard items != previousItems || proposedTransition == nil else { return false }
+        timeline.transitionItems = items
+        return true
+    }
+
+    @discardableResult
     public static func updateItem(
         in timeline: inout Timeline,
         id: UUID,
@@ -195,6 +349,7 @@ public enum TimelineMutationEngine {
         )
         items[index].duration = min(items[index].duration, max(0.05, timeline.duration - items[index].startTime))
         guard items[index] != before else { return false }
+        items[index].userEdited = true
         timeline.titleItems = items
         return true
     }
@@ -239,6 +394,17 @@ public enum TimelineMutationEngine {
     ) -> Double {
         TimelineTiming.quantized(
             min(max(0, value.isFinite ? value : 0), max(0, timelineDuration - duration)),
+            frameRate: frameRate
+        )
+    }
+
+    private static func clampedInsertionStart(
+        _ value: Double,
+        timelineDuration: Double,
+        frameRate: Double
+    ) -> Double {
+        TimelineTiming.quantized(
+            min(max(0, value.isFinite ? value : 0), max(0, timelineDuration - 0.05)),
             frameRate: frameRate
         )
     }
@@ -631,8 +797,8 @@ public struct ExplicitDeliveryRequirements: Hashable, Sendable {
             forbidsTitles = brief.titlePolicy == .none
             keyTitlesOnly = brief.titlePolicy == .keyOnly
             originalAudioVolume = brief.sourceAudioPolicy.volume
-            requiresExactDuration = true
-            exactDuration = brief.requestedDuration
+            requiresExactDuration = plan.requiresExactDuration
+            exactDuration = plan.exactDurationRequirement
             exactClipCount = plan.constraints.targetClipCount
             canvasFormat = brief.canvasFormat
             musicPolicy = brief.musicPolicy
@@ -645,7 +811,7 @@ public struct ExplicitDeliveryRequirements: Hashable, Sendable {
             "без музы", "убери музыку", "убрать музыку", "не добавляй музыку",
             "музыка не нужна", "no music", "without music", "remove music"
         ])
-        forbidsTitles = Self.containsAny(prompt, [
+        forbidsTitles = EditorialIntentEnforcer.titleRequest(plan.prompt).map { !$0 } ?? Self.containsAny(prompt, [
             "без титр", "убери титр", "убрать титр", "не добавляй титр",
             "титры не нужны", "без надпис", "no titles", "without titles", "remove titles"
         ])
@@ -658,8 +824,9 @@ public struct ExplicitDeliveryRequirements: Hashable, Sendable {
         exactDuration = requiresExactDuration ? plan.constraints.targetDuration : nil
         exactClipCount = plan.constraints.targetClipCount
         canvasFormat = nil
-        musicPolicy = nil
-        musicTrackID = nil
+        musicPolicy = plan.explicitMusicTrackID == nil ? nil : .specificTrack
+        musicTrackID = plan.explicitMusicTrackID
+        if musicTrackID != nil { forbidsMusic = false }
         titlePolicy = nil
     }
 
@@ -678,6 +845,7 @@ public enum TimelineDeliveryIssueKind: String, Codable, CaseIterable, Hashable, 
     case generatedTitleQuality
     case titleOverlap
     case exactDuration
+    case minimumDuration
     case exactClipCount
     case missingRequiredTag
     case excludedTagPresent
@@ -687,6 +855,7 @@ public enum TimelineDeliveryIssueKind: String, Codable, CaseIterable, Hashable, 
     case timelinePreviewCrop
     case unstableHighResolutionPreview
     case renderedBlackFrame
+    case editorialQuality
 }
 
 public enum TimelineDeliveryIssueResolution: String, Codable, CaseIterable, Hashable, Sendable {
@@ -949,17 +1118,32 @@ public struct TimelineDeliveryContract: Sendable {
                         kind: .titlePolicy,
                         resolution: .repaired,
                         message: titlePolicy == .keyOnly
-                            ? "Оставлены только редкие ключевые титры, подтверждённые содержанием."
+                            ? "Сохранены названия частей и ключевых событий без ограничения по количеству."
                             : "Количество титров ограничено выбранным минимальным режимом."
                     ))
                 }
             }
         }
 
+        if EditorialPresentationPolicy.requiresChapterTitles(plan) {
+            let before = timeline.effectiveTitleItems
+            timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan)
+            if before != timeline.effectiveTitleItems {
+                issues.append(.init(kind: .titlePolicy, resolution: .repaired,
+                    message: "Титры восстановлены в начале каждой части, включая начало фильма."))
+            }
+            for block in EditorialPresentationPolicy.missingChapterTitles(in: timeline, plan: plan) {
+                issues.append(.init(kind: .titlePolicy, resolution: .blocking,
+                    message: "У части «\(block.text)» на \(block.start) с нет читаемого титра с самого начала."))
+            }
+        }
+
         if let requestedVolume = requirements.originalAudioVolume {
             let clamped = min(max(0, requestedVolume), 1)
             var repaired = abs(timeline.effectiveOriginalAudioVolume - clamped) > 0.000_1
-            timeline.originalAudioVolume = clamped
+            let previousAudio = timeline
+            timeline = SourceAudioMixPolicy.applyingRequestedVolume(clamped, to: timeline)
+            repaired = repaired || timeline != previousAudio
             if plan.directorBrief != nil {
                 timeline.items = timeline.items.map { item in
                     guard item.kind == .video else { return item }
@@ -970,7 +1154,7 @@ public struct TimelineDeliveryContract: Sendable {
                         repaired = true
                     }
                     // Primary source audio is mixed through the global brief
-                    // level. A neutral per-clip gain makes 1/.28/0 exact.
+                    // level. A neutral per-clip gain makes the brief level exact.
                     adjustments.volume = 1
                     adjustments.muted = shouldMute
                     copy.audioAdjustments = adjustments
@@ -1009,6 +1193,10 @@ public struct TimelineDeliveryContract: Sendable {
             }
         }
 
+        if !AutomaticFilmDurationPolicy.meetsMinimum(timeline) {
+            issues.append(.init(kind: .minimumDuration, resolution: .blocking,
+                                message: AutomaticFilmDurationPolicy.failureMessage(for: timeline)))
+        }
         if requirements.requiresExactDuration {
             let tolerance = max(0.001, 1 / max(1, timeline.frameRate))
             let exactDuration = requirements.exactDuration ?? plan.constraints.targetDuration
@@ -1197,6 +1385,13 @@ public struct TimelineDeliveryContract: Sendable {
             timeline.directorRun = run
         }
 
+        timeline = EditorialIntentEnforcer.enforce(timeline, plan: plan)
+        if plan.narrativeBeatPlan != nil {
+            let review = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses)
+            for finding in review.findings where finding.severity >= 3 {
+                issues.append(.init(kind: .editorialQuality, resolution: .blocking, message: "[\(finding.kind.rawValue)] \(finding.reason)"))
+            }
+        }
         return TimelineDeliveryValidation(timeline: timeline, issues: issues)
     }
 

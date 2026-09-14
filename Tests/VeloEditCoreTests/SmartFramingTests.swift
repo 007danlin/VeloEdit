@@ -174,7 +174,7 @@ private func framingPlan(
     #expect(adjustments.subjectReframe != nil)
 }
 
-@Test func canvasChangeClearsStaleReframeAndSafelyFitsWithoutTracking() throws {
+@Test func canvasChangeClearsStaleReframeAndUsesCenterFillWithoutTracking() throws {
     let asset = MediaAsset(
         originalURL: URL(fileURLWithPath: "/tmp/untracked.mov"),
         kind: .video,
@@ -206,8 +206,79 @@ private func framingPlan(
         analyses: [AnalysisResult(assetID: asset.id, analyzedContentHash: "a", candidates: [candidate])]
     ).timeline
 
-    #expect(result.items[0].effectiveVideoAdjustments.crop == .fit)
+    #expect(result.items[0].effectiveVideoAdjustments.crop == .fill)
     #expect(result.items[0].effectiveVideoAdjustments.subjectReframe == nil)
+}
+
+@Test func legacyPortraitTimelineRecoversSubjectAwareFillFromAnalysis() throws {
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/legacy-landscape.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "legacy-landscape",
+        metadata: MediaMetadata(duration: 10, width: 1920, height: 1080, frameRate: 30)
+    )
+    let candidate = Candidate(
+        assetID: asset.id,
+        sourceStart: 0,
+        sourceDuration: 5,
+        scores: ClipScores(quality: 0.9, interest: 0.9, action: 0.5, stability: 0.9),
+        insights: CandidateInsights(subjectTracking: framingTracking())
+    )
+    let legacyItem = TimelineItem(
+        candidateID: candidate.id,
+        assetID: asset.id,
+        kind: .video,
+        sourceDuration: 5,
+        timelineStart: 0,
+        timelineDuration: 5,
+        videoAdjustments: nil
+    )
+    let legacy = Timeline(
+        storyPlanID: UUID(),
+        width: 1080,
+        height: 1920,
+        items: [legacyItem]
+    )
+
+    let repaired = AutomaticFramingPolicy.applying(
+        to: legacy,
+        assets: [asset],
+        analyses: [AnalysisResult(assetID: asset.id, analyzedContentHash: "a", candidates: [candidate])]
+    )
+
+    let adjustments = try #require(repaired.items.first?.videoAdjustments)
+    #expect(adjustments.crop == .fill)
+    #expect(adjustments.subjectReframe != nil)
+}
+
+@Test func explicitFitIsPreservedByAutomaticFraming() throws {
+    let asset = MediaAsset(
+        originalURL: URL(fileURLWithPath: "/tmp/explicit-fit.mov"),
+        kind: .video,
+        byteSize: 1,
+        contentHash: "explicit-fit",
+        metadata: MediaMetadata(duration: 10, width: 1920, height: 1080, frameRate: 30)
+    )
+    let item = TimelineItem(
+        assetID: asset.id,
+        kind: .video,
+        sourceDuration: 5,
+        timelineStart: 0,
+        timelineDuration: 5,
+        videoAdjustments: VideoAdjustments(crop: .fit)
+    )
+    let timeline = Timeline(storyPlanID: UUID(), width: 1080, height: 1920, items: [item])
+
+    let repaired = AutomaticFramingPolicy.applying(to: timeline, assets: [asset], analyses: [])
+
+    #expect(repaired.items.first?.effectiveVideoAdjustments.crop == .fit)
+    #expect(repaired.items.first?.effectiveVideoAdjustments.subjectReframe == nil)
+}
+
+@Test func wideTrackedGroupRequiresSafeFitInsteadOfCroppingPeople() {
+    let tracking = framingTracking(region: NormalizedRegion(x: 0.30, y: 0.25, width: 0.55, height: 0.45))
+    #expect(SubjectAwareReframeEngine().plan(tracking: tracking, sourceAspectRatio: 16.0 / 9.0, targetAspectRatio: 9.0 / 16.0) == nil)
 }
 
 @Test func stillImageGeometryIncludesAspectFillBaseScale() {

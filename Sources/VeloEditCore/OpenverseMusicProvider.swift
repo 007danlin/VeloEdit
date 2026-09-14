@@ -19,6 +19,7 @@ public enum OpenverseMusicError: LocalizedError {
 public actor OpenverseMusicProvider: MusicProvider {
     public nonisolated let identifier = "openverse"
     public nonisolated let sourceProvider: MusicSourceProvider = .openverse
+    public nonisolated let fallbackTier = 2
     public nonisolated let priority = 100
 
     private struct SearchResponse: Decodable {
@@ -67,68 +68,35 @@ public actor OpenverseMusicProvider: MusicProvider {
 
     public init(library: LocalMusicLibrary, session: URLSession? = nil) {
         self.library = library
-        if let session {
-            self.session = session
-        } else {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.waitsForConnectivity = false
-            configuration.timeoutIntervalForRequest = Self.searchTimeout
-            configuration.timeoutIntervalForResource = Self.downloadTimeout
-            self.session = URLSession(configuration: configuration)
-        }
+        self.session = session ?? MusicAudioDownloader.makeSession()
     }
 
     public func availability() async -> MusicProviderAvailability { .available }
 
     public func search(_ intent: MusicIntent) async throws -> [MusicProviderTrack] {
+        guard let url = Self.searchURL(for: intent) else { throw OpenverseMusicError.invalidResponse }
+        let data = try await MusicHTTPClient.data(at: url, session: session, timeout: Self.searchTimeout)
+        guard let decoded = try? JSONDecoder().decode(SearchResponse.self, from: data) else { throw OpenverseMusicError.invalidResponse }
+        let candidates = decoded.results.compactMap { Self.candidate($0, intent: intent) }
+        return candidates
+    }
+
+    /// Anonymous Openverse clients are limited to 20 results per page. Keeping
+    /// URL construction separate makes that production constraint testable.
+    nonisolated static func searchURL(for intent: MusicIntent) -> URL? {
         var components = URLComponents(url: Self.apiBaseURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "q", value: Self.searchQuery(for: intent)),
             URLQueryItem(name: "categories", value: "music"),
             URLQueryItem(name: "license", value: Self.allowedLicenses.sorted().joined(separator: ",")),
-            URLQueryItem(name: "page_size", value: "50")
+            URLQueryItem(name: "page_size", value: "20")
         ]
-        guard let url = components.url else { throw OpenverseMusicError.invalidResponse }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = Self.searchTimeout
-        request.setValue("VeloEdit/1.0", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              let decoded = try? JSONDecoder().decode(SearchResponse.self, from: data) else {
-            throw OpenverseMusicError.invalidResponse
-        }
-        let candidates = decoded.results.compactMap { Self.candidate($0, intent: intent) }
-        guard !candidates.isEmpty else { throw OpenverseMusicError.noCompatibleTrack }
-        return candidates
+        return components.url
     }
 
     public func download(_ track: MusicProviderTrack) async throws -> LocalMusicTrack {
-        if let existing = try await library.tracks().first(where: {
-            $0.sourceProvider == .openverse && $0.providerTrackID == track.id && $0.isPlayable
-        }) { return existing }
-        guard track.sourceProvider == .openverse,
-              let audioURL = track.downloadURL,
-              audioURL.scheme?.lowercased() == "https",
-              audioURL.host?.isEmpty == false else {
-            throw OpenverseMusicError.invalidDownloadURL
-        }
-        var request = URLRequest(url: audioURL)
-        request.timeoutInterval = Self.downloadTimeout
-        request.setValue("VeloEdit/1.0", forHTTPHeaderField: "User-Agent")
-        let (temporaryURL, response) = try await session.download(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw OpenverseMusicError.downloadFailed
-        }
-        let allowedExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "ogg"]
-        let remoteExtension = audioURL.pathExtension.lowercased()
-        let fileExtension = allowedExtensions.contains(remoteExtension) ? remoteExtension : "mp3"
-        let stagedURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("veloedit-openverse-\(UUID().uuidString)")
-            .appendingPathExtension(fileExtension)
-        defer { try? FileManager.default.removeItem(at: stagedURL) }
-        try FileManager.default.copyItem(at: temporaryURL, to: stagedURL)
-        return try await library.importProviderTrack(track, downloadedFileURL: stagedURL)
+        guard track.sourceProvider == .openverse else { throw OpenverseMusicError.invalidDownloadURL }
+        return try await MusicAudioDownloader.download(track, into: library, session: session)
     }
 
     public func metadata(_ track: MusicProviderTrack) async throws -> MusicTrackMetadata { track.metadata }
@@ -139,7 +107,8 @@ public actor OpenverseMusicProvider: MusicProvider {
         guard allowedLicenses.contains(licenseCode),
               let downloadURL = remote.url,
               downloadURL.scheme?.lowercased() == "https",
-              let licenseURL = remote.licenseURL else { return nil }
+              let rawLicenseURL = remote.licenseURL,
+              let licenseURL = InternetArchiveMusicProvider.allowedLicense(rawLicenseURL.absoluteString) else { return nil }
         let title = remote.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         let artist = remote.creator?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let artist, !artist.isEmpty, artist.lowercased() != "unknown" else { return nil }
@@ -148,9 +117,8 @@ public actor OpenverseMusicProvider: MusicProvider {
             guard let value = remote.duration, value.isFinite, value > 0 else {
                 return (intent.durationRange.lowerBound + intent.durationRange.upperBound) / 2
             }
-            // Openverse documents duration in milliseconds. A few upstream
-            // sources historically sent seconds, so accept both representations.
-            return value > 10_000 ? value / 1_000 : value
+            // The API contract uses milliseconds, including short clips.
+            return value / 1_000
         }()
         guard duration >= 45 else { return nil }
         let attributionRequired = !["cc0", "pdm"].contains(licenseCode)
@@ -176,7 +144,7 @@ public actor OpenverseMusicProvider: MusicProvider {
             title: title.flatMap { $0.isEmpty ? nil : $0 } ?? "Openverse track",
             artist: artist,
             genres: remote.genres ?? [remote.category].compactMap { $0 },
-            moods: Array(intent.mood),
+            moods: tags,
             tags: tags,
             energy: intent.energy,
             bpm: (intent.bpmRange.lowerBound + intent.bpmRange.upperBound) / 2,
@@ -195,6 +163,7 @@ public actor OpenverseMusicProvider: MusicProvider {
     }
 
     private nonisolated static func searchQuery(for intent: MusicIntent) -> String {
+        if let request = intent.request { return request.query }
         let genre = intent.genres.sorted().first
         let mood = intent.mood.sorted().first
         return ["instrumental", genre ?? mood ?? "music"].joined(separator: " ")

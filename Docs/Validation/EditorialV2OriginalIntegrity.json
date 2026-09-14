@@ -1,0 +1,17 @@
+[
+  {
+    "contract": "A",
+    "manifestUnchanged": true,
+    "originalTimelineCount": 1
+  },
+  {
+    "contract": "B",
+    "manifestUnchanged": true,
+    "originalTimelineCount": 2
+  },
+  {
+    "contract": "C",
+    "manifestUnchanged": true,
+    "originalTimelineCount": 0
+  }
+]

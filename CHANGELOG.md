@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-09 — Спокойный показ фото и плавный финал
+
+- Новые автоматические фильмы заканчиваются секундным затемнением всей композиции, включая титры и наложения; длительность не увеличивается. Настройка сохраняется в проекте, явное «без затемнения» её отключает.
+- Фото по умолчанию получают 6 секунд и центрированное увеличение на 5%, без автоматического чередования боковых панорам. AI-доработка не обрезает фото по правилам динамичных видеоклипов.
+- Просмотр, стабильный предпросмотр и MP4 используют одно затемнение. Проверка чёрных кадров учитывает намеренный финал; кэш фото и проверок обновлён.
+
 ## 2026-08-24 — P7 Personal Taste & Adaptive Editing Engine
 
 - Существующий P3 `PersonalTasteProfile` расширен confidence-calibrated estimates с sample/polarity counts, decay, contextual duration, activity/project/event/camera/format contexts, private embedding centroids, discovered style, music/title detail и learned structure patterns.

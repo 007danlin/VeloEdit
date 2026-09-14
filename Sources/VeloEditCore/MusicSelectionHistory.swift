@@ -69,7 +69,7 @@ public actor LocalMusicSelectionHistoryStore {
     }
 
     public func recentIdentities() -> Set<String> {
-        Set(load().map(\.identity))
+        Set(load().flatMap { [$0.identity, MusicRecordingIdentity.key(title: $0.title, artist: $0.artist)] })
     }
 
     public func record(_ track: LocalMusicTrack, selectedAt: Date = Date()) throws {
@@ -100,4 +100,19 @@ public actor LocalMusicSelectionHistoryStore {
         cached = bounded
         return bounded
     }
+}
+
+/// Also catches the same recording indexed by two different services.
+enum MusicRecordingIdentity {
+    static func key(title: String, artist: String) -> String {
+        "recording:" + MusicSearchRequest.words(title).sorted().joined(separator: " ") + "|" + MusicSearchRequest.words(artist).sorted().joined(separator: " ")
+    }
+}
+
+extension MusicProviderTrack {
+    var noveltyIdentities: Set<String> { [selectionIdentity, MusicRecordingIdentity.key(title: metadata.title, artist: metadata.artist)] }
+}
+
+extension LocalMusicTrack {
+    var noveltyIdentities: Set<String> { [selectionIdentity, MusicRecordingIdentity.key(title: title, artist: author)] }
 }

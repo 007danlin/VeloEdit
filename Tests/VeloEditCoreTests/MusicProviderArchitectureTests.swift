@@ -34,48 +34,60 @@ private actor DownloadableMusicProvider: MusicProvider {
     nonisolated let priority = 100
     private let library: LocalMusicLibrary
     private let sourceURL: URL
+    private let candidateIDs: [String]
+    private let failingCandidateIDs: Set<String>
     private var searches = 0
     private var downloads = 0
 
-    init(library: LocalMusicLibrary, sourceURL: URL) {
+    init(
+        library: LocalMusicLibrary,
+        sourceURL: URL,
+        candidateIDs: [String] = ["10000000-0000-4000-8000-000000000001"],
+        failingCandidateIDs: Set<String> = []
+    ) {
         self.library = library
         self.sourceURL = sourceURL
+        self.candidateIDs = candidateIDs
+        self.failingCandidateIDs = failingCandidateIDs
     }
 
     func availability() async -> MusicProviderAvailability { .available }
 
     func search(_ intent: MusicIntent) async throws -> [MusicProviderTrack] {
         searches += 1
-        return [MusicProviderTrack(
-            id: "10000000-0000-4000-8000-000000000001",
-            sourceProvider: .openverse,
-            metadata: MusicTrackMetadata(
-                title: "Fresh online track",
-                artist: "Open artist",
-                genres: ["electronic"],
-                moods: ["energetic", "adventure"],
-                tags: ["travel", "instrumental"],
-                energy: 0.84,
-                bpm: 126,
-                duration: 177.744,
-                sourceName: "Openverse",
-                instrumental: true
-            ),
-            license: MusicLicenseRecord(
-                name: "CC0 1.0 Universal",
-                url: URL(string: "https://creativecommons.org/publicdomain/zero/1.0/")!,
-                sourceName: "Openverse",
-                sourceURL: URL(string: "https://openverse.org")!,
-                licenseCheckedAt: Date(),
-                requiresAttribution: false
-            ),
-            sourcePageURL: URL(string: "https://openverse.org")!,
-            localFileURL: sourceURL
-        )]
+        return candidateIDs.enumerated().map { index, id in
+            MusicProviderTrack(
+                id: id,
+                sourceProvider: .openverse,
+                metadata: MusicTrackMetadata(
+                    title: index == 0 ? "Fresh online track" : "Fresh online track \(index + 1)",
+                    artist: "Open artist",
+                    genres: ["electronic"],
+                    moods: ["energetic", "adventure"],
+                    tags: index == 0 ? ["travel", "instrumental"] : ["instrumental"],
+                    energy: index == 0 ? 0.84 : 0.70,
+                    bpm: 126,
+                    duration: 177.744,
+                    sourceName: "Openverse",
+                    instrumental: true
+                ),
+                license: MusicLicenseRecord(
+                    name: "CC0 1.0 Universal",
+                    url: URL(string: "https://creativecommons.org/publicdomain/zero/1.0/")!,
+                    sourceName: "Openverse",
+                    sourceURL: URL(string: "https://openverse.org")!,
+                    licenseCheckedAt: Date(),
+                    requiresAttribution: false
+                ),
+                sourcePageURL: URL(string: "https://openverse.org")!,
+                localFileURL: sourceURL
+            )
+        }
     }
 
     func download(_ track: MusicProviderTrack) async throws -> LocalMusicTrack {
         downloads += 1
+        if failingCandidateIDs.contains(track.id) { throw URLError(.cannotDecodeContentData) }
         return try await library.importProviderTrack(track, downloadedFileURL: sourceURL)
     }
 
@@ -151,7 +163,9 @@ private func energeticDirective() -> MusicDirective {
         .appendingPathExtension("veloedit")
     defer { try? FileManager.default.removeItem(at: projectURL) }
     let store = try ProjectStore(createAt: projectURL, name: "Offline")
-    let pipeline = VeloEditPipeline(store: store)
+    // This offline fixture must not inherit the user's downloaded soundtrack
+    // cache; a valid cached online track otherwise makes the assertion flaky.
+    let pipeline = VeloEditPipeline(store: store, musicLibrary: LocalMusicLibrary(rootURL: store.musicLibraryURL))
 
     let track = try await pipeline.prepareMusicTrack(for: energeticDirective())
 
@@ -365,7 +379,8 @@ private func energeticDirective() -> MusicDirective {
     let intent = MusicIntent(directive: energeticDirective())
 
     await system.scheduleOnlineTrack(for: intent)
-    for _ in 0..<80 {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+    while ContinuousClock.now < deadline {
         if try await system.tracks().contains(where: { $0.sourceProvider == .openverse }) { break }
         try await Task.sleep(nanoseconds: 25_000_000)
     }
@@ -387,11 +402,16 @@ private func energeticDirective() -> MusicDirective {
         library: local,
         sourceURL: musicFixtureRoot().appendingPathComponent("holiznacc0-lost-on-the-freeway.mp3")
     )
+    // Decode the real fixture before timing provider coordination; concurrent
+    // audio-analysis tests can otherwise dominate this network-race check.
+    let intent = MusicIntent(directive: energeticDirective())
+    let cached = try #require(try await fallback.search(intent).first)
+    _ = try await fallback.download(cached)
     let system = MusicLibrary(localLibrary: local, providers: [stalled, fallback])
     let clock = ContinuousClock()
     let started = clock.now
 
-    let result = await system.resolve(MusicIntent(directive: energeticDirective()))
+    let result = await system.resolve(intent, preferFreshOnline: true)
     let elapsed = started.duration(to: clock.now)
 
     #expect(result.track?.sourceProvider == .openverse)
@@ -400,6 +420,149 @@ private func energeticDirective() -> MusicDirective {
     let stalledCounts = await stalled.counts()
     #expect(stalledCounts.searches == 1)
     #expect(stalledCounts.cancellations == 1)
+}
+
+@Test func newAutomaticFilmDownloadsFreshOnlineMusicBeforeUsingPlayableLocalTracks() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let bundled = BundledMusicProvider(library: local, rootURL: musicFixtureRoot())
+    let online = DownloadableMusicProvider(
+        library: local,
+        sourceURL: musicFixtureRoot().appendingPathComponent("holiznacc0-lost-on-the-freeway.mp3")
+    )
+    let system = MusicLibrary(localLibrary: local, providers: [bundled, online])
+
+    let result = await system.resolve(
+        MusicIntent(directive: energeticDirective()),
+        preferCachedOnline: true,
+        preferFreshOnline: true
+    )
+
+    #expect(result.track?.sourceProvider == .openverse)
+    #expect(result.track?.title == "Fresh online track")
+    #expect(await online.counts().searches == 1)
+}
+
+@Test func onlineReplacementExcludesThePreviouslyDownloadedProviderTrack() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let online = DownloadableMusicProvider(
+        library: local,
+        sourceURL: musicFixtureRoot().appendingPathComponent("holiznacc0-lost-on-the-freeway.mp3"),
+        candidateIDs: [
+            "10000000-0000-4000-8000-000000000001",
+            "10000000-0000-4000-8000-000000000002"
+        ]
+    )
+    let system = MusicLibrary(localLibrary: local, providers: [online])
+    let intent = MusicIntent(directive: energeticDirective())
+
+    let first = try #require(await system.resolve(intent, preferFreshOnline: true).track)
+    let second = try #require(await system.resolve(
+        intent,
+        excludingIdentities: [first.selectionIdentity],
+        preferFreshOnline: true
+    ).track)
+
+    #expect(second.selectionIdentity != first.selectionIdentity)
+    #expect(second.providerTrackID != first.providerTrackID)
+    #expect(await online.counts().downloads == 2)
+}
+
+@Test func onlineProviderTriesTheNextCandidateWhenTheBestDownloadIsBroken() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let brokenID = "10000000-0000-4000-8000-000000000001"
+    let fallbackID = "10000000-0000-4000-8000-000000000002"
+    let online = DownloadableMusicProvider(
+        library: local,
+        sourceURL: musicFixtureRoot().appendingPathComponent("holiznacc0-lost-on-the-freeway.mp3"),
+        candidateIDs: [brokenID, fallbackID],
+        failingCandidateIDs: [brokenID]
+    )
+    let system = MusicLibrary(localLibrary: local, providers: [online])
+
+    let result = await system.resolve(
+        MusicIntent(directive: energeticDirective()),
+        preferFreshOnline: true
+    )
+
+    #expect(result.track?.providerTrackID == fallbackID)
+    #expect(await online.counts().downloads == 2)
+}
+
+@Test func anonymousOpenverseSearchUsesSupportedPageSize() throws {
+    let url = try #require(OpenverseMusicProvider.searchURL(
+        for: MusicIntent(directive: MusicDirective(style: .cinematic, bpm: 88))
+    ))
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+
+    #expect(query["page_size"] == "20")
+    #expect(query["categories"] == "music")
+}
+
+@Test func freeToUseSearchStartsWithShortProviderSpecificQuery() {
+    let intent = MusicIntent(directive: MusicDirective(style: .cinematic, bpm: 88))
+    let queries = FreeToUseMusicProvider.searchQueries(for: intent)
+
+    #expect(queries.first == "cinematic")
+    #expect(queries.count >= 1)
+    #expect(queries.allSatisfy { !$0.isEmpty })
+}
+
+@Test func liveOnlineReplacementDownloadsTwoDifferentAudioFilesWhenEnabled() async throws {
+    guard ProcessInfo.processInfo.environment["VELOEDIT_LIVE_MUSIC_TEST"] == "1" else { return }
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let system = MusicLibrary(
+        localLibrary: local,
+        providers: [
+            OpenverseMusicProvider(library: local),
+            FreeToUseMusicProvider(library: local),
+            IncompetechMusicProvider(library: local),
+            InternetArchiveMusicProvider(library: local),
+            WebMusicProvider(library: local)
+        ]
+    )
+    let intent = MusicIntent(directive: MusicDirective(style: .cinematic, bpm: 88))
+
+    let first = try #require(await system.resolve(intent, preferFreshOnline: true).track)
+    let second = try #require(await system.resolve(
+        intent,
+        excludingIdentities: [first.selectionIdentity],
+        preferFreshOnline: true
+    ).track)
+    let firstAudio = try Data(contentsOf: first.localFileURL)
+    let secondAudio = try Data(contentsOf: second.localFileURL)
+
+    print("Live provider race: \(first.sourceProvider.rawValue): \(first.title) / \(second.sourceProvider.rawValue): \(second.title)")
+    #expect(first.sourceProvider.isOnline)
+    #expect(second.sourceProvider.isOnline)
+    #expect(first.selectionIdentity != second.selectionIdentity)
+    #expect(firstAudio.count > 100_000)
+    #expect(secondAudio.count > 100_000)
+    #expect(firstAudio != secondAudio)
+}
+
+@Test func newAutomaticFilmUsesLocalMusicOnlyAfterEveryOnlineProviderFails() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let bundled = BundledMusicProvider(library: local, rootURL: musicFixtureRoot())
+    let first = FailingMusicProvider(identifier: "free-to-use", sourceProvider: .freeToUse, priority: 100)
+    let second = FailingMusicProvider(identifier: "openverse", sourceProvider: .openverse, priority: 110)
+    let system = MusicLibrary(localLibrary: local, providers: [bundled, first, second])
+
+    let result = await system.resolve(
+        MusicIntent(directive: energeticDirective()),
+        preferCachedOnline: true,
+        preferFreshOnline: true
+    )
+
+    #expect(result.track?.sourceProvider == .bundled)
+    #expect(result.failures.count == 2)
+    #expect(await first.searchCount() == 1)
+    #expect(await second.searchCount() == 1)
 }
 
 @Test func testGAttributionSurvivesProjectMetadataRoundTrip() throws {
@@ -449,4 +612,50 @@ private func energeticDirective() -> MusicDirective {
     } else {
         Issue.record("Provider должен перейти в cooldown после двух ошибок")
     }
+}
+
+
+@Test func onlineDeadlineCancelsSlowProviderAndUsesLocalAudio() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let stalled = SlowFailingMusicProvider()
+    let system = MusicLibrary(localLibrary: local, providers: [BundledMusicProvider(library: local, rootURL: musicFixtureRoot()), stalled], onlineTimeout: 0.1)
+    let result = await system.resolve(MusicIntent(directive: energeticDirective()), preferFreshOnline: true)
+    #expect(result.track?.isPlayable == true)
+    #expect(result.failures.contains { $0.provider == "music-search" })
+    #expect(await stalled.counts().cancellations == 1)
+}
+
+@Test func freshOnlineFailureStillImportsUnheardSharedCache() async throws {
+    let (root, cache) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let provider = DownloadableMusicProvider(library: cache, sourceURL: musicFixtureRoot().appendingPathComponent("holiznacc0-dangerous-voyage.mp3"))
+    let intent = MusicIntent(directive: energeticDirective())
+    let candidate = try #require(try await provider.search(intent).first)
+    let original = try await provider.download(candidate)
+    let project = LocalMusicLibrary(rootURL: root.appendingPathComponent("new-project"))
+    let failed = FailingMusicProvider(identifier: "offline", sourceProvider: .openverse, priority: 100)
+    let system = MusicLibrary(localLibrary: project, providers: [failed], reusableCache: cache)
+    let result = await system.resolve(intent, preferFreshOnline: true)
+    let recovered = try #require(result.track)
+    #expect(recovered.selectionIdentity == original.selectionIdentity)
+    #expect(recovered.localFileURL != original.localFileURL)
+    #expect(recovered.isPlayable)
+    #expect(await failed.searchCount() == 1)
+}
+
+@Test func historyRecognizesTheSameRecordingFromAnotherProvider() async throws {
+    let (root, local) = temporaryMusicLibrary()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let provider = DownloadableMusicProvider(library: local, sourceURL: musicFixtureRoot().appendingPathComponent("holiznacc0-dangerous-voyage.mp3"), candidateIDs: ["first", "second"])
+    let intent = MusicIntent(directive: energeticDirective())
+    let first = try #require(try await provider.search(intent).first)
+    var prior = try await provider.download(first)
+    prior.sourceProvider = .web
+    prior.providerTrackID = "another-service-id"
+    let history = LocalMusicSelectionHistoryStore(url: root.appendingPathComponent("history.json"))
+    try await history.record(prior)
+    let system = MusicLibrary(localLibrary: local, providers: [provider])
+    let selected = await system.resolve(intent, excludingIdentities: await history.recentIdentities(), preferFreshOnline: true)
+    #expect(selected.track?.providerTrackID == "second")
 }

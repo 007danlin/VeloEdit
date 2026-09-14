@@ -417,7 +417,7 @@ import UniformTypeIdentifiers
     }
 }
 
-@Test func realtimeTitlePreviewAvoidsTheCustomVideoCompositor() async throws {
+@Test func realtimeTitlePreviewPreservesDecorationsInTheSharedCompositor() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -455,7 +455,10 @@ import UniformTypeIdentifiers
         assets: [asset],
         preferStableRealtimePreview: true
     )
-    #expect(playback.videoComposition?.customVideoCompositorClass == nil)
+    #expect(playback.videoComposition?.customVideoCompositorClass != nil)
+    let instructions = try #require(playback.videoComposition?.instructions as? [VeloVideoInstruction])
+    #expect(instructions.contains { $0.titles.contains { $0.id == title.id } })
+    #expect(playback.videoComposition?.animationTool == nil)
     #expect(playback.renderedItemCount == 1)
 }
 

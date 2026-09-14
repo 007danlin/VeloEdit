@@ -1,8 +1,11 @@
 import Foundation
+import CryptoKit
 
 public actor MusicStructureCache {
     public static let shared = MusicStructureCache()
     private struct CacheKey: Codable, Hashable, Sendable {
+        var algorithmVersion: Int
+        var contentSHA256: String
         var id: UUID
         var path: String
         var bpmMillis: Int
@@ -38,6 +41,10 @@ public actor MusicStructureCache {
         let task = Task { await MusicSyncEngine().analyze(track: track) }
         inFlight[key] = task
         let analyzed = await task.value
+        guard inFlight[key] != nil, cacheKey(for: track) == key, key.contentSHA256 != "unavailable" else {
+            inFlight[key] = nil
+            return analyzed
+        }
         values[key] = analyzed
         touch(key)
         inFlight[key] = nil
@@ -71,6 +78,8 @@ public actor MusicStructureCache {
         let size = (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
         let modified = (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         return CacheKey(
+            algorithmVersion: 3,
+            contentSHA256: Self.contentIdentity(track.localFileURL),
             id: track.id,
             path: track.localFileURL.standardizedFileURL.path,
             bpmMillis: Int((track.bpm * 1_000).rounded()),
@@ -80,6 +89,17 @@ public actor MusicStructureCache {
         )
     }
 
+    /// Hash every byte; size and mtime alone miss an in-place replacement.
+    private static func contentIdentity(_ url: URL) -> String {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return "unavailable" }
+        defer { try? handle.close() }
+        var hash = SHA256()
+        do {
+            while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty { hash.update(data: data) }
+            return hash.finalize().map { String(format: "%02x", $0) }.joined()
+        } catch { return "unavailable" }
+    }
+
     private func persistedURL(for track: LocalMusicTrack) -> URL {
         if track.sourceProvider == .bundled,
            let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
@@ -87,10 +107,10 @@ public actor MusicStructureCache {
                 .appendingPathComponent("VeloEdit", isDirectory: true)
                 .appendingPathComponent("MusicStructures", isDirectory: true)
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            return directory.appendingPathComponent(".\(track.id.uuidString).music-structure-v2.json")
+            return directory.appendingPathComponent(".\(track.id.uuidString).music-structure-v3.json")
         }
         return track.localFileURL.deletingLastPathComponent()
-            .appendingPathComponent(".\(track.id.uuidString).music-structure-v2.json")
+            .appendingPathComponent(".\(track.id.uuidString).music-structure-v3.json")
     }
 }
 
@@ -173,7 +193,7 @@ public struct MusicSyncEngine: Sendable {
             phraseBoundaries: phrases,
             accents: accents,
             beatsPerBar: meter,
-            tempoConfidence: max(tempoConfidence, hasMeasuredOnsets ? eventConfidence * 0.52 : 0.16),
+            tempoConfidence: tempoConfidence,
             downbeatConfidence: hasMeasuredOnsets ? min(1, eventConfidence * 0.64 + tempoConfidence * 0.36) : 0.16,
             phraseConfidence: phraseConfidence,
             sectionConfidence: sectionConfidence,

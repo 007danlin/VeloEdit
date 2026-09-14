@@ -652,7 +652,7 @@ private func writeP2PhotoFixture(to url: URL) throws {
     guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
 }
 
-@Test func productionPhotoPathRunsInputThroughDeepAnalysisStoryDirectorAndFinalScoring() async throws {
+@Test func productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -668,6 +668,7 @@ private func writeP2PhotoFixture(to url: URL) throws {
         metadata: MediaMetadata(width: 640, height: 360)
     )
     try await store.update { $0.assets = [asset] }
+    try await store.update { $0.editorialDevelopmentEnabled = true }
     let pipeline = VeloEditPipeline(store: store)
 
     #expect(try await pipeline.analyzeMissing() == 1)
@@ -677,9 +678,18 @@ private func writeP2PhotoFixture(to url: URL) throws {
     #expect(result.directorCandidates.first?.insights?.visualEmbedding?.values.count == 64)
     #expect(result.deepMediaDiagnostics?.embeddedCandidateCount == 1)
 
-    let timeline = try await pipeline.createFilm(prompt: "Без музыки. Один выразительный кадр.", preset: .memories, targetDuration: 5)
-    #expect(!timeline.items.isEmpty)
-    #expect(timeline.directorRun?.globalScore != nil)
-    #expect(timeline.directorRun?.deepMediaDiagnostics?.embeddedCandidateCount == 1)
-    #expect(timeline.directorRun?.variantDiagnostics?.evaluatedVariantCount ?? 0 >= 1)
+    // One photo supplies less than the minimum automatic film duration. Its
+    // semantic analysis must survive, but the undersized film must not commit.
+    do {
+        _ = try await pipeline.createFilm(prompt: "Без музыки. Один выразительный кадр. Добавь титры.", preset: .memories, targetDuration: 5)
+        Issue.record("A single short photo was committed as a complete automatic film")
+    } catch EditorialGenerationError.unsatisfiedIntent(let reason) {
+        #expect(reason.contains("Минимальная длительность фильма"))
+    }
+    let committed = await pipeline.snapshot()
+    #expect(committed.timelines.isEmpty)
+    let generation = committed.intentLedger?.entries.last { $0.normalizedIntent == .createFilm }
+    #expect(generation?.status == .recoverableFailure)
+    #expect(generation?.failureReason?.contains("Минимальная длительность фильма") == true)
+    #expect(committed.analyses.first?.deepMediaVersion == DeepAnalysisCache.version)
 }

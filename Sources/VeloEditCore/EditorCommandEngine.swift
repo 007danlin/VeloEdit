@@ -374,7 +374,7 @@ public struct EditorCommandParser: Sendable {
             "убавь звук исходников", "lower original audio", "original audio quieter"
         ])
         if quieterSourceAudio && !explicitlyMusicAudio {
-            result.append(selectedAudioTarget ? .setClipVolume(0.30, target) : .setOriginalAudioVolume(0.30))
+            result.append(selectedAudioTarget ? .setClipVolume(0.30, target) : .setOriginalAudioVolume(DirectorSourceAudioPolicy.duck.volume))
         } else if containsAny(text, ["убери звук", "убери у него звук", "выключи звук", "выключи у него звук", "без звука", "заглуши"]) && !explicitlyMusicAudio {
             result.append(selectedAudioTarget ? .setClipMuted(true, target) : .setOriginalAudioVolume(0))
         } else if containsAny(text, ["верни звук", "включи звук", "со звуком"]) && !explicitlyMusicAudio {
@@ -1245,6 +1245,7 @@ public struct EditorCommandExecutor: Sendable {
                     if let textColor { titleObjects[index].style.textColorHex = textColor }
                     if let backgroundColor { titleObjects[index].style.backgroundColorHex = backgroundColor }
                     if let alignment { titleObjects[index].style.alignment = alignment }
+                    titleObjects[index].userEdited = true
                     affected.insert(titleObjects[index].id)
                 }
                 timeline.titleItems = titleObjects
@@ -1298,12 +1299,13 @@ public struct EditorCommandExecutor: Sendable {
                 affected.insert(item.id)
                 applied.append("фрагмент перемещён \(position == .beginning ? "в начало" : "в конец")")
             case .setOriginalAudioVolume(let volume):
-                timeline.originalAudioVolume = min(max(0, volume), 1)
+                timeline = SourceAudioMixPolicy.applyingRequestedVolume(volume, to: timeline)
                 applied.append(volume < 0.001
                     ? "звук исходников отключён"
                     : "громкость звука исходников \(Int((min(max(0, volume), 1) * 100).rounded()))%")
             case .setMusic(let directive):
                 timeline.music = directive
+                timeline.adaptiveSoundtrack = nil
                 applied.append(directive.map { "музыка «\($0.style.localizedTitle)» добавлена" } ?? "музыка удалена")
             case .setMusicVolume(let volume):
                 guard var music = timeline.music else { ignored.append("сначала нужно добавить музыку"); continue }

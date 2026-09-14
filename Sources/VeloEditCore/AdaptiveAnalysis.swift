@@ -100,6 +100,10 @@ struct FrameSamplingOutcome: Sendable {
 }
 
 actor AdaptiveFrameSampler {
+    func editorialSamples(url: URL, sourceHash: String, timestamps: [Double], frameCache: FrameCache) async throws -> [VisualFrameSample] {
+        try await extract(url: url, sourceHash: sourceHash, timestamps: timestamps, maximumSize: 384, purpose: .aiDirector, frameCache: frameCache).samples
+    }
+
     func samplePhoto(
         url: URL,
         sourceHash: String,
@@ -203,6 +207,7 @@ actor AdaptiveFrameSampler {
         var cacheHits = 0
         var visionCalls = 0
         result.reserveCapacity(timestamps.count)
+        var resourcePacer = ResourceWorkPacer()
         for timestamp in timestamps {
             if Task.isCancelled { throw CancellationError() }
             let key = FrameCacheKey(sourceFile: sourceHash, timestamp: timestamp, resolution: maximumSize, processingPurpose: purpose)
@@ -213,6 +218,7 @@ actor AdaptiveFrameSampler {
                 previousTimestamp = timestamp
                 continue
             }
+            try await resourcePacer.checkpoint()
             let image = try generator.copyCGImage(at: CMTime(seconds: timestamp, preferredTimescale: 600), actualTime: nil)
             decoded += 1
             let fingerprint = Self.fingerprint(image)
@@ -387,27 +393,13 @@ private struct OllamaVisionMessage: Codable {
     let images: [String]?
 }
 
-private struct OllamaVisionRequest: Encodable {
-    let model: String
-    let messages: [OllamaVisionMessage]
-    let stream = false
-    let think: Bool
-    let format = "json"
-    let keepAlive = "10m"
-
-    enum CodingKeys: String, CodingKey {
-        case model, messages, stream, think, format
-        case keepAlive = "keep_alive"
-    }
-}
-
 private struct OllamaVisionResponse: Decodable { let message: OllamaVisionMessage }
 private struct OllamaModelTags: Decodable {
     struct Model: Decodable { let name: String }
     let models: [Model]
 }
 
-private struct DeepFrameJudgement: Decodable {
+struct DeepFrameJudgement: Decodable {
     let index: Int?
     let interest: Double?
     let action: Double?
@@ -448,6 +440,46 @@ private struct VLMSceneInput: Sendable {
 actor OllamaVisionRuntime {
     private let baseURL = URL(string: "http://127.0.0.1:11434")!
 
+    static func responseSchema(indices: [Int]) -> [String: Any] {
+        var fields: [String: Any] = [
+            "index": ["type": "integer", "enum": indices],
+            "scene": ["type": "string"], "reason": ["type": "string"],
+            "tags": ["type": "array", "items": ["type": "string"], "maxItems": 8]
+        ]
+        for name in ["interest", "action", "quality", "stability", "storyValue"] {
+            fields[name] = ["type": "number", "minimum": 0, "maximum": 1]
+        }
+        return ["type": "object", "additionalProperties": false, "required": ["scenes"],
+            "properties": ["scenes": ["type": "array", "minItems": indices.count, "maxItems": indices.count,
+                "items": ["type": "object", "additionalProperties": false,
+                    "required": fields.keys.sorted(), "properties": fields]]]]
+    }
+
+    static func parseBatch(_ content: String, indices: [Int]) throws -> [Int: DeepFrameJudgement] {
+        var clean = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.hasPrefix("```json") { clean.removeFirst(7) }
+        else if clean.hasPrefix("```") { clean.removeFirst(3) }
+        if clean.hasSuffix("```") { clean.removeLast(3) }
+        let data = Data(clean.trimmingCharacters(in: .whitespacesAndNewlines).utf8)
+        let envelope = try JSONDecoder().decode(DeepSceneEnvelope.self, from: data)
+        var result: [Int: DeepFrameJudgement] = [:]
+        let requested = Set(indices)
+        for judgement in envelope.scenes {
+            guard let index = judgement.index, requested.contains(index), result[index] == nil else {
+                // Never attach a renumbered/duplicate scene to another clip,
+                // or trap inside Dictionary(uniqueKeysWithValues:).
+                throw URLError(.cannotParseResponse)
+            }
+            let scores = [judgement.interest, judgement.action, judgement.quality, judgement.stability, judgement.storyValue].compactMap { $0 }
+            guard scores.count == 5, scores.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
+                  judgement.scene?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                  judgement.tags?.isEmpty == false else { throw URLError(.cannotParseResponse) }
+            result[index] = judgement
+        }
+        guard Set(result.keys) == requested else { throw URLError(.cannotParseResponse) }
+        return result
+    }
+
     func isAvailable(model: String) async -> Bool {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/tags"))
         request.timeoutInterval = 1.5
@@ -464,6 +496,39 @@ actor OllamaVisionRuntime {
         thinking: Bool,
         timeout: TimeInterval
     ) async throws -> [Int: DeepFrameJudgement] {
+        do {
+            return try await LocalAIModelManager.recoveringRequest {
+                try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Small local models can repeat an index in a valid JSON array.
+            // A one-scene schema removes that ambiguity. Retry each scene
+            // once, preserving successful answers and bounding extra work.
+            guard scenes.count > 1,
+                  error is DecodingError || (error as? URLError)?.code == .cannotParseResponse else { throw error }
+            var recovered: [Int: DeepFrameJudgement] = [:]
+            for scene in scenes {
+                try Task.checkCancellation()
+                do {
+                    let answer = try await requestBatch(scenes: [scene], model: model, thinking: thinking, timeout: timeout)
+                    recovered.merge(answer) { _, new in new }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    if (error as? URLError)?.code == .cancelled { throw error }
+                }
+            }
+            return recovered
+        }
+    }
+
+    private func requestBatch(
+        scenes: [VLMSceneInput], model: String, thinking: Bool, timeout: TimeInterval
+    ) async throws -> [Int: DeepFrameJudgement] {
+        var resourcePacer = ResourceWorkPacer()
+        try await resourcePacer.checkpoint()
         let images = scenes.flatMap { $0.frames.map(\.jpegBase64).filter { !$0.isEmpty } }
         guard !images.isEmpty else { throw URLError(.cannotDecodeContentData) }
         let grouping = scenes.map { scene in
@@ -473,33 +538,23 @@ actor OllamaVisionRuntime {
         let prompt = """
         Оцени несколько коротких сцен видео. Изображения приложены последовательно группами в указанном порядке:
         \(grouping)
-        Верни только JSON вида:
-        {"scenes":[{"index":0,"interest":0.0,"action":0.0,"quality":0.0,"stability":0.0,"tags":["..."],"reason":"...","scene":"...","emotion":"...","visualAppeal":0.0,"composition":0.0,"sharpness":0.0,"motionBlur":0.0,"noise":0.0,"shake":0.0,"exposureQuality":0.0,"slowMotionSuitability":0.0,"speedRampSuitability":0.0,"originalAudioUsefulness":0.0,"storyValue":0.0,"intro":0.0,"setup":0.0,"buildup":0.0,"climax":0.0,"outro":0.0}]}.
-        Все числовые оценки от 0 до 1. Опиши реальное содержание и действие, эмоцию, людей/транспорт/природу/воду/пейзаж, композицию, резкость, смаз, шум, тряску, экспозицию, визуальную и сюжетную ценность, пригодность для slow motion/speed ramp и роли intro/setup/build-up/climax/outro. originalAudioUsefulness оценивай консервативно по видимой вероятности полезного синхронного звука; если определить нельзя, ставь 0.3. Спокойный значимый момент может быть интереснее хаотичного движения. Постоянная скорость сама по себе не означает хороший момент; резкое ускорение, поворот, перепад или перегрузка являются подтверждением действия. Не выдумывай то, чего не видно.
+        Верни JSON по заданной схеме: ровно одну оценку на каждую указанную сцену. Сохраняй её исходный index, не перенумеровывай и не добавляй сцен.
+        scene: коротко опиши видимое место, главный объект и действие. tags: до восьми конкретных английских меток содержания; различай bicycle, buggy/UTV, car и motorcycle только когда это видно. reason: одно короткое объяснение монтажной ценности.
+        Оцени каждую сцену независимо: interest — интерес зрителя, action — изменение действия между кадрами, quality — видимость и техническое качество изображения, stability — устойчивость камеры, storyValue — ценность для истории. Шкала 0...1: quality=0 означает нечитаемый или испорченный кадр, около 0.5 — обычный пригодный кадр, около 0.8 — ясный хороший кадр. Низкая action не означает низкое quality: спокойный пейзаж и портрет могут быть ценными. Не присваивай всем полям одну оценку. Не выдумывай события, движение или звук, которых не подтверждают изображения.
         """
-        let payload = OllamaVisionRequest(model: model, messages: [OllamaVisionMessage(role: "user", content: prompt, images: images)], think: thinking)
+        let payload: [String: Any] = ["model": model,
+            "messages": [["role": "user", "content": prompt, "images": images]],
+            "stream": false, "think": thinking, "keep_alive": "10m",
+            "format": Self.responseSchema(indices: scenes.map(\.index))]
         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(payload)
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
         let envelope = try JSONDecoder().decode(OllamaVisionResponse.self, from: data)
-        var content = envelope.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        if content.hasPrefix("```json") { content.removeFirst(7) }
-        else if content.hasPrefix("```") { content.removeFirst(3) }
-        if content.hasSuffix("```") { content.removeLast(3) }
-        let cleanData = Data(content.trimmingCharacters(in: .whitespacesAndNewlines).utf8)
-        if let envelope = try? JSONDecoder().decode(DeepSceneEnvelope.self, from: cleanData) {
-            return Dictionary(uniqueKeysWithValues: envelope.scenes.compactMap { judgement in
-                judgement.index.map { ($0, judgement) }
-            })
-        }
-        if scenes.count == 1, let judgement = try? JSONDecoder().decode(DeepFrameJudgement.self, from: cleanData) {
-            return [scenes[0].index: judgement]
-        }
-        throw URLError(.cannotParseResponse)
+        return try Self.parseBatch(envelope.message.content, indices: scenes.map(\.index))
     }
 }
 
@@ -773,6 +828,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         var deepIndices: Set<Int> = []
         var deepFailures = 0
         if hasVisionModel {
+            var resourcePacer = ResourceWorkPacer()
+            try await resourcePacer.checkpoint()
             await metrics?.start(.vlm)
             try? await LocalAIModelManager.shared.warmUp(model: profile.ollamaModelID)
             let selectedIndices = selectedVLMIndices(in: candidates)
@@ -780,7 +837,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                 Array(selectedIndices[$0..<min(selectedIndices.count, $0 + profile.scenesPerVLMRequest)])
             }
             for (batchNumber, indices) in batches.enumerated() {
-                try Task.checkCancellation()
+                try await resourcePacer.checkpoint()
                 let scenePosition = min(selectedIndices.count, batchNumber * profile.scenesPerVLMRequest + 1)
                 let fraction = 0.44 + 0.48 * Double(batchNumber) / Double(max(1, batches.count))
                 let label = "Qwen3-VL: пакет сцен \(batchNumber + 1) из \(batches.count)"
@@ -833,6 +890,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                     return confidenceDistance < 0.22
                 }.prefix(2)
                 if !recheck.isEmpty {
+                    try await resourcePacer.checkpoint()
                     let inputs = recheck.map { index in
                         VLMSceneInput(index: index, frames: nearbyFrames(for: candidates[index], in: samples), telemetry: nil)
                     }

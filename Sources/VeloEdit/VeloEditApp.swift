@@ -14,6 +14,8 @@ struct VeloEditApp: App {
                 .background(InitialWindowMaximizer())
                 .onAppear { appDelegate.model = model }
         }
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
         .commands { VeloEditCommands(model: model) }
         Settings { SettingsView().environmentObject(model) }
     }
@@ -21,18 +23,33 @@ struct VeloEditApp: App {
 
 @MainActor
 final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
-    weak var model: AppModel?
+    weak var model: AppModel? {
+        didSet {
+            if let pendingProjectURL, let model { model.openRecentProject(pendingProjectURL); self.pendingProjectURL = nil }
+        }
+    }
+    private var pendingProjectURL: URL?
     private var isFlushingAutosave = false
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        AppNotifications.shared.configure()
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
         guard !isFlushingAutosave else { return .terminateLater }
         isFlushingAutosave = true
         Task {
-            await model.flushAutosave()
-            sender.reply(toApplicationShouldTerminate: true)
+            let saved = await model.flushAutosave()
+            isFlushingAutosave = false
+            sender.reply(toApplicationShouldTerminate: saved)
         }
         return .terminateLater
+    }
+
+    func application(_ sender: NSApplication, open urls: [URL]) {
+        guard let url = urls.first(where: { $0.pathExtension.lowercased() == "veloedit" }) else { return }
+        if let model { model.openRecentProject(url) } else { pendingProjectURL = url }
     }
 }
 
@@ -64,7 +81,16 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
                     NotificationCenter.default.removeObserver(didBecomeKeyObserver)
                 }
                 self.window = window
+                let hasSavedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame VeloEdit.Main") != nil
+                window.setFrameAutosaveName("VeloEdit.Main")
+                if hasSavedFrame { window.setFrameUsingName("VeloEdit.Main"); didMaximize = true }
                 window.contentMinSize = NSSize(width: 980, height: 700)
+                window.titleVisibility = .hidden
+                window.titlebarAppearsTransparent = true
+                window.styleMask.insert(.fullSizeContentView)
+                window.standardWindowButton(.closeButton)?.isHidden = false
+                window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+                window.standardWindowButton(.zoomButton)?.isHidden = false
                 didBecomeKeyObserver = NotificationCenter.default.addObserver(
                     forName: NSWindow.didBecomeKeyNotification,
                     object: window,
@@ -172,6 +198,13 @@ struct VeloEditCommands: Commands {
                 .disabled(model.shouldHandleTimelineShortcuts && (!model.canRedoTimelineEdit || model.isWorking))
         }
 
+        CommandGroup(after: .sidebar) {
+            Button("Показать/скрыть боковую панель") {
+                NotificationCenter.default.post(name: .veloEditToggleSidebar, object: nil)
+            }
+            .keyboardShortcut("0")
+        }
+
         CommandMenu("Переход") {
             ForEach(Array(WorkspaceSection.allCases.enumerated()), id: \.element.id) { index, section in
                 Button(section.title) { model.openSection(section) }
@@ -195,9 +228,48 @@ struct VeloEditCommands: Commands {
                 .keyboardShortcut(.cancelAction)
                 .disabled(!model.isWorking)
         }
+
+        CommandMenu("Воспроизведение") {
+            Button("Полноэкранный просмотр") {
+                FullScreenPreviewPresenter.shared.toggle(model: model)
+            }
+            .keyboardShortcut("f", modifiers: [])
+            .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+
+            Divider()
+
+            Button("Воспроизвести / пауза") { model.toggleTimelinePlayback() }
+                .keyboardShortcut(.space, modifiers: [])
+                .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+            Button("Предыдущий кадр") { model.moveTimelinePlayhead(direction: -1, largeStep: false) }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+            Button("Следующий кадр") { model.moveTimelinePlayhead(direction: 1, largeStep: false) }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+            Button("Назад на секунду") { model.moveTimelinePlayhead(direction: -1, largeStep: true) }
+                .keyboardShortcut(.leftArrow, modifiers: [.shift])
+                .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+            Button("Вперёд на секунду") { model.moveTimelinePlayhead(direction: 1, largeStep: true) }
+                .keyboardShortcut(.rightArrow, modifiers: [.shift])
+                .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+
+            Divider()
+
+            Button("В начало фильма") { model.seekTimeline(to: 0) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command])
+                .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+            Button("В конец фильма") { model.seekTimeline(to: model.timeline?.duration ?? 0) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command])
+                .disabled(!model.shouldHandleTimelineShortcuts || !model.hasPlayablePreview)
+        }
     }
 
     private func sendTextCommand(_ selector: Selector) {
         NSApp.sendAction(selector, to: nil, from: nil)
     }
+}
+
+extension Notification.Name {
+    static let veloEditToggleSidebar = Notification.Name("VeloEdit.toggleSidebar")
 }

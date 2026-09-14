@@ -41,6 +41,11 @@ public struct EventIntelligenceEngine: Sendable {
     }
 
     public func discover(assets: [MediaAsset], analyses: [AnalysisResult], sourceMap providedSourceMap: SourceMap? = nil) -> EventDiscoveryResult {
+        let assets = assets.map { asset in
+            var copy = asset
+            copy.metadata = MediaCaptureClock.metadata(for: asset)
+            return copy
+        }
         let analysesByAsset = Dictionary(uniqueKeysWithValues: analyses.map { ($0.assetID, $0) })
         let sourceMap = providedSourceMap ?? SourceTimelineAnalyzer().analyze(assets: assets, analyses: analyses)
         let sourceOrder = Dictionary(uniqueKeysWithValues: sourceMap.entries.map { ($0.assetID, $0.order) })
@@ -97,8 +102,16 @@ public struct EventIntelligenceEngine: Sendable {
 
         var roots: [Int: Int] = [:]
         for index in observations.indices { roots[index] = union.root(index) }
-        let grouped = Dictionary(grouping: observations.indices, by: { roots[$0] ?? $0 })
-        var events = grouped.values.map { indices in
+        // Similar content later in the archive is a new visit. Union-find
+        // similarity must not pull it back through an intervening activity.
+        var grouped: [[Int]] = []
+        for index in observations.indices {
+            if let previous = grouped.last?.last,
+               roots[previous] == roots[index] {
+                grouped[grouped.count - 1].append(index)
+            } else { grouped.append([index]) }
+        }
+        var events = grouped.map { indices in
             makeEvent(indices.sorted(), observations: observations, links: acceptedLinks, offsets: offsets, sourceMap: sourceMap)
         }
         let sourceRank = Dictionary(uniqueKeysWithValues: sourceMap.entries.map { ($0.assetID, $0.order) })
