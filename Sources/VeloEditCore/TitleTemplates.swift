@@ -275,6 +275,9 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
     public var safeArea: TitleSafeArea
     public var textConstraints: TitleTextConstraints
     public var renderer: String
+    /// Preserve the inspector's coordinate origin when revising a built-in
+    /// composition, so saved titles do not acquire an unintended offset.
+    public var styleAnchor: TitleNormalizedRect?
 
     public init(
         id: String,
@@ -288,7 +291,8 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
         animation: TitleTemplateAnimation,
         safeArea: TitleSafeArea = TitleSafeArea(),
         textConstraints: TitleTextConstraints = TitleTextConstraints(),
-        renderer: String = "veloedit.core-graphics.title-template.v1"
+        renderer: String = "veloedit.core-graphics.title-template.v1",
+        styleAnchor: TitleNormalizedRect? = nil
     ) {
         self.id = id
         self.name = name
@@ -302,11 +306,12 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
         self.safeArea = safeArea
         self.textConstraints = textConstraints
         self.renderer = renderer
+        self.styleAnchor = styleAnchor
     }
 
     public var defaultStyle: TitleStyle {
         let primary = layout.elements.first { $0.content == .primaryText }
-        let primaryFrame = primary?.frame ?? TitleNormalizedRect(x: 0.08, y: 0.32, width: 0.84, height: 0.36)
+        let primaryFrame = styleAnchor ?? primary?.frame ?? TitleNormalizedRect(x: 0.08, y: 0.32, width: 0.84, height: 0.36)
         return TitleStyle(
             fontSize: typography.fontSize,
             textColorHex: typography.textColorHex,
@@ -476,7 +481,8 @@ public enum TitleTemplateRegistry {
                     text("primary", .primaryText, .init(x: 0.10, y: 0.37, width: 0.80, height: 0.24), type(sans, 132, 1, "#FFFFFF", -2), uppercase: true, stagger: 1, reveal: .horizontal, portrait: .init(x: 0.04, y: 0.36, width: 0.92, height: 0.25)),
                     text("secondary", .secondaryText, .init(x: 0.14, y: 0.65, width: 0.72, height: 0.11), type(sans, 32, 0.64, "#8CECA5", 2), uppercase: true, stagger: 2, portrait: .init(x: 0.08, y: 0.64, width: 0.84, height: 0.12))
                 ]), animation: kinetic,
-                textConstraints: TitleTextConstraints(maxCharacters: 28, maxLines: 1, maxWidth: 0.66, maxHeight: 0.23, minFontScale: 0.44)
+                textConstraints: TitleTextConstraints(maxCharacters: 28, maxLines: 1, maxWidth: 0.66, maxHeight: 0.23, minFontScale: 0.44),
+                styleAnchor: .init(x: 0.23, y: 0.36, width: 0.66, height: 0.23)
             ),
             TitleTemplateDefinition(
                 id: "title.travel.v1", name: "Travel", category: .mainTitles, kind: .titleCard,
@@ -494,13 +500,14 @@ public enum TitleTemplateRegistry {
             TitleTemplateDefinition(
                 id: "title.chapter.v1", name: "Chapter", category: .chapterTitles, kind: .chapter,
                 preview: TitleTemplatePreview(primaryText: "ВЕЛОПРОГУЛКА", secondaryText: "ГЛАВА"),
-                typography: type(sans, 84, 0.78, "#FFFFFF", 1),
+                typography: type(sans, 84, 0.78, "#FFFFFF", 1, .left),
                 layout: TitleTemplateLayout(elements: [
-                    text("number", .chapterNumber, .init(x: 0.25, y: 0.20, width: 0.50, height: 0.18), type(sans, 140, 0.88, "#A78BFA", -4), stagger: 0, reveal: .vertical, portrait: .init(x: 0.25, y: 0.17, width: 0.50, height: 0.15)),
-                    text("primary", .primaryText, .init(x: 0.09, y: 0.46, width: 0.82, height: 0.18), type(sans, 84, 0.78, "#FFFFFF", 1), uppercase: true, stagger: 1, reveal: .horizontal, portrait: .init(x: 0.09, y: 0.40, width: 0.82, height: 0.23)),
-                    text("secondary", .secondaryText, .init(x: 0.09, y: 0.70, width: 0.82, height: 0.10), type(sans, 30, 0.62, "#C8AFFF", 3), uppercase: true, stagger: 2, portrait: .init(x: 0.09, y: 0.66, width: 0.82, height: 0.10))
+                    text("number", .chapterNumber, .init(x: 0.09, y: 0.20, width: 0.82, height: 0.18), type(sans, 140, 0.88, "#A78BFA", -4, .left), stagger: 0, reveal: .vertical, portrait: .init(x: 0.09, y: 0.17, width: 0.82, height: 0.15)),
+                    text("primary", .primaryText, .init(x: 0.09, y: 0.46, width: 0.82, height: 0.18), type(sans, 84, 0.78, "#FFFFFF", 1, .left), uppercase: true, stagger: 1, reveal: .horizontal, portrait: .init(x: 0.09, y: 0.40, width: 0.82, height: 0.23)),
+                    text("secondary", .secondaryText, .init(x: 0.09, y: 0.70, width: 0.82, height: 0.10), type(sans, 30, 0.62, "#C8AFFF", 3, .left), uppercase: true, stagger: 2, portrait: .init(x: 0.09, y: 0.66, width: 0.82, height: 0.10))
                 ]), animation: maskReveal,
-                textConstraints: TitleTextConstraints(maxCharacters: 40, maxLines: 2, maxWidth: 0.54, maxHeight: 0.23, minFontScale: 0.45)
+                textConstraints: TitleTextConstraints(maxCharacters: 40, maxLines: 2, maxWidth: 0.54, maxHeight: 0.23, minFontScale: 0.45),
+                styleAnchor: .init(x: 0.35, y: 0.36, width: 0.54, height: 0.22)
             ),
             TitleTemplateDefinition(
                 id: "title.location.v1", name: "Location", category: .locationTitles, kind: .location,
@@ -548,7 +555,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.16, y: 0.60, width: 0.68, height: 0.10), type(sans, 32, 0.48, "#D3CEC5", 2), uppercase: true, stagger: 3, portrait: .init(x: 0.08, y: 0.60, width: 0.84, height: 0.10)),
                     text("cta", .callToAction, .init(x: 0.24, y: 0.76, width: 0.52, height: 0.09), type(sans, 28, 0.64, "#D8B26E", 2), uppercase: true, stagger: 4, portrait: .init(x: 0.12, y: 0.77, width: 0.76, height: 0.09))
                 ]), animation: fadeBlur, safeArea: TitleSafeArea(horizontal: 0.06, vertical: 0.06, portraitHorizontal: 0.07, portraitVertical: 0.06),
-                textConstraints: TitleTextConstraints(maxCharacters: 36, maxLines: 2, maxWidth: 0.60, maxHeight: 0.20, minFontScale: 0.46)
+                textConstraints: TitleTextConstraints(maxCharacters: 36, maxLines: 2, maxWidth: 0.60, maxHeight: 0.20, minFontScale: 0.46),
+                styleAnchor: .init(x: 0.20, y: 0.34, width: 0.60, height: 0.19)
             ),
             TitleTemplateDefinition(
                 id: "caption.clean.v1", name: "Subtitles Clean", category: .captions, kind: .automaticSubtitles,

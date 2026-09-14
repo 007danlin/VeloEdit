@@ -166,7 +166,11 @@ public struct EditorialQualityGate: Sendable {
         }
         let durations = items.map(\.timelineDuration).sorted()
         let cadenceCount = durations.map { value in durations.filter { abs($0 - value) <= 2 / max(1, timeline.frameRate) }.count }.max() ?? 0
-        let mechanical = items.count >= 5 && Double(cadenceCount) / Double(items.count) >= 0.65
+        let contentDurations = seen.map { $0.preferredDuration(pacing: plan.constraints.pacing) }
+        let naturallyUniform = cadenceCount == items.count && seen.count == items.count && seen.allSatisfy { $0.evidence.confidence >= 0.55 } &&
+            Set(seen.compactMap { context.families.familyByUnitID[$0.id] }).count == seen.count &&
+            (contentDurations.max() ?? 0) - (contentDurations.min() ?? 0) < 0.25
+        let mechanical = !naturallyUniform && items.count >= 5 && Double(cadenceCount) / Double(items.count) >= 0.65
         if mechanical { add(.mechanicalCadence, 2, items.map(\.id), .rhythm, "Не менее 65% планов имеют одинаковую длительность ±2 frames") }
         for window in (timeline.duration > 120 ? [20.0, 45.0, 90.0] : [20.0]) where timeline.duration >= window {
             for start in stride(from: 0.0, through: timeline.duration - window, by: window / 2) {

@@ -45,6 +45,25 @@ enum AutomaticEditorialAssembly {
             return limitedRuns(sequence, families: context.families.familyByUnitID, fps: fps)
         }
         var selected = makeSlots(items)
+        if let first = selected.first, !protected(first.unit), !first.unit.candidate.locked {
+            // Compare unused candidates in the opening source window as well
+            // as the rough edit. No later recording is moved in front of an
+            // earlier required event.
+            let openings = context.units.filter {
+                !rejected.contains($0.id) && $0.candidate.assetID == first.unit.candidate.assetID &&
+                    $0.sourceRange.start >= first.unit.sourceRange.start &&
+                    $0.sourceRange.start <= first.unit.sourceRange.start + 15 &&
+                    $0.usableDuration >= 3 && EditorialMomentPolicy.openingValue($0) > EditorialMomentPolicy.openingValue(first.unit) + 0.15
+            }.sorted { EditorialMomentPolicy.openingValue($0) > EditorialMomentPolicy.openingValue($1) }
+            if let opening = openings.first, !items.contains(where: { $0.candidateID == opening.id }) {
+                items.append(TimelineItem(id: EditorialIdentity.uuid("automatic-opening-\(source.id)-\(opening.id)"),
+                    candidateID: opening.id, assetID: opening.candidate.assetID, kind: .video,
+                    sourceStart: opening.evidence.usableRange.start, sourceDuration: min(maximumShot, opening.usableDuration),
+                    timelineStart: first.item.timelineStart, timelineDuration: min(maximumShot, opening.usableDuration),
+                    videoAdjustments: VideoAdjustments(crop: .fit), eventID: opening.eventID, eventSceneID: opening.sceneID))
+                selected = makeSlots(items)
+            }
+        }
         // A rejected edge shot is replaced from unused measured candidates,
         // never by looping the previous shot or extending beyond its evidence.
         if selected.reduce(0, { $0 + $1.capacity }) < targetFrames {
@@ -177,7 +196,7 @@ enum AutomaticEditorialAssembly {
             let family = families[slot.unit.id] ?? slot.unit.id.uuidString
             run = family == lastFamily ? run + 1 : 1
             lastFamily = family
-            guard run <= 2 else { continue }
+            guard run <= 2 || protected(slot.unit) else { continue }
             if run == 2, !protected(slot.unit), let prior = result.last {
                 let ceiling = Int(12 * fps)
                 if prior.capacity + slot.capacity > ceiling {
@@ -210,7 +229,9 @@ enum AutomaticEditorialAssembly {
             guard let id = item.candidateID, let unit = units[id], let asset = item.assetID else { continue }
             let lower = max(unit.sourceRange.start, unit.evidence.usableRange.start)
             let upper = min(unit.sourceRange.end, unit.evidence.usableRange.end)
-            let start = (max(lower, item.sourceStart, ends[asset, default: 0]) * fps).rounded(.up) / fps
+            let required = EditorialMomentPolicy.protectedRange(unit)
+            let seed = required?.start ?? item.sourceStart
+            let start = (max(lower, seed, ends[asset, default: 0]) * fps).rounded(.up) / fps
             let next = sorted.filter { $0.assetID == asset && $0.sourceStart > start + 0.001 }.map(\.sourceStart).min() ?? upper
             let cap = min(unit.usableDuration, protected(unit) ? unit.usableDuration : maximumShot, min(upper, next) - start)
             let frames = Int((max(0, cap) * fps).rounded(.down))

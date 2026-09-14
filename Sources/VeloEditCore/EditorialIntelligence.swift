@@ -117,6 +117,9 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
     public var usableDuration: Double {
         let range = max(0, min(sourceRange.end, evidence.usableRange.end) - max(sourceRange.start, evidence.usableRange.start))
         guard discardReason == nil, !evidence.hasHardOcclusion, quality >= 0.38 else { return 0 }
+        if let boundary = candidate.momentBoundary, boundary.confidence >= 0.65 {
+            return min(range, max(speechSeconds, boundary.completionEnd - boundary.anticipationStart))
+        }
         if speechSeconds > 0 { return min(range, speechSeconds) }
         if evidence.hasProgression { return evidence.completion >= 0.65 && evidence.unchangedSeconds <= 15 ? range : min(range, 15) }
         if evidence.atmosphereValue >= 0.65 && evidence.confidence >= 0.55 { return min(range, 12) }
@@ -127,7 +130,7 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
 
     public func preferredDuration(pacing: Double) -> Double {
         if candidate.tags.contains("photo") { return min(usableDuration, PhotoPresentationPolicy.duration) }
-        if speechSeconds > 0 { return usableDuration }
+        if speechSeconds > 0 || (candidate.momentBoundary?.confidence ?? 0) >= 0.65 { return usableDuration }
         if evidence.hasProgression && evidence.completion >= 0.65 { return usableDuration }
         let base = evidence.atmosphereValue >= 0.65 ? 4.2 : evidence.actionDelta >= 0.18 ? 1.6 : 2.5
         return min(usableDuration, max(1.2, base + 1.7 * evidence.informationGain + 1.3 * quality - pacing * 0.7))

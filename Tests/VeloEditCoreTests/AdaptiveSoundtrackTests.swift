@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
-@Test func adaptiveSoundtrackFollowsConfidentActivityJourney() throws {
+@Test func adaptiveSoundtrackKeepsOneTrackWhenActivityChangesHaveNoVerifiedCompatibleMix() throws {
     let fixture = try AdaptiveSoundtrackFixture()
     defer { fixture.removeFiles() }
     let buggyEvent = UUID()
@@ -35,15 +35,10 @@ import Testing
         analyses: material.analyses,
         structures: fixture.structures
     )
-    let plan = try #require(directed.effectiveAdaptiveSoundtrack)
-    #expect(plan.segments.count == 3)
-    #expect(plan.segments.map(\.activityKey) == ["action-vehicle", "fishing", "cycling"])
-    #expect(plan.segments.map(\.timelineStart) == [0, 20, 40])
-    #expect(plan.segments[1].directive.style == .calm)
-    #expect(plan.segments[0].directive.trackID != plan.segments[1].directive.trackID)
-    #expect(plan.segments[1].directive.trackID != plan.segments[2].directive.trackID)
-    #expect(plan.segments.dropFirst().allSatisfy { $0.transitionDuration >= 0.45 })
-    #expect(plan.segments.dropFirst().allSatisfy { $0.boundaryItemID != nil })
+    #expect(directed.effectiveAdaptiveSoundtrack == nil)
+    #expect(directed.music?.trackID == fixture.action.id)
+    #expect(directed.items == timeline.items)
+
 }
 
 @Test func adaptiveSoundtrackKeepsOneTrackForOneActivity() throws {

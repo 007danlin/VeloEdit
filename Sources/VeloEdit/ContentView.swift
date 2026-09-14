@@ -3477,6 +3477,9 @@ private struct TimelineInspector: View {
         VStack(alignment: .leading, spacing: 8) {
             TextField("Например: сделай кинематографичным", text: $aiTitleInstruction)
                 .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    if model.editSelectedTitleWithAI(aiTitleInstruction) { aiTitleInstruction = "" }
+                }
             Button("Изменить существующий титр", systemImage: "sparkles") {
                 if model.editSelectedTitleWithAI(aiTitleInstruction) { aiTitleInstruction = "" }
             }

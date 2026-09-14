@@ -502,63 +502,6 @@ public struct AdaptiveSoundtrackPlanner: Sendable {
         return result
     }
 
-    private func transitionDuration(
-        at boundary: Boundary?,
-        incomingTrack: LocalMusicTrack,
-        timeline: Timeline,
-        structure: MusicStructure?
-    ) -> Double {
-        let beat = structure?.beatInterval ?? (60 / max(55, incomingTrack.bpm))
-        var duration = min(1.55, max(0.72, beat * 2))
-        guard let boundary else { return duration }
-        if let object = timeline.effectiveTransitionItems.first(where: {
-            $0.enabled && $0.incomingClipID == boundary.incomingItemID
-        }) {
-            switch object.style {
-            case .fadeThroughBlack, .fade, .filmDissolve, .crossDissolve, .blurDissolve:
-                duration = min(1.8, max(duration, object.duration))
-            case .lightFlash, .exposureFlash, .whipLeft, .whipRight, .whipUp, .whipDown:
-                duration = min(duration, 0.82)
-            default:
-                duration = max(0.72, min(1.35, object.duration))
-            }
-        } else if let item = timeline.items.first(where: { $0.id == boundary.incomingItemID }),
-                  let style = item.transition.flatMap(TransitionStyle.init(rawValue:)) {
-            duration = [.fadeThroughBlack, .fade, .crossDissolve, .blurDissolve].contains(style)
-                ? max(duration, 1.05)
-                : min(duration, 0.95)
-        }
-        return min(duration, max(0.45, boundary.time * 0.35), max(0.45, (timeline.duration - boundary.time) * 0.35))
-    }
-
-    private func musicalSourceStart(
-        track: LocalMusicTrack,
-        structure: MusicStructure?,
-        part: Part,
-        incomingTransitionDuration: Double,
-        isFirst: Bool
-    ) -> Double {
-        guard track.duration > 1 else { return 0 }
-        let halfTransition = incomingTransitionDuration * 0.5
-        var anchors = structure?.phraseBoundaries ?? []
-        if anchors.isEmpty { anchors = structure?.barBoundaries ?? [] }
-        anchors.append(contentsOf: structure?.sections.map(\.start) ?? [])
-        if isFirst { anchors.append(0) }
-        let candidates = Set(anchors.map { max(0, $0 - (isFirst ? 0 : halfTransition)) })
-            .filter { $0 < max(0.05, track.duration - 0.05) }
-        guard !candidates.isEmpty else { return 0 }
-        func sectionEnergy(at time: Double) -> Double {
-            structure?.sections.first(where: { time >= $0.start && time < $0.start + $0.duration })?.energy ?? track.energy
-        }
-        func score(_ start: Double) -> Double {
-            let energyFit = 1 - abs(sectionEnergy(at: start + halfTransition) - part.energy)
-            let usable = min(1, (track.duration - start) / max(1, min(part.duration, track.duration)))
-            let openingBonus = isFirst && start < 0.1 ? 0.08 : 0
-            return energyFit * 0.62 + usable * 0.38 + openingBonus
-        }
-        return candidates.max(by: { score($0) < score($1) }) ?? 0
-    }
-
     private static func musicalIntent(
         activity: Activity?,
         tokens: Set<String>,

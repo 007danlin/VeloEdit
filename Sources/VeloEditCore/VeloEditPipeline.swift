@@ -4351,7 +4351,8 @@ public actor VeloEditPipeline {
             for intent in AdaptiveSoundtrackPlanner().requests(for: timeline, plan: story.plan, analyses: analyses) {
                 try Task.checkCancellation()
                 let key = intent.searchQuery + "|" + (intent.sceneType ?? "") + "|" + String(Int((intent.energy * 5).rounded()))
-                guard seen.insert(key).inserted else { continue }
+                guard seen.count < SoundtrackEditorialPolicy.maximumCandidates,
+                      seen.insert(key).inserted else { continue }
                 let resolution = await musicSystem.resolve(intent, excludingIdentities: excludingIdentities)
                 if !resolution.failures.isEmpty {
                     lastMusicResolutionError = resolution.failures.map { "\($0.provider): \($0.reason)" }.joined(separator: "; ")
@@ -4672,8 +4673,19 @@ public actor VeloEditPipeline {
             if Task.isCancelled { return result }
             structures[track.id] = await MusicStructureCache.shared.structure(for: track)
         }
-        if let track = tracks.first(where: { $0.id == directive.trackID }) {
-            result = SoundtrackEditorialPolicy.applying(track: track, structure: structures[track.id], to: result, analyses: analyses)
+        let explicit = plan.directorBrief?.musicPolicy == .specificTrack || plan.explicitMusicTrackID != nil || directive.searchRequests?.contains(where: { $0.exactTrack }) == true
+        let preferences = await ExplicitEditorialPreferenceStore.shared.snapshot()
+        let recent = await LocalMusicSelectionHistoryStore.shared.recentIdentities()
+        let candidates = explicit ? shortlist.filter { $0.id == directive.trackID } : shortlist.filter { !preferences.excludes($0) && AutomaticSoundtrackSuitability.accepts($0, directive: directive) }
+        func score(_ track: LocalMusicTrack) -> Double {
+            let window = SoundtrackEditorialPolicy.window(track: track, structure: structures[track.id], timeline: result, analyses: analyses)
+            let novelty = track.noveltyIdentities.isDisjoint(with: recent) ? 0.025 : 0
+            return LocalMusicSelector().score(track, directive: directive) * 0.7 + window.score * 0.3 + preferences.musicAdjustment(track, style: directive.style) + novelty
+        }
+        let ranked = candidates.sorted { a, b in score(a) == score(b) ? a.selectionIdentity < b.selectionIdentity : score(a) > score(b) }
+        if let track = ranked.first ?? tracks.first(where: { $0.id == directive.trackID }) {
+            result = SoundtrackEditorialPolicy.applying(track: track, structure: structures[track.id], to: result, analyses: analyses,
+                alternatives: ranked.dropFirst().map { "\($0.title): ниже совместная оценка характера и участка" })
         }
         guard plan.directorBrief?.musicPolicy != .specificTrack else { result.adaptiveSoundtrack = nil; return result }
         return AdaptiveSoundtrackPlanner().applying(to: result, plan: plan, tracks: shortlist,
