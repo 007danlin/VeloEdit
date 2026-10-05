@@ -22,7 +22,6 @@ struct ProjectInteractionTests {
                 timelineStart: Double(index) * 10, timelineDuration: 10)
         })
         model.project = ProjectManifest(name: "Legacy mixed rates", assets: assets, timelines: [timeline])
-        model.timeline = timeline
         #expect(model.maximumSourceFrameRate == high)
         #expect(model.exportFrameRateOptions.contains(high))
         #expect(!model.exportFrameRateOptions.contains(240))

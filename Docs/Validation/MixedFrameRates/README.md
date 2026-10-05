@@ -70,7 +70,7 @@ reports the requested FPS. App-model checks cover the preset resolution in
 legacy projects. Decoded audio comparisons cover manual 60/120 fps exports
 from 30 fps sources, including the final mastering/mux pass.
 
-The focused regression run passed: **38 tests in 5 suites**, including export
+The earlier edit/preview regression run passed: **38 tests in 5 suites**, including export
 resolution/detail, five transition types, and decoded source-audio comparison
 in five mixing configurations. Optional real-GoPro tests were skipped because
 no real-source environment variable was supplied. The mixed-rate checks use
@@ -93,3 +93,19 @@ Build/VeloEdit.app` also passed. Build identity: `2026.278.170731`, source SHA-2
 The validation directory also contains `build-app.log`, `BuildInfo.json` and
 `app-binary.sha256`. No application UI controls were added or redesigned by
 this change.
+
+## Maximum/manual export follow-up
+
+The focused export run passed: **19 core tests in 3 suites and 1 app-model
+test in 1 suite** (the optional real-GoPro test was skipped). The numbered
+video test ran 8 source/effect cases and checked 4 delivery modes per case,
+including 120 and 119.88 fps. Five audio cases verified the decoded mix and
+duration at 60/120 fps, and three app-model cases checked legacy 30 fps projects.
+
+```sh
+swift test --disable-sandbox --enable-swift-testing --disable-xctest \
+  --scratch-path /tmp/veloedit-frame-rate-build --jobs 2 \
+  --filter 'MixedFrameRateTests|ExportSettingsTests|SourceAudioMixPolicyTests|maximumExportUsesOriginalsInLegacyThirtyFPSProjects'
+```
+
+Follow-up evidence is stored under `Build/Validation/MaximumExportFrameRates`.
