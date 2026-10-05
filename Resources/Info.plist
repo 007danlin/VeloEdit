@@ -49,7 +49,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026 VeloEdit</string>
+	<string>Copyright © 2026 Daniel L</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>VeloEdit локально распознаёт речь, чтобы не обрывать фразы при автоматическом монтаже.</string>
 	<key>UTExportedTypeDeclarations</key>

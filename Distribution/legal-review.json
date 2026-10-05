@@ -1,0 +1,17 @@
+{
+  "gpl_integration": {
+    "status": "pending",
+    "evidence": "",
+    "reason": "OVRLEY and the bundled GPL-enabled FFmpeg require a distribution decision compatible with the proprietary VeloEdit license. A subprocess boundary alone is not a legal conclusion."
+  },
+  "corresponding_source": {
+    "status": "pending",
+    "evidence": "",
+    "reason": "Verify complete corresponding source and build instructions for the exact distributed GPL/LGPL binaries, including dependencies, patches and source delivery."
+  },
+  "dependency_and_model_notices": {
+    "status": "pending",
+    "evidence": "",
+    "reason": "Complete the notice/license inventory for Rust/Skia, Ollama/llama.cpp/MLX, ONNX Runtime and the exact bundled speech weights/tokenizers."
+  }
+}

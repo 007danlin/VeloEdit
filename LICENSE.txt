@@ -1,0 +1,12 @@
+Copyright © 2026 Daniel L. All rights reserved in original VeloEdit components.
+
+The original VeloEdit source code and original resources owned by Daniel L are
+proprietary. No permission to redistribute this source code or create and
+distribute derivative versions is granted by possession of this repository.
+End-user terms are prepared from Resources/Legal/LICENSE.txt during app builds.
+
+This notice does not claim ownership of third-party code, models, music, fonts,
+or other third-party materials. Their copyright notices and licenses remain
+in effect and take precedence for those components. In particular, OVRLEY and
+the modifications to its GPL-covered bridge retain their GPL terms. Nothing
+in this notice restricts rights granted by those licenses or applicable law.

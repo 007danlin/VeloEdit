@@ -18,6 +18,10 @@ struct VeloEditApp: App {
         .windowToolbarStyle(.unified)
         .commands { VeloEditCommands(model: model) }
         Settings { SettingsView().environmentObject(model) }
+        Window("Лицензия и компоненты", id: "legal") {
+            LegalInfoView()
+        }
+        .defaultSize(width: 780, height: 620)
     }
 }
 
@@ -175,8 +179,12 @@ enum WindowControlSizing {
 
 struct VeloEditCommands: Commands {
     @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Лицензия и компоненты…") { openWindow(id: "legal") }
+        }
         CommandGroup(replacing: .newItem) {
             Button("Новый проект") { model.createProject() }.keyboardShortcut("n")
                 .disabled(model.openingProjectURL != nil)

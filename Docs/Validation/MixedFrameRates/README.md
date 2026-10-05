@@ -75,3 +75,11 @@ swift test --disable-sandbox --enable-swift-testing --disable-xctest \
 Evidence is saved under `Build/Validation/MixedFrameRates`: `tests.log` and
 `bundle-source-hashes.json`. The full application bundle build is validated
 separately below.
+
+Full bundle build succeeded with `./Scripts/build-app.sh` using an isolated
+scratch directory and source snapshot. `codesign --verify --deep --strict
+Build/VeloEdit.app` also passed. Build identity: `2026.278.170731`, source SHA-256
+`b6012b789b5a6347b39225e5e47513169d568e829809ea7fffe64a3d35bfa59e`.
+The validation directory also contains `build-app.log`, `BuildInfo.json` and
+`app-binary.sha256`. No application UI controls were added or redesigned by
+this change.

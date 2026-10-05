@@ -93,6 +93,7 @@ cp -R "$build_package_dir/Resources/Music" "$staging_app/Contents/Resources/Musi
 cp -R "$build_package_dir/Resources/Ollama" "$staging_app/Contents/Resources/Ollama"
 cp -R "$build_package_dir/ThirdParty/OVRLEY" "$staging_app/Contents/Resources/OVRLEY-Source"
 python3 "$repo_dir/Scripts/bundle-ffmpeg.py" "$staging_app"
+python3 "$repo_dir/Scripts/bundle-legal.py" "$build_package_dir" "$staging_app" "$app_scratch_path"
 python3 "$repo_dir/Scripts/write-build-identity.py" "$build_package_dir" "$staging_app"
 if [[ "$configuration" == "release" ]]; then
   /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEdit"
@@ -101,13 +102,7 @@ if [[ "$configuration" == "release" ]]; then
 fi
 xattr -cr "$staging_app"
 
-if [[ -n "${VELOEDIT_CODESIGN_IDENTITY:-}" ]]; then
-  codesign --force --deep --options runtime --timestamp --sign "$VELOEDIT_CODESIGN_IDENTITY" "$staging_app"
-else
-  codesign --force --deep --sign - "$staging_app"
-fi
-
-codesign --verify --deep --strict "$staging_app"
+python3 "$repo_dir/Scripts/sign-app.py" "$staging_app"
 
 # Documents may be managed by File Provider. Removing VeloEdit.app and then
 # copying a directory with the same public name leaves a race in which the old

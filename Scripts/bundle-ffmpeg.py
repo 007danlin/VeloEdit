@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Bundle the installed converter and its non-system dylibs relocatably."""
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -46,7 +45,9 @@ while pending:
             pending.append((path.resolve(), target))
     if destination.suffix == ".dylib":
         subprocess.run(["install_name_tool", "-id", "@loader_path/" + destination.name, str(destination)], check=True)
-    subprocess.run(["codesign", "--force", "--sign", os.environ.get("VELOEDIT_CODESIGN_IDENTITY", "-"), str(destination)], check=True, capture_output=True)
+    # Temporary ad-hoc signature allows the relocation smoke check. The app
+    # signer subsequently signs every binary with the final identity/runtime.
+    subprocess.run(["codesign", "--force", "--sign", "-", str(destination)], check=True, capture_output=True)
 for package in packages:
     dest = notices / package.parent.name
     dest.mkdir(exist_ok=True)
@@ -57,4 +58,5 @@ for package in packages:
     "FFmpeg: https://ffmpeg.org/ — source https://ffmpeg.org/releases/\n"
     "Built with Homebrew. Package versions, source URLs and license texts are included.\n"
     "Converter is a separate executable; originals are never modified.\n")
-subprocess.run([str(helpers / "ffmpeg"), "-version"], check=True, stdout=subprocess.DEVNULL)
+configuration = subprocess.check_output([str(helpers / "ffmpeg"), "-version"], text=True)
+(notices / "build-configuration.txt").write_text(configuration)
