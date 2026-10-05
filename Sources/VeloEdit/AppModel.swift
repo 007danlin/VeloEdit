@@ -557,9 +557,8 @@ final class AppModel: ObservableObject {
     var hasPlayablePreview: Bool { previewPlayer != nil }
     var playbackReady: Bool { hasPlayablePreview && !hasPendingFilmChanges }
     var maximumSourceFrameRate: Double {
-        // Historical name used by the export presets: maximum encoding
-        // quality now keeps the clock selected for the actual edit.
-        timeline?.frameRate ?? 30
+        guard let timeline else { return 30 }
+        return ExportSettingsPolicy.maximumSourceFrameRate(timeline: timeline, assets: project?.assets ?? [])
     }
     var exportFrameRateOptions: [Double] {
         let standard = [24.0, 25.0, 30.0, 50.0, 60.0, 120.0, 240.0]
@@ -2266,7 +2265,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func exportWithSettings(quality: RenderQuality, frameRate: Double = 30) {
+    func exportWithSettings(quality: RenderQuality, frameRate: Double? = nil) {
         let suggestedName: String
         switch quality {
         case .preview720p:

@@ -60,11 +60,14 @@ public struct ExportVideoSettings: Sendable {
 }
 
 public enum ExportSettingsPolicy {
+    /// Delivery uses the fastest original actually present in the edit, even
+    /// for older projects saved at 30 fps. Slower clips are sampled repeatedly
+    /// on this clock; source ranges, playback speed and audio stay unchanged.
     public static func maximumSourceFrameRate(timeline: Timeline, assets: [MediaAsset]) -> Double {
-        let used = Set(timeline.items.filter { $0.kind == .video }.compactMap(\.assetID))
+        let used = Set(timeline.items.filter { $0.kind == .video && !$0.isFreezeFrame }.compactMap(\.assetID))
         let rates = assets.filter { used.contains($0.id) }.compactMap(\.metadata.frameRate)
             .filter { $0.isFinite && $0 > 0 }
-        return rates.max() ?? timeline.frameRate
+        return rates.max().map { min(240, $0) } ?? timeline.frameRate
     }
 
     public static func timeline(_ source: Timeline, assets: [MediaAsset], quality: RenderQuality, frameRate: Double? = nil) -> Timeline {
@@ -80,10 +83,15 @@ public enum ExportSettingsPolicy {
             result.width = max(2, Int((Double(source.width) * max(1, scale) / 2).rounded()) * 2)
             result.height = max(2, Int((Double(source.height) * max(1, scale) / 2).rounded()) * 2)
         }
-        // Encoding quality must not change the movie's motion cadence.
-        let requested = frameRate ?? source.frameRate
+        // A manual rate wins at every quality. Maximum delivery preserves the
+        // fastest used source, independently of the saved edit/preview clock.
+        let requested = frameRate ?? (quality == .maximum
+            ? maximumSourceFrameRate(timeline: source, assets: assets)
+            : source.frameRate)
         result.frameRate = requested
-        if frameRate != nil { result.automaticallySelectFrameRate = false }
+        // PlaybackEngine also resolves automatic clocks. Freeze this export
+        // copy so it cannot reduce a selected 120/240 fps delivery back to 60.
+        result.automaticallySelectFrameRate = false
         return result
     }
 }

@@ -2,9 +2,16 @@
 
 ## Delivery contract
 
-The film has one frame rate, shared by editing, preview and default delivery.
-Encoding quality and AI mode cannot select a different rate. A manual export
-override remains available and never rewrites the saved timeline.
+Editing and preview share the saved timeline clock. Maximum export chooses
+the fastest original video used in the edit: 30+60 delivers 60, 60+120 delivers
+120, and 59.94+119.88 delivers 119.88 fps, up to the supported 240 fps limit.
+Unused imports and freeze frames do not raise the rate; short high-rate inserts
+and connected video do count. This also applies to older projects saved at
+30 fps. Manual export always honors its explicit frame rate at every quality.
+Other quality presets keep the timeline rate unless explicitly overridden.
+Delivery freezes the selected clock on a copy so the playback builder cannot
+reapply the preview policy and reduce a 120/240 fps export. It never rewrites
+the saved timeline or changes clip speed, audio timing, or subtitle timing.
 
 New automatic films (including vlogs) and new manual timelines opt into
 `TimelineFrameRatePolicy`. Existing saved timelines without the optional
@@ -13,14 +20,14 @@ film selects its rate using the new policy. This avoids silently reinterpreting
 an existing fixed-rate edit. Subsequent edits to opted-in timelines resolve the
 clock in both the immediate editor state and persisted project state.
 
-The policy weights the duration of the actual edited primary footage, ignores
+The edit/preview policy weights the duration of the actual edited primary footage, ignores
 unused imports and freeze frames, and uses connected camera footage only when
 there are no primary video clips. Repeated cuts do not outvote a longer clip.
 The dominant family is 30/60, 25/50 or 24/48, with 30/60 preferred on a tie.
 Integer and 1000/1001 variants remain distinct. The high-rate variant is selected
 when footage with useful high-rate motion accounts for at least 5% of the moving
-video duration. Automatic selection never exceeds 60 fps; explicit delivery
-rates up to 240 remain supported.
+video duration. Automatic edit/preview selection never exceeds 60 fps;
+maximum and manual delivery independently support rates up to 240.
 
 Motion rate uses source duration / edited duration, matching actual playback,
 including the segment means and final scaling used for speed ramps. Thus
@@ -55,10 +62,13 @@ is deliberately not enabled automatically.
 `MixedFrameRateTests` checks policy, retiming, persistence, fixed-rate project
 compatibility, export overrides, FCPXML and accumulation across 1,000 cuts.
 Its numbered-video fixtures encode a binary index in every source frame.
-Decoded MP4 pixels and timestamps must match the expected sequence for 30/60
-and 29.97/59.94, with and without effects, high/low delivery rates, cuts
-and 50% slow motion. This detects loss of real high-rate frames even if the MP4
-container reports the requested FPS.
+Decoded MP4 pixels and timestamps must match the expected sequence for 30/60,
+29.97/59.94, 60/120 and 59.94/119.88, with and without effects, maximum and
+manual high/low delivery rates, legacy 30 fps projects, cuts and 50% slow
+motion. This detects loss of real high-rate frames even if the MP4 container
+reports the requested FPS. App-model checks cover the preset resolution in
+legacy projects. Decoded audio comparisons cover manual 60/120 fps exports
+from 30 fps sources, including the final mastering/mux pass.
 
 The focused regression run passed: **38 tests in 5 suites**, including export
 resolution/detail, five transition types, and decoded source-audio comparison

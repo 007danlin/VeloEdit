@@ -8,6 +8,30 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct ProjectInteractionTests {
+    @Test(arguments: [60.0, 120.0, 120_000.0 / 1001])
+    func maximumExportUsesOriginalsInLegacyThirtyFPSProjects(high: Double) throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model()
+        let assets = [30.0, high, 240.0].enumerated().map { index, fps in
+            MediaAsset(originalURL: fixture.root.appendingPathComponent("source-\(index).mov"), kind: .video,
+                byteSize: 1, contentHash: "\(index)", metadata: MediaMetadata(duration: 10, frameRate: fps))
+        }
+        let timeline = Timeline(storyPlanID: UUID(), frameRate: 30, items: assets.prefix(2).enumerated().map { index, asset in
+            TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 10,
+                timelineStart: Double(index) * 10, timelineDuration: 10)
+        })
+        model.project = ProjectManifest(name: "Legacy mixed rates", assets: assets, timelines: [timeline])
+        model.timeline = timeline
+        #expect(model.maximumSourceFrameRate == high)
+        #expect(model.exportFrameRateOptions.contains(high))
+        #expect(!model.exportFrameRateOptions.contains(240))
+        #expect(model.exportSettingsSummary(quality: .maximum).contains("\(ExportVideoSettings.frameRateLabel(high)) кадров/с"))
+        #expect(model.exportSettingsSummary(quality: .maximum, frameRate: 30).contains("30 кадров/с"))
+        #expect(model.timeline?.frameRate == 30)
+        #expect(model.project?.timelines.first?.frameRate == 30)
+    }
+
     @Test func deletingMissingRecentProjectRemovesAndPersistsCard() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

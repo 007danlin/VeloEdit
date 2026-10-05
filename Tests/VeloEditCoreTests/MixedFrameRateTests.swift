@@ -47,15 +47,34 @@ struct MixedFrameRateTests {
         #expect(TimelineFrameRatePolicy.automaticFrameRate(items: [ramp], assets: [faster]) == 30)
     }
 
-    @Test func qualityDoesNotChangeClockAndExplicitExportRateWins() {
+    @Test func maximumUsesSourceClockAndExplicitExportRateWins() {
         let camera = asset(120)
         let timeline = Timeline(storyPlanID: UUID(), frameRate: 60_000.0 / 1001, items: [clip(camera)])
         for quality in [RenderQuality.preview720p, .preview1080p, .final1080p, .final4K, .maximum] {
             let resolved = ExportSettingsPolicy.timeline(timeline, assets: [camera], quality: quality)
-            #expect(resolved.frameRate == timeline.frameRate)
+            #expect(resolved.frameRate == (quality == .maximum ? 120 : timeline.frameRate))
+            #expect(resolved.automaticallySelectFrameRate == false)
             #expect(resolved.items == timeline.items)
             #expect(ExportSettingsPolicy.timeline(timeline, assets: [camera], quality: quality, frameRate: 30).frameRate == 30)
         }
+    }
+
+    @Test func maximumIgnoresUnusedAndFrozenSourcesButKeepsShortHighRateInserts() {
+        let low = asset(30), high = asset(120), unused = asset(240)
+        var frozen = clip(unused)
+        frozen.freezeFrame = true
+        var timeline = Timeline(storyPlanID: UUID(), frameRate: 30,
+            items: [clip(low, duration: 99), clip(high, duration: 1), frozen])
+        timeline.automaticallySelectFrameRate = true
+        let resolved = ExportSettingsPolicy.timeline(timeline, assets: [low, high, unused], quality: .maximum)
+        #expect(resolved.frameRate == 120)
+        #expect(TimelineFrameRatePolicy.applying(to: resolved, assets: [low, high, unused]).frameRate == 120)
+        #expect(resolved.items == timeline.items)
+        #expect(timeline.frameRate == 30 && timeline.automaticallySelectFrameRate == true)
+        #expect(ExportSettingsPolicy.maximumSourceFrameRate(timeline: timeline, assets: []) == 30)
+        let fast = asset(480)
+        #expect(ExportSettingsPolicy.maximumSourceFrameRate(
+            timeline: Timeline(storyPlanID: UUID(), items: [clip(fast)]), assets: [fast]) == 240)
     }
 
     @Test func automaticClockIsPersistedForManualEditsAndFixedProjectsStayFixed() async throws {
@@ -124,12 +143,11 @@ struct MixedFrameRateTests {
 
     /// Each source frame contains a binary frame number. Checking decoded
     /// pixels detects missing motion even when the container reports 60 fps.
-    @Test(arguments: [false, true], [false, true])
-    func actualMixedExportPreservesMotionAtBothDeliveryRates(fractional: Bool, customCompositor: Bool) async throws {
+    @Test(arguments: [30.0, 30_000.0 / 1001, 60.0, 60_000.0 / 1001], [false, true])
+    func actualMixedExportPreservesMotionAtBothDeliveryRates(low: Double, customCompositor: Bool) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("mixed-fps-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let low = fractional ? 30_000.0 / 1001 : 30
         let high = low * 2
         let urls = [root.appendingPathComponent("30.mov"), root.appendingPathComponent("60.mov")]
         try await Self.writeNumberedVideo(urls[0], fps: low, tag: 1)
@@ -152,14 +170,23 @@ struct MixedFrameRateTests {
         if customCompositor {
             timeline.effects = [.init(effectType: .brightness, startTime: 0, duration: timeline.duration, intensity: 0.02)]
         }
-        #expect(abs(timeline.frameRate - high) < 0.000_001)
+        let previewFPS = low * (low < 50 ? 2 : 1)
+        #expect(abs(timeline.frameRate - previewFPS) < 0.000_001)
         let preview = try await PlaybackEngine().build(timeline: timeline, assets: assets)
-        #expect(preview.videoComposition?.frameDuration == VideoFrameTiming.duration(for: high))
+        #expect(preview.videoComposition?.frameDuration == VideoFrameTiming.duration(for: previewFPS))
 
-        for fps in [high, low] {
-            let url = root.appendingPathComponent("output-\(fps).mp4")
-            _ = try await RenderEngine().render(timeline: timeline, assets: assets, quality: .maximum,
-                                                frameRate: fps == high ? nil : fps, destination: url)
+        for mode in ["maximum", "manual-high", "manual-low", "legacy-maximum"] {
+            let fps = mode == "manual-low" ? low : high
+            let url = root.appendingPathComponent("\(mode).mp4")
+            var exportTimeline = timeline
+            if mode == "legacy-maximum" {
+                exportTimeline.frameRate = 30
+                exportTimeline.automaticallySelectFrameRate = nil
+            }
+            let report = try await RenderEngine().render(timeline: exportTimeline, assets: assets, quality: .maximum,
+                frameRate: mode.hasPrefix("manual") ? fps : nil, destination: url)
+            #expect(abs(try #require(report.videoInfo).frameRate - fps) < 0.005)
+            #expect(abs(try #require(report.videoInfo).duration - duration * 3) < 1 / fps + 0.001)
             let frames = try await Self.readNumbers(url, fps: fps)
             let perClip = fps == high ? 60 : 30
             #expect(frames.count == perClip * 3)

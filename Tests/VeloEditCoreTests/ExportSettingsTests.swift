@@ -40,7 +40,7 @@ struct ExportSettingsTests {
         #expect(try await ExportVideoVerifier.measuredCadence(asset: asset, track: track, expectedRate: 25, duration: 0.5) == nil)
     }
 
-    @Test func maximumUsesOnlyEditedOriginalsAndPreservesTimelineFrameRate() {
+    @Test func maximumUsesOnlyEditedOriginalsForResolutionAndFrameRate() {
         let used = MediaAsset(originalURL: URL(fileURLWithPath: "/original.mov"), kind: .video, byteSize: 1, contentHash: "used",
                               metadata: MediaMetadata(width: 5312, height: 2988, frameRate: 60_000.0 / 1001))
         let unused = MediaAsset(originalURL: URL(fileURLWithPath: "/unused.mov"), kind: .video, byteSize: 1, contentHash: "unused",
@@ -49,7 +49,8 @@ struct ExportSettingsTests {
                                 items: [TimelineItem(assetID: used.id, kind: .video, sourceDuration: 1, timelineStart: 0, timelineDuration: 1)])
         let auto = ExportSettingsPolicy.timeline(timeline, assets: [used, unused], quality: .maximum)
         #expect(auto.width == 5312 && auto.height == 2988)
-        #expect(auto.frameRate == timeline.frameRate)
+        #expect(auto.frameRate == 60_000.0 / 1001)
+        #expect(timeline.frameRate == 30)
         let manual = ExportSettingsPolicy.timeline(timeline, assets: [used, unused], quality: .maximum, frameRate: 25)
         #expect(manual.frameRate == 25)
         let fixed = ExportSettingsPolicy.timeline(timeline, assets: [used, unused], quality: .final1080p, frameRate: 30_000.0 / 1001)

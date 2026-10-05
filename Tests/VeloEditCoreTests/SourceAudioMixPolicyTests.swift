@@ -122,7 +122,13 @@ import Testing
         let playback = try await PlaybackEngine().build(timeline: timeline, assets: [asset], musicTracks: tracks)
         let preview = try await signalBalance(asset: playback.composition, mix: playback.audioMix)
         let exportURL = root.appendingPathComponent("result.mp4")
-        _ = try await RenderEngine().render(timeline: timeline, assets: [asset], musicTracks: tracks, quality: .maximum, destination: exportURL)
+        // Frame repetition on the delivery clock must not retime or amplify
+        // the original audio, including the final mastering/mux pass.
+        let exportFPS = mode == "no-music" ? 120.0 : 60.0
+        let report = try await RenderEngine().render(timeline: timeline, assets: [asset], musicTracks: tracks,
+            quality: .maximum, frameRate: exportFPS, destination: exportURL)
+        #expect(abs(try #require(report.videoInfo).frameRate - exportFPS) < 0.005)
+        #expect(abs(try #require(report.videoInfo).duration - 8) < 1 / exportFPS + 0.001)
         let exported = try await signalBalance(asset: AVURLAsset(url: exportURL), mix: nil)
         for index in preview.indices {
             // Equal input amplitudes: source at 20%, music at its unchanged 18%.
