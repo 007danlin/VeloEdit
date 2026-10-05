@@ -1,0 +1,16 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test semanticIndexStaysBoundedForThreeHundredCameraFiles() started.
+✔ Test semanticIndexStaysBoundedForThreeHundredCameraFiles() passed after 1.347 seconds.
+◇ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() started.
+✔ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() passed after 9.315 seconds.
+◇ Suite MusicCascadeTests started.
+◇ Test failuresAndEmptyCataloguesAdvanceWithoutWaitingForTimers() started.
+✔ Test failuresAndEmptyCataloguesAdvanceWithoutWaitingForTimers() passed after 0.009 seconds.
+◇ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() started.
+✔ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() passed after 0.502 seconds.
+✔ Suite MusicCascadeTests passed after 0.512 seconds.
+◇ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() started.
+✔ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() passed after 0.363 seconds.
+✔ Test run with 5 tests in 1 suite passed after 11.539 seconds.

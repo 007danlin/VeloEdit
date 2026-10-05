@@ -320,7 +320,8 @@ public struct MomentPhaseTrimmer: Sendable {
                 return MomentTrimRange(sourceStart: phraseStart, sourceDuration: phraseDuration)
             }
         }
-        guard let boundary = candidate.momentBoundary, desired + 0.000_001 < candidate.sourceDuration else {
+        guard let boundary = candidate.momentBoundary, boundary.confirmedActionConfidence > 0,
+              desired + 0.000_001 < candidate.sourceDuration else {
             return MomentTrimRange(sourceStart: candidateStart, sourceDuration: desired)
         }
         if boundary.confidence < 0.42, desired < candidate.sourceDuration * 0.78 {

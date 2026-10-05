@@ -1,0 +1,1110 @@
+[
+  {
+    "case": "fast",
+    "attempt": 1,
+    "seconds": 0.5828977079945616,
+    "evidence": {
+      "visualAnalysisCompleted": true,
+      "audioAnalysisCompleted": true,
+      "modelQuantization": "Q4_K_M",
+      "modelAvailable": true,
+      "plannedScenes": 1,
+      "evaluatedRechecks": 0,
+      "evaluatedScenes": 1,
+      "plannedRechecks": 0
+    },
+    "warnings": [],
+    "modelDigest": "ea422f1e73652a95479954d8572d3c8c6022f628ce2d38a1a04aae1b7f2d5300",
+    "profile": "pipeline-v8-ai-evidence:fast:ollama:qwen3-vl:2b-instruct",
+    "metrics": {
+      "hardwareIdentifier": "Mac16,13",
+      "visionCallCount": 0,
+      "thermalStates": [
+        "nominal"
+      ],
+      "startedAt": "2026-09-19T06:54:21Z",
+      "stageMetrics": [
+        {
+          "endedAt": "2026-09-19T06:54:21Z",
+          "workUnits": 1,
+          "duration": 0.0001104166658478789,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.074488,
+            "residentMemoryBytes": 38158336,
+            "thermalState": "nominal"
+          },
+          "stage": "metadata",
+          "startedAt": "2026-09-19T06:54:21Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.074365,
+            "residentMemoryBytes": 38060032,
+            "thermalState": "nominal"
+          }
+        },
+        {
+          "endedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 0,
+          "duration": 0.03402925000409596,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.088267,
+            "residentMemoryBytes": 42516480,
+            "thermalState": "nominal"
+          },
+          "stage": "telemetry",
+          "startedAt": "2026-09-19T06:54:21Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.074503,
+            "residentMemoryBytes": 38158336,
+            "thermalState": "nominal"
+          }
+        },
+        {
+          "endedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 0,
+          "duration": 0.00015762500697746873,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.08856,
+            "residentMemoryBytes": 42762240,
+            "thermalState": "nominal"
+          },
+          "stage": "fastInspection",
+          "startedAt": "2026-09-19T06:54:22Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.088402,
+            "residentMemoryBytes": 42647552,
+            "thermalState": "nominal"
+          }
+        },
+        {
+          "endedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 4,
+          "duration": 0.0036393333357409574,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.09229799999999999,
+            "residentMemoryBytes": 43122688,
+            "thermalState": "nominal"
+          },
+          "stage": "adaptiveSampling",
+          "startedAt": "2026-09-19T06:54:22Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.08862400000000001,
+            "residentMemoryBytes": 42811392,
+            "thermalState": "nominal"
+          }
+        },
+        {
+          "endedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 1,
+          "duration": 1.0750001820269972e-05,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.09231800000000001,
+            "residentMemoryBytes": 43139072,
+            "thermalState": "nominal"
+          },
+          "stage": "sceneSegmentation",
+          "startedAt": "2026-09-19T06:54:22Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.092307,
+            "residentMemoryBytes": 43122688,
+            "thermalState": "nominal"
+          }
+        },
+        {
+          "endedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 1,
+          "duration": 9.76250012172386e-05,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.092448,
+            "residentMemoryBytes": 43253760,
+            "thermalState": "nominal"
+          },
+          "stage": "localScoring",
+          "startedAt": "2026-09-19T06:54:22Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.092331,
+            "residentMemoryBytes": 43139072,
+            "thermalState": "nominal"
+          }
+        },
+        {
+          "endedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 1,
+          "duration": 0.002676166666788049,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.095335,
+            "residentMemoryBytes": 43794432,
+            "thermalState": "nominal"
+          },
+          "stage": "vlm",
+          "startedAt": "2026-09-19T06:54:22Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.09346399999999999,
+            "residentMemoryBytes": 43286528,
+            "thermalState": "nominal"
+          }
+        },
+        {
+          "endedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 1,
+          "duration": 4.187499871477485e-05,
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.096956,
+            "residentMemoryBytes": 44154880,
+            "thermalState": "nominal"
+          },
+          "stage": "fusion",
+          "startedAt": "2026-09-19T06:54:22Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.096914,
+            "residentMemoryBytes": 44138496,
+            "thermalState": "nominal"
+          }
+        }
+      ],
+      "codec": "hvc1",
+      "vlmLatency": 0,
+      "endedAt": "2026-09-19T06:54:22Z",
+      "mode": "fast",
+      "totalDuration": 0.04500195833679754,
+      "frameCount": 4,
+      "analyzedFrameCount": 4,
+      "vlmCallCount": 0,
+      "queueWaitTime": 0.013018012046813965,
+      "operationID": "BA7256AB-EE4A-4945-95CD-02BFDA71E824",
+      "frameCacheHitCount": 6,
+      "resolution": "5312x2988",
+      "decodedFrameCount": 0,
+      "vlmCacheHitCount": 1
+    }
+  },
+  {
+    "case": "balanced",
+    "attempt": 1,
+    "seconds": 0.5409561670021503,
+    "evidence": {
+      "evaluatedScenes": 1,
+      "modelQuantization": "Q4_K_M",
+      "audioAnalysisCompleted": true,
+      "plannedRechecks": 0,
+      "modelAvailable": true,
+      "visualAnalysisCompleted": true,
+      "plannedScenes": 1,
+      "evaluatedRechecks": 0
+    },
+    "warnings": [],
+    "modelDigest": "ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+    "profile": "pipeline-v8-ai-evidence:balanced:ollama:qwen3-vl:4b-instruct",
+    "metrics": {
+      "visionCallCount": 7,
+      "endedAt": "2026-09-19T06:54:22Z",
+      "hardwareIdentifier": "Mac16,13",
+      "decodedFrameCount": 7,
+      "stageMetrics": [
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.053245999999999995,
+            "residentMemoryBytes": 37781504,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.053295,
+            "residentMemoryBytes": 37879808,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 4.891666321782395e-05,
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "metadata"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.053311,
+            "residentMemoryBytes": 37879808,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.059678,
+            "residentMemoryBytes": 42156032,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 0.011915708331798669,
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "telemetry"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.059692999999999996,
+            "residentMemoryBytes": 42156032,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.072102,
+            "residentMemoryBytes": 44695552,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 0.021826249998412095,
+          "workUnits": 8,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "proxy"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.07216,
+            "residentMemoryBytes": 44777472,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.072259,
+            "residentMemoryBytes": 44892160,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 9.850000060396269e-05,
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "fastInspection"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.072296,
+            "residentMemoryBytes": 44941312,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.24539900000000003,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 0.40506870833633,
+          "workUnits": 6,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "adaptiveSampling"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.245415,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.245429,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 1.2874996173195541e-05,
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "sceneSegmentation"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.245456,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.246014,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 0.0005130416684551165,
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "audio"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.24602600000000002,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.246086,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 5.9833335399162024e-05,
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "localScoring"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.24729500000000001,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.25012,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 0.0038463333330582827,
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "vlm"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.251631,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.25167,
+            "residentMemoryBytes": 91815936,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:22Z",
+          "duration": 3.9000005926936865e-05,
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "stage": "fusion"
+        }
+      ],
+      "resolution": "5312x2988",
+      "codec": "hvc1",
+      "totalDuration": 0.4468353333286359,
+      "analyzedFrameCount": 6,
+      "operationID": "F34C12D9-93B3-4DE3-9A71-5458B4E179E0",
+      "frameCount": 6,
+      "vlmLatency": 0,
+      "frameCacheHitCount": 1,
+      "vlmCallCount": 0,
+      "vlmCacheHitCount": 1,
+      "mode": "balanced",
+      "thermalStates": [
+        "nominal"
+      ],
+      "queueWaitTime": 0.011798977851867676,
+      "startedAt": "2026-09-19T06:54:22Z"
+    }
+  },
+  {
+    "case": "quality",
+    "attempt": 1,
+    "seconds": 0.5414971249992959,
+    "evidence": {
+      "plannedScenes": 1,
+      "visualAnalysisCompleted": true,
+      "evaluatedRechecks": 0,
+      "audioAnalysisCompleted": true,
+      "modelAvailable": true,
+      "evaluatedScenes": 1,
+      "modelQuantization": "Q4_K_M",
+      "plannedRechecks": 0
+    },
+    "warnings": [
+      "On-device ASR недоступен; использованы DSP speech/silence boundaries"
+    ],
+    "modelDigest": "0533d74300e4f9bc367d675d4e64ffd073d50ff16a2b4096cc2e8a1cf8c96319",
+    "profile": "pipeline-v8-ai-evidence:quality:ollama:qwen3-vl:8b-instruct",
+    "metrics": {
+      "visionCallCount": 11,
+      "hardwareIdentifier": "Mac16,13",
+      "vlmCacheHitCount": 1,
+      "vlmCallCount": 0,
+      "startedAt": "2026-09-19T06:54:22Z",
+      "endedAt": "2026-09-19T06:54:23Z",
+      "totalDuration": 0.4434171249959036,
+      "decodedFrameCount": 11,
+      "mode": "quality",
+      "vlmLatency": 0,
+      "codec": "hvc1",
+      "resolution": "5312x2988",
+      "analyzedFrameCount": 11,
+      "frameCacheHitCount": 3,
+      "operationID": "ED7E8D17-1B0D-4D60-BF86-70AF54B90108",
+      "stageMetrics": [
+        {
+          "startedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "duration": 5.633333057630807e-05,
+          "resourceEnd": {
+            "residentMemoryBytes": 38256640,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.053538999999999996
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 38158336,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.053483
+          },
+          "stage": "metadata"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "duration": 0.010850958329683635,
+          "resourceEnd": {
+            "residentMemoryBytes": 42598400,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.059840000000000004
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 38256640,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.053554
+          },
+          "stage": "telemetry"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 8,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "duration": 0.00762912500067614,
+          "resourceEnd": {
+            "residentMemoryBytes": 45105152,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.067316
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 42598400,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.059855000000000005
+          },
+          "stage": "proxy"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:22Z",
+          "duration": 9.733333718031645e-05,
+          "resourceEnd": {
+            "residentMemoryBytes": 45301760,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.06747
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 45187072,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.067372
+          },
+          "stage": "fastInspection"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:22Z",
+          "workUnits": 11,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "duration": 0.40228249999927357,
+          "resourceEnd": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.258605
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 45350912,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.06750400000000001
+          },
+          "stage": "adaptiveSampling"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "duration": 1.3333330571185797e-05,
+          "resourceEnd": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.25863800000000003
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.258624
+          },
+          "stage": "sceneSegmentation"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "duration": 0.0009928750005201437,
+          "resourceEnd": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.259712
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.258656
+          },
+          "stage": "audio"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "duration": 4.9875001423060894e-05,
+          "resourceEnd": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.259774
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.259724
+          },
+          "stage": "localScoring"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "duration": 0.005119208333780989,
+          "resourceEnd": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.265386
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.260834
+          },
+          "stage": "vlm"
+        },
+        {
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "duration": 5.149999924469739e-05,
+          "resourceEnd": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.269244
+          },
+          "resourceStart": {
+            "residentMemoryBytes": 98648064,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.269193
+          },
+          "stage": "fusion"
+        }
+      ],
+      "thermalStates": [
+        "nominal"
+      ],
+      "frameCount": 11,
+      "queueWaitTime": 0.011895060539245605
+    }
+  },
+  {
+    "case": "legacy-mlx",
+    "attempt": 1,
+    "seconds": 0.11212958300166065,
+    "evidence": {
+      "plannedScenes": 1,
+      "plannedRechecks": 0,
+      "evaluatedRechecks": 0,
+      "visualAnalysisCompleted": true,
+      "audioAnalysisCompleted": true,
+      "evaluatedScenes": 1,
+      "modelAvailable": true,
+      "modelQuantization": "Q4_K_M"
+    },
+    "warnings": [],
+    "modelDigest": "ea422f1e73652a95479954d8572d3c8c6022f628ce2d38a1a04aae1b7f2d5300",
+    "profile": "pipeline-v8-ai-evidence:fast:ollama:qwen3-vl:2b-instruct",
+    "metrics": {
+      "totalDuration": 0.019412000001466367,
+      "codec": "hvc1",
+      "queueWaitTime": 0.011805057525634766,
+      "startedAt": "2026-09-19T06:54:23Z",
+      "resolution": "5312x2988",
+      "stageMetrics": [
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 38387712,
+            "cpuTimeSeconds": 0.054093,
+            "thermalState": "nominal"
+          },
+          "workUnits": 1,
+          "duration": 6.0208330978639424e-05,
+          "stage": "metadata",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 38289408,
+            "cpuTimeSeconds": 0.054034,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 42598400,
+            "cpuTimeSeconds": 0.060251,
+            "thermalState": "nominal"
+          },
+          "workUnits": 0,
+          "duration": 0.010464708335348405,
+          "stage": "telemetry",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 38387712,
+            "cpuTimeSeconds": 0.054108,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 42844160,
+            "cpuTimeSeconds": 0.060434,
+            "thermalState": "nominal"
+          },
+          "workUnits": 0,
+          "duration": 9.424999734619632e-05,
+          "stage": "fastInspection",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 42729472,
+            "cpuTimeSeconds": 0.06034,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 43171840,
+            "cpuTimeSeconds": 0.064039,
+            "thermalState": "nominal"
+          },
+          "workUnits": 4,
+          "duration": 0.00354512500052806,
+          "stage": "adaptiveSampling",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 42893312,
+            "cpuTimeSeconds": 0.06047,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 43188224,
+            "cpuTimeSeconds": 0.06406,
+            "thermalState": "nominal"
+          },
+          "workUnits": 1,
+          "duration": 1.1041665857192129e-05,
+          "stage": "sceneSegmentation",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 43171840,
+            "cpuTimeSeconds": 0.064049,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 43302912,
+            "cpuTimeSeconds": 0.064124,
+            "thermalState": "nominal"
+          },
+          "workUnits": 1,
+          "duration": 3.724999987753108e-05,
+          "stage": "localScoring",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 43188224,
+            "cpuTimeSeconds": 0.064079,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 43843584,
+            "cpuTimeSeconds": 0.066585,
+            "thermalState": "nominal"
+          },
+          "workUnits": 1,
+          "duration": 0.0018154999997932464,
+          "stage": "vlm",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 43335680,
+            "cpuTimeSeconds": 0.065106,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceEnd": {
+            "residentMemoryBytes": 44220416,
+            "cpuTimeSeconds": 0.068139,
+            "thermalState": "nominal"
+          },
+          "workUnits": 1,
+          "duration": 3.687500429805368e-05,
+          "stage": "fusion",
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "residentMemoryBytes": 44204032,
+            "cpuTimeSeconds": 0.068103,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z"
+        }
+      ],
+      "vlmCallCount": 0,
+      "hardwareIdentifier": "Mac16,13",
+      "decodedFrameCount": 0,
+      "frameCacheHitCount": 6,
+      "frameCount": 4,
+      "operationID": "48D399D9-2716-426A-8888-AEB8A136D0BB",
+      "mode": "fast",
+      "thermalStates": [
+        "nominal"
+      ],
+      "analyzedFrameCount": 4,
+      "vlmCacheHitCount": 1,
+      "vlmLatency": 0,
+      "endedAt": "2026-09-19T06:54:23Z",
+      "visionCallCount": 0
+    }
+  },
+  {
+    "case": "missing-model",
+    "attempt": 1,
+    "seconds": 0.10712216699903365,
+    "evidence": {
+      "evaluatedScenes": 0,
+      "evaluatedRechecks": 0,
+      "modelAvailable": false,
+      "plannedScenes": 1,
+      "plannedRechecks": 0,
+      "audioAnalysisCompleted": true,
+      "visualAnalysisCompleted": true
+    },
+    "warnings": [
+      "Модель qwen3-vl:missing-validation-model не установлена; нейроанализ не завершён. Сохранён локальный анализ кадров.",
+      "Нейрооценки: 0/1 · требуется повтор"
+    ],
+    "modelDigest": null,
+    "profile": "pipeline-v8-ai-evidence:fast:ollama:qwen3-vl:missing-validation-model",
+    "metrics": {
+      "queueWaitTime": 0.012003898620605469,
+      "startedAt": "2026-09-19T06:54:23Z",
+      "hardwareIdentifier": "Mac16,13",
+      "vlmCallCount": 0,
+      "resolution": "5312x2988",
+      "codec": "hvc1",
+      "analyzedFrameCount": 4,
+      "thermalStates": [
+        "nominal"
+      ],
+      "stageMetrics": [
+        {
+          "resourceStart": {
+            "residentMemoryBytes": 38174720,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.053363
+          },
+          "resourceEnd": {
+            "residentMemoryBytes": 38273024,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.053423
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "duration": 5.900000542169437e-05,
+          "stage": "metadata",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceStart": {
+            "residentMemoryBytes": 38273024,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.053437
+          },
+          "resourceEnd": {
+            "residentMemoryBytes": 42663936,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.059914
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "duration": 0.00976658333092928,
+          "stage": "telemetry",
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceStart": {
+            "residentMemoryBytes": 42778624,
+            "thermalState": "nominal",
+            "cpuTimeSeconds": 0.060009
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.060104,
+            "residentMemoryBytes": 42893312,
+            "thermalState": "nominal"
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "duration": 9.449999924981967e-05,
+          "stage": "fastInspection",
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.060135999999999995,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 42942464
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.063742,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43253760
+          },
+          "duration": 0.0035795000003417954,
+          "startedAt": "2026-09-19T06:54:23Z",
+          "stage": "adaptiveSampling",
+          "workUnits": 4,
+          "endedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.063751,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43253760
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.063762,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43270144
+          },
+          "duration": 1.0583338735159487e-05,
+          "startedAt": "2026-09-19T06:54:23Z",
+          "stage": "sceneSegmentation",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.06378299999999999,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43270144
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.063828,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43384832
+          },
+          "duration": 3.633333108155057e-05,
+          "startedAt": "2026-09-19T06:54:23Z",
+          "stage": "localScoring",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z"
+        },
+        {
+          "resourceStart": {
+            "cpuTimeSeconds": 0.06479,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43843584
+          },
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.064831,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43892736
+          },
+          "duration": 4.1125000279862434e-05,
+          "startedAt": "2026-09-19T06:54:23Z",
+          "stage": "fusion",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z"
+        }
+      ],
+      "frameCount": 4,
+      "endedAt": "2026-09-19T06:54:23Z",
+      "vlmCacheHitCount": 0,
+      "frameCacheHitCount": 6,
+      "totalDuration": 0.015034583339001983,
+      "vlmLatency": 0,
+      "mode": "fast",
+      "decodedFrameCount": 0,
+      "operationID": "E6B3F01A-3484-4E96-A59E-DBBBEA90ACC8",
+      "visionCallCount": 0
+    }
+  },
+  {
+    "case": "missing-model",
+    "attempt": 2,
+    "seconds": 0.48478075000457466,
+    "evidence": {
+      "evaluatedRechecks": 0,
+      "visualAnalysisCompleted": true,
+      "audioAnalysisCompleted": true,
+      "plannedScenes": 1,
+      "evaluatedScenes": 0,
+      "plannedRechecks": 0,
+      "modelAvailable": false
+    },
+    "warnings": [
+      "Модель qwen3-vl:missing-validation-model не установлена; нейроанализ не завершён. Сохранён локальный анализ кадров.",
+      "Нейрооценки: 0/1 · требуется повтор"
+    ],
+    "modelDigest": null,
+    "profile": "pipeline-v8-ai-evidence:fast:ollama:qwen3-vl:missing-validation-model",
+    "metrics": {
+      "frameCacheHitCount": 6,
+      "vlmCacheHitCount": 0,
+      "analyzedFrameCount": 6,
+      "frameCount": 6,
+      "thermalStates": [
+        "nominal"
+      ],
+      "decodedFrameCount": 2,
+      "endedAt": "2026-09-19T06:54:23Z",
+      "operationID": "3A7118C2-DD93-4688-ABA3-161F68EB8D73",
+      "stageMetrics": [
+        {
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.053456000000000004,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 38977536
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.053407,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 38879232
+          },
+          "duration": 4.891667049378157e-05,
+          "stage": "metadata"
+        },
+        {
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.059482,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43253760
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.053468,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 38977536
+          },
+          "duration": 0.009476791667111684,
+          "stage": "telemetry"
+        },
+        {
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.059613,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43433984
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 0,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.059547,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43335680
+          },
+          "duration": 6.637499609496444e-05,
+          "stage": "fastInspection"
+        },
+        {
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.153756,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 89718784
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 6,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.059644,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 43466752
+          },
+          "duration": 0.38011245833331486,
+          "stage": "adaptiveSampling"
+        },
+        {
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.15378599999999998,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 89718784
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.153771,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 89718784
+          },
+          "duration": 1.5083336620591581e-05,
+          "stage": "sceneSegmentation"
+        },
+        {
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.153897,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 89718784
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.15382800000000002,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 89718784
+          },
+          "duration": 5.758333281846717e-05,
+          "stage": "localScoring"
+        },
+        {
+          "resourceEnd": {
+            "cpuTimeSeconds": 0.154871,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 89718784
+          },
+          "startedAt": "2026-09-19T06:54:23Z",
+          "workUnits": 1,
+          "endedAt": "2026-09-19T06:54:23Z",
+          "resourceStart": {
+            "cpuTimeSeconds": 0.154841,
+            "thermalState": "nominal",
+            "residentMemoryBytes": 89718784
+          },
+          "duration": 2.954166120616719e-05,
+          "stage": "fusion"
+        }
+      ],
+      "hardwareIdentifier": "Mac16,13",
+      "totalDuration": 0.39109241666301386,
+      "codec": "hvc1",
+      "startedAt": "2026-09-19T06:54:23Z",
+      "vlmLatency": 0,
+      "visionCallCount": 2,
+      "mode": "fast",
+      "vlmCallCount": 0,
+      "queueWaitTime": 0.011797070503234863,
+      "resolution": "5312x2988"
+    }
+  }
+]

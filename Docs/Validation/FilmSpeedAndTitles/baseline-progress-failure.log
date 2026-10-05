@@ -1,0 +1,18 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) started.
+◇ Test case passing 1 argument regenerate → false to filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) started.
+◇ Test case passing 1 argument regenerate → true to filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) started.
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) recorded an issue with 1 argument regenerate → true at FilmBuildProgressTests.swift:30:9: Expectation failed: updates.first?.stage == .analysis && updates.last?.stage == .preparing
+↳ updates.first?.stage == .analysis && updates.last?.stage == .preparing → false
+↳   updates.first?.stage == .analysis → true
+↳   updates.last?.stage == .preparing → false
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) recorded an issue with 1 argument regenerate → false at FilmBuildProgressTests.swift:30:9: Expectation failed: updates.first?.stage == .analysis && updates.last?.stage == .preparing
+↳ updates.first?.stage == .analysis && updates.last?.stage == .preparing → false
+↳   updates.first?.stage == .analysis → true
+↳   updates.last?.stage == .preparing → false
+✘ Test filmBuildFailureReportsActualStageWithoutClaimingCompletion(regenerate:) with 2 test cases failed after 0.155 seconds with 2 issues.
+✘ Test run with 1 test in 0 suites failed after 0.155 seconds with 2 issues.
+Note: Some test targets reported failures:
+  - VeloEditCoreTests (Swift Testing)

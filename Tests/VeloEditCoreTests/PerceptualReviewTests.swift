@@ -176,6 +176,29 @@ private func p6Timeline(_ candidates: [Candidate], ranges: [(Double, Double)], r
     #expect(result.score.technicalIntegrity < 0.6)
 }
 
+@Test func perceptualRenderedFailuresGroupSamplesWithoutReducingPenalty() throws {
+    let (assets, analyses, candidates) = p6Fixture(count: 2)
+    let timeline = p6Timeline(candidates, ranges: [(0, 5.2), (0, 5.2)], roles: [.intro, .outro])
+    let frames = [0.3, 0.6, 1.0, 1.2, 5.2].map { time in
+        PerceptualRenderedFrameEvidence(timelineTime: time, meanLuma: 90, lumaDeviation: 20,
+            isBlack: false, isFrozenComparedToPrevious: time != 1.0)
+    }
+    let result = PerceptualMontageReviewer().review(timeline: timeline, plan: p6Plan(),
+        features: MontageScoringFeatures(assets: assets, analyses: analyses), renderedFrames: frames)
+    let freezes = result.findings.filter { $0.type == .frozenFrame }.sorted { $0.timelineRange.start < $1.timelineRange.start }
+    // A healthy sample or a new clip must split the diagnostic. Exact cut
+    // time belongs to the incoming clip, not to the outgoing one.
+    #expect(freezes.count == 3)
+    #expect(freezes.map { $0.renderedSampleTimes ?? [] } == [[0.3, 0.6], [1.2], [5.2]])
+    #expect(freezes.last?.itemIDs == [timeline.items[1].id])
+    #expect(freezes.last?.timelineRange.start == 5.2)
+    let unchangedPenalty = 1 - (4 * 0.76 * 0.90) / 5
+    #expect(abs(result.score.technicalIntegrity - unchangedPenalty) < 0.000_001)
+    let restored = try JSONDecoder.veloEdit.decode(PerceptualReviewResult.self,
+        from: JSONEncoder.veloEdit.encode(result))
+    #expect(restored.findings == result.findings)
+}
+
 @Test func perceptualTransactionCommitsCompleteMomentAndRollsBackUnsafeRepair() {
     let (assets, analyses, candidates) = p6Fixture(count: 1)
     let plan = p6Plan(duration: 5.2, count: 1)
@@ -287,6 +310,13 @@ private func p6Timeline(_ candidates: [Candidate], ranges: [(Double, Double)], r
     let timeline = try await pipeline.createFilm(prompt: "Без музыки. Автоматическая история архива.", preset: .story)
     let run = try #require(timeline.directorRun)
     let summary = try #require(run.perceptualReview)
+
+    if let path = ProcessInfo.processInfo.environment["VELOEDIT_LARGE_REVIEW_DIAGNOSTICS"] {
+        let directory = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try JSONEncoder.veloEdit.encode(await pipeline.snapshot()).write(to: directory.appendingPathComponent("project.json"), options: .atomic)
+        try JSONEncoder.veloEdit.encode(summary).write(to: directory.appendingPathComponent("perceptual-review.json"), options: .atomic)
+    }
 
     // This deliberately homogeneous archive can collapse to one honest
     // production variant. The search must still evaluate multiple strategies

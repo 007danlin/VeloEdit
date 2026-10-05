@@ -1,0 +1,12 @@
+{
+  "duration": 300.0,
+  "timelines": 1,
+  "jobState": "completed",
+  "hasRecoveryDraft": false,
+  "oldFlaggedShotRetained": false,
+  "findings": [],
+  "deliveryReport": {
+    "renderSignature": "1819c99dfb55976d42210886c8b0909f4c1bb38d427dc71ac494b69d49bb2ad0",
+    "warnings": []
+  }
+}

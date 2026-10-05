@@ -14,7 +14,7 @@ public actor TitleCardVideoGenerator {
         duration: Double,
         width: Int,
         height: Int,
-        frameRate: Int32,
+        frameRate: Double,
         destination: URL,
         codec: AVVideoCodecType = .h264
     ) async throws -> URL {

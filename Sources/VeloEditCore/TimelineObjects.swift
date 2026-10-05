@@ -614,6 +614,8 @@ public struct TitleAnimation: Codable, Hashable, Sendable {
 }
 
 public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
+    public var speechAnchor: SpeechCaptionAnchor?
+    public var filmPartID: UUID?
     public var id: UUID
     public var kind: TitleTimelineKind
     /// Stable identifier of the complete visual composition. A nil value is
@@ -633,6 +635,10 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
     public var activeWordHighlighting: Bool
     public var enabled: Bool
     public var targetClipID: UUID?
+    /// A generated heading may span cuts within its confirmed scene. Keep its
+    /// attachment separate from the compositor's single-clip visibility mask.
+    public var anchorClipID: UUID?
+    public var effectiveAnchorClipID: UUID? { anchorClipID ?? targetClipID }
     public var explanation: [String]
     /// An edited automatic title is now authoritative user content. Optional
     /// so existing project files continue to decode without migration.
@@ -712,6 +718,23 @@ public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
     public func activeWord(at timelineTime: Double) -> CaptionWord? {
         let local = timelineTime - startTime
         return words.first { local >= $0.start && local < $0.end }
+    }
+
+    /// Locate words in sequence so repeated words highlight their own glyphs.
+    /// If an edited caption no longer matches the measured words, omit the
+    /// highlight instead of assigning timing to unrelated text.
+    public func activeWordRange(at timelineTime: Double) -> NSRange? {
+        guard let active = activeWord(at: timelineTime) else { return nil }
+        let string = text as NSString
+        var cursor = 0
+        for word in words {
+            let range = string.range(of: word.word, options: .caseInsensitive,
+                                     range: NSRange(location: cursor, length: string.length - cursor))
+            guard range.location != NSNotFound else { return nil }
+            if word.id == active.id { return range }
+            cursor = NSMaxRange(range)
+        }
+        return nil
     }
 }
 

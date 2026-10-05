@@ -184,7 +184,8 @@ private func p4Quality(
     #expect(result.events.flatMap(\.effectiveScenes).contains { $0.assetIDs == buggy.assetIDs })
 
     var constraints = PromptInterpreter.defaults(for: .story)
-    constraints.targetDuration = 15
+    // Three protected six-second actions require at least 18 seconds.
+    constraints.targetDuration = 24
     constraints.targetClipCount = 9
     let sourceActivityScenes = result.sourceMap.activityGroups.map { group in
         EventScene(
@@ -253,6 +254,24 @@ private func p4Quality(
     #expect(map.activityGroups.count == 1)
     #expect(group.assetIDs == [first.id, second.id])
     #expect(group.title == "Велопрогулка")
+}
+
+@Test func neighbouringBuggyAnglesKeepTheirLabelsWhenNotGroupedVisually() throws {
+    let side = p4Asset("GX010524", date: p4BaseDate, duration: 434)
+    let front = p4Asset("GX010530", date: p4BaseDate.addingTimeInterval(2878), duration: 327)
+    let analyses = [
+        p4Analysis(asset: side, tags: ["bicycle", "dirt_road", "machine", "car", "automobile", "land"]),
+        p4Analysis(asset: front, tags: ["bicycle", "machine", "wheel", "tire", "helmet", "headgear", "people"])
+    ]
+    let map = SourceTimelineAnalyzer(groupingThreshold: 1).analyze(assets: [front, side], analyses: analyses)
+    #expect(map.activityGroups.count == 2)
+    #expect(map.activityGroups.allSatisfy { $0.title == "Багги" })
+    let discovery = EventIntelligenceEngine().discover(assets: [front, side], analyses: analyses, sourceMap: map)
+    #expect(discovery.events.flatMap(\.effectiveScenes).allSatisfy { $0.title == "Багги" && $0.tags.contains("buggy") })
+    var nextDay = front
+    nextDay.metadata.creationDate = p4BaseDate.addingTimeInterval(86400)
+    let unrelated = SourceTimelineAnalyzer(groupingThreshold: 1).analyze(assets: [side, nextDay], analyses: analyses)
+    #expect(!unrelated.activityGroups.contains { $0.title == "Багги" })
 }
 
 @Test func oneLongSourceSplitsConfirmedCyclingAndBuggyRunsIntoEventScenes() throws {
@@ -815,7 +834,7 @@ func keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration: Double) throws {
     #expect(timeline.items.compactMap(\.candidateID).filter { $0 == secondID }.count <= 1)
 }
 
-@Test func eventDiscoveryMergesOneCrossDeviceMomentAndEstimatesClockOffset() throws {
+@Test func eventDiscoveryMergesNearbyCrossDeviceMomentWithoutGuessingClockOffset() throws {
     let goPro = p4Asset("gopro-rafting", date: p4BaseDate, latitude: 55.75, longitude: 37.61, device: "GoPro HERO12")
     let phone = p4Asset("iphone-rafting", date: p4BaseDate.addingTimeInterval(42), latitude: 55.7501, longitude: 37.6101, device: "Apple iPhone 15")
     let analyses = [
@@ -830,7 +849,7 @@ func keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration: Double) throws {
     #expect(event.assetIDs.count == 2)
     #expect(event.effectiveCrossDeviceMatchCount >= 1)
     #expect(result.diagnostics.crossDeviceMatches >= 1)
-    #expect(result.diagnostics.deviceTimeOffsets.values.contains { abs($0) >= 40 })
+    #expect(result.diagnostics.deviceTimeOffsets.isEmpty)
     #expect(event.evidence?.contains { $0.kind == "cross-device" } == true)
 }
 
@@ -1023,7 +1042,7 @@ func keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration: Double) throws {
     #expect(event.title == "Сплав")
     #expect(event.titleConfidence ?? 0 > 0.85)
     #expect(embedded.metadata.effectiveCaptureDate == p4BaseDate)
-    #expect(fallback.metadata.effectiveCaptureDate == fallback.metadata.modificationDate)
+    #expect(fallback.metadata.effectiveCaptureDate == nil)
     #expect(result.diagnostics.clusteringReasons[event.id.uuidString]?.isEmpty == false)
 }
 
@@ -1212,6 +1231,11 @@ private func p4ProductionFixture() -> ([MediaAsset], [AnalysisResult]) {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
     let tasteURL = FileManager.default.temporaryDirectory.appendingPathComponent("p4-taste-\(UUID().uuidString).json")
     defer {
+        if let path = ProcessInfo.processInfo.environment["VELOEDIT_EVENT_INTEGRATION_DIAGNOSTICS"] {
+            let directory = URL(fileURLWithPath: path, isDirectory: true)
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: root, to: directory.appendingPathComponent(root.lastPathComponent))
+        }
         try? FileManager.default.removeItem(at: root)
         try? FileManager.default.removeItem(at: tasteURL)
     }

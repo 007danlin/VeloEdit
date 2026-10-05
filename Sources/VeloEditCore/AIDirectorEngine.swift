@@ -869,9 +869,9 @@ public struct DirectorEditingTools: Sendable {
                         adjustments.crop = .fill
                         adjustments.subjectReframe = reframe
                     } else {
-                        // A format conversion still has to fill the requested
-                        // canvas. Without tracking, use a stable center crop.
-                        adjustments.crop = .fill
+                        // A subject-aware conversion must preserve the full
+                        // group when no safe crop can contain its members.
+                        adjustments.crop = subjectAware && abs(sourceAspect - targetAspect) > 0.04 ? .fit : .fill
                     }
                     timeline.items[index].videoAdjustments = adjustments.isNeutral ? nil : adjustments
                 }
@@ -1044,7 +1044,7 @@ public struct TimelineReviewTransaction: Sendable {
         currentCombinedScore: Double? = nil
     ) -> TimelineReviewTransactionResult {
         let candidateReview = TimelineSelfReviewer().review(candidate, plan: plan, analyses: analyses)
-        let safetyViolations = TimelineSafetyValidator().violations(candidate: candidate, comparedTo: original, plan: plan, analyses: analyses)
+        let safetyViolations = TimelineSafetyValidator().violations(candidate: candidate, comparedTo: original, plan: plan, analyses: analyses, assets: assets)
         let scorer = DefaultMontageGlobalScorer()
         let features = scoringFeatures ?? MontageScoringFeatures(assets: assets, analyses: analyses)
         let originalGlobal = currentCombinedScore == nil
@@ -1223,6 +1223,9 @@ public struct AIDirectorEngine: Sendable {
     ) -> Timeline {
         let tools = DirectorEditingTools()
         var timeline = EditorialIntentEnforcer.enforce(initialTimeline, plan: plan)
+        // Establish safe canvas framing before speculative edits. A rejected
+        // title/audio transaction must not roll this basic protection back.
+        timeline = AutomaticFramingPolicy.applying(to: timeline, assets: assets, analyses: analyses)
         var applied: [DirectorToolCall] = []
         var rejected: [String] = []
 
@@ -1242,13 +1245,15 @@ public struct AIDirectorEngine: Sendable {
             candidate: timeline,
             comparedTo: timeline,
             plan: plan,
-            analyses: analyses
+            analyses: analyses,
+            assets: assets
         )
         let firstSafety = safetyValidator.violations(
             candidate: firstExecution.timeline,
             comparedTo: timeline,
             plan: plan,
-            analyses: analyses
+            analyses: analyses,
+            assets: assets
         ).filter { !baselineSafety.contains($0) }
         if firstSafety.isEmpty {
             timeline = firstExecution.timeline

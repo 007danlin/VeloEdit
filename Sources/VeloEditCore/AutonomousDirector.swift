@@ -576,6 +576,26 @@ public struct AutonomousMusicIntent: Codable, Hashable, Sendable {
     public var moodTokens: Set<String>
     public var reasons: [String]
 
+    private enum CodingKeys: String, CodingKey {
+        case style, desiredEnergy, desiredBPM, desiredDuration, narrativeEnergyCurve
+        case needsBuildAndDrop, beatSyncIntensity, confidence, moodTokens, reasons
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(style, forKey: .style)
+        try values.encode(desiredEnergy, forKey: .desiredEnergy)
+        try values.encode(desiredBPM, forKey: .desiredBPM)
+        try values.encode(desiredDuration, forKey: .desiredDuration)
+        try values.encode(narrativeEnergyCurve, forKey: .narrativeEnergyCurve)
+        try values.encode(needsBuildAndDrop, forKey: .needsBuildAndDrop)
+        try values.encode(beatSyncIntensity, forKey: .beatSyncIntensity)
+        try values.encode(confidence, forKey: .confidence)
+        // Sets must have stable encoding: the render receipt must survive reopening.
+        try values.encode(moodTokens.sorted(), forKey: .moodTokens)
+        try values.encode(reasons, forKey: .reasons)
+    }
+
     public init(style: MusicStyle, desiredEnergy: Double, desiredBPM: Double, desiredDuration: Double, narrativeEnergyCurve: [Double], needsBuildAndDrop: Bool, beatSyncIntensity: Double, confidence: Double, moodTokens: Set<String>, reasons: [String]) {
         self.style = style
         self.desiredEnergy = desiredEnergy.clamped01
@@ -739,7 +759,7 @@ public struct AutonomousProjectStyleEngine: Sendable {
         switch preset {
         case .highlight: return DirectorStyleVector(energy: 0.78, cinematic: 0.45, emotional: 0.35, action: 0.72, pacing: 0.82, visualDensity: 0.75, shotDuration: 0.25)
         case .adventure: return DirectorStyleVector(energy: 0.72, cinematic: 0.58, emotional: 0.42, action: 0.68, atmosphere: 0.62, pacing: 0.72, shotDuration: 0.38)
-        case .story: return DirectorStyleVector(energy: 0.48, cinematic: 0.55, emotional: 0.64, action: 0.38, intimacy: 0.62, atmosphere: 0.52, pacing: 0.48, shotDuration: 0.58)
+        case .story, .vlog: return DirectorStyleVector(energy: 0.48, cinematic: 0.55, emotional: 0.64, action: 0.38, intimacy: 0.62, atmosphere: 0.52, pacing: 0.48, shotDuration: 0.58)
         case .summerFilm: return DirectorStyleVector(energy: 0.52, cinematic: 0.58, emotional: 0.62, action: 0.35, intimacy: 0.58, atmosphere: 0.70, pacing: 0.45, shotDuration: 0.62)
         case .memories: return DirectorStyleVector(energy: 0.34, cinematic: 0.58, emotional: 0.76, action: 0.24, intimacy: 0.74, atmosphere: 0.62, pacing: 0.32, shotDuration: 0.72)
         case .cinematic: return DirectorStyleVector(energy: 0.42, cinematic: 0.84, emotional: 0.52, action: 0.36, intimacy: 0.44, atmosphere: 0.78, pacing: 0.34, shotDuration: 0.78)
@@ -793,12 +813,14 @@ public struct AutonomousDirectorEngine: Sendable {
         /// duration as exact even when no number is repeated in free-form text.
         requestIsExplicit: Bool? = nil
     ) -> AutonomousDirectorDecision {
+        let localProfile = personalProfile
+        let personalProfile = BundledEditorialTaste.resolving(localProfile)
         let project = AutonomousProjectStyleEngine().infer(assets: assets, analyses: analyses, fallbackPreset: fallbackPreset, events: events)
         let tasteContext = TasteContextResolver().resolve(projectStyle: project, assets: assets, analyses: analyses)
         let context = tasteContext.key
         let personal = personalProfile.styleVector(contextKey: context)
         // Personal taste earns influence only through repeated implicit signals.
-        let personalConfidence = personalProfile.adaptiveConfidence
+        let personalConfidence = max(localProfile.adaptiveConfidence, personalProfile.adaptiveConfidence)
         let projectWeight = max(0.18, project.confidence)
         let personalWeight = personalConfidence * min(0.62, 1 - projectWeight * 0.34)
         let blendWeight = personalWeight / max(0.000_001, projectWeight + personalWeight)
@@ -810,7 +832,7 @@ public struct AutonomousDirectorEngine: Sendable {
             final = final.adjusted(["cinematic": color.value * color.confidence * 0.10])
         }
         let fingerprint = assets.map(\.contentHash).sorted().joined(separator: "|") + "|" + project.internalLabel
-        let explorationApplied = TasteExplorationPolicy().shouldExplore(profile: personalProfile, projectFingerprint: fingerprint)
+        let explorationApplied = TasteExplorationPolicy().shouldExplore(profile: localProfile, projectFingerprint: fingerprint)
         if explorationApplied { final = TasteExplorationPolicy().exploratoryStyle(from: final, profile: personalProfile) }
         let durationIsExplicit = requestIsExplicit
             ?? AutonomousDurationOptimizer.requestContainsExplicitDuration(prompt)
@@ -884,7 +906,7 @@ public struct AutonomousDirectorEngine: Sendable {
             variantIntent: explorationApplied ? "autonomous-exploration" : "autonomous-balanced",
             explanations: [
                 "ProjectStyle \(project.internalLabel), confidence \(Int((project.confidence * 100).rounded()))%",
-                "Personal Taste influence \(Int((blendWeight * 100).rounded()))% from \(personalProfile.totalSignalCount) implicit signals",
+                "Базовый стиль \(BundledEditorialTaste.version); личных сигналов: \(localProfile.totalSignalCount); влияние стиля \(Int((blendWeight * 100).rounded()))%",
                 "Оптимальная длительность \(Int(duration.seconds.rounded())) с, confidence \(Int((duration.confidence * 100).rounded()))%",
                 "Story pattern: \(story.pattern.rawValue); music: \(music.style.rawValue) \(Int(music.desiredBPM.rounded())) BPM",
                 "Taste context: \(context)",

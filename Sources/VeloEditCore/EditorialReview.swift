@@ -1,6 +1,7 @@
 import Foundation
 
 public enum EditorialFindingKind: String, Codable, CaseIterable, Hashable, Sendable {
+    case sourceCoverageGap, sourceChronologyViolation
     case hardDuplicate, missingPrimaryVideo, mechanicalCadence, shotFamilyRunTooLong, dominantSetup, lowInformationSpan
     case falseNarrativeRole, missingHook, missingClosure, eventTransitionWithoutBridge, chapterCoverageMismatch
     case unsafeReframe, cropJump, foregroundOcclusion, audioPolicyViolation, musicNarrativeMismatch
@@ -40,6 +41,7 @@ enum EditorialContentBudgetPolicy {
 }
 
 public struct EditorialReview: Codable, Hashable, Sendable {
+    public var sourceCoverage: [SourceCoverageDecision]? = nil
     public var evidenceVersion: Int? = nil
     public var evidenceDomains: [EditorialDomainEvidence]? = nil
     public var familyDistribution: EditorialFamilyDistribution? = nil
@@ -95,6 +97,17 @@ public struct EditorialQualityGate: Sendable {
             findings.append(.init(kind: kind, severity: severity, itemIDs: ids, repair: repair, reason: reason))
         }
         if items.isEmpty { add(.missingPrimaryVideo, 3, [], .structuralReplan, "Нет primary video/photo") }
+        let sourceCoverage = plan.narrativeBeatPlan == nil ? nil : EditorialSourceCoverage.decisions(timeline: timeline, context: context, plan: plan)
+        for gap in sourceCoverage ?? [] where gap.reason == .selectionGap {
+            // Rough variants are still selecting their representatives. The
+            // complete source-coverage contract belongs to final assembly.
+            let severity = plan.sourceCoverageAssetIDs == nil ? 1 : 2
+            add(.sourceCoverageGap, severity, [], .structuralReplan, "Исходник \(gap.assetID): \(gap.detail); кандидаты: \(gap.candidateIDs)")
+        }
+        if plan.narrativeBeatPlan != nil {
+            let reversals = EditorialSourceCoverage.chronologyViolations(timeline: timeline, sourceMap: plan.eventStory?.diagnostics?.sourceMap)
+            if !reversals.isEmpty { add(.sourceChronologyViolation, 2, reversals, .structuralReplan, "Нарушен хронологический порядок автоматической сборки") }
+        }
         if !AutomaticFilmDurationPolicy.meetsMinimum(timeline) {
             add(.durationUnderflow, 3, [], .structuralReplan, AutomaticFilmDurationPolicy.failureMessage(for: timeline))
         }
@@ -136,6 +149,11 @@ public struct EditorialQualityGate: Sendable {
             }
             if let report = item.effectiveVideoAdjustments.subjectReframe?.safetyReport, !report.passed {
                 add(.unsafeReframe, 3, [item.id], .framing, report.reasons.joined(separator: "; "))
+            }
+            if let boundary = unit.candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65,
+               item.sourceStart > boundary.anticipationStart + 1 / max(1, timeline.frameRate)
+                || item.sourceStart + item.sourceDuration < boundary.completionEnd - 1 / max(1, timeline.frameRate) {
+                add(.incompleteMoment, 2, [item.id], .structuralReplan, "Подтверждённые границы действия обрезаны: подготовка или завершение отсутствуют")
             }
             if item.storyRole == .climax && plan.narrativeBeatPlan != nil && !(unit.evidence.hasProgression && unit.evidence.completion >= 0.65) {
                 add(.falseNarrativeRole, 2, [item.id], .structuralReplan, "Climax label не подтверждён завершением действия")
@@ -249,11 +267,11 @@ public struct EditorialQualityGate: Sendable {
                     add(.unsafeReframe, 3, [item.id], .framing, "Лицо устойчиво касается края на реально скомпонованных кадрах")
                 }
             }
-            for frame in renderedFrames {
-                guard let item = items.first(where: { frame.timelineTime >= $0.timelineStart && frame.timelineTime < $0.timelineStart + $0.timelineDuration }) else { continue }
-                if let readability = frame.titleReadability, readability < 0.5 {
-                    add(.unreadableTitle, 2, [item.id], .decoration, "OCR финального кадра распознал менее половины слов титра")
-                }
+            let titleEvidence = renderedFrames.flatMap { $0.titleEvidence ?? [] }
+                + renderedFrames.compactMap(\.exportVerification).flatMap { $0.titleEvidence ?? [] }
+            for evidence in titleEvidence where evidence.isCurrent(for: timeline) && !evidence.passed {
+                add(.unreadableTitle, 2, [evidence.titleID], .decoration,
+                    "OCR титра на \(evidence.timelineTime) с (\(evidence.source)): \(evidence.failure ?? "ниже порога 0.5")")
             }
             for frame in renderedFrames where frame.expectedVisibleContent && (frame.isBlack || frame.decodeFailed == true) {
                 let ids = items.filter { frame.timelineTime >= $0.timelineStart && frame.timelineTime < $0.timelineStart + $0.timelineDuration }.map(\.id)
@@ -318,7 +336,7 @@ public struct EditorialQualityGate: Sendable {
             durationDecision?.durationConstraintStatus = .compromisedInsufficientContent
             durationDecision?.reason += " Фактическая длительность ниже безопасного минимума; production commit запрещён."
         }
-        return EditorialReview(evidenceVersion: EditorialEvidenceVerifier.version, evidenceDomains: domains, familyDistribution: distribution, exportVerification: renderedFrames?.compactMap(\.exportVerification).first, findings: findings, familyHistogram: histogram, maximumFamilyRun: maxRun, informationDensity: density, narrativeCoherence: narrative, framingSafety: framing, audioCoherence: audio, shotFamilyDiversity: diversity, rhythmQuality: rhythm, audioMasteringReport: mastering, scoreComponents: ["narrativeCoherence": narrative, "informationDensity": density, "momentCompleteness": completeness, "shotFamilyDiversity": diversity, "rhythmQuality": rhythm, "framingSafety": framing, "audioCoherence": audio, "technicalQuality": technical, "continuity": continuity, "titleQuality": titleQuality, "musicNarrativeFit": musicFit, "styleFit": styleFit], editorialScore: score, duration: durationDecision, renderedProbeCount: renderedFrames?.count ?? 0, editorialSignature: renderedFrames == nil ? nil : EditorialRenderSignature.signature(timeline), conservativeFallback: false, discardedCandidates: plan.narrativeBeatPlan?.discardedCandidates ?? [:])
+        return EditorialReview(sourceCoverage: sourceCoverage, evidenceVersion: EditorialEvidenceVerifier.version, evidenceDomains: domains, familyDistribution: distribution, exportVerification: renderedFrames?.compactMap(\.exportVerification).first, findings: findings, familyHistogram: histogram, maximumFamilyRun: maxRun, informationDensity: density, narrativeCoherence: narrative, framingSafety: framing, audioCoherence: audio, shotFamilyDiversity: diversity, rhythmQuality: rhythm, audioMasteringReport: mastering, scoreComponents: ["narrativeCoherence": narrative, "informationDensity": density, "momentCompleteness": completeness, "shotFamilyDiversity": diversity, "rhythmQuality": rhythm, "framingSafety": framing, "audioCoherence": audio, "technicalQuality": technical, "continuity": continuity, "titleQuality": titleQuality, "musicNarrativeFit": musicFit, "styleFit": styleFit], editorialScore: score, duration: durationDecision, renderedProbeCount: renderedFrames?.count ?? 0, editorialSignature: renderedFrames == nil ? nil : EditorialRenderSignature.signature(timeline), conservativeFallback: false, discardedCandidates: plan.narrativeBeatPlan?.discardedCandidates ?? [:])
     }
 
     public static func geometricMean(_ values: [Double]) -> Double {
@@ -336,6 +354,9 @@ public enum EditorialIntentEnforcer {
 
     public static func enforce(_ source: Timeline, plan: StoryPlan) -> Timeline {
         var timeline = source
+        if DirectorEffectsPolicyEngine.policy(for: plan) == DirectorEffectsPolicy.none {
+            timeline = DirectorEffectsPolicyEngine.removingEffects(from: timeline)
+        }
         let requested = Set(EditorCommandParser().parse(plan.prompt, preset: plan.preset).map(\.semanticCategory))
         if !DirectorRequestContract.requestsColorCorrection(plan.prompt),
            requested.isDisjoint(with: ["filter", "brightness", "contrast", "saturation", "warmth", "exposure", "highlights", "shadows", "auto-enhance"]) {
@@ -348,7 +369,7 @@ public enum EditorialIntentEnforcer {
                 timeline.items[index].videoAdjustments = video
             }
         }
-        if !DirectorRequestContract.requestsEffects(plan.prompt) && !explicitCreativeRequest(plan.prompt) {
+        if !DirectorEffectsPolicyEngine.allowsEffects(in: plan) {
             timeline.audioClips = timeline.effectiveAudioClips.filter { $0.role != .soundEffect }
             timeline.effects = timeline.effectiveEffects.filter { effect in
                 effect.targetClipID.map { id in timeline.items.contains { $0.id == id && $0.locked } } == true
@@ -380,7 +401,8 @@ public enum EditorialIntentEnforcer {
         let requirements = ExplicitDeliveryRequirements(plan: plan)
         let volume = requirements.originalAudioVolume
         if requirements.forbidsTitles {
-            timeline.titleItems = []
+            timeline.titleItems = plan.directorBrief?.subtitlesEnabled(preset: plan.preset) == true
+                ? timeline.effectiveTitleItems.filter { [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains($0.kind) } : []
             timeline.items.removeAll { $0.kind == .title }
             timeline.items = TimelineTiming.retimed(timeline.items)
         }
@@ -412,9 +434,19 @@ public enum EditorialIntentEnforcer {
 }
 
 public enum EditorialRenderSignature {
+    // JSONEncoder's generic containers otherwise keep several full Timeline
+    // values on the caller's stack. A transparent reference wrapper preserves
+    // exactly the same Codable payload while keeping those containers small.
+    private final class Snapshot: Encodable {
+        let timeline: Timeline
+        init(_ timeline: Timeline) { self.timeline = timeline }
+        func encode(to encoder: Encoder) throws { try timeline.encode(to: encoder) }
+    }
+
     public static func signature(_ timeline: Timeline) -> String {
         var copy = timeline
         copy.editorialReview = nil
+        copy.filmDeliveryReport = nil
         copy.editorialRegeneration = nil
         copy.editorialBeatPlan?.discardedCandidates = nil
         copy.directorRun = nil
@@ -426,7 +458,7 @@ public enum EditorialRenderSignature {
         copy.width = Int((aspect * 10_000).rounded())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(copy)).map { EditorialIdentity.hash($0.base64EncodedString()) } ?? "invalid-signature"
+        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash($0.base64EncodedString()) } ?? "invalid-signature"
     }
 }
 
@@ -443,6 +475,7 @@ public enum EditorialStructuralRepair {
         var rebuiltPlan = EditorialStoryPlanner.applying(to: plan, context: context)
         rebuiltPlan.contentBudget?.durationConstraintStatus = .compromisedInsufficientContent
         var rebuilt = EditorialIntentEnforcer.enforce(TimelineComposer().compose(plan: rebuiltPlan, assets: assets, analyses: analyses), plan: rebuiltPlan)
+        rebuilt = AutomaticFramingPolicy.applying(to: rebuilt, assets: assets, analyses: analyses)
         rebuilt.music = sanitized.music
         let after = EditorialQualityGate().review(timeline: rebuilt, plan: rebuiltPlan, analyses: analyses)
         let locked = sanitized.items.filter(\.locked)

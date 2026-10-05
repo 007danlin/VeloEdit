@@ -1,0 +1,68 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+Building for production...
+[1 / 3]
+[2 / 4] VeloEditCore
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:767:37: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 765 |     // Kernels use output coordinates, so portrait and offset render bounds
+ 766 |     // behave the same as landscape. All time variation is deterministic.
+ 767 |     private static let waveKernel = CIWarpKernel(source: """
+     |                                     `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 768 |         kernel vec2 waveWarp(vec4 bounds, float amplitude, float phase, float frequency, float radial) {
+ 769 |             vec2 p = destCoord();
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:778:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 776 |         """)
+ 777 | 
+ 778 |     private static let shapeMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 779 |         kernel vec4 reveal(vec4 bounds, float progress, float softness, float rotation, float mode) {
+ 780 |             vec2 p = destCoord() - bounds.xy - bounds.zw * 0.5;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:802:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 800 |         """)
+ 801 | 
+ 802 |     private static let shardMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 803 |         kernel vec4 shard(vec4 tile, float side) {
+ 804 |             vec2 uv = (destCoord() - tile.xy) / tile.zw;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:893:41: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 891 |     }
+ 892 | 
+ 893 |     private static let rgbSplitKernel = CIColorKernel(source: """
+     |                                         `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 894 |         kernel vec4 splitChannels(__sample red, __sample cyan, __sample original) {
+ 895 |             vec4 r = unpremultiply(red);
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/WebMusicProvider.swift:29:25: warning: consider using asynchronous alternative function
+ 27 |             if !probe.pending {
+ 28 |                 probe.pending = true
+ 29 |                 browser.evaluateJavaScript("""
+    |                         `- warning: consider using asynchronous alternative function
+ 30 |                 JSON.stringify({
+ 31 |                   blocked: !!document.querySelector('form[action*="anomaly"], #challenge-form'),
+
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:269:1: note: 'evaluateJavaScript' declared here
+267 |    - A `contentWorld` value of `WKContentWorld.pageWorld`
+268 | */
+269 | - (void)evaluateJavaScript:(NSString *)javaScriptString completionHandler:(WK_SWIFT_UI_ACTOR void (^ _Nullable)(id WK_NULLABLE_RESULT, NSError * _Nullable error))completionHandler;
+    | `- note: 'evaluateJavaScript' declared here
+270 | 
+271 | /* @abstract Evaluates the given JavaScript string.
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[3 / 5] VeloEditCore
+[5 / 5] VeloEditCore
+[8 / 9] VeloEdit-product
+[9 / 9] VeloEdit-product
+Build complete! (155,25 с)
+/tmp/veloedit-app.GVskpL/VeloEdit.app: replacing existing signature
+/Users/daniellineckij/VeloEdit/Build/VeloEdit.app

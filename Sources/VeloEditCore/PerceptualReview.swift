@@ -72,6 +72,8 @@ public struct PerceptualFinding: Codable, Identifiable, Hashable, Sendable {
     public var explanation: String
     public var itemIDs: [UUID]
     public var suggestedRepairs: [PerceptualRepairSuggestion]
+    /// Exact sampled evidence, not proof of a continuous failure between samples.
+    public var renderedSampleTimes: [Double]?
 
     public init(
         id: UUID = UUID(),
@@ -82,7 +84,8 @@ public struct PerceptualFinding: Codable, Identifiable, Hashable, Sendable {
         confidence: Double,
         explanation: String,
         itemIDs: [UUID] = [],
-        suggestedRepairs: [PerceptualRepairSuggestion] = []
+        suggestedRepairs: [PerceptualRepairSuggestion] = [],
+        renderedSampleTimes: [Double]? = nil
     ) {
         self.id = id
         self.severity = severity
@@ -93,6 +96,7 @@ public struct PerceptualFinding: Codable, Identifiable, Hashable, Sendable {
         self.explanation = explanation
         self.itemIDs = itemIDs
         self.suggestedRepairs = suggestedRepairs
+        self.renderedSampleTimes = renderedSampleTimes
     }
 }
 
@@ -188,6 +192,8 @@ public struct PerceptualRenderedFrameEvidence: Codable, Hashable, Sendable {
     /// high-contrast vertical foreground object (for example a nearby pole).
     public var verticalOccluderScore: Double?
     public var titleReadability: Double?
+    public var titleEvidence: [TitleReadabilityEvidence]?
+    public var actualPTS: Double?
     public var decodeFailed: Bool?
     public var timelineTime: Double
     public var meanLuma: Double
@@ -360,7 +366,7 @@ public struct PerceptualMontageReviewer: Sendable {
                 + (1 - (insight?.noise ?? 0.2)) * 0.09 + (1 - (insight?.shake ?? 0.2)) * 0.10).clamped01
             technicalValues.append(technical)
 
-            if let boundary = candidate.momentBoundary, boundary.confidence >= 0.34 {
+            if let boundary = candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.34 {
                 let anticipationHandle = min(0.28, max(0.08, (boundary.peakTime - boundary.anticipationStart) * 0.16))
                 let reactionHandle = min(0.38, max(0.12, (boundary.effectiveReactionEnd - boundary.peakTime) * 0.20))
                 let requiredStart = min(boundary.peakTime, boundary.anticipationStart + anticipationHandle)
@@ -700,7 +706,7 @@ public struct PerceptualMontageReviewer: Sendable {
     }
 
     private static func actionCompletion(_ item: TimelineItem, candidate: Candidate) -> Double {
-        guard let boundary = candidate.momentBoundary, boundary.confidence >= 0.3 else { return 0.68 }
+        guard let boundary = candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.3 else { return 0.68 }
         let end = item.sourceStart + item.sourceDuration
         guard item.sourceStart <= boundary.peakTime else { return 0.08 }
         if end < boundary.peakTime { return 0.05 }
@@ -904,29 +910,42 @@ public struct PerceptualMontageReviewer: Sendable {
     private func reviewRenderedFrames(_ frames: [PerceptualRenderedFrameEvidence], timeline: Timeline, primaries: [TimelineItem]) -> (score: Double, findings: [PerceptualFinding]) {
         guard !frames.isEmpty else { return (0.92, []) }
         var findings: [PerceptualFinding] = []
-        for frame in frames where frame.expectedVisibleContent && frame.isBlack {
-            let item = primaries.first { frame.timelineTime >= $0.timelineStart && frame.timelineTime <= $0.timelineStart + $0.timelineDuration }
-            findings.append(PerceptualFinding(
-                severity: .critical, scope: .shot,
-                timelineRange: PerceptualTimeRange(start: max(0, frame.timelineTime - 0.05), end: frame.timelineTime + 0.05),
-                type: .blackFrame, confidence: 0.99,
-                explanation: "Selective rendered preview содержит необъяснимый black frame (mean luma \(format(frame.meanLuma)))",
-                itemIDs: item.map { [$0.id] } ?? [],
-                suggestedRepairs: item.map { [PerceptualRepairSuggestion(kind: .replace, itemIDs: [$0.id], confidence: 0.94, explanation: "Заменить клип с неисправным декодированием/transform")] } ?? []
-            ))
+        var severe = 0.0
+        let ordered = frames.sorted { $0.timelineTime < $1.timelineTime }
+        func collect(type: PerceptualFindingType, severity: PerceptualFindingSeverity, confidence: Double,
+                     radius: Double, matches: (PerceptualRenderedFrameEvidence) -> Bool) {
+            var active: Int?
+            for frame in ordered {
+                guard frame.expectedVisibleContent && matches(frame) else { active = nil; continue }
+                // Half-open clip ranges assign a cut-time sample to its incoming shot.
+                let item = primaries.first { frame.timelineTime >= $0.timelineStart && frame.timelineTime < $0.timelineStart + $0.timelineDuration }
+                guard type != .frozenFrame || item?.isFreezeFrame != true else { active = nil; continue }
+                // Keep the original per-sample penalty even when diagnostics
+                // are grouped. Fewer rows must never inflate technical quality.
+                severe += severity.weight * confidence
+                let ids = item.map { [$0.id] } ?? []
+                let range = PerceptualTimeRange(start: max(item?.timelineStart ?? 0, frame.timelineTime - radius),
+                    end: min(item.map { $0.timelineStart + $0.timelineDuration } ?? timeline.duration, frame.timelineTime + radius))
+                let description = type == .blackFrame
+                    ? "Необъяснимый чёрный кадр в выборочных изображениях экспорта"
+                    : "Повтор кадра без намеренного freeze-frame в выборочных изображениях экспорта"
+                if let index = active, findings[index].itemIDs == ids {
+                    findings[index].timelineRange.end = max(findings[index].timelineRange.end, range.end)
+                    findings[index].renderedSampleTimes?.append(frame.timelineTime)
+                    findings[index].explanation = "\(description); наблюдений: \(findings[index].renderedSampleTimes?.count ?? 0). Непрерывность дефекта между наблюдениями не установлена."
+                } else {
+                    let repairs = type == .blackFrame ? item.map {
+                        [PerceptualRepairSuggestion(kind: .replace, itemIDs: [$0.id], confidence: 0.94, explanation: "Заменить клип с неисправным декодированием/transform")]
+                    } ?? [] : []
+                    findings.append(PerceptualFinding(severity: severity, scope: .shot, timelineRange: range,
+                        type: type, confidence: confidence, explanation: description, itemIDs: ids,
+                        suggestedRepairs: repairs, renderedSampleTimes: [frame.timelineTime]))
+                    active = findings.count - 1
+                }
+            }
         }
-        for frame in frames where frame.expectedVisibleContent && frame.isFrozenComparedToPrevious {
-            let item = primaries.first { frame.timelineTime >= $0.timelineStart && frame.timelineTime <= $0.timelineStart + $0.timelineDuration }
-            guard item?.isFreezeFrame != true else { continue }
-            findings.append(PerceptualFinding(
-                severity: .high, scope: .shot,
-                timelineRange: PerceptualTimeRange(start: max(0, frame.timelineTime - 0.12), end: frame.timelineTime + 0.12),
-                type: .frozenFrame, confidence: 0.90,
-                explanation: "Rendered preview повторяет один кадр без намеренного freeze-frame",
-                itemIDs: item.map { [$0.id] } ?? []
-            ))
-        }
-        let severe = findings.reduce(0) { $0 + $1.severity.weight * $1.confidence }
+        collect(type: .blackFrame, severity: .critical, confidence: 0.99, radius: 0.05, matches: { $0.isBlack })
+        collect(type: .frozenFrame, severity: .high, confidence: 0.90, radius: 0.12, matches: { $0.isFrozenComparedToPrevious })
         return ((1 - severe / Double(max(1, frames.count))).clamped01, findings)
     }
 
@@ -963,7 +982,7 @@ public struct PerceptualReviewTransaction: Sendable {
         renderedFrames: [PerceptualRenderedFrameEvidence] = [],
         minimumImprovement: Double = 0.004
     ) -> PerceptualReviewTransactionResult {
-        let safety = TimelineSafetyValidator().violations(candidate: candidate, comparedTo: original, plan: plan, analyses: analyses)
+        let safety = TimelineSafetyValidator().violations(candidate: candidate, comparedTo: original, plan: plan, analyses: analyses, assets: Array(features.assets.values))
         let reviewer = PerceptualMontageReviewer()
         let candidateReview = reviewer.review(timeline: candidate, plan: plan, features: features, renderedFrames: renderedFrames)
         let candidateGlobal = DefaultMontageGlobalScorer().score(plan: plan, timeline: candidate, features: features, analyses: analyses)
@@ -1149,7 +1168,7 @@ public struct PerceptualReviewEngine: Sendable {
                 guard let itemID = finding.itemIDs.first,
                       let item = timeline.items.first(where: { $0.id == itemID }), !item.locked,
                       let candidateID = item.candidateID, let candidate = features.candidates[candidateID] else { continue }
-                if let boundary = candidate.momentBoundary, boundary.confidence >= confidenceThreshold {
+                if let boundary = candidate.momentBoundary, boundary.confirmedActionConfidence >= confidenceThreshold {
                     let start = max(candidate.sourceStart, boundary.anticipationStart)
                     let end = min(candidate.sourceStart + candidate.sourceDuration, boundary.effectiveReactionEnd)
                     if end - start >= 0.25,
@@ -1259,11 +1278,16 @@ public struct PerceptualRenderInspector: Sendable {
     public func inspectAsync(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096) async -> [PerceptualRenderedFrameEvidence] {
         guard !Task.isCancelled else { return [] }
         let cancellation = EditorialProbeCancellation()
+        let trace = PerformanceTrace.current
+        let queued = trace?.begin("preview.queue")
         return await withTaskCancellationHandler {
             await FilmBuildReporting.forwarding { report in
                 await withCheckedContinuation { continuation in
                     Self.decodeQueue.async {
-                        continuation.resume(returning: inspect(playback: playback, timeline: timeline, maximumSamples: maximumSamples, cancellationCheck: { cancellation.isCancelled }, progress: report))
+                        trace?.end(queued, stage: "preview.queue")
+                        let span = trace?.begin("preview.inspect", fields: ["signature": EditorialRenderSignature.signature(timeline)])
+                        defer { trace?.end(span, stage: "preview.inspect", status: cancellation.isCancelled ? "cancelled" : "success") }
+                        continuation.resume(returning: inspect(playback: playback, timeline: timeline, maximumSamples: maximumSamples, cancellationCheck: { cancellation.isCancelled }, progress: report, trace: trace))
                     }
                 }
             }
@@ -1273,7 +1297,7 @@ public struct PerceptualRenderInspector: Sendable {
     /// Samples cut neighborhoods, effect/title/telemetry centers and a bounded
     /// set of film positions from the actual AVComposition. It is not a second
     /// full render and reuses PlaybackEngine's proxy/derived-media cache.
-    public func inspect(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096, cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }, progress: (@Sendable (FilmBuildProgress) -> Void)? = nil) -> [PerceptualRenderedFrameEvidence] {
+    public func inspect(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096, cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }, progress: (@Sendable (FilmBuildProgress) -> Void)? = nil, trace: PerformanceTrace? = nil) -> [PerceptualRenderedFrameEvidence] {
         let limit = min(max(4, maximumSamples), 4096)
         let frameStep = 1 / max(15, timeline.frameRate)
         let endingFade = FilmEndingFade(duration: timeline.endingFadeDuration, movieDuration: playback.duration, frameRate: timeline.frameRate)
@@ -1305,6 +1329,9 @@ public struct PerceptualRenderInspector: Sendable {
         // production review from accumulating every 5K source decoder.
         let decodeChunkSize = 8
         var generator = makeGenerator()
+        let titleGenerator = makeGenerator()
+        titleGenerator.maximumSize = TitleReadabilityInspector.maximumSize
+        defer { titleGenerator.cancelAllCGImageGeneration() }
         var result: [PerceptualRenderedFrameEvidence] = []
         var previousHash: UInt64?
         var repeatedHashCount = 0
@@ -1316,9 +1343,16 @@ public struct PerceptualRenderInspector: Sendable {
                 generator.cancelAllCGImageGeneration()
                 generator = makeGenerator()
             }
-            let playbackTime = min(max(0, playback.duration - frameStep), TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline))
+            let sampleTime = VideoFrameTiming.sampleTime(for: TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline),
+                frameRate: timeline.frameRate, duration: playback.duration)
+            let playbackTime = sampleTime.seconds
             let rendered: PerceptualRenderedFrameEvidence = autoreleasepool {
-                guard let image = try? generator.copyCGImage(at: CMTime(seconds: playbackTime, preferredTimescale: 600), actualTime: nil) else {
+                var actual = CMTime.invalid
+                let decodeSpan = trace?.begin("frame.decode", fields: ["purpose": "preview", "signature": EditorialRenderSignature.signature(timeline), "requested": String(playbackTime), "maximumSize": "640", "tolerance": "0/600"])
+                let decoded = try? generator.copyCGImage(at: sampleTime, actualTime: &actual)
+                trace?.end(decodeSpan, stage: "frame.decode", status: decoded == nil ? "failed" : "success")
+                trace?.event("frame.pts", fields: ["purpose": "preview"], values: ["requested": playbackTime, "actual": actual.seconds.isFinite ? actual.seconds : -1])
+                guard let image = decoded else {
                     var failure = PerceptualRenderedFrameEvidence(timelineTime: time, meanLuma: 0, lumaDeviation: 0, isBlack: false, source: "AVComposition decode failed")
                     failure.decodeFailed = true
                     return failure
@@ -1339,6 +1373,7 @@ public struct PerceptualRenderInspector: Sendable {
                     source: "AVComposition selective preview"
                 )
                 rendered.decodeFailed = false
+                rendered.actualPTS = actual.seconds
                 rendered.lumaFingerprint = Self.lumaFingerprint(image)
                 let humanRequest = VNDetectHumanRectanglesRequest()
                 humanRequest.upperBodyOnly = false
@@ -1362,24 +1397,20 @@ public struct PerceptualRenderInspector: Sendable {
                     }
                 }
                 rendered.verticalOccluderScore = Self.verticalOccluderScore(rendered.lumaFingerprint ?? [], subjects: rendered.renderedSubjects ?? [])
-                let readableTitles = timeline.effectiveTitleItems.filter { title in
-                    guard title.enabled else { return false }
-                    let template = TitleTemplateRegistry.template(for: title)
-                    let stagger = Double(template?.layout.elements.map(\.staggerIndex).max() ?? 0)
-                    let entrance = (template?.animation.animationIn.duration ?? 0.35) + stagger * (template?.animation.animationIn.stagger ?? 0)
-                    let exit = (template?.animation.animationOut.duration ?? 0.35) + stagger * (template?.animation.animationOut.stagger ?? 0)
-                    // Check readable hold, not a deliberately partial animated reveal.
-                    return time >= title.startTime + min(title.duration / 2, entrance + 0.05)
-                        && time <= title.endTime - min(title.duration / 2, exit + 0.05)
-                }
+                let readableTitles = TitleReadabilityInspector.titles(at: time, timeline: timeline)
                 if !readableTitles.isEmpty {
-                    let request = VNRecognizeTextRequest()
-                    request.recognitionLevel = .accurate
-                    request.recognitionLanguages = ["ru-RU", "en-US"]
-                    if (try? handler.perform([request])) != nil {
-                        let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ").lowercased()
-                        let expected = readableTitles.flatMap { $0.text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) }
-                        rendered.titleReadability = expected.isEmpty ? 1 : Double(expected.filter { recognized.contains($0) }.count) / Double(expected.count)
+                    var titlePTS = CMTime.invalid
+                    let titleImage = try? titleGenerator.copyCGImage(at: sampleTime, actualTime: &titlePTS)
+                    rendered.titleEvidence = readableTitles.map {
+                        TitleReadabilityInspector.inspect(image: titleImage, title: $0, timeline: timeline,
+                            time: time, actualPTS: titlePTS.seconds.isFinite ? titlePTS.seconds : nil, source: "preview")
+                    }
+                    rendered.titleReadability = rendered.titleEvidence?.map(\.score).min()
+                    for evidence in rendered.titleEvidence ?? [] {
+                        trace?.event("title.ocr", fields: ["titleID": evidence.titleID.uuidString, "signature": evidence.renderSignature,
+                            "source": evidence.source, "recognized": evidence.recognizedText, "failure": evidence.failure ?? ""],
+                            values: ["requested": playbackTime, "actualPTS": evidence.actualPTS ?? -1, "score": evidence.score,
+                                     "width": Double(evidence.pixelWidth), "height": Double(evidence.pixelHeight)])
                     }
                 }
                 previousHash = hash

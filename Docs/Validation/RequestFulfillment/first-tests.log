@@ -1,0 +1,642 @@
+2026-09-17 17:24:46.805 xcodebuild[20517:295213]  DVTFilePathFSEvents: Failed to start fs event stream.
+2026-09-17 17:24:46.950 xcodebuild[20517:295211] [MT] DVTDeveloperPaths: Failed to get length of DARWIN_USER_CACHE_DIR from confstr(3), error = Error Domain=NSPOSIXErrorDomain Code=5 "Input/output error". Using NSCachesDirectory instead.
+2026-09-17 17:24:47.346 xcodebuild[20518:295222]  DVTFilePathFSEvents: Failed to start fs event stream.
+2026-09-17 17:24:47.437 xcodebuild[20518:295220] [MT] DVTDeveloperPaths: Failed to get length of DARWIN_USER_CACHE_DIR from confstr(3), error = Error Domain=NSPOSIXErrorDomain Code=5 "Input/output error". Using NSCachesDirectory instead.
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/Caches/org.swift.swiftpm is not accessible or not writable, disabling user-level cache features.
+warning: 'veloedit': failed loading cached manifest for 'veloedit': You don’t have permission to save the file “manifests” in the folder “org.swift.swiftpm”.
+warning: 'veloedit': failed storing manifest for 'veloedit' in cache: You don’t have permission to save the file “manifests” in the folder “org.swift.swiftpm”.
+warning: 'veloedit': failed closing manifest db cache: You don’t have permission to save the file “manifests” in the folder “org.swift.swiftpm”.
+Building for debugging...
+[Pre-planning 1 / 211]
+[Starting]
+[53 / 114]
+[54 / 115] VeloEditCore
+[60 / 210]
+[67 / 210]
+[75 / 210]
+[78 / 210]
+[79 / 210]
+[85 / 210]
+[87 / 210]
+[92 / 210]
+[96 / 210]
+[99 / 210]
+[103 / 210]
+[104 / 210]
+[108 / 210]
+[114 / 210]
+[120 / 210]
+[123 / 210]
+[128 / 210]
+[131 / 210]
+[135 / 210]
+[137 / 210]
+[138 / 210]
+[141 / 210] VeloEditCore
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/WebMusicProvider.swift:29:25: warning: consider using asynchronous alternative function
+ 27 |             if !probe.pending {
+ 28 |                 probe.pending = true
+ 29 |                 browser.evaluateJavaScript("""
+    |                         `- warning: consider using asynchronous alternative function
+ 30 |                 JSON.stringify({
+ 31 |                   blocked: !!document.querySelector('form[action*="anomaly"], #challenge-form'),
+
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk/System/Library/Frameworks/WebKit.framework/Headers/WKWebView.h:269:1: note: 'evaluateJavaScript' declared here
+267 |    - A `contentWorld` value of `WKContentWorld.pageWorld`
+268 | */
+269 | - (void)evaluateJavaScript:(NSString *)javaScriptString completionHandler:(WK_SWIFT_UI_ACTOR void (^ _Nullable)(id WK_NULLABLE_RESULT, NSError * _Nullable error))completionHandler;
+    | `- note: 'evaluateJavaScript' declared here
+270 | 
+271 | /* @abstract Evaluates the given JavaScript string.
+[143 / 210] VeloEditCore
+[150 / 210] VeloEditCore
+[151 / 210] veloedit-cli-product
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[152 / 210] veloedit-cli-product
+[153 / 210] VeloEditCore
+[155 / 210] VeloEditCore
+[160 / 211] veloedit-cli-product
+[162 / 213] veloedit-cli-product
+[163 / 213] VeloEditCore
+[167 / 213]
+[169 / 214]
+[170 / 215] VeloEditCore
+[174 / 231] VeloEdit-product
+[178 / 241] VeloEdit
+[178 / 241] veloedit-cli-product
+[180 / 241] VeloEdit
+[189 / 241] VeloEdit-product
+[190 / 241] VeloEdit-product
+[191 / 241] VeloEdit-product
+[193 / 241] VeloEdit-product
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:971:71: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 966 |         section = .media
+ 967 |         isImporting = true
+ 968 |         run("Импортирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+ 969 |             defer { self.isImporting = false }
+ 970 |             let previousAssetIDs = Set(self.project?.assets.map(\.id) ?? [])
+ 971 |             let errors = try await pipeline.importMedia(urls) { [weak self] item in
+     |                                                                       |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                       `- note: explicitly assign the capture list item to silence
+ 972 |                 Task { @MainActor in self?.setProgress(item, base: 0, span: 0.70, phase: "Импорт") }
+ 973 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:977:77: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 966 |         section = .media
+ 967 |         isImporting = true
+ 968 |         run("Импортирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+ 969 |             defer { self.isImporting = false }
+ 970 |             let previousAssetIDs = Set(self.project?.assets.map(\.id) ?? [])
+     :
+ 975 |             self.activityTitle = "Создаю изображения предварительного просмотра исходников"
+ 976 |             self.progress = 0.70
+ 977 |             let thumbnailErrors = await pipeline.generateThumbnails { [weak self] item in
+     |                                                                             |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                             `- note: explicitly assign the capture list item to silence
+ 978 |                 Task { @MainActor in self?.setProgress(item, base: 0.70, span: 0.30, phase: "Предпросмотр") }
+ 979 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:994:107: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 990 |         guard let pipeline, !isWorking else { return }
+ 991 |         isAnalyzing = true
+ 992 |         run("Анализирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+ 993 |             defer { self.isAnalyzing = false }
+ 994 |             let count = try await pipeline.analyzeMissing(preferredAssetID: self.selectedAssetID) { [weak self] item in
+     |                                                                                                           |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                           `- note: explicitly assign the capture list item to silence
+ 995 |                 Task { @MainActor in self?.setProgress(item, showsAnalysisFileProgress: true) }
+ 996 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1111:83: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1107 |         aiModelDownloadProgress = 0
+1108 |         if mode == aiPowerMode { aiVisionModelStatus = "Подготавливаю загрузку…" }
+1109 |         Task {
+     |              |- note: 'self' implicitly strongly captured here
+     |              `- note: add 'self' as a capture list item to silence
+1110 |             do {
+1111 |                 try await LocalAIModelManager.shared.pull(model: modelID) { [weak self] update in
+     |                                                                                   |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                   `- note: explicitly assign the capture list item to silence
+1112 |                     Task { @MainActor in
+1113 |                         self?.aiModelDownloadProgress = update.fraction
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1544:71: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1492 |         progress = 0
+1493 |         isCreatingFilm = true
+1494 |         run("Запускаю создание фильма") {
+     |                                         |- note: 'self' implicitly strongly captured here
+     |                                         `- note: add 'self' as a capture list item to silence
+1495 |             defer { self.isCreatingFilm = false }
+1496 |             do {
+     :
+1542 |                 self.beginUnmeasuredActivity(at: 0.60, step: .preparing)
+1543 |                 let filmBuildGeneration = self.operationGeneration
+1544 |                 let buildProgress: FilmBuildProgressHandler = { [weak self] update in
+     |                                                                       |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                       `- note: explicitly assign the capture list item to silence
+1545 |                     await self?.setFilmBuildProgress(update, generation: filmBuildGeneration)
+1546 |                 }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1599:72: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1492 |         progress = 0
+1493 |         isCreatingFilm = true
+1494 |         run("Запускаю создание фильма") {
+     |                                         |- note: 'self' implicitly strongly captured here
+     |                                         `- note: add 'self' as a capture list item to silence
+1495 |             defer { self.isCreatingFilm = false }
+1496 |             do {
+     :
+1597 |                 self.status = "Соединяю \(timeline.items.count) фрагментов в одну композицию"
+1598 |                 self.beginUnmeasuredActivity(at: 0.84, step: .playback)
+1599 |                 let playback = try await pipeline.makePlayback { [weak self] item in
+     |                                                                        |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                        `- note: explicitly assign the capture list item to silence
+1600 |                     Task { @MainActor in
+1601 |                         guard let self, self.isWorking, self.isCreatingFilm,
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1672:62: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1666 |         projectRestoreTask = nil
+1667 |         isCreatingFilm = true
+1668 |         run("Продолжаю сохранённую сборку") {
+     |                                             |- note: 'self' implicitly strongly captured here
+     |                                             `- note: add 'self' as a capture list item to silence
+1669 |             defer { self.isCreatingFilm = false }
+1670 |             self.beginUnmeasuredActivity(at: 0, step: .finishing)
+1671 |             let generation = self.operationGeneration
+1672 |             let callback: FilmBuildProgressHandler = { [weak self] update in
+     |                                                              |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                              `- note: explicitly assign the capture list item to silence
+1673 |                 await self?.setFilmBuildProgress(update, generation: generation)
+1674 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1680:68: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1666 |         projectRestoreTask = nil
+1667 |         isCreatingFilm = true
+1668 |         run("Продолжаю сохранённую сборку") {
+     |                                             |- note: 'self' implicitly strongly captured here
+     |                                             `- note: add 'self' as a capture list item to silence
+1669 |             defer { self.isCreatingFilm = false }
+1670 |             self.beginUnmeasuredActivity(at: 0, step: .finishing)
+     :
+1678 |             self.activityTitle = "Готовлю просмотр фильма"
+1679 |             self.beginUnmeasuredActivity(at: 0.84, step: .playback)
+1680 |             let playback = try await pipeline.makePlayback { [weak self] item in
+     |                                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                    `- note: explicitly assign the capture list item to silence
+1681 |                 Task { @MainActor in
+1682 |                     guard let self, self.isWorking, self.isCreatingFilm,
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1808:120: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1805 |         }
+1806 |         guard let pipeline else { return }
+1807 |         run("Готовлю предварительный просмотр") {
+     |                                                 |- note: 'self' implicitly strongly captured here
+     |                                                 `- note: add 'self' as a capture list item to silence
+1808 |             let playback = try await pipeline.makePlayback(interactiveQuality: Self.interactivePreviewQuality) { [weak self] item in
+     |                                                                                                                        |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                        `- note: explicitly assign the capture list item to silence
+1809 |                 Task { @MainActor in self?.setProgress(item) }
+1810 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1830:76: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1827 |         panel.allowedContentTypes = [.quickTimeMovie]
+1828 |         guard panel.runModal() == .OK, let url = panel.url else { return }
+1829 |         run("Экспортирую прозрачную телеметрию", completionNotification: "Экспорт завершён") {
+     |                                                                                              |- note: 'self' implicitly strongly captured here
+     |                                                                                              `- note: add 'self' as a capture list item to silence
+1830 |             _ = try await pipeline.renderTelemetryOverlay(to: url) { [weak self] item in
+     |                                                                            |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                            `- note: explicitly assign the capture list item to silence
+1831 |                 Task { @MainActor in self?.setProgress(item) }
+1832 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1871:125: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1866 |     func saveVideo() {
+1867 |         guard let pipeline, timeline != nil, !isWorking else { return }
+1868 |         run("Сохраняю видео", completionNotification: "Видео сохранено") {
+     |                                                                          |- note: 'self' implicitly strongly captured here
+     |                                                                          `- note: add 'self' as a capture list item to silence
+1869 |             try await self.commitTimelineForExport(using: pipeline)
+1870 |             let url = await pipeline.defaultVideoDestination()
+1871 |             let report = try await pipeline.render(to: url, quality: .maximum, frameRate: self.timeline?.frameRate) { [weak self] item in
+     |                                                                                                                             |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                             `- note: explicitly assign the capture list item to silence
+1872 |                 Task { @MainActor in self?.setProgress(item) }
+1873 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1890:132: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1886 |         panel.allowedContentTypes = [.mpeg4Movie]
+1887 |         guard panel.runModal() == .OK, let url = panel.url else { return }
+1888 |         run("Сохраняю видео", completionNotification: "Видео сохранено") {
+     |                                                                          |- note: 'self' implicitly strongly captured here
+     |                                                                          `- note: add 'self' as a capture list item to silence
+1889 |             try await self.commitTimelineForExport(using: pipeline)
+1890 |             let report = try await pipeline.render(to: url, quality: quality, frameRate: frameRate, replaceExisting: true) { [weak self] item in
+     |                                                                                                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                                    `- note: explicitly assign the capture list item to silence
+1891 |                 Task { @MainActor in self?.setProgress(item) }
+1892 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2114:80: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2111 |         guard let pipeline, let projectURL, !isWorking else { return }
+2112 |         let destination = projectURL.deletingLastPathComponent().appendingPathComponent("\(project?.name ?? "Проект") — копия \(UUID().uuidString.prefix(6)).veloedit")
+2113 |         run("Собираю копию проекта") {
+     |                                      |- note: 'self' implicitly strongly captured here
+     |                                      `- note: add 'self' as a capture list item to silence
+2114 |             _ = try await pipeline.collectProjectCopy(to: destination) { [weak self] update in
+     |                                                                                |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                `- note: explicitly assign the capture list item to silence
+2115 |                 Task { @MainActor in self?.setProgress(update) }
+2116 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2202:69: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2199 |     func verifyMediaIntegrity() {
+2200 |         guard let pipeline, project?.assets.isEmpty == false else { return }
+2201 |         run("Проверяю целостность материалов") {
+     |                                                |- note: 'self' implicitly strongly captured here
+     |                                                `- note: add 'self' as a capture list item to silence
+2202 |             let count = try await pipeline.verifyFullHashes { [weak self] item in
+     |                                                                     |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                     `- note: explicitly assign the capture list item to silence
+2203 |                 Task { @MainActor in self?.setProgress(item) }
+2204 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:6258:52: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+6173 |             await self?.setFilmBuildProgress(update, generation: runGeneration)
+6174 |         }
+6175 |         activeTask = Task {
+     |                           |- note: 'self' implicitly strongly captured here
+     |                           `- note: add 'self' as a capture list item to silence
+6176 |             var completedSuccessfully = false
+6177 |             var retryAfterConflict = false
+     :
+6256 |                 isActivityComplete = completedSuccessfully
+6257 |                 if completedSuccessfully { progress = 1 }
+6258 |                 activityDismissTask = Task { [weak self] in
+     |                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                    `- note: explicitly assign the capture list item to silence
+6259 |                     try? await Task.sleep(for: .seconds(completedSuccessfully ? 3.2 : 1.5))
+6260 |                     guard !Task.isCancelled else { return }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:6271:37: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+6173 |             await self?.setFilmBuildProgress(update, generation: runGeneration)
+6174 |         }
+6175 |         activeTask = Task {
+     |                           |- note: 'self' implicitly strongly captured here
+     |                           `- note: add 'self' as a capture list item to silence
+6176 |             var completedSuccessfully = false
+6177 |             var retryAfterConflict = false
+     :
+6269 |                 }
+6270 |             }
+6271 |             Task { @MainActor [weak self] in
+     |                                     |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                     `- note: explicitly assign the capture list item to silence
+6272 |                 try? await Task.sleep(for: .milliseconds(retryAfterConflict ? 350 : 120))
+6273 |                 self?.startNextQueuedTimelineAIEdit()
+
+[#ImplicitStrongCapture]: <https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture>
+[194 / 241] VeloEdit-product
+[196 / 241] VeloEdit-product
+[197 / 241] VeloEdit
+[198 / 241] VeloEdit
+[200 / 241] VeloEdit
+[201 / 241] VeloEdit
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:971:71: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 966 |         section = .media
+ 967 |         isImporting = true
+ 968 |         run("Импортирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+ 969 |             defer { self.isImporting = false }
+ 970 |             let previousAssetIDs = Set(self.project?.assets.map(\.id) ?? [])
+ 971 |             let errors = try await pipeline.importMedia(urls) { [weak self] item in
+     |                                                                       |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                       `- note: explicitly assign the capture list item to silence
+ 972 |                 Task { @MainActor in self?.setProgress(item, base: 0, span: 0.70, phase: "Импорт") }
+ 973 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:977:77: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 966 |         section = .media
+ 967 |         isImporting = true
+ 968 |         run("Импортирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+ 969 |             defer { self.isImporting = false }
+ 970 |             let previousAssetIDs = Set(self.project?.assets.map(\.id) ?? [])
+     :
+ 975 |             self.activityTitle = "Создаю изображения предварительного просмотра исходников"
+ 976 |             self.progress = 0.70
+ 977 |             let thumbnailErrors = await pipeline.generateThumbnails { [weak self] item in
+     |                                                                             |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                             `- note: explicitly assign the capture list item to silence
+ 978 |                 Task { @MainActor in self?.setProgress(item, base: 0.70, span: 0.30, phase: "Предпросмотр") }
+ 979 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:994:107: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+ 990 |         guard let pipeline, !isWorking else { return }
+ 991 |         isAnalyzing = true
+ 992 |         run("Анализирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+ 993 |             defer { self.isAnalyzing = false }
+ 994 |             let count = try await pipeline.analyzeMissing(preferredAssetID: self.selectedAssetID) { [weak self] item in
+     |                                                                                                           |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                           `- note: explicitly assign the capture list item to silence
+ 995 |                 Task { @MainActor in self?.setProgress(item, showsAnalysisFileProgress: true) }
+ 996 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1111:83: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1107 |         aiModelDownloadProgress = 0
+1108 |         if mode == aiPowerMode { aiVisionModelStatus = "Подготавливаю загрузку…" }
+1109 |         Task {
+     |              |- note: 'self' implicitly strongly captured here
+     |              `- note: add 'self' as a capture list item to silence
+1110 |             do {
+1111 |                 try await LocalAIModelManager.shared.pull(model: modelID) { [weak self] update in
+     |                                                                                   |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                   `- note: explicitly assign the capture list item to silence
+1112 |                     Task { @MainActor in
+1113 |                         self?.aiModelDownloadProgress = update.fraction
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1544:71: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1492 |         progress = 0
+1493 |         isCreatingFilm = true
+1494 |         run("Запускаю создание фильма") {
+     |                                         |- note: 'self' implicitly strongly captured here
+     |                                         `- note: add 'self' as a capture list item to silence
+1495 |             defer { self.isCreatingFilm = false }
+1496 |             do {
+     :
+1542 |                 self.beginUnmeasuredActivity(at: 0.60, step: .preparing)
+1543 |                 let filmBuildGeneration = self.operationGeneration
+1544 |                 let buildProgress: FilmBuildProgressHandler = { [weak self] update in
+     |                                                                       |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                       `- note: explicitly assign the capture list item to silence
+1545 |                     await self?.setFilmBuildProgress(update, generation: filmBuildGeneration)
+1546 |                 }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1599:72: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1492 |         progress = 0
+1493 |         isCreatingFilm = true
+1494 |         run("Запускаю создание фильма") {
+     |                                         |- note: 'self' implicitly strongly captured here
+     |                                         `- note: add 'self' as a capture list item to silence
+1495 |             defer { self.isCreatingFilm = false }
+1496 |             do {
+     :
+1597 |                 self.status = "Соединяю \(timeline.items.count) фрагментов в одну композицию"
+1598 |                 self.beginUnmeasuredActivity(at: 0.84, step: .playback)
+1599 |                 let playback = try await pipeline.makePlayback { [weak self] item in
+     |                                                                        |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                        `- note: explicitly assign the capture list item to silence
+1600 |                     Task { @MainActor in
+1601 |                         guard let self, self.isWorking, self.isCreatingFilm,
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1672:62: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1666 |         projectRestoreTask = nil
+1667 |         isCreatingFilm = true
+1668 |         run("Продолжаю сохранённую сборку") {
+     |                                             |- note: 'self' implicitly strongly captured here
+     |                                             `- note: add 'self' as a capture list item to silence
+1669 |             defer { self.isCreatingFilm = false }
+1670 |             self.beginUnmeasuredActivity(at: 0, step: .finishing)
+1671 |             let generation = self.operationGeneration
+1672 |             let callback: FilmBuildProgressHandler = { [weak self] update in
+     |                                                              |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                              `- note: explicitly assign the capture list item to silence
+1673 |                 await self?.setFilmBuildProgress(update, generation: generation)
+1674 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1680:68: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1666 |         projectRestoreTask = nil
+1667 |         isCreatingFilm = true
+1668 |         run("Продолжаю сохранённую сборку") {
+     |                                             |- note: 'self' implicitly strongly captured here
+     |                                             `- note: add 'self' as a capture list item to silence
+1669 |             defer { self.isCreatingFilm = false }
+1670 |             self.beginUnmeasuredActivity(at: 0, step: .finishing)
+     :
+1678 |             self.activityTitle = "Готовлю просмотр фильма"
+1679 |             self.beginUnmeasuredActivity(at: 0.84, step: .playback)
+1680 |             let playback = try await pipeline.makePlayback { [weak self] item in
+     |                                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                    `- note: explicitly assign the capture list item to silence
+1681 |                 Task { @MainActor in
+1682 |                     guard let self, self.isWorking, self.isCreatingFilm,
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1808:120: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1805 |         }
+1806 |         guard let pipeline else { return }
+1807 |         run("Готовлю предварительный просмотр") {
+     |                                                 |- note: 'self' implicitly strongly captured here
+     |                                                 `- note: add 'self' as a capture list item to silence
+1808 |             let playback = try await pipeline.makePlayback(interactiveQuality: Self.interactivePreviewQuality) { [weak self] item in
+     |                                                                                                                        |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                        `- note: explicitly assign the capture list item to silence
+1809 |                 Task { @MainActor in self?.setProgress(item) }
+1810 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1830:76: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1827 |         panel.allowedContentTypes = [.quickTimeMovie]
+1828 |         guard panel.runModal() == .OK, let url = panel.url else { return }
+1829 |         run("Экспортирую прозрачную телеметрию", completionNotification: "Экспорт завершён") {
+     |                                                                                              |- note: 'self' implicitly strongly captured here
+     |                                                                                              `- note: add 'self' as a capture list item to silence
+1830 |             _ = try await pipeline.renderTelemetryOverlay(to: url) { [weak self] item in
+     |                                                                            |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                            `- note: explicitly assign the capture list item to silence
+1831 |                 Task { @MainActor in self?.setProgress(item) }
+1832 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1871:125: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1866 |     func saveVideo() {
+1867 |         guard let pipeline, timeline != nil, !isWorking else { return }
+1868 |         run("Сохраняю видео", completionNotification: "Видео сохранено") {
+     |                                                                          |- note: 'self' implicitly strongly captured here
+     |                                                                          `- note: add 'self' as a capture list item to silence
+1869 |             try await self.commitTimelineForExport(using: pipeline)
+1870 |             let url = await pipeline.defaultVideoDestination()
+1871 |             let report = try await pipeline.render(to: url, quality: .maximum, frameRate: self.timeline?.frameRate) { [weak self] item in
+     |                                                                                                                             |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                             `- note: explicitly assign the capture list item to silence
+1872 |                 Task { @MainActor in self?.setProgress(item) }
+1873 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1890:132: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1886 |         panel.allowedContentTypes = [.mpeg4Movie]
+1887 |         guard panel.runModal() == .OK, let url = panel.url else { return }
+1888 |         run("Сохраняю видео", completionNotification: "Видео сохранено") {
+     |                                                                          |- note: 'self' implicitly strongly captured here
+     |                                                                          `- note: add 'self' as a capture list item to silence
+1889 |             try await self.commitTimelineForExport(using: pipeline)
+1890 |             let report = try await pipeline.render(to: url, quality: quality, frameRate: frameRate, replaceExisting: true) { [weak self] item in
+     |                                                                                                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                                    `- note: explicitly assign the capture list item to silence
+1891 |                 Task { @MainActor in self?.setProgress(item) }
+1892 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2114:80: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2111 |         guard let pipeline, let projectURL, !isWorking else { return }
+2112 |         let destination = projectURL.deletingLastPathComponent().appendingPathComponent("\(project?.name ?? "Проект") — копия \(UUID().uuidString.prefix(6)).veloedit")
+2113 |         run("Собираю копию проекта") {
+     |                                      |- note: 'self' implicitly strongly captured here
+     |                                      `- note: add 'self' as a capture list item to silence
+2114 |             _ = try await pipeline.collectProjectCopy(to: destination) { [weak self] update in
+     |                                                                                |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                `- note: explicitly assign the capture list item to silence
+2115 |                 Task { @MainActor in self?.setProgress(update) }
+2116 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2202:69: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2199 |     func verifyMediaIntegrity() {
+2200 |         guard let pipeline, project?.assets.isEmpty == false else { return }
+2201 |         run("Проверяю целостность материалов") {
+     |                                                |- note: 'self' implicitly strongly captured here
+     |                                                `- note: add 'self' as a capture list item to silence
+2202 |             let count = try await pipeline.verifyFullHashes { [weak self] item in
+     |                                                                     |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                     `- note: explicitly assign the capture list item to silence
+2203 |                 Task { @MainActor in self?.setProgress(item) }
+2204 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:6258:52: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+6173 |             await self?.setFilmBuildProgress(update, generation: runGeneration)
+6174 |         }
+6175 |         activeTask = Task {
+     |                           |- note: 'self' implicitly strongly captured here
+     |                           `- note: add 'self' as a capture list item to silence
+6176 |             var completedSuccessfully = false
+6177 |             var retryAfterConflict = false
+     :
+6256 |                 isActivityComplete = completedSuccessfully
+6257 |                 if completedSuccessfully { progress = 1 }
+6258 |                 activityDismissTask = Task { [weak self] in
+     |                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                    `- note: explicitly assign the capture list item to silence
+6259 |                     try? await Task.sleep(for: .seconds(completedSuccessfully ? 3.2 : 1.5))
+6260 |                     guard !Task.isCancelled else { return }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:6271:37: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+6173 |             await self?.setFilmBuildProgress(update, generation: runGeneration)
+6174 |         }
+6175 |         activeTask = Task {
+     |                           |- note: 'self' implicitly strongly captured here
+     |                           `- note: add 'self' as a capture list item to silence
+6176 |             var completedSuccessfully = false
+6177 |             var retryAfterConflict = false
+     :
+6269 |                 }
+6270 |             }
+6271 |             Task { @MainActor [weak self] in
+     |                                     |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                     `- note: explicitly assign the capture list item to silence
+6272 |                 try? await Task.sleep(for: .milliseconds(retryAfterConflict ? 350 : 120))
+6273 |                 self?.startNextQueuedTimelineAIEdit()
+
+[#ImplicitStrongCapture]: <https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture>
+[202 / 241] VeloEditAppTests-product
+[203 / 241] VeloEdit
+[204 / 241] VeloEdit
+[205 / 241] VeloEdit
+[207 / 241] VeloEdit
+[212 / 242]
+[215 / 242] veloedit-cli-product
+[222 / 259] VeloEditAppTests-product
+[224 / 259]
+[228 / 264] VeloEditAppTests-product
+[229 / 264] VeloEditCoreTests-product
+[229 / 264] VeloEditAppTests-product
+[231 / 264] VeloEditCoreTests-product
+[242 / 264] VeloEditCoreTests-product
+[243 / 264] VeloEditCoreTests-product
+[244 / 264] VeloEditCoreTests-product
+[245 / 264] VeloEditCoreTests-product
+[247 / 264] VeloEditCoreTests-product
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/RequestFulfillmentTests.swift:33:138: warning: left side of nil coalescing operator '??' has non-optional type '[Event]', so the right side is never used
+31 |         let before = try #require(project.timelines.last)
+32 |         let plan = try #require(project.storyPlans.last)
+33 |         let result = AutomaticEditorialAssembly.prepare(timeline: before, plan: plan, analyses: project.analyses, events: project.events ?? [], assets: project.assets)
+   |                                                                                                                                          `- warning: left side of nil coalescing operator '??' has non-optional type '[Event]', so the right side is never used
+34 |         print("REQUEST QA assembly: \(before.duration) -> \(result.timeline.duration), target \(result.plan.constraints.targetDuration)")
+35 |         for item in result.timeline.items { print("REQUEST QA range: \(item.assetID!) \(item.sourceStart)...\(item.sourceStart + item.sourceDuration)") }
+[248 / 264] VeloEditCoreTests-product
+[249 / 264] VeloEditCoreTests-product
+[249 / 264] VeloEditAppTests-product
+[251 / 264] VeloEditAppTests-product
+[253 / 264] VeloEditAppTests-product
+[254 / 264] AllIncludingTests
+[256 / 264] VeloEditCoreTests-product
+[258 / 264] VeloEditAppTests-product
+[260 / 264] VeloEditAppTests-product
+Build complete! (110,55 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite RequestFulfillmentTests started.
+◇ Test durationSpellings(_:) started.
+◇ Test scopedAndBoundedDurations() started.
+◇ Test realTest9Assembly() started.
+◇ Test case passing 1 argument prompt → "ровно 2 минуты" to durationSpellings(_:) started.
+◇ Test case passing 1 argument prompt → "2:00" to durationSpellings(_:) started.
+◇ Test case passing 1 argument prompt → "2 минуты" to durationSpellings(_:) started.
+◇ Test case passing 1 argument prompt → "120 секунд" to durationSpellings(_:) started.
+◇ Test case passing 1 argument prompt → "две минуты" to durationSpellings(_:) started.
+◇ Test case passing 1 argument prompt → "1 минута 60 секунд" to durationSpellings(_:) started.
+✔ Test durationSpellings(_:) with 6 test cases passed after 0.004 seconds.
+✔ Test scopedAndBoundedDurations() passed after 0.016 seconds.
+REQUEST QA assembly: 71.76666666666665 -> 120.0, target 120.0
+REQUEST QA range: F78C7124-9FBD-4E56-9737-74BE3CBE7FE1 0.6333333333333333...3.1333333333333333
+REQUEST QA range: F78C7124-9FBD-4E56-9737-74BE3CBE7FE1 6.0...18.0
+REQUEST QA range: F78C7124-9FBD-4E56-9737-74BE3CBE7FE1 18.0...30.0
+REQUEST QA range: F78C7124-9FBD-4E56-9737-74BE3CBE7FE1 47.3...49.86666666666667
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 0.0...11.433333333333334
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 16.466666666666665...19.43333333333333
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 36.5...39.46666666666667
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 63.733333333333334...66.7
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 119.23333333333333...124.0
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 126.03333333333333...128.66666666666666
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 131.86666666666667...134.83333333333334
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 178.76666666666668...190.73333333333335
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 193.16666666666666...196.13333333333333
+REQUEST QA range: 1EC61365-C32D-499B-B3D1-BB21548CC46F 202.76666666666668...204.36666666666667
+REQUEST QA range: 766FEA9B-7246-465C-9DDD-8AB4E5F6708E 0.0...12.0
+REQUEST QA range: 766FEA9B-7246-465C-9DDD-8AB4E5F6708E 12.0...24.0
+REQUEST QA range: 766FEA9B-7246-465C-9DDD-8AB4E5F6708E 24.0...34.13333333333333
+REQUEST QA range: 766FEA9B-7246-465C-9DDD-8AB4E5F6708E 34.166666666666664...36.733333333333334
+REQUEST QA range: 766FEA9B-7246-465C-9DDD-8AB4E5F6708E 40.36666666666667...42.7
+REQUEST QA range: 766FEA9B-7246-465C-9DDD-8AB4E5F6708E 42.7...44.800000000000004
+REQUEST QA range: 766FEA9B-7246-465C-9DDD-8AB4E5F6708E 46.56666666666667...49.13333333333334
+✔ Test realTest9Assembly() passed after 0.969 seconds.
+✔ Suite RequestFulfillmentTests passed after 0.970 seconds.
+✔ Test run with 3 tests in 1 suite passed after 0.970 seconds.

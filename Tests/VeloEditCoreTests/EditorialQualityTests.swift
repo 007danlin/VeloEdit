@@ -80,6 +80,17 @@ import Testing
         #expect(edit.after.items[1].timelineDuration < 4)
         #expect(edit.after.items[2] == before.items[2])
         #expect(edit.affectedItemIDs == Array(items.prefix(2)).map(\.id))
+        var connected = before
+        connected.telemetryItems = [.init(targetClipID: items[1].id, linkedAssetID: asset, sourceStart: 20, timelineStart: 4, timelineDuration: 4)]
+        connected.titleItems = [.init(kind: .chapter, text: "Реакция", startTime: 4, duration: 2, targetClipID: items[1].id)]
+        let linkedEdit = try LocalEditorialEditPlanner.duration(itemID: items[0].id, longer: true, timeline: connected, project: project)
+        #expect(linkedEdit.after.effectiveTelemetryItems[0].timelineStart == linkedEdit.after.items[1].timelineStart)
+        #expect(linkedEdit.after.effectiveTelemetryItems[0].timelineDuration == linkedEdit.after.items[1].timelineDuration)
+        #expect(linkedEdit.after.effectiveTelemetryItems[0].sourceStart == 20)
+        #expect(linkedEdit.after.effectiveTitleItems[0].startTime == linkedEdit.after.items[1].timelineStart)
+        #expect(linkedEdit.after.items[2] == before.items[2])
+        connected.telemetryItems?[0].locked = true
+        #expect(throws: LocalEditorialEditError.self) { try LocalEditorialEditPlanner.duration(itemID: items[0].id, longer: true, timeline: connected, project: project) }
         var locked = before; locked.items[1].locked = true
         #expect(throws: LocalEditorialEditError.self) { try LocalEditorialEditPlanner.duration(itemID: items[0].id, longer: true, timeline: locked, project: project) }
     }
@@ -93,6 +104,25 @@ import Testing
         #expect(AutomaticEditorialAssembly.protected(EditorialUnit(candidate: candidate)))
     }
 
+    @Test func musicCommitPersistsOneUndoCheckpointAndRejectsAnOlderClient() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".veloedit")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ProjectStore(createAt: root, name: "Undo")
+        let track = track(root.appendingPathComponent("track.caf"))
+        let before = try JSONDecoder.veloEdit.decode(Timeline.self, from: JSONEncoder.veloEdit.encode(movie(track)))
+        try await store.update { $0.timelines = [before] }
+        let library = LocalMusicLibrary(rootURL: store.musicLibraryURL)
+        let pipeline = VeloEditPipeline(store: store, musicLibrary: library, musicSystem: MusicLibrary(localLibrary: library, providers: []))
+        var after = before; after.music?.sourceStart = 10
+        #expect(try await pipeline.commitLatestTimeline(after, clientRevision: 2, checkpointReason: "Другая музыка"))
+        #expect(try await !pipeline.commitLatestTimeline(before, clientRevision: 1, checkpointReason: "Устаревшая правка"))
+        let reopened = try ProjectStore(open: root)
+        let saved = await reopened.manifest
+        #expect(saved.timelineCheckpoints?.count == 1)
+        #expect(saved.timelineCheckpoints?.first?.timeline == before)
+        #expect(saved.timelines.last == after)
+    }
+
     @Test func audioContentReplacementInvalidatesCacheEvenWithSameSizeAndTimestamp() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -103,11 +133,40 @@ import Testing
         let track = track(url)
         let cache = MusicStructureCache()
         let first = await cache.structure(for: track)
+        let renderTimeline = movie(track)
+        let stableRenderKey = EditorialRenderDependencies.signature(timeline: renderTimeline, assets: [], tracks: [track])
         try writeAudio(url, silentPrefix: 0)
         try FileManager.default.setAttributes([.modificationDate: attributes[.modificationDate]!], ofItemAtPath: url.path)
         #expect((try FileManager.default.attributesOfItem(atPath: url.path))[.size] as? NSNumber == attributes[.size] as? NSNumber)
         let second = await cache.structure(for: track)
         #expect(first != second)
+        #expect(stableRenderKey != EditorialRenderDependencies.signature(timeline: renderTimeline, assets: [], tracks: [track]))
+    }
+
+    @Test func unavailableExactSongCannotBeReplacedByAnAutomaticFallback() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("audio.caf")
+        try writeAudio(url, silentPrefix: 0)
+        let library = LocalMusicLibrary(rootURL: root.appendingPathComponent("library"))
+        _ = try await library.importUserTrack(url)
+        let system = MusicLibrary(localLibrary: library, providers: [])
+        let intent = MusicIntent(directive: .init(style: .energetic, bpm: 110,
+            searchRequests: [.init(query: "An unavailable exact recording", exactTrack: true)]))
+        let result = await system.resolve(intent)
+        #expect(result.track == nil)
+        #expect(!result.failures.isEmpty)
+        let store = try ProjectStore(createAt: root.appendingPathComponent("film.veloedit"), name: "Exact song")
+        let before = try JSONDecoder.veloEdit.decode(Timeline.self, from: JSONEncoder.veloEdit.encode(movie(track(url))))
+        try await store.update { $0.timelines = [before] }
+        let pipeline = VeloEditPipeline(store: store, musicLibrary: library, musicSystem: system)
+        do {
+            try await pipeline.updateMusic(.init(style: .energetic, bpm: 110,
+                searchRequests: [.init(query: "An unavailable exact recording", exactTrack: true)]))
+            Issue.record("Exact missing song must not silently replace the current soundtrack")
+        } catch is DirectorBriefFulfillmentError { }
+        #expect(await store.manifest.timelines.last == before)
     }
 
     @Test func selectedMusicStartIsActuallyDecodedByPreviewAndExport() async throws {

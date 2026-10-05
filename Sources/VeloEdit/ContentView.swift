@@ -7,19 +7,13 @@ import VeloEditCore
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openSettings) private var openSettings
     @State private var isSidebarVisible = true
     @State private var isRenamingProject = false
     @State private var projectName = ""
 
     private var sourceAssets: [MediaAsset] {
-        let assets = (model.project?.assets ?? []).filter { BackgroundPreset.preset(for: $0) == nil }
-        let order = Dictionary(uniqueKeysWithValues: (model.project?.sourceMap?.entries ?? []).map { ($0.assetID, $0.order) })
-        return assets.sorted {
-            let lhs = order[$0.id] ?? Int.max
-            let rhs = order[$1.id] ?? Int.max
-            if lhs != rhs { return lhs < rhs }
-            return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
-        }
+        model.mediaLibraryAssets
     }
 
     var body: some View {
@@ -28,26 +22,18 @@ struct ContentView: View {
                 if isSidebarVisible {
                     sidebar
                         .frame(width: 239)
+                        .disabled(model.isCreatingProject)
                     Divider()
                 }
 
                 Group {
-                    if model.project == nil { WelcomeView() }
+                    if !model.hasProjectWorkspace { WelcomeView() }
                     else { selectedWorkspace }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            if let openingURL = model.openingProjectURL {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Открываю «\(openingURL.deletingPathExtension().lastPathComponent)»…")
-                        .font(.callout)
-                    Spacer()
-                }
-                .padding(10)
-                .background(.regularMaterial)
-            }
-            if let job = model.project?.autonomousJob, job.state == .waitingForExternalResource {
+            if model.openingProjectURL == nil,
+               let job = model.project?.autonomousJob, job.state == .waitingForExternalResource {
                 HStack {
                     Image(systemName: "externaldrive")
                     Text(job.externalResource ?? "Ожидаю материалы")
@@ -59,7 +45,7 @@ struct ContentView: View {
             }
         }
         .background {
-            if model.project == nil || model.section == .home {
+            if !model.hasProjectWorkspace || model.section == .home {
                 HStack(spacing: 0) {
                     if isSidebarVisible { Color.clear.frame(width: 240) }
                     ZStack {
@@ -70,7 +56,7 @@ struct ContentView: View {
                 .ignoresSafeArea(.container, edges: .top)
             }
         }
-        .toolbarBackground(model.project == nil || model.section == .home ? .hidden : .automatic, for: .windowToolbar)
+        .toolbarBackground(!model.hasProjectWorkspace || model.section == .home ? .hidden : .automatic, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 windowHeader
@@ -83,7 +69,7 @@ struct ContentView: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                if model.isWorking {
+                if model.openingProjectURL == nil && model.isWorking {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text(model.isCreatingFilm ? "Создаю фильм" : model.activityTitle).lineLimit(1)
@@ -91,13 +77,24 @@ struct ContentView: View {
                             .labelStyle(.iconOnly)
                     }
                     .accessibilityElement(children: .contain)
-                } else if model.timeline != nil {
-                    Menu("Довести фильм", systemImage: "slider.horizontal.3") {
-                        Button("Другая музыка", action: model.replaceMusicImmediately).disabled(model.timeline?.music == nil)
-                        Button("Послушать варианты", action: model.listenToMusicAlternatives).disabled(model.timeline?.music == nil)
-                        Button("Запомнить этот стиль") { model.showEditorialStyle = true }
+                } else if model.openingProjectURL == nil && model.timeline != nil {
+                    HStack(spacing: 10) {
+                        Menu("Довести фильм", systemImage: "slider.horizontal.3") {
+                            Button("Другая музыка", action: model.replaceMusicImmediately).disabled(model.timeline?.music == nil)
+                            Button("Послушать варианты", action: model.listenToMusicAlternatives).disabled(model.timeline?.music == nil)
+                            Button("Запомнить этот стиль") { model.showEditorialStyle = true }
+                        }
+                        .labelStyle(.iconOnly)
+                        .help("Довести фильм")
+                        .accessibilityLabel("Довести фильм")
+                        if model.section != .export {
+                            Button("Сохранить видео", systemImage: "square.and.arrow.down", action: model.saveVideo)
+                                .labelStyle(.iconOnly)
+                                .help("Сохранить видео")
+                                .accessibilityLabel("Сохранить видео")
+                        }
                     }
-                    Button("Сохранить видео", systemImage: "square.and.arrow.down", action: model.saveVideo)
+                    .accessibilityElement(children: .contain)
                 }
             }
             ToolbarItem(placement: .primaryAction) {
@@ -140,7 +137,17 @@ struct ContentView: View {
                 .font(.system(size: 16, weight: .semibold))
                 .fixedSize()
 
-            WindowHeaderButton(isSidebarVisible: isSidebarVisible, action: toggleSidebar)
+            WindowHeaderButton(
+                systemImage: "sidebar.left",
+                label: isSidebarVisible ? "Скрыть боковую панель" : "Показать боковую панель",
+                action: toggleSidebar
+            )
+                .frame(width: 30, height: 32)
+                .zIndex(1)
+
+            WindowHeaderButton(systemImage: "gearshape", label: "Настройки") {
+                openSettings()
+            }
                 .frame(width: 30, height: 32)
                 .zIndex(1)
         }
@@ -151,7 +158,7 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             Group {
-                if model.isTimelineInspectorPresented {
+                if model.openingProjectURL == nil && model.isTimelineInspectorPresented {
                     TimelineInspector()
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .clipped()
@@ -160,7 +167,7 @@ struct ContentView: View {
                 }
             }
 
-            if !model.isWorking, let recovery = model.recoverableFilmBuild,
+            if model.openingProjectURL == nil, !model.isWorking, let recovery = model.recoverableFilmBuild,
                model.project?.autonomousJob?.state == .failed {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Фильм пока не завершён").font(.subheadline.weight(.semibold))
@@ -170,7 +177,7 @@ struct ContentView: View {
                 .padding(12)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 .padding()
-            } else if model.shouldShowActivityPanel {
+            } else if model.openingProjectURL == nil && model.shouldShowActivityPanel {
                 Divider()
                 ActivityPanel()
                     .padding(10)
@@ -183,17 +190,18 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                .allowsHitTesting(false)
         }
         .padding(.horizontal, 7)
-        .padding(.bottom, 7)
+        .padding(.vertical, 7)
     }
 
     private var navigationSidebar: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Label(model.project?.name ?? "Нет проекта", systemImage: "film.stack")
+                    Label(model.openingProjectName ?? model.project?.name ?? "Нет проекта", systemImage: "film.stack")
                         .font(.headline)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -207,15 +215,19 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Изменить название проекта")
-                    .disabled(model.project == nil)
+                    .disabled(model.project == nil || model.openingProjectURL != nil)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("Материалов: \(sourceAssets.count)", systemImage: "photo.on.rectangle.angled")
-                    Label("Проанализировано: \(model.project?.analyses.count ?? 0)", systemImage: "brain.head.profile")
+                if model.openingProjectURL == nil || model.openingPresentation != nil {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Материалов: \(sourceAssets.count)", systemImage: "photo.on.rectangle.angled")
+                        if model.openingProjectURL == nil {
+                            Label("Проанализировано: \(model.project?.analyses.count ?? 0)", systemImage: "brain.head.profile")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
@@ -233,7 +245,7 @@ struct ContentView: View {
                     .padding(.bottom, 3)
                 ForEach(WorkspaceSection.allCases) { section in
                     Button {
-                        model.section = section
+                        model.openSection(section)
                     } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Image(systemName: section.icon)
@@ -249,7 +261,7 @@ struct ContentView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(model.project == nil && section != .home)
+                    .disabled(!model.hasProjectWorkspace && section != .home)
                 }
             }
             .padding(10)
@@ -271,7 +283,7 @@ struct ContentView: View {
                             model.section = .media
                         } label: {
                             HStack(spacing: 10) {
-                                MediaThumbnail(url: model.thumbnailURLs[asset.id], kind: asset.kind)
+                                MediaThumbnail(url: model.mediaLibraryThumbnailURLs[asset.id], kind: asset.kind)
                                     .frame(width: 42, height: 28)
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                                     .overlay {
@@ -291,7 +303,7 @@ struct ContentView: View {
                             }
                             .padding(.horizontal, 9)
                             .padding(.vertical, 6)
-                            .background(model.selectedAssetID == asset.id ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                            .background(model.mediaLibrarySelectedAssetID == asset.id ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -308,12 +320,20 @@ struct ContentView: View {
     @ViewBuilder private var selectedWorkspace: some View {
         VStack(spacing: 0) {
             Group {
-                switch model.section {
-                case .home: WelcomeView()
-                case .media: MediaLibraryView()
-                case .director: DirectorPanel()
-                case .timeline: TimelineWorkspaceView(showsResetAllButton: !isSidebarVisible)
-                case .export: ExportWorkspaceView()
+                if model.openingProjectURL != nil && model.section != .home && model.section != .media {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(model.section.title).font(.title2.bold()).padding(20)
+                        Divider()
+                        Color.clear
+                    }
+                } else {
+                    switch model.section {
+                    case .home: WelcomeView()
+                    case .media: MediaLibraryView()
+                    case .director: DirectorPanel()
+                    case .timeline: TimelineWorkspaceView(showsResetAllButton: !isSidebarVisible)
+                    case .export: ExportWorkspaceView()
+                    }
                 }
             }
         }
@@ -324,7 +344,10 @@ struct ContentView: View {
                     .background(.blue.opacity(0.08)).allowsHitTesting(false)
             }
         }
-        .onDrop(of: [UTType.fileURL], isTargeted: $model.isDropTarget, perform: model.handleDrop)
+        .onDrop(of: [UTType.fileURL], isTargeted: $model.isDropTarget) { providers in
+            guard model.openingProjectURL == nil, !model.isPresentingNewProject else { return false }
+            return model.handleDrop(providers)
+        }
     }
 
     private static func duration(_ seconds: Double) -> String {
@@ -345,6 +368,10 @@ struct ContentView: View {
     }
 
     private func handleEscape() {
+        if model.isPresentingNewProject {
+            DispatchQueue.main.async { model.cancelProjectCreation() }
+            return
+        }
         if FullScreenPreviewPresenter.shared.closeIfPresented() {
             return
         }
@@ -362,7 +389,8 @@ struct ContentView: View {
 }
 
 private struct WindowHeaderButton: NSViewRepresentable {
-    let isSidebarVisible: Bool
+    let systemImage: String
+    let label: String
     let action: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -395,8 +423,7 @@ private struct WindowHeaderButton: NSViewRepresentable {
     }
 
     private func update(_ button: NSButton) {
-        let label = isSidebarVisible ? "Скрыть боковую панель" : "Показать боковую панель"
-        let image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: label)
+        let image = NSImage(systemSymbolName: systemImage, accessibilityDescription: label)
         button.image = image?.withSymbolConfiguration(.init(pointSize: 17, weight: .medium))
         button.toolTip = label
         button.setAccessibilityLabel(label)
@@ -662,6 +689,7 @@ private struct WelcomeView: View {
 
 private struct WelcomeActivityHero: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { proxy in
@@ -669,10 +697,18 @@ private struct WelcomeActivityHero: View {
             let cardHeight = min(360, max(320, proxy.size.height * 0.58))
 
             ZStack {
-                welcomeCard
-                    .frame(width: cardWidth, height: cardHeight)
+                if model.isPresentingNewProject {
+                    NewProjectView()
+                        .transition(.opacity)
+                } else {
+                    welcomeCard
+                        .transition(.opacity)
+                }
             }
+            .frame(width: cardWidth, height: cardHeight)
+            .modifier(WelcomeCardFrame())
             .frame(width: proxy.size.width, height: proxy.size.height)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.isPresentingNewProject)
         }
         .accessibilityElement(children: .contain)
     }
@@ -717,37 +753,45 @@ private struct WelcomeActivityHero: View {
         .padding(.horizontal, 42)
         .padding(.vertical, 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 38, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 38, style: .continuous)
-                    .fill(Color.black.opacity(0.32))
+    }
+}
+
+/// Both steps share one fixed card shell; only the content inside it changes.
+private struct WelcomeCardFrame: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .clipShape(RoundedRectangle(cornerRadius: 38, style: .continuous))
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 38, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: 38, style: .continuous)
+                        .fill(Color.black.opacity(0.32))
+                }
             }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 38, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0.42),
-                            Color(red: 0.12, green: 0.62, blue: 1.00).opacity(0.62),
-                            Color(red: 0.72, green: 0.32, blue: 1.00).opacity(0.42),
-                            .white.opacity(0.12)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.4
-                )
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 36, style: .continuous)
-                .inset(by: 5)
-                .stroke(.white.opacity(0.055), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.46), radius: 34, y: 18)
-        .shadow(color: Color(red: 0.12, green: 0.56, blue: 1.00).opacity(0.12), radius: 38)
+            .overlay {
+                RoundedRectangle(cornerRadius: 38, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.42),
+                                Color(red: 0.12, green: 0.62, blue: 1.00).opacity(0.62),
+                                Color(red: 0.72, green: 0.32, blue: 1.00).opacity(0.42),
+                                .white.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.4
+                    )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 36, style: .continuous)
+                    .inset(by: 5)
+                    .stroke(.white.opacity(0.055), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.46), radius: 34, y: 18)
+            .shadow(color: Color(red: 0.12, green: 0.56, blue: 1.00).opacity(0.12), radius: 38)
     }
 }
 
@@ -916,7 +960,7 @@ private struct RecentProjectCard: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Button { model.openRecentProject(url) } label: {
+            Button { model.openRecentProject(url, name: info.name) } label: {
                 cardContent
             }
             .buttonStyle(.plain)
@@ -950,6 +994,9 @@ private struct RecentProjectCard: View {
             Button("Поделиться") { model.openRecentProjectExport(url) }
             Divider()
             Button("Удалить", role: .destructive) { model.deleteRecentProject(url) }
+        }
+        .task(id: info.updatedAt) {
+            await model.prepareProjectPresentation(at: url)
         }
     }
 
@@ -1074,20 +1121,20 @@ private struct MediaLibraryView: View {
     private let columns = [GridItem(.adaptive(minimum: 220, maximum: 220), spacing: 14, alignment: .top)]
 
     private var mediaAssets: [MediaAsset] {
-        let assets = (model.project?.assets ?? []).filter { BackgroundPreset.preset(for: $0) == nil }
-        let order = Dictionary(uniqueKeysWithValues: (model.project?.sourceMap?.entries ?? []).map { ($0.assetID, $0.order) })
-        return assets.sorted {
-            let lhs = order[$0.id] ?? Int.max
-            let rhs = order[$1.id] ?? Int.max
-            if lhs != rhs { return lhs < rhs }
-            return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
-        }
+        model.mediaLibraryAssets
     }
 
     private var selectedMediaAsset: MediaAsset? {
-        model.selectedAsset.flatMap { asset in
+        if model.openingProjectURL != nil {
+            return mediaAssets.first { $0.id == model.openingSelectedAssetID }
+        }
+        return model.selectedAsset.flatMap { asset in
             BackgroundPreset.preset(for: asset) == nil ? asset : nil
         }
+    }
+
+    private var selectedMusicTrack: LocalMusicTrack? {
+        model.mediaLibraryMusicTracks.first { $0.id == model.mediaLibrarySelectedMusicTrackID }
     }
 
     var body: some View {
@@ -1097,7 +1144,7 @@ private struct MediaLibraryView: View {
                     mediaBrowser
                         .frame(minWidth: 420)
                         .layoutPriority(1)
-                    if selectedMediaAsset != nil || model.selectedMusicTrack != nil {
+                    if selectedMediaAsset != nil || selectedMusicTrack != nil {
                         mediaInspector
                             .frame(
                                 minWidth: 230,
@@ -1109,7 +1156,7 @@ private struct MediaLibraryView: View {
             } else {
                 VStack(spacing: 0) {
                     mediaBrowser
-                    if selectedMediaAsset != nil || model.selectedMusicTrack != nil {
+                    if selectedMediaAsset != nil || selectedMusicTrack != nil {
                         Divider()
                         mediaInspector
                             .frame(minHeight: 180, idealHeight: 260, maxHeight: max(180, geometry.size.height * 0.45))
@@ -1134,8 +1181,39 @@ private struct MediaLibraryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
-                Divider()
-                if mediaAssets.isEmpty && model.musicTracks.isEmpty {
+                if model.openingProjectURL == nil && model.newMaterialCount > 0 {
+                    HStack {
+                        Text("Добавлено материалов: \(model.newMaterialCount). Использовать в фильме?")
+                        Spacer()
+                        Button("Использовать", action: model.useNewMaterialsInFilm)
+                            .disabled(model.isWorking || model.isDirectorResponding)
+                        Button("Позже", action: model.dismissNewMaterials)
+                    }
+                    .padding(12)
+                    .background(Color.accentColor.opacity(0.08))
+                }
+                if model.openingProjectURL == nil && !model.importWarnings.isEmpty {
+                    DisclosureGroup("Не удалось создать миниатюры: \(model.importWarnings.count)") {
+                        ForEach(Array(model.importWarnings.enumerated()), id: \.offset) { _, warning in
+                            Text(warning).font(.caption).textSelection(.enabled)
+                        }
+                    }
+                    .padding(12)
+                }
+                if model.openingProjectURL != nil && model.openingPresentation == nil {
+                    ScrollView {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                            ForEach(0..<12, id: \.self) { _ in
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.secondary.opacity(0.08))
+                                    .frame(width: mediaCardWidth, height: mediaCardHeight)
+                            }
+                        }
+                        .padding(18)
+                        .padding(.leading, 6)
+                    }
+                    .accessibilityLabel("Загрузка материалов")
+                } else if mediaAssets.isEmpty && model.mediaLibraryMusicTracks.isEmpty {
                     ContentUnavailableView("Добавьте фото, видео или музыку", systemImage: "square.and.arrow.down", description: Text("Перетащите файлы или папки либо выберите их на Mac, флэшке или внешнем диске через «Добавить материалы»."))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -1149,7 +1227,7 @@ private struct MediaLibraryView: View {
                                 } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         ZStack(alignment: .topTrailing) {
-                                            MediaThumbnail(url: model.thumbnailURLs[asset.id], kind: asset.kind)
+                                            MediaThumbnail(url: model.mediaLibraryThumbnailURLs[asset.id], kind: asset.kind)
                                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                                 .background(Color.black.opacity(0.18))
                                                 .frame(height: previewHeight)
@@ -1188,18 +1266,18 @@ private struct MediaLibraryView: View {
                                     .padding(9)
                                     .frame(width: mediaCardWidth, height: mediaCardHeight, alignment: .topLeading)
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .background(model.selectedAssetID == asset.id ? Color.accentColor.opacity(0.17) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(model.selectedAssetID == asset.id ? Color.accentColor : .clear, lineWidth: 2))
+                                    .background(model.mediaLibrarySelectedAssetID == asset.id ? Color.accentColor.opacity(0.17) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(model.mediaLibrarySelectedAssetID == asset.id ? Color.accentColor : .clear, lineWidth: 2))
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
                         }
-                        if !model.musicTracks.isEmpty {
+                        if !model.mediaLibraryMusicTracks.isEmpty {
                             Text("Музыка")
                                 .font(.headline)
                             LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                                ForEach(model.musicTracks) { track in
+                                ForEach(model.mediaLibraryMusicTracks) { track in
                                     Button {
                                         model.selectMusicTrackForInspector(track.id)
                                     } label: {
@@ -1223,8 +1301,8 @@ private struct MediaLibraryView: View {
                                         }
                                         .padding(9)
                                         .frame(width: mediaCardWidth, height: mediaCardHeight, alignment: .topLeading)
-                                        .background(model.selectedMusicTrackID == track.id ? Color.accentColor.opacity(0.17) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(model.selectedMusicTrackID == track.id ? Color.accentColor : .clear, lineWidth: 2))
+                                        .background(model.mediaLibrarySelectedMusicTrackID == track.id ? Color.accentColor.opacity(0.17) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(model.mediaLibrarySelectedMusicTrackID == track.id ? Color.accentColor : .clear, lineWidth: 2))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -1242,16 +1320,51 @@ private struct MediaLibraryView: View {
     }
 
     @ViewBuilder private var mediaInspector: some View {
-        if let asset = selectedMediaAsset {
+        if model.openingProjectURL != nil {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("Инспектор").font(.headline)
+                        Spacer()
+                        Button(action: model.closeMediaInspector) {
+                            Label("Закрыть инспектор", systemImage: "xmark").labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if let asset = selectedMediaAsset {
+                        MediaThumbnail(url: model.mediaLibraryThumbnailURLs[asset.id], kind: asset.kind)
+                            .frame(height: 150)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        Text(asset.displayName).font(.title3.weight(.semibold)).textSelection(.enabled)
+                        Text(asset.kind == .video ? "Видео" : "Фотография")
+                        Text(asset.metadata.duration.map(duration) ?? resolution(asset.metadata))
+                            .foregroundStyle(.secondary)
+                    } else if let track = selectedMusicTrack {
+                        Image(systemName: "waveform").font(.system(size: 34)).foregroundStyle(.green)
+                        Text(track.title).font(.title3.weight(.semibold)).textSelection(.enabled)
+                        Text("Музыка · \(duration(track.duration))").foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+            }
+            .background(Color(nsColor: .controlBackgroundColor))
+        } else if let asset = selectedMediaAsset {
             AssetInspector(asset: asset)
-        } else if let track = model.selectedMusicTrack {
+        } else if let track = selectedMusicTrack {
             MusicInspector(track: track)
         }
     }
 
     private var mediaHeaderTitle: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("Медиатека").font(.title2.bold())
+            HStack(spacing: 10) {
+                Text("Медиатека").font(.title2.bold())
+                if model.openingProjectURL != nil {
+                    ProgressView().controlSize(.small)
+                        .help("Проект загружается в фоне")
+                }
+            }
             Text("Исходники остаются на своих местах и никогда не изменяются")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1264,12 +1377,11 @@ private struct MediaLibraryView: View {
             Button("Добавить материалы", systemImage: "plus", action: model.chooseMedia)
                 .help("Выбрать файлы или папки на Mac, флэшке либо внешнем диске")
                 .disabled(model.isWorking)
-            Button(action: model.analyze) {
-                Label(model.isAnalyzing ? "Идёт анализ" : "Анализировать материалы", systemImage: model.isAnalysisCurrent ? "checkmark.circle.fill" : "sparkles")
-            }
-            .disabled(mediaAssets.isEmpty || model.isWorking)
+            Button("Ручной монтаж", systemImage: "timeline.selection", action: model.startManualEditing)
+                .disabled(model.isWorking)
         }
         .fixedSize(horizontal: true, vertical: true)
+        .disabled(model.openingProjectURL != nil)
     }
 
     private func duration(_ seconds: Double) -> String {
@@ -1634,11 +1746,15 @@ private struct TimelineWorkspaceView: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         MontageMediaBrowser()
+                            .frame(minWidth: 0, maxWidth: .infinity)
                             .frame(width: columnWidth)
+                            .clipped()
                             .frame(maxHeight: .infinity)
                         Divider()
                         MontagePlayerWorkspace(showsResetAllButton: showsResetAllButton)
+                            .frame(minWidth: 0, maxWidth: .infinity)
                             .frame(width: columnWidth)
+                            .clipped()
                             .frame(maxHeight: .infinity)
                     }
                     .frame(height: geometry.size.height / 2)
@@ -1650,15 +1766,29 @@ private struct TimelineWorkspaceView: View {
                 .background(Color(nsColor: .windowBackgroundColor))
                 .background(TimelineKeyboardMonitor(model: model).frame(width: 0, height: 0))
             } else {
-                ContentUnavailableView("Фильм ещё не создан", systemImage: "timeline.selection", description: Text("Перейдите к умному режиссёру и создайте первый монтаж."))
-                    .overlay(alignment: .bottom) {
-                        Button("К умному режиссёру", action: model.showDirector)
-                            .buttonStyle(.borderedProminent)
-                            .padding(24)
+                ContentUnavailableView {
+                    Label("Начните монтаж", systemImage: "timeline.selection")
+                } description: {
+                    Text("Добавляйте и редактируйте клипы самостоятельно или поручите сборку режиссёру.")
+                } actions: {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { editingActions }
+                        VStack(spacing: 12) { editingActions }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+
+    @ViewBuilder
+    private var editingActions: some View {
+        Button("Ручной монтаж", action: model.startManualEditing)
+            .buttonStyle(.borderedProminent)
+            .disabled(model.isWorking)
+            .fixedSize()
+        Button("Умный режиссёр", action: model.showDirector)
+            .fixedSize()
     }
 
 }
@@ -1741,19 +1871,12 @@ private struct MontageMediaBrowser: View {
     }
 
     private var browserTabPicker: some View {
-        VStack(spacing: 5) {
-            HStack(spacing: 5) {
-                ForEach(Array(MontageBrowserTab.allCases.prefix(4))) { item in
-                    browserTabButton(item)
-                }
-            }
-            HStack(spacing: 5) {
-                ForEach(Array(MontageBrowserTab.allCases.dropFirst(4))) { item in
-                    browserTabButton(item)
-                }
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 5)], spacing: 5) {
+            ForEach(MontageBrowserTab.allCases) { item in
+                browserTabButton(item)
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(minWidth: 0, maxWidth: .infinity)
     }
 
     private func browserTabButton(_ item: MontageBrowserTab) -> some View {
@@ -1991,7 +2114,7 @@ private struct MontageMediaBrowser: View {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("Текст титра", text: $titleText)
                     .textFieldStyle(.roundedBorder)
-                Text("Карточка показывает живой Title Template тем же renderer, который используется на Timeline и в Export.")
+                Text("Введите текст и выберите оформление. Наведите указатель на карточку, чтобы увидеть анимацию.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 ForEach(TitleTemplateCategory.allCases) { category in
@@ -2346,44 +2469,67 @@ private struct BackgroundPatternArtwork: View {
     }
 }
 
+private actor TitlePreviewRenderer {
+    static let shared = TitlePreviewRenderer()
+
+    func image(template: TitleTemplateDefinition, text: String, time: Double) -> CGImage? {
+        guard !Task.isCancelled else { return nil }
+        var copy = template
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !clean.isEmpty { copy.preview.primaryText = clean }
+        return TitleOverlayRenderer.previewCGImage(template: copy, time: time, renderSize: CGSize(width: 480, height: 270))
+    }
+}
+
 private struct TitlePreviewArtwork: View {
     let template: TitleTemplateDefinition
     let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+    @State private var preview: CGImage?
+
+    private struct Request: Hashable {
+        let template: TitleTemplateDefinition
+        let text: String
+        let animated: Bool
+    }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0 / 15.0)) { timeline in
-            let previewTime = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: max(0.25, template.duration))
-            ZStack {
-                LinearGradient(
-                    colors: [.black, Color(red: 0.055, green: 0.055, blue: 0.07)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                if let image = previewImage(at: previewTime) {
-                    Image(decorative: image, scale: 1)
-                        .resizable()
-                        .scaledToFit()
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(.white.opacity(0.09), lineWidth: 1)
+        let request = Request(template: template, text: text, animated: isHovered && !reduceMotion)
+        ZStack {
+            LinearGradient(
+                colors: [.black, Color(red: 0.055, green: 0.055, blue: 0.07)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            if let preview {
+                Image(decorative: preview, scale: 1).resizable().scaledToFit()
             }
         }
-    }
-
-    private func previewImage(at time: Double) -> CGImage? {
-        var item = template.previewItem()
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !clean.isEmpty { item.text = clean }
-        return TitleOverlayRenderer.previewCGImage(template: templateWithPreview(item), time: time, renderSize: CGSize(width: 480, height: 270))
-    }
-
-    private func templateWithPreview(_ item: TitleTimelineItem) -> TitleTemplateDefinition {
-        var copy = template
-        copy.preview = TitleTemplatePreview(primaryText: item.text, secondaryText: item.additionalText, callToAction: item.callToAction)
-        return copy
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(.white.opacity(0.09), lineWidth: 1)
+        }
+        .onHover { isHovered = $0 }
+        .task(id: request) {
+            // Debounce typing and render off the UI executor. Only the hovered
+            // card animates; scrolling away or editing cancels its old request.
+            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            let start = ContinuousClock.now
+            repeat {
+                let elapsed = start.duration(to: .now).components
+                let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
+                let time = request.animated
+                    ? seconds.truncatingRemainder(dividingBy: max(0.25, template.duration))
+                    : template.duration * 0.5
+                let image = await TitlePreviewRenderer.shared.image(template: request.template, text: request.text, time: time)
+                guard !Task.isCancelled else { return }
+                preview = image
+                guard request.animated else { return }
+                do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
+            } while !Task.isCancelled
+        }
     }
 }
 
@@ -2437,24 +2583,25 @@ private struct MontagePlayerWorkspace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Text("Превью")
-                    .font(.headline)
-                Spacer()
-                viewerTools
-                Spacer()
-                Button("На весь экран", systemImage: "arrow.up.left.and.arrow.down.right") {
-                    FullScreenPreviewPresenter.shared.present(model: model)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    Text("Превью").font(.headline)
+                    Spacer(minLength: 4)
+                    viewerTools
+                    previewWindowActions
                 }
-                .labelStyle(.iconOnly)
-                .help("Открыть просмотр на весь экран (F)")
-                .disabled(model.previewPlayer == nil)
-                .controlSize(.small)
-                Button("Экспорт", systemImage: "square.and.arrow.up") { model.openSection(.export) }
-                    .controlSize(.small)
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("Превью").font(.headline)
+                        Spacer(minLength: 4)
+                        previewWindowActions
+                    }
+                    ScrollView(.horizontal) { viewerTools }
+                        .scrollIndicators(.visible)
+                }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 48)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .background(.regularMaterial)
 
             if let selectedTool, let item = model.selectedTimelineItem {
@@ -2526,6 +2673,20 @@ private struct MontagePlayerWorkspace: View {
         .clipped()
     }
 
+    private var previewWindowActions: some View {
+        HStack(spacing: 6) {
+            Button("На весь экран", systemImage: "arrow.up.left.and.arrow.down.right") {
+                FullScreenPreviewPresenter.shared.present(model: model)
+            }
+            .labelStyle(.iconOnly)
+            .help("Открыть просмотр на весь экран (F)")
+            .disabled(model.previewPlayer == nil)
+            Button("Экспорт", systemImage: "square.and.arrow.up") { model.openSection(.export) }
+        }
+        .controlSize(.small)
+        .fixedSize()
+    }
+
     private var viewerAspectRatio: CGFloat {
         guard let timeline = model.timeline, timeline.height > 0 else { return 16 / 9 }
         return CGFloat(timeline.width) / CGFloat(timeline.height)
@@ -2579,7 +2740,7 @@ private struct MontagePlayerWorkspace: View {
     private func viewerToolPanel(_ tool: ViewerAdjustmentTool, item: TimelineItem) -> some View {
         let video = item.effectiveVideoAdjustments
         let audio = item.effectiveAudioAdjustments
-        ViewerToolFlowLayout(horizontalSpacing: 14, verticalSpacing: 8) {
+        WrappingRowLayout(horizontalSpacing: 14, verticalSpacing: 8) {
             switch tool {
                 case .colorBalance:
                     Button("Авто", action: model.autoEnhanceSelected)
@@ -3039,11 +3200,11 @@ private enum ViewerSliderStyle {
     }
 }
 
-/// Lays viewer controls out in rows so the trailing controls remain available
-/// when the player occupies a narrow split-view column.
-private struct ViewerToolFlowLayout: Layout {
+/// Keeps controls together and wraps them when their column becomes narrower.
+private struct WrappingRowLayout: Layout {
     let horizontalSpacing: CGFloat
     let verticalSpacing: CGFloat
+    var alignment: HorizontalAlignment = .leading
 
     func sizeThatFits(
         proposal: ProposedViewSize,
@@ -3071,7 +3232,7 @@ private struct ViewerToolFlowLayout: Layout {
         var y = bounds.minY
 
         for row in rows {
-            var x = bounds.minX
+            var x = bounds.minX + (alignment == .center ? (bounds.width - row.width) / 2 : 0)
             for item in row.items {
                 item.subview.place(
                     at: CGPoint(x: x, y: y + (row.height - item.size.height) / 2),
@@ -3371,12 +3532,12 @@ private struct TimelineInspector: View {
         return VStack(alignment: .leading, spacing: 8) {
             Label(template?.name ?? item.kind.localizedTitle, systemImage: item.kind.category == .captions ? "captions.bubble" : "textformat")
                 .font(.subheadline.weight(.semibold))
-            TextField("Текст", text: Binding(
+            titleTextEditor("Текст", text: Binding(
                 get: { model.selectedTitleTimelineItem?.text ?? "" },
                 set: model.setSelectedModernTitleText
-            ), axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...3)
+            ))
+            Text("Enter — новая строка. Длинные строки переносятся автоматически.")
+                .font(.caption2).foregroundStyle(.secondary)
             if template?.layout.elements.contains(where: { $0.content == .chapterNumber }) == true {
                 LabeledContent("Номер главы") {
                     TextField("Номер главы", value: Binding(
@@ -3388,18 +3549,16 @@ private struct TimelineInspector: View {
                 }
             }
             if supportsSecondary {
-                TextField("Подзаголовок", text: Binding(
+                titleTextEditor("Подзаголовок", text: Binding(
                     get: { model.selectedTitleTimelineItem?.additionalText ?? "" },
                     set: model.setSelectedModernTitleAdditionalText
-                ))
-                    .textFieldStyle(.roundedBorder)
+                ), height: 42)
             }
             if supportsCTA {
-                TextField("Финальная подпись", text: Binding(
+                titleTextEditor("Финальная подпись", text: Binding(
                     get: { model.selectedTitleTimelineItem?.callToAction ?? "" },
                     set: model.setSelectedModernTitleCallToAction
-                ))
-                    .textFieldStyle(.roundedBorder)
+                ), height: 42)
             }
             if !item.words.isEmpty {
                 Text("\(item.words.count) слов с word-level timestamps")
@@ -3410,10 +3569,17 @@ private struct TimelineInspector: View {
 
     private func modernTitleStyleControls(_ item: TitleTimelineItem) -> some View {
         let style = item.style
-        let template = TitleTemplateRegistry.template(for: item)
-        let baseSize = template?.typography.fontSize ?? style.fontSize
-        let minimumSize = max(18, baseSize * 0.65)
-        let maximumSize = min(220, baseSize * 1.30)
+        let sizing = TitleOverlayRenderer.textSizing(item: item, renderSize: CGSize(
+            width: model.timeline?.width ?? 1920, height: model.timeline?.height ?? 1080))
+        let fontSize = Binding(
+            get: { model.selectedTitleTimelineItem?.style.fontSize ?? style.fontSize },
+            set: { (value: Double) in
+                guard value.isFinite else { return }
+                var copy = model.selectedTitleTimelineItem?.style ?? style
+                copy.fontSize = min(220, max(18, value))
+                model.setSelectedModernTitleStyle(copy)
+            }
+        )
         return VStack(alignment: .leading, spacing: 8) {
             Picker("Шаблон", selection: Binding(
                 get: { item.effectiveTemplateID ?? "" },
@@ -3423,10 +3589,24 @@ private struct TimelineInspector: View {
                     Text(template.name).tag(template.id)
                 }
             }
-            Stepper("Размер: \(Int(style.fontSize))", value: Binding(
-                get: { style.fontSize },
-                set: { value in var copy = style; copy.fontSize = value; model.setSelectedModernTitleStyle(copy) }
-            ), in: minimumSize...maximumSize, step: 2)
+            HStack {
+                Text("Размер текста")
+                Spacer()
+                TextField("Размер текста", value: fontSize, format: .number.precision(.fractionLength(0)))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .accessibilityIdentifier("title.font-size")
+                Stepper("Размер текста", value: fontSize, in: 18...220, step: 2)
+                    .labelsHidden()
+            }
+            if let sizing, sizing.isReduced {
+                Text("В кадре: \(Int(sizing.fontSize.rounded())). Размер ограничен местом в шаблоне — перенесите текст или сократите его.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if sizing?.isTruncated == true {
+                Label("Часть текста не помещается. Уменьшите размер или сократите текст.", systemImage: "exclamationmark.triangle")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
             ColorPicker("Цвет текста", selection: Binding(
                 get: { titleColor(style.textColorHex) },
                 set: { value in var copy = style; copy.textColorHex = titleHex(value); model.setSelectedModernTitleStyle(copy) }
@@ -3434,9 +3614,23 @@ private struct TimelineInspector: View {
             ViewerValueSlider(title: "Прозрачность", value: style.effectiveOpacity, range: 0...1, style: .percent) { value in
                 var copy = style; copy.opacity = value; model.setSelectedModernTitleStyle(copy)
             }
-            Text("Композиция, safe area и анимация защищены шаблоном, чтобы дизайн оставался целостным.")
+            Text("Текст переносится внутри шаблона. Если места не хватает, размер автоматически уменьшается.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func titleTextEditor(_ label: String, text: Binding<String>, height: CGFloat = 76) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            TextEditor(text: text)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(5)
+                .frame(height: height)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+                .overlay { RoundedRectangle(cornerRadius: 5).strokeBorder(Color.secondary.opacity(0.25)) }
+                .accessibilityLabel(label)
         }
     }
 
@@ -3475,6 +3669,10 @@ private struct TimelineInspector: View {
 
     private func modernTitleAIControls(_ item: TitleTimelineItem) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            if item.kind == .chapter {
+                Button("Обновить названия частей", systemImage: "text.magnifyingglass", action: model.refreshChapterTitles)
+                    .disabled(model.isTimelineInteractionBlocked)
+            }
             TextField("Например: сделай кинематографичным", text: $aiTitleInstruction)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit {
@@ -3885,9 +4083,8 @@ private struct TimelineInspector: View {
             ("Бирюзовый", "#40E0D0"), ("Фиолетовый", "#AF52DE")
         ]
         return VStack(alignment: .leading, spacing: 8) {
-            TextField("Текст титра", text: $editingTitleText, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...3)
+            titleTextEditor("Текст титра", text: $editingTitleText)
+            Text("Enter — новая строка.").font(.caption2).foregroundStyle(.secondary)
             Stepper(
                 "Размер: \(Int(style.fontSize.rounded()))",
                 value: Binding(get: { style.fontSize }, set: model.setSelectedTitleFontSize),
@@ -3980,182 +4177,6 @@ private struct TimelineInspector: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(10)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
-    }
-}
-
-private struct ExportWorkspaceView: View {
-    @EnvironmentObject var model: AppModel
-    private let columns = [GridItem(.adaptive(minimum: 230), spacing: 16)]
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Сохранить видео").font(.title2.bold())
-                    Text("Просмотр монтажа, готовое видео или редактируемый проект для Final Cut Pro")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack {
-                    Button("Сохранить видео", systemImage: "square.and.arrow.down", action: model.saveVideo)
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut("s", modifiers: [.command, .shift])
-                    Button("Сохранить как…", action: model.saveVideoAs)
-                }
-                .disabled(model.timeline == nil || model.isWorking)
-                ForEach(model.completedVideoExports) { job in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(job.outputURL.lastPathComponent).font(.headline)
-                        Text(job.videoSummary ?? "Проверенное видео").foregroundStyle(.secondary)
-                        Text("Версия монтажа: \(job.timelineID.uuidString.prefix(8))").font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            Button("Открыть видео", systemImage: "play.fill") { model.openExportedVideo(job) }
-                            Button("Показать в Finder", systemImage: "folder") { model.revealExportedVideo(job) }
-                        }
-                    }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-                }
-                LazyVGrid(columns: columns, spacing: 16) {
-                    exportCard("Предварительный просмотр", "Посмотреть монтаж без сохранения файла", "play.rectangle", action: model.renderPreview)
-                    exportCard("Высокое качество", "Сохранить готовое видео в MP4 с разрешением Full HD 1080p", "rectangle.inset.filled", action: model.export1080p)
-                    exportCard("Максимальное качество", model.exportSettingsSummary(quality: .maximum), "sparkles.tv", action: model.exportMaximum)
-                    exportCard("Прозрачная телеметрия", "Сохранить только виджеты с alpha-каналом в ProRes 4444 MOV", "circle.dotted.circle", action: model.exportTelemetryOverlay)
-                    exportCard("Ручные настройки экспорта", "Выбрать разрешение и частоту кадров готового MP4", "slider.horizontal.3", action: model.presentManualExportSettings)
-                    exportCard("Экспорт для Final Cut Pro", "Создать редактируемый монтаж: каждый видеофрагмент можно двигать и изменять вручную", "timeline.selection", action: { model.exportFCPXML(mode: .edit) })
-                }
-                Divider()
-                Text("Проект").font(.headline)
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    projectAction("Собрать копию проекта", "shippingbox", model.collectProjectCopy)
-                    projectAction("Проверить целостность материалов", "checkmark.shield", model.verifyMediaIntegrity)
-                    projectAction("Экспортировать диагностику", "doc.text", model.exportDiagnostics)
-                    projectAction("Показать проект в Finder", "folder", model.revealProject)
-                }
-                .disabled(model.isWorking)
-            }
-            .padding(24)
-        }
-        .sheet(isPresented: $model.isShowingManualExportSettings) {
-            ManualExportSettingsView(isPresented: $model.isShowingManualExportSettings)
-                .environmentObject(model)
-        }
-    }
-
-    private func exportCard(_ title: String, _ subtitle: String, _ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon).font(.system(size: 26)).foregroundStyle(Color.accentColor).frame(width: 36)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-        }
-        .buttonStyle(.plain)
-        .disabled(model.timeline == nil || model.isWorking)
-    }
-
-    private func projectAction(_ title: String, _ icon: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                Text(title)
-                    .lineLimit(nil)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.bordered)
-    }
-}
-
-private struct ManualExportSettingsView: View {
-    @EnvironmentObject var model: AppModel
-    @Binding var isPresented: Bool
-    @State private var quality: RenderQuality = .final4K
-    @State private var frameRate: Double = 30
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Ручные настройки экспорта")
-                    .font(.title2.bold())
-                Text("Выберите разрешение и частоту кадров MP4. Пропорции монтажа сохраняются.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Picker("Разрешение", selection: $quality) {
-                Text("720p — компактный файл").tag(RenderQuality.preview720p)
-                Text("1080p — Full HD").tag(RenderQuality.final1080p)
-                Text("2160p — 4K UHD").tag(RenderQuality.final4K)
-                Text("Максимум — по исходникам монтажа").tag(RenderQuality.maximum)
-            }
-            .pickerStyle(.radioGroup)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Частота кадров")
-                    .font(.headline)
-                Picker("Кадров в секунду", selection: $frameRate) {
-                    ForEach(model.exportFrameRateOptions, id: \.self) { value in
-                        Text(frameRateTitle(value)).tag(value)
-                    }
-                }
-                .pickerStyle(.radioGroup)
-                Text("По умолчанию — максимальная частота исходников в монтаже. Более низкая частота уменьшит плавность движения.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(model.exportSettingsSummary(quality: quality, frameRate: frameRate))
-                    .font(.callout.monospacedDigit())
-                Text("Битрейт переменный: фактическое значение зависит от сложности кадров. MP4 сжимается с потерями; HDR преобразуется в SDR.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack {
-                Spacer()
-                Button("Отмена") { isPresented = false }
-                    .keyboardShortcut(.cancelAction)
-                Button("Выбрать место и экспортировать") {
-                    let selectedQuality = quality
-                    isPresented = false
-                    DispatchQueue.main.async {
-                        model.exportWithSettings(quality: selectedQuality, frameRate: frameRate)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 500)
-        .onAppear { frameRate = model.exportFrameRateOptions.last ?? 30 }
-    }
-
-    private func frameRateTitle(_ value: Double) -> String {
-        let rounded = value.rounded()
-        let number = abs(value - rounded) < 0.01 ? String(Int(rounded)) : String(format: "%.2f", value)
-        return "\(number) кадров/с"
     }
 }
 
@@ -4252,19 +4273,7 @@ private struct DirectorConversationView: View {
                         if isShowingSetupQuestion {
                             directorSetupQuestion(setupQuestions[setupQuestionIndex])
                                 .disabled(model.isWorking || model.isDirectorResponding)
-                            Button(setupQuestionIndex == 0 ? "Создать без опроса" : "Создать с текущими ответами") {
-                                model.createFilm()
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(model.project?.assets.isEmpty != false || model.isWorking || model.isDirectorResponding)
-                            .accessibilityIdentifier("create-film")
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         } else {
-                            if setupQuestionIndex >= setupQuestions.count {
-                                Text("Описание составлено по вашим ответам. Его можно дополнить перед созданием фильма.")
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
                             Button {
                                 model.createFilm()
                             } label: {
@@ -4274,12 +4283,14 @@ private struct DirectorConversationView: View {
                             .controlSize(.large)
                             .disabled(model.project?.assets.isEmpty != false || model.isWorking || model.isDirectorResponding)
                             .accessibilityIdentifier("create-film")
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity)
                         }
                     }
                 }
+                .frame(maxWidth: 640)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: model.directorMessages.count) {
@@ -4305,6 +4316,8 @@ private struct DirectorConversationView: View {
         case canvas
         case duration
         case mood
+        case subtitleStyle
+        case effects
         case music
         case sourceAudio
         case telemetry
@@ -4318,6 +4331,9 @@ private struct DirectorConversationView: View {
         case automaticDuration
         case customDuration
         case mood(DirectorNarrativeMood)
+        case vlog
+        case subtitleStyle(SpeechCaptionStyle)
+        case effects(DirectorEffectsPolicy)
         case music(DirectorMusicPolicy)
         case sourceAudio(DirectorSourceAudioPolicy)
         case telemetry(Bool)
@@ -4340,6 +4356,16 @@ private struct DirectorConversationView: View {
     private var setupQuestions: [SetupQuestion] {
         var questions = [
             SetupQuestion(
+                kind: .mood,
+                title: "Какой стиль монтажа выбрать?",
+                options: [
+                    SetupOption(title: "Спокойный", answer: .mood(.calm)),
+                    SetupOption(title: "Киношный", answer: .mood(.cinematic)),
+                    SetupOption(title: "Динамичный", answer: .mood(.dynamic)),
+                    SetupOption(title: "Влог", answer: .vlog)
+                ]
+            ),
+            SetupQuestion(
                 kind: .canvas,
                 title: "Какой формат кадра нужен?",
                 options: [
@@ -4359,13 +4385,11 @@ private struct DirectorConversationView: View {
                 ]
             ),
             SetupQuestion(
-                kind: .mood,
-                title: "Какое настроение важнее?",
-                options: [
-                    SetupOption(title: "Спокойное", answer: .mood(.calm)),
-                    SetupOption(title: "Киношное", answer: .mood(.cinematic)),
-                    SetupOption(title: "Динамичное", answer: .mood(.dynamic))
-                ]
+                kind: .effects,
+                title: "Сколько эффектов и переходов использовать?",
+                options: DirectorEffectsPolicy.allCases.map {
+                    SetupOption(title: $0.localizedTitle, answer: .effects($0))
+                }
             ),
             SetupQuestion(
                 kind: .music,
@@ -4395,6 +4419,15 @@ private struct DirectorConversationView: View {
                 ]
             )
         ]
+        if model.preset == .vlog || model.directorBrief.subtitlePolicy == .on {
+            questions.insert(SetupQuestion(
+                kind: .subtitleStyle,
+                title: "Как оформить субтитры?",
+                options: SpeechCaptionStyle.allCases.map {
+                    SetupOption(title: $0.localizedTitle, answer: .subtitleStyle($0))
+                }
+            ), at: 1)
+        }
         if !model.usefulDirectorTelemetry.isEmpty {
             let metrics = model.usefulDirectorTelemetry.prefix(3).map(\.localizedTitle).joined(separator: ", ")
             questions.append(SetupQuestion(kind: .telemetry,
@@ -4406,24 +4439,23 @@ private struct DirectorConversationView: View {
     }
 
     private func directorSetupQuestion(_ question: SetupQuestion) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Label("Вопрос \(setupQuestionIndex + 1) из \(setupQuestions.count)", systemImage: "sparkles")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            Text(question.title).font(.body.weight(.medium))
-            if question.kind == .mood {
-                Text("Настроение задаёт темп монтажа, музыку и характер переходов.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: 7) {
+        VStack(spacing: 14) {
+            Label("Вопрос \(setupQuestionIndex + 1) из \(setupQuestions.count)", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(question.title)
+                .font(.body.weight(.medium))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            WrappingRowLayout(horizontalSpacing: 8, verticalSpacing: 8, alignment: .center) {
                 ForEach(question.options) { option in
-                    Button(option.title) { applySetupAnswer(option) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                    Button { applySetupAnswer(option) } label: {
+                        Text(option.title)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
                 }
             }
             if question.kind == .duration, isEnteringCustomDuration {
@@ -4446,8 +4478,8 @@ private struct DirectorConversationView: View {
                 }
             }
         }
-        .padding(12)
-        .frame(maxWidth: 560, alignment: .leading)
+        .padding(20)
+        .frame(maxWidth: 560)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
     }
 
@@ -4466,8 +4498,14 @@ private struct DirectorConversationView: View {
             customDurationError = nil
             isEnteringCustomDuration = true
             return
+        case .subtitleStyle(let style):
+            model.setDirectorSubtitleStyle(style)
+        case .vlog:
+            model.selectPreset(.vlog)
         case .mood(let mood):
-            model.setDirectorNarrativeMood(mood)
+            model.selectStandardDirectorMood(mood)
+        case .effects(let policy):
+            model.setDirectorEffectsPolicy(policy)
         case .music(let policy):
             model.setDirectorMusicPolicy(policy)
         case .sourceAudio(let policy):
@@ -4531,7 +4569,8 @@ private struct DirectorConversationView: View {
         return [
             "Формат: \(brief.canvasFormat.localizedTitle).",
             brief.explicitRequestedDuration.map { "Длительность: \(durationDescription($0))." } ?? "Длительность — по материалам.",
-            "Настроение: \(mood).",
+            model.preset == .vlog ? "Стиль: Влог. Субтитры: \(brief.subtitlesEnabled(preset: .vlog) ? "включены" : "выключены")." : "Настроение: \(mood).",
+            brief.effectsPolicy.map { "Эффекты: \($0.localizedTitle.lowercased())." } ?? "",
             "Музыка: \(music).",
             "Звук: \(sourceAudio).",
             "Титры: \(titles).",
@@ -4584,15 +4623,22 @@ private struct DirectorComposer: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: 8)
                 if model.isDirectorResponding {
-                    ProgressView()
-                        .controlSize(.small)
-                        .help("ИИ-режиссёр формирует ответ")
+                    Button("Остановить ответ", systemImage: "stop.fill", action: model.cancelOperation)
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.bordered)
+                        .help("Остановить текущую операцию и продолжить переписку")
                 }
-                Button("Отправить", systemImage: "arrow.up", action: sendMessage)
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .disabled(trimmedInput.isEmpty || model.isDirectorResponding)
+                Button(action: sendMessage) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(model.canSendDirectorMessage ? Color.blue : Color.secondary.opacity(0.45), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.canSendDirectorMessage)
+                .accessibilityLabel("Отправить")
             }
         }
         .padding(.horizontal, 12)
@@ -4610,7 +4656,7 @@ private struct DirectorComposer: View {
     }
 
     private func sendMessage() {
-        guard !trimmedInput.isEmpty, !model.isDirectorResponding else { return }
+        guard model.canSendDirectorMessage else { return }
         model.sendDirectorMessage()
     }
 }
@@ -4632,6 +4678,10 @@ private struct AIPowerSelector: View {
                     }
                     .buttonStyle(.plain)
                     .lineLimit(1)
+                    .accessibilityLabel(plainModeTitle(mode))
+                    .accessibilityValue(mode == model.aiPowerMode ? "Выбрано" : "Не выбрано")
+                    .accessibilityHint(modeDescription(mode))
+                    .accessibilityIdentifier("ai-power-\(mode.rawValue)")
 
                     if model.downloadingAIPowerMode == mode {
                         ProgressView(value: model.aiModelDownloadProgress)
@@ -4664,7 +4714,9 @@ private struct AIPowerSelector: View {
         .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
         .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45)))
         .fixedSize(horizontal: true, vertical: false)
-        .accessibilityLabel("Мощность ИИ")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Глубина анализа видео")
+        .help("Режим меняет анализ видео. Чат во всех режимах использует Qwen3 4B; точные команды применяются без ожидания нейросети. Сравнение роликов работает во всех режимах.")
         .alert(downloadAlertTitle, isPresented: downloadConfirmationPresented) {
             Button("Отмена", role: .cancel) { pendingDownloadMode = nil }
             Button("Загрузить") {
@@ -4705,6 +4757,15 @@ private struct AIPowerSelector: View {
             advanced: model.advancedAISettings,
             thermalState: .nominal
         ).estimatedDownloadSize
+    }
+
+    private func modeDescription(_ mode: AIPowerMode) -> String {
+        switch mode {
+        case .fast: return "Быстрый анализ видео"
+        case .balanced: return "Баланс скорости и подробности анализа"
+        case .quality: return "Подробный анализ видео"
+        case .maximum: return "Максимальная глубина анализа видео"
+        }
     }
 
     private func modeTitle(_ mode: AIPowerMode) -> String {
@@ -4774,6 +4835,35 @@ private struct DirectorFilmSettingsPopover: View {
                 .font(.headline)
             Picker("Стиль", selection: Binding(get: { model.preset }, set: model.selectPreset)) {
                 ForEach(FilmPreset.allCases) { Text($0.localizedTitle).tag($0) }
+            }
+            Picker("Субтитры", selection: Binding(get: { model.directorBrief.subtitlePolicy ?? .automatic }, set: model.setDirectorSubtitlePolicy)) {
+                ForEach(DirectorSubtitlePolicy.allCases) { Text($0.localizedTitle).tag($0) }
+            }
+            Picker("Оформление субтитров", selection: Binding(get: { model.directorBrief.subtitleStyle }, set: model.setDirectorSubtitleStyle)) {
+                Text("Не выбрано").tag(SpeechCaptionStyle?.none)
+                ForEach(SpeechCaptionStyle.allCases) { Text($0.localizedTitle).tag(Optional($0)) }
+            }
+            if model.preset == .vlog {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(model.speechPackageStatus).font(.caption).foregroundStyle(.secondary)
+                    if !model.speechPackageInstalled {
+                        HStack {
+                            Button("Установить речь") { model.installSpeechPackage() }
+                            Button("Перенести с диска") { model.installSpeechPackage(fromDisk: true) }
+                        }.disabled(model.isWorking)
+                        if model.speechPackageProgress > 0 { ProgressView(value: model.speechPackageProgress) }
+                    }
+                    Text("Записи и расшифровки остаются на этом Mac").font(.caption2).foregroundStyle(.secondary)
+                }.task { await model.refreshSpeechPackageStatus() }
+            }
+            Picker("Эффекты", selection: Binding(
+                get: { model.directorBrief.effectsPolicy },
+                set: { if let policy = $0 { model.setDirectorEffectsPolicy(policy) } }
+            )) {
+                if model.directorBrief.effectsPolicy == nil {
+                    Text("Не выбрано").tag(Optional<DirectorEffectsPolicy>.none)
+                }
+                ForEach(DirectorEffectsPolicy.allCases) { Text($0.localizedTitle).tag(Optional($0)) }
             }
             Picker("Режим длительности", selection: Binding(get: { model.directorBrief.durationMode ?? .exact }, set: model.setDurationMode)) {
                 Text("Автоматически").tag(FilmDurationMode.automatic)
@@ -4942,17 +5032,13 @@ private struct DirectorPlayerColumn: View {
                 .controlSize(.small)
             Text(model.activityTitle.isEmpty ? "Обновляю фильм" : model.activityTitle)
                 .foregroundStyle(.secondary)
-        } else if model.hasPendingFilmChanges, model.previewPlayer != nil {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 7))
-                .foregroundStyle(.orange)
-            Text("Можно смотреть текущую версию · правки ещё не применены")
-                .foregroundStyle(.secondary)
         } else if model.previewPlayer != nil {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-            Text("Просмотр обновлён")
-                .foregroundStyle(.secondary)
+            if !model.hasPendingFilmChanges {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Просмотр обновлён")
+                    .foregroundStyle(.secondary)
+            }
         } else {
             Image(systemName: "circle.dashed")
                 .foregroundStyle(.secondary)
@@ -5121,17 +5207,27 @@ private struct ActivityPanel: View {
     }
 
     @ViewBuilder private var activityRemainingTime: some View {
-        if !model.activityTimeRemaining.isEmpty {
-            Label(model.activityTimeRemaining, systemImage: "clock")
-                .font(.callout.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel(model.activityTimeRemaining)
-                .help(model.isCreatingFilm
-                      ? "Примерное время до готовности фильма, включая проверку и подготовку просмотра. Прогноз уточняется по скорости обработки."
-                      : "Примерное время до конца текущего этапа. Прогноз уточняется по скорости обработки.")
+        if model.isWorking {
+            VStack(alignment: .leading, spacing: 3) {
+                Label(model.activityTimeRemaining.isEmpty ? "Уточняю время…" : model.activityTimeRemaining, systemImage: "clock")
+                    .font(.callout.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(model.isCreatingFilm
+                          ? "Примерное время до готовности фильма, включая проверку и подготовку просмотра. Прогноз уточняется по скорости обработки."
+                          : "Примерное время до конца текущего этапа. Прогноз уточняется по скорости обработки.")
+                if let start = model.activityStartedUptime {
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        let elapsed = max(0, Int(ProcessInfo.processInfo.systemUptime - start))
+                        Text(String(format: "Прошло %d:%02d", elapsed / 60, elapsed % 60))
+                            .font(.callout.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+                }
+            }
         }
     }
+
 }
 
 private struct AssetSummaryGrid: View {
@@ -5517,7 +5613,7 @@ struct SettingsView: View {
                         .background(Color.secondary.opacity(0.12), in: Capsule())
                 }
 
-                SettingsSectionCard("Статистика") {
+                SettingsSectionCard("Статистика всех проектов") {
                     HStack(spacing: 12) {
                         SettingsStatistic(
                             value: durationText(model.usageStatistics.analyzedContentDuration),
@@ -5542,9 +5638,14 @@ struct SettingsView: View {
 
                 SettingsSectionCard("Профиль предпочтений") {
                     SettingsActionDescription(
+                        icon: "sparkles",
+                        title: "Базовый стиль",
+                        description: "Встроенный стиль монтажа доступен сразу во всех режимах ИИ. Ваши последующие правки уточняют его для вас."
+                    )
+                    SettingsActionDescription(
                         icon: "wand.and.stars",
-                        title: "Ваш стиль монтажа",
-                        description: "В профиле хранятся изученные предпочтения по темпу, сценам, музыке и эффектам."
+                        title: "Личные предпочтения",
+                        description: "Профиль учится на изменениях монтажа и одобренных примерах: темпе, сценах, музыке и эффектах. Импорт, экспорт и сброс относятся к вашим предпочтениям; встроенная база сохраняется."
                     )
                     HStack(spacing: 10) {
                         Button(action: model.importPersonalTasteProfile) {
@@ -5611,7 +5712,7 @@ struct SettingsView: View {
     }
 
     private func projectWord(_ count: Int) -> String {
-        russianCountWord(count, one: "проект создан", few: "проекта создано", many: "проектов создано")
+        russianCountWord(count, one: "проект всего", few: "проекта всего", many: "проектов всего")
     }
 
     private func materialWord(_ count: Int) -> String {

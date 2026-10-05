@@ -96,7 +96,14 @@ public actor ProjectStore {
         self.recoveryDirectory = recoveryRoot
         let projectURL = packageURL.appendingPathComponent("project.json")
         let recovery = try LocalProjectRecovery.read(package: packageURL, root: recoveryRoot)
-        let primaryData = try? Data(contentsOf: projectURL)
+        // Read once: large archives include all analysis and telemetry. Keep
+        // the original bytes for CAS even if portable paths need relocation.
+        let primaryData: Data?
+        if recovery != nil {
+            primaryData = try? Data(contentsOf: projectURL)
+        } else {
+            primaryData = try Data(contentsOf: projectURL)
+        }
         var data: Data
         var restoredLocally = false
         if let recovery {
@@ -118,13 +125,19 @@ public actor ProjectStore {
                 } catch { restoredLocally = true }
             } else { restoredLocally = true }
         } else {
-            data = try Data(contentsOf: projectURL)
+            data = primaryData!
         }
         let decoder = JSONDecoder.veloEdit
         let storedData = data
-        data = try PortableProjectPaths.relocate(data, to: packageURL)
         var decoded = try decoder.decode(ProjectManifest.self, from: data)
         guard decoded.projectVersion <= 1 else { throw ProjectStoreError.unsupportedProjectVersion(decoded.projectVersion) }
+        // The normal open path needs only Codable. JSONSerialization used to
+        // build and discard a second object graph for every archive, including
+        // projects that were never packaged or moved.
+        if PortableProjectPaths.needsRelocation(decoded.packagedFilePaths, to: packageURL) {
+            data = try PortableProjectPaths.relocate(data, to: packageURL)
+            decoded = try decoder.decode(ProjectManifest.self, from: data)
+        }
         var requiresRecoveryWrite = data != storedData
         if let paths = decoded.packagedMediaPaths {
             for index in decoded.assets.indices {
@@ -152,11 +165,12 @@ public actor ProjectStore {
             requiresRecoveryWrite = true
         }
         self.manifest = decoded
-        self.persistedManifestFingerprint = primaryData.map(EditorialProjectMigration.hash) ?? recovery?.0.baseFingerprint
+        self.persistedManifestFingerprint = restoredLocally
+            ? (primaryData.map(EditorialProjectMigration.hash) ?? recovery?.0.baseFingerprint)
+            : EditorialProjectMigration.hash(storedData)
         self.ownsRecoveryJournal = restoredLocally
         self.persistenceLocation = restoredLocally ? .localRecovery : .project
         if !restoredLocally {
-            self.persistedManifestFingerprint = EditorialProjectMigration.hash(storedData)
             try Self.createDirectories(at: packageURL)
         }
         // Opening a healthy project is read-only. Previously every project
@@ -217,7 +231,7 @@ public actor ProjectStore {
         let previouslyEvaluated = Set(manifest.intentLedger?.entries.filter { $0.status == .fulfilled }.flatMap { $0.evidence.compactMap(\.assetID) } ?? [])
         let oldAssets = Set(previous?.items.compactMap(\.assetID) ?? []).union(previouslyEvaluated)
         let intents = IntentLedgerEngine.intents(prompt: prompt, brief: brief, pending: manifest.workspaceState?.pendingDirectorInstructions ?? [], newAssetIDs: manifest.assets.map(\.id).filter { !oldAssets.contains($0) })
-        let entries = intents.map { IntentLedgerEntry(id: UUID(), projectRevision: revision, normalizedIntent: $0, source: .prompt, status: .running, evidence: []) }
+        let entries = intents.map { IntentLedgerEntry(id: UUID(), projectRevision: revision, normalizedIntent: $0, source: .prompt, status: .running, evidence: [], originalRequest: prompt) }
         try persist({ project in
             var ledger = project.intentLedger ?? IntentLedger()
             for i in ledger.entries.indices where ledger.entries[i].status == .running {
@@ -249,23 +263,36 @@ public actor ProjectStore {
     /// Evidence cannot become fulfilled if serialization or validation fails.
     public static func verifyAndFulfillEditorialGeneration(in project: inout ProjectManifest, ids: [UUID], timeline: Timeline, analyses: [AnalysisResult]) throws -> Timeline {
         var verified = timeline
+        let delivered = timeline.filmDeliveryReport?.isCurrent(for: timeline) == true
         if timeline.editorialReview != nil {
-            guard timeline.editorialReview?.candidateEligible == true else {
+            guard delivered || timeline.editorialReview?.candidateEligible == true else {
                 throw EditorialGenerationError.noPassingVariant(timeline.editorialReview?.findings ?? [])
             }
         }
         try fulfillEditorialGeneration(in: &project, ids: ids, timeline: timeline, analyses: analyses)
         if verified.editorialReview != nil {
             guard !ids.isEmpty, let ledger = project.intentLedger,
-                  ids.allSatisfy({ id in ledger.entries.contains { $0.id == id && [.fulfilled, .rejected].contains($0.status) } }),
-                  let index = verified.editorialReview?.evidenceDomains?.firstIndex(where: { $0.domain == .pendingIntentSatisfaction }) else {
+                  ids.allSatisfy({ id in ledger.entries.contains { $0.id == id && [.fulfilled, .rejected].contains($0.status) } }) else {
                 throw EditorialGenerationError.unsatisfiedIntent("Нет подтверждения всех команд в транзакции")
             }
-            verified.editorialReview?.evidenceDomains?[index] = EditorialDomainEvidence(domain: .pendingIntentSatisfaction, status: .passed, required: true, confidence: 1, coverage: 1, itemIDs: verified.items.map(\.id), probeTimes: [], provenance: ["IntentLedgerEngine.validate within ProjectStore CAS"], reason: "Все команды текущей генерации проверены; fulfilled/rejected записываются атомарно с Timeline", finding: nil)
-            guard verified.editorialReview?.productionEligible == true else {
+            let intentEvidence = EditorialDomainEvidence(domain: .pendingIntentSatisfaction, status: .passed, required: true, confidence: 1, coverage: 1, itemIDs: verified.items.map(\.id), probeTimes: [], provenance: ["IntentLedgerEngine.validate within ProjectStore CAS"], reason: "Все команды текущей генерации проверены; fulfilled/rejected записываются атомарно с Timeline", finding: nil)
+            if let index = verified.editorialReview?.evidenceDomains?.firstIndex(where: { $0.domain == .pendingIntentSatisfaction }) {
+                verified.editorialReview?.evidenceDomains?[index] = intentEvidence
+            } else if delivered {
+                let domains = (verified.editorialReview?.evidenceDomains ?? []) + [intentEvidence]
+                verified.editorialReview?.evidenceDomains = domains
+            }
+            guard delivered || verified.editorialReview?.productionEligible == true else {
                 throw EditorialGenerationError.noPassingVariant(verified.editorialReview?.findings ?? [])
             }
             verified.directorRun?.editorialReview = verified.editorialReview
+        }
+        if delivered, let ledger = project.intentLedger {
+            let unmet = ledger.entries.filter { ids.contains($0.id) && $0.status == .rejected }.compactMap(\.failureReason)
+            verified.filmDeliveryReport?.warnings += unmet
+            for message in unmet {
+                verified.filmDeliveryReport?.requirements?.append(.init(sourcePhrase: message, rule: "intent", verificationMethod: "IntentLedgerEngine", passed: false, evidence: message))
+            }
         }
         return verified
     }
@@ -277,8 +304,16 @@ public actor ProjectStore {
         }
         for i in ledger.entries.indices where ids.contains(ledger.entries[i].id) {
             let result = IntentLedgerEngine.validate(ledger.entries[i].normalizedIntent, timeline: timeline, previous: project.timelines.last, analyses: analyses, assets: project.assets)
-            if result.0 == .recoverableFailure { throw EditorialGenerationError.unsatisfiedIntent(result.2 ?? "Нет evidence") }
-            ledger.entries[i].status = result.0
+            if result.0 == .recoverableFailure {
+                guard timeline.filmDeliveryReport?.isCurrent(for: timeline) == true,
+                      ledger.entries[i].normalizedIntent != .createFilm else {
+                    throw EditorialGenerationError.unsatisfiedIntent(result.2 ?? "Нет evidence")
+                }
+                // Deliver the movie and honestly record the unmet instruction.
+                ledger.entries[i].status = .rejected
+            } else {
+                ledger.entries[i].status = result.0
+            }
             ledger.entries[i].evidence = result.1
             ledger.entries[i].failureReason = result.2
         }
@@ -304,6 +339,11 @@ public actor ProjectStore {
     ) throws {
         var next = manifest
         try mutation(&next)
+        if invalidatingBackgroundWork {
+            for index in next.timelines.indices where next.timelines[index].automaticallySelectFrameRate == true {
+                next.timelines[index] = TimelineFrameRatePolicy.applying(to: next.timelines[index], assets: next.assets)
+            }
+        }
         if !FilmBuildRecovery.inputsEqual(manifest, next) {
             next.filmBuildContentRevision = UUID()
         }
@@ -337,7 +377,7 @@ public actor ProjectStore {
     private func recoverPersistenceFailure(_ error: Error, next: ProjectManifest, invalidatingBackgroundWork: Bool) throws {
     if case ProjectStoreError.externalModification = error,
        let remote = try? Data(contentsOf: manifestURL),
-       let merged = try? LocalProjectRecovery.merge(base: JSONEncoder.veloEdit.encode(manifest), local: JSONEncoder.veloEdit.encode(next), remote: remote),
+       let merged = try? LocalProjectRecovery.merge(base: ProjectManifestEncoding.encode(manifest), local: ProjectManifestEncoding.encode(next), remote: remote),
        var rebased = try? JSONDecoder.veloEdit.decode(ProjectManifest.self, from: merged) {
         guard rebased.id == manifest.id else { throw ProjectStoreError.externalModification }
         rebased.filmBuildContentRevision = UUID()
@@ -428,7 +468,13 @@ public actor ProjectStore {
 
     @discardableResult
     private static func write(_ manifest: ProjectManifest, to url: URL, expectedFingerprint: String? = nil) throws -> String {
-        let data = try JSONEncoder.veloEdit.encode(manifest)
+        let trace = PerformanceTrace.current
+        let span = trace?.begin("project.save", fields: ["projectID": manifest.id.uuidString, "path": url.path])
+        var outcome = "failed"
+        defer { trace?.end(span, stage: "project.save", status: outcome) }
+        let encode = trace?.begin("project.serialize")
+        let data = try ProjectManifestEncoding.encode(manifest)
+        trace?.end(encode, stage: "project.serialize")
         do {
             try withManifestLock(for: url) {
                 if let expectedFingerprint {
@@ -443,6 +489,7 @@ public actor ProjectStore {
             let nsError = error as NSError
             throw ProjectStoreError.persistenceFailure(stage: "atomic write", path: url.path, underlying: "\(nsError.domain) \(nsError.code): \(nsError.localizedDescription)")
         }
+        outcome = "success"
         return EditorialProjectMigration.hash(data)
     }
 
@@ -523,6 +570,7 @@ public actor ProjectStore {
         let url = packageURL.appendingPathComponent(ProjectSummary.fileName)
         let data = try JSONEncoder.veloEdit.encode(summary)
         try data.write(to: url, options: .atomic)
+        try ProjectOpeningPreview.write(for: manifest, at: packageURL)
     }
 }
 

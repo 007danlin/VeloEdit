@@ -859,9 +859,17 @@ public struct PersonalizedMontageScorer: Sendable {
         profile: PersonalTasteProfile,
         context: TasteContext
     ) -> (MontageGlobalScore, PersonalTasteScore) {
+        let localSignalCount = profile.totalSignalCount
         let features = TimelineTasteFeatureExtractor().features(timeline: timeline, candidates: candidates)
-        let personal = tasteFit(features: features, profile: profile, contextKey: context.key)
-        let confidence = profile.adaptiveConfidence
+        let resolved = BundledEditorialTaste.resolving(profile)
+        let startingFit = tasteFit(features: features, profile: resolved, contextKey: context.key)
+        let localConfidence = profile.adaptiveConfidence
+        // Many inherited dimensions must not dilute strong personal evidence
+        // in a few dimensions. The existing calibrated confidence controls
+        // the handover; no inherited samples enter the personal learner.
+        let localFit = tasteFit(features: features, profile: profile, contextKey: context.key)
+        let personal = startingFit * (1 - localConfidence) + localFit * localConfidence
+        let confidence = max(localConfidence, resolved.adaptiveConfidence)
         let perceptual = timeline.directorRun?.perceptualScoreAfter ?? timeline.directorRun?.perceptualScoreBefore ?? base.reviewQuality
         let contextual = (base.projectStyleFit * 0.58 + base.storyArc * 0.22 + base.pacingQuality * 0.20).clamped01
         // Personal taste starts as a tie-breaker and earns at most 16% after
@@ -876,7 +884,7 @@ public struct PersonalizedMontageScorer: Sendable {
         let reasons = [
             "global \(Int((base.total * 100).rounded()))%",
             "perceptual \(Int((perceptual * 100).rounded()))%",
-            "personal taste \(Int((personal * 100).rounded()))% at confidence \(Int((confidence * 100).rounded()))%"
+            "base \(BundledEditorialTaste.version) + \(localSignalCount) local signals: style fit \(Int((personal * 100).rounded()))% at confidence \(Int((confidence * 100).rounded()))%"
         ]
         return (score, PersonalTasteScore(
             technical: base.technicalQuality, contextual: contextual, global: base.total,

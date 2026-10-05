@@ -1,0 +1,1536 @@
+--- baseline/Sources/VeloEdit/AppModel.swift
++++ current/Sources/VeloEdit/AppModel.swift
+@@ -183,6 +183,7 @@
+         let directorBrief: DirectorBrief
+         let briefChanges: DirectorBriefFieldChanges
+         var retryCount: Int = 0
++        var trace: PerformanceTrace? = nil
+     }
+ 
+     private static let recentProjectsKey = "recentProjectPaths.v1"
+@@ -294,6 +295,13 @@
+     private var activePlayback: TimelinePlayback?
+     private var playbackTimeObserver: Any?
+     private var playbackItemStatusObservation: NSKeyValueObservation?
++    private var filmVerificationTask: Task<Void, Never>?
++    @Published private(set) var filmVerificationMessage = ""
++    private var editTrace: PerformanceTrace?
++    private var previewEditTrace: PerformanceTrace?
++    private var previewEditRevision: UInt64?
++    private var previewEditStarted: Double?
++    private var previewStateLatency: Double?
+     private var previewPosterTask: Task<Void, Never>?
+     private var previewPosterRequestID: UUID?
+     private var previewPosterPlaybackID: ObjectIdentifier?
+@@ -541,8 +549,52 @@
+             hasPendingChanges: hasPendingFilmChanges
+         )
+     }
++    var timelinePersistenceStatus: String {
++        if timelinePersistenceFailed { return "Не сохранено — повторите сохранение" }
++        if hasUnpersistedTimelineEdits { return "Изменение применено · сохраняется" }
++        if !filmVerificationMessage.isEmpty { return filmVerificationMessage }
++        guard let timeline else { return "" }
++        if let report = timeline.filmDeliveryReport, report.isCurrent(for: timeline) {
++            return report.status == .verified ? "Сохранено · проверено" : "Сохранено · есть замечания проверки"
++        }
++        return "Сохранено · проверка требуется"
++    }
++
++    private func scheduleFilmVerification() {
++        filmVerificationTask?.cancel()
++        guard let pipeline, let current = timeline,
++              project?.storyPlans.contains(where: { $0.id == current.storyPlanID }) == true else { return }
++        let revision = timelineEditRevision
++        let signature = EditorialRenderSignature.signature(current)
++        filmVerificationMessage = "Сохранено · проверяется"
++        filmVerificationTask = Task { [weak self] in
++            do {
++                try await Task.sleep(for: .seconds(1))
++                guard let self, self.pipeline === pipeline, self.timelineEditRevision == revision,
++                      self.timeline.map(EditorialRenderSignature.signature) == signature else { return }
++                if self.isWorking || self.isDirectorResponding {
++                    self.filmVerificationMessage = "Сохранено · проверка ожидает завершения операции"
++                    return
++                }
++                let checked = try await pipeline.verifyCurrentFilm()
++                try Task.checkCancellation()
++                guard self.pipeline === pipeline, self.timelineEditRevision == revision,
++                      self.timeline.map(EditorialRenderSignature.signature) == signature else { return }
++                await self.refresh()
++                self.filmVerificationMessage = checked.filmDeliveryReport?.status == .verified
++                    ? "Сохранено · проверено" : "Сохранено · есть замечания проверки"
++                self.editTrace?.event("edit.verification.finished", fields: ["status": self.filmVerificationMessage])
++            } catch is CancellationError { }
++            catch {
++                guard let self, self.pipeline === pipeline, self.timelineEditRevision == revision else { return }
++                self.filmVerificationMessage = "Сохранено · проверка не завершена"
++            }
++        }
++    }
++
+     var filmReadinessStatus: String {
+         if isCreatingFilm { return status }
++        if hasUnpersistedTimelineEdits || !filmVerificationMessage.isEmpty { return timelinePersistenceStatus }
+         if hasPendingFilmChanges {
+             return timeline == nil
+                 ? "Замысел изменён — нужно создать фильм"
+@@ -1430,9 +1482,9 @@
+                         if !extra.isEmpty {
+                             _ = try await pipeline.applyEditorCommands(
+                                 extra,
+-                                selectedItemID: self.selectedTimelineItemID,
++                                selectedItemID: submittedSelection,
+                                 selectedCandidateID: naturalLanguageBaseline?.items
+-                                    .first(where: { $0.id == self.selectedTimelineItemID })?.candidateID,
++                                    .first(where: { $0.id == submittedSelection })?.candidateID,
+                                 createCheckpoint: false
+                             )
+                             await self.refresh()
+@@ -1710,6 +1762,9 @@
+     func submitTimelineAIEdit(_ instruction: String, range: ClosedRange<Double>? = nil) {
+         let clean = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !clean.isEmpty else { return }
++        let trace = PerformanceTrace(name: "edit.command", projectID: project?.id, revision: String(timelineEditRevision))
++        trace.event("edit.submitted", fields: ["selectedID": selectedTimelineItemID?.uuidString ?? ""])
++        trace.event("edit.accepted")
+ 
+         if range == nil, selectedTitleTimelineItem != nil, TitleEditInterpreter.targetsSelectedTitle(clean) {
+             if editSelectedTitleWithAI(clean) { feedback = "" }
+@@ -1794,15 +1849,18 @@
+             targetDuration: requestedFilmDuration ?? requestedDirectorBrief.explicitRequestedDuration,
+             preferredMusicTrackID: requestedPreferredMusicTrackID,
+             directorBrief: requestedDirectorBrief,
+-            briefChanges: briefChanges
++            briefChanges: briefChanges,
++            trace: trace
+         )
++        pendingTimelineAIEdits.append(edit)
++        queuedTimelineAIEditCount = pendingTimelineAIEdits.count
+         guard !isWorking, !isDirectorResponding else {
+-            pendingTimelineAIEdits.append(edit)
+-            queuedTimelineAIEditCount = pendingTimelineAIEdits.count
+             status = "Правка монтажа поставлена в очередь"
+             return
+         }
+-        startTimelineAIEdit(edit)
++        // A new submission can arrive during the completion callback's delay.
++        // It must not overtake commands that were accepted while we were busy.
++        startNextQueuedTimelineAIEdit()
+     }
+ 
+     func renderPreview() {
+@@ -3748,11 +3806,15 @@
+                previousTimeline?.items.contains(where: { $0.id == id }) == true {
+                 return id
+             }
+-            if let candidateID = edit.selectedCandidateID {
+-                return previousTimeline?.items.first(where: { $0.candidateID == candidateID })?.id
+-            }
+             return nil
+         }()
++        guard !explicitlyUsesSelection || selectedItemID != nil else {
++            feedback = clean
++            status = "Выбранный при отправке клип удалён — выберите адресат правки заново"
++            activeTimelineAIEdit = nil
++            Task { @MainActor [weak self] in self?.startNextQueuedTimelineAIEdit() }
++            return
++        }
+ 
+         progress = 0
+         isCreatingFilm = true
+@@ -3773,6 +3835,7 @@
+                 onPartialReply: { [weak self] text in self?.status = "\(text) · ожидаю полный план" }
+             )
+             try Task.checkCancellation()
++            self.editTrace?.event("edit.plan.ready")
+             guard !self.needsTimelineAIRetryAfterManualEdit else { return }
+             self.directorRuntimeStatus = reply.runtimeLabel
+             self.progress = 0.16
+@@ -3882,6 +3945,7 @@
+             let changed = previousTimeline != self.timeline
+             if changed {
+                 PerformanceTrace.current?.event("comment.applied-and-saved")
++                self.editTrace?.event("edit.saved")
+                 self.recordTimelineChange(from: previousTimeline)
+                 if let previousTimeline, let current = self.timeline {
+                     _ = try? await pipeline.recordPreferenceSignals(
+@@ -3917,6 +3981,7 @@
+             } else {
+                 self.status = "\(finalExecution?.userSummary ?? "Запрос не потребовал изменений Timeline")\(pendingSuffix)"
+             }
++            if changed { self.scheduleFilmVerification() }
+         }
+     }
+ 
+@@ -4922,6 +4987,9 @@
+         defer { isRestoringWorkspaceState = false }
+         directorTask?.cancel()
+         directorTask = nil
++        filmVerificationTask?.cancel()
++        filmVerificationTask = nil
++        filmVerificationMessage = ""
+         isDirectorResponding = false
+         isCreatingFilm = false
+         hasPendingFilmChanges = false
+@@ -5412,6 +5480,15 @@
+                 self.previewPosterPlaybackID = ObjectIdentifier(playback)
+                 self.previewPosterPlaybackTime = safeTime
+                 self.isPreviewPosterVisible = self.previewPlayer?.timeControlStatus != .playing
++                if self.previewEditRevision == self.timelineEditRevision,
++                   let started = self.previewEditStarted, self.isPreviewPosterVisible {
++                    let latency = (ProcessInfo.processInfo.systemUptime - started) * 1_000
++                    self.previewEditTrace?.event("edit.preview.pixels-published", values: ["milliseconds": latency])
++                    let sample = InteractionLatencySample(name: "paused composition frame",
++                        stateUpdateMilliseconds: self.previewStateLatency ?? 0, visualFeedbackMilliseconds: latency)
++                    Task { await self.interactionLatencyRecorder.record(sample) }
++                    self.previewEditStarted = nil
++                }
+             }
+         }
+     }
+@@ -5495,19 +5572,20 @@
+             revealTitleForEditing(title)
+         }
+         let stateLatency = (ProcessInfo.processInfo.systemUptime - interactionStarted) * 1_000
+-        Task {
+-            await interactionLatencyRecorder.record(InteractionLatencySample(
+-                name: initialStatus,
+-                stateUpdateMilliseconds: stateLatency,
+-                visualFeedbackMilliseconds: stateLatency
+-            ))
+-        }
++        let interactionTrace = PerformanceTrace(name: "edit.manual", projectID: manifest.id, revision: String(timelineEditRevision + 1))
++        interactionTrace.event("edit.state.applied", values: ["milliseconds": stateLatency])
++        previewEditTrace = interactionTrace
++        previewEditStarted = interactionStarted
++        previewStateLatency = stateLatency
++        filmVerificationTask?.cancel()
++        filmVerificationMessage = ""
+         if recordHistory { recordTimelineChange(from: previous) }
+         status = initialStatus
+         hasPendingFilmChanges = true
+ 
+         timelineEditRevision &+= 1
+         let revision = timelineEditRevision
++        previewEditRevision = revision
+         let shouldResumePlayback = previewPlayer.map(Self.isActivelyPlaying) ?? false
+ 
+         timelineCommitTask?.cancel()
+@@ -5521,7 +5599,9 @@
+                 guard let self, self.pipeline === pipeline, self.timelineEditRevision == revision else { return }
+                 self.timelinePersistenceFailed = false
+                 self.hasUnpersistedTimelineEdits = false
+-                self.status = await pipeline.store.persistenceLocation == .localRecovery ? "Правка сохранена в локальной аварийной копии" : "Монтаж обновлён"
++                interactionTrace.event("edit.saved")
++                self.status = await pipeline.store.persistenceLocation == .localRecovery ? "Правка сохранена в локальной аварийной копии" : "Правка сохранена · проверяется"
++                self.scheduleFilmVerification()
+             } catch is CancellationError {
+                 return
+             } catch {
+@@ -6153,6 +6233,8 @@
+         operation: @escaping @MainActor () async throws -> Void
+     ) {
+         guard !isWorking else { return }
++        filmVerificationTask?.cancel()
++        if !filmVerificationMessage.isEmpty { filmVerificationMessage = "Сохранено · проверка ожидает завершения операции" }
+         activityDismissTask?.cancel()
+         activityDismissTask = nil
+         clearActivityETA()
+@@ -6287,7 +6369,10 @@
+             }
+             Task { @MainActor [weak self] in
+                 try? await Task.sleep(for: .milliseconds(retryAfterConflict ? 350 : 120))
+-                self?.startNextQueuedTimelineAIEdit()
++                guard let self else { return }
++                self.startNextQueuedTimelineAIEdit()
++                if !self.isWorking, self.pendingTimelineAIEdits.isEmpty,
++                   self.filmVerificationMessage.contains("ожидает") { self.scheduleFilmVerification() }
+             }
+         }
+     }
+@@ -6295,6 +6380,8 @@
+     private func startTimelineAIEdit(_ pendingEdit: PendingTimelineAIEdit) {
+         let edit = rebasedTimelineAIEdit(pendingEdit)
+         activeTimelineAIEdit = edit
++        editTrace = edit.trace
++        edit.trace?.event("edit.dequeued")
+         if edit.range != nil {
+             guard let timeline,
+                   edit.timelineAnchor == TimelineAIAnchor(timeline) else {
+@@ -6345,7 +6432,8 @@
+                 : directorMusicTrack?.id,
+             directorBrief: brief,
+             briefChanges: edit.briefChanges,
+-            retryCount: edit.retryCount
++            retryCount: edit.retryCount,
++            trace: edit.trace
+         )
+     }
+ 
+--- baseline/Sources/VeloEdit/MontageTimelineView.swift
++++ current/Sources/VeloEdit/MontageTimelineView.swift
+@@ -182,6 +182,13 @@
+             aiCommandBar
+             Divider()
+             editingToolbar
++            Text(model.timelinePersistenceStatus)
++                .font(.caption2)
++                .foregroundStyle(.secondary)
++                .frame(maxWidth: .infinity, alignment: .leading)
++                .padding(.horizontal, 12)
++                .padding(.bottom, 5)
++                .accessibilityIdentifier("timeline.persistence-status")
+             Divider()
+             timelineScroller
+         }
+--- baseline/Sources/VeloEditCLI/main.swift
++++ current/Sources/VeloEditCLI/main.swift
+@@ -79,6 +79,11 @@
+                 progress: printFilmProgress
+             )
+             print("Timeline: \(timeline.items.count) фрагментов, \(String(format: "%.1f", timeline.duration)) сек")
++        case "verify-film":
++            let (pipeline, _) = try openPipeline(arguments, minimum: 2, usage: "verify-film <project.veloedit>")
++            let timeline = try await pipeline.verifyCurrentFilm()
++            let data = try JSONEncoder.veloEdit.encode(timeline.filmDeliveryReport)
++            print(String(decoding: data, as: UTF8.self))
+         case "save-video":
+             let (pipeline, _) = try openPipeline(arguments, minimum: 2, usage: "save-video <project.veloedit>")
+             let destination = await pipeline.defaultVideoDestination()
+@@ -323,6 +328,7 @@
+           verify <project.veloedit>
+           film <project.veloedit> <prompt>
+           resume-film <project.veloedit>
++          verify-film <project.veloedit>
+           save-video <project.veloedit>
+           resume-export <project.veloedit>
+           collect <project.veloedit> <copy.veloedit>
+--- baseline/Sources/VeloEditCore/AutomaticFilmDelivery.swift
++++ current/Sources/VeloEditCore/AutomaticFilmDelivery.swift
+@@ -24,6 +24,13 @@
+         guard exportVerification?.artifactIsCurrent == true,
+               let requirements, !requirements.isEmpty,
+               requirements.filter(\.mandatory).allSatisfy(\.passed) else { return .savedWithUnmetRequirements }
++        if requirements.contains(where: { $0.rule == "titleReadability" || $0.rule == "titleVisibility" }) {
++            guard let evidence = exportVerification?.titleEvidence, !evidence.isEmpty,
++                  evidence.allSatisfy({ $0.algorithmVersion == TitleReadabilityInspector.version
++                      && $0.renderSignature == renderSignature && $0.source == "mp4" && $0.passed }) else {
++                return .savedWithUnmetRequirements
++            }
++        }
+         return .verified
+     }
+     public var completionMessage: String {
+@@ -136,8 +143,11 @@
+             }
+             check("chapterTitles", "Titles at actual chapter boundaries", !blocks.isEmpty && titled, "Проверено частей: \(blocks.count)")
+             let unreadable = timeline.editorialReview?.findings.filter { $0.kind == .unreadableTitle && $0.severity >= 2 } ?? []
+-            check("titleVisibility", "Rendered title readability evidence", unreadable.isEmpty && (timeline.editorialReview?.renderedProbeCount ?? 0) > 0,
+-                  unreadable.isEmpty ? "Титры проверены по кадрам" : "Читаемость части титров не подтверждена после автоматической правки")
++            let titleProof = timeline.editorialReview?.evidenceDomains?.first { $0.domain == .titleReadability }
++            let titlesPassed = unreadable.isEmpty && titleProof?.isSufficient == true
++                && timeline.editorialReview?.editorialSignature == EditorialRenderSignature.signature(timeline)
++            check("titleVisibility", "Current per-title OCR in preview and independently decoded MP4", titlesPassed,
++                  titlesPassed ? "Каждый титр проверен в предпросмотре и MP4" : "Читаемость всех обязательных точек титров не подтверждена")
+         }
+         let commands = EditorCommandParser().parse(plan.prompt, preset: plan.preset)
+         let titleReset = commands.lastIndex { if case .removeTitles = $0 { return true }; return false }
+--- baseline/Sources/VeloEditCore/EditorialDeliveryVerification.swift
++++ current/Sources/VeloEditCore/EditorialDeliveryVerification.swift
+@@ -32,11 +32,15 @@
+     public var fileSize: Int64? = nil
+     public var fileModified: Date? = nil
+     public var fileModifiedTime: Double? = nil
++    public var artifactSHA256: String? = nil
++    public var artifactFileIdentity: String? = nil
++    public var titleEvidence: [TitleReadabilityEvidence]? = nil
+     public var artifactIsCurrent: Bool {
+         guard let outputURL, let fileSize, let fileModified,
+               let info = try? FileManager.default.attributesOfItem(atPath: outputURL.path) else { return false }
+         return (info[.size] as? NSNumber)?.int64Value == fileSize
+             && (info[.modificationDate] as? Date)?.timeIntervalSince1970 == (fileModifiedTime ?? fileModified.timeIntervalSince1970)
++            && (artifactFileIdentity.map { $0 == FrameCacheKey.sourceIdentity(url: outputURL, contentHash: "export") } ?? true)
+     }
+ }
+ 
+@@ -47,16 +51,18 @@
+         var signature: String
+         var size: Int64
+         var modified: Date
++        var sha256: String
+ 
+         static func read(_ url: URL, signature: String) throws -> Self {
+             let info = try FileManager.default.attributesOfItem(atPath: url.path)
+             return Self(signature: signature, size: (info[.size] as? NSNumber)?.int64Value ?? 0,
+-                        modified: info[.modificationDate] as? Date ?? .distantPast)
++                        modified: info[.modificationDate] as? Date ?? .distantPast,
++                        sha256: MusicStructureCache.contentIdentity(url))
+         }
+     }
+     public static func verify(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preview: [PerceptualRenderedFrameEvidence], cacheURL: URL, preferredVideoSources: [UUID: URL] = [:], sourceWarnings: [String] = []) async throws -> EditorialExportVerification {
+         try Task.checkCancellation()
+-        let key = EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks)
++        let key = EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
+         let directory = cacheURL.appendingPathComponent("EditorialControlExports")
+         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+         let output = directory.appendingPathComponent(key + ".mp4")
+@@ -69,12 +75,16 @@
+         // maximum raster. Full HD keeps the verifier deterministic on systems
+         // where 5K H.264 delivery is not a supported hardware encode profile.
+         if let receipt, receipt.size > 0, receipt == (try? CompletedExport.read(output, signature: key)) {
++            PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "hit", "signature": key])
+             await FilmBuildReporting.report(FilmBuildProgress(.controlExport, detail: "Контрольное видео сохранено — продолжаю проверку"))
+         } else {
+-            _ = try await FilmBuildReporting.forwarding { report in
++            PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "miss", "reason": receipt == nil ? "missing-or-incompatible-receipt" : "artifact-changed", "signature": key])
++            _ = try await PerformanceTrace.measure(name: "control.export", fields: ["signature": key, "contract": "final1080p"]) {
++              try await FilmBuildReporting.forwarding { report in
+                 try await RenderEngine().render(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources, sourceWarnings: sourceWarnings, quality: .final1080p, destination: output) { update in
+                     report(FilmBuildProgress(.controlExport, completed: update.completed, total: update.total, detail: update.currentName))
+                 }
++            }
+             }
+             try Task.checkCancellation()
+             try JSONEncoder().encode(CompletedExport.read(output, signature: key)).write(to: receiptURL, options: .atomic)
+@@ -103,6 +113,8 @@
+         var generator = makeGenerator()
+         var decodeRequests = 0
+         var comparisons: [EditorialExportProbeComparison] = []
++        let trace = PerformanceTrace.current
++        let decodeSpan = trace?.begin("delivery.decode", fields: ["artifact": output.path, "signature": key])
+         await FilmBuildReporting.report(FilmBuildProgress(.deliveryFrames, completed: 0, total: preview.count))
+         for frame in preview {
+             try Task.checkCancellation()
+@@ -126,7 +138,9 @@
+                 }
+                 decodeRequests += 1
+                 do {
+-                    let image = try await generator.image(at: CMTime(seconds: sampleTime, preferredTimescale: 600)).image
++                    let decoded = try await generator.image(at: CMTime(seconds: sampleTime, preferredTimescale: 600))
++                    let image = decoded.image
++                    trace?.event("frame.pts", fields: ["purpose": "independent-mp4-parity", "artifact": output.path, "maximumSize": "640", "tolerance": "0/600"], values: ["requested": sampleTime, "actual": decoded.actualTime.seconds])
+                     let comparison: EditorialExportProbeComparison = autoreleasepool {
+                         let quality = FrameQualityInspector.assess(image: image)
+                         let hash = PerceptualRenderInspector.perceptualHash(image)
+@@ -148,10 +162,35 @@
+             await FilmBuildReporting.report(FilmBuildProgress(.deliveryFrames, completed: comparisons.count, total: preview.count))
+         }
+         generator.cancelAllCGImageGeneration()
++        trace?.end(decodeSpan, stage: "delivery.decode")
++        let titleGenerator = makeGenerator()
++        titleGenerator.maximumSize = TitleReadabilityInspector.maximumSize
++        defer { titleGenerator.cancelAllCGImageGeneration() }
++        var titleEvidence: [TitleReadabilityEvidence] = []
++        let titleSpan = trace?.begin("delivery.titles", fields: ["artifact": output.path, "signature": key])
++        for title in timeline.effectiveTitleItems where title.enabled {
++            for time in TitleReadabilityInspector.times(title, frameRate: timeline.frameRate) {
++                try Task.checkCancellation()
++                let requested = TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline)
++                let decoded = try? await titleGenerator.image(at: CMTime(seconds: requested, preferredTimescale: 600))
++                let evidence = TitleReadabilityInspector.inspect(image: decoded?.image, title: title, timeline: timeline,
++                    time: time, actualPTS: decoded?.actualTime.seconds, source: "mp4")
++                titleEvidence.append(evidence)
++                trace?.event("title.ocr", fields: ["titleID": title.id.uuidString, "source": "mp4", "artifact": output.path,
++                    "signature": evidence.renderSignature, "recognized": evidence.recognizedText, "failure": evidence.failure ?? ""],
++                    values: ["requested": requested, "actualPTS": evidence.actualPTS ?? -1, "score": evidence.score])
++            }
++        }
++        trace?.end(titleSpan, stage: "delivery.titles", status: titleEvidence.allSatisfy(\.passed) ? "success" : "failed")
+         await FilmBuildReporting.report(FilmBuildProgress(.audioCheck))
+-        let audio = try await measureEncodedAudio(asset: asset)
++        let audio = try await PerformanceTrace.measure(name: "delivery.audio", fields: ["artifact": output.path]) {
++            try await measureEncodedAudio(asset: asset)
++        }
+         var report = EditorialExportVerification(renderSignature: EditorialRenderSignature.signature(timeline), probes: comparisons, durationDifference: abs((videoDuration ?? duration) - AutomaticFilmDurationPolicy.renderedDuration(of: timeline)), aspectRatioMatches: actualRatio.map { abs($0 - expectedRatio) < 0.005 } ?? false, encodedAudio: audio, provenance: "RenderEngine control MP4; independent AVAssetImageGenerator decode and AAC PCM measurement")
+         let file = try CompletedExport.read(output, signature: key)
++        report.titleEvidence = titleEvidence
++        report.artifactSHA256 = file.sha256
++        report.artifactFileIdentity = FrameCacheKey.sourceIdentity(url: output, contentHash: "export")
+         report.fileSize = file.size
+         report.fileModified = file.modified
+         report.fileModifiedTime = file.modified.timeIntervalSince1970
+--- baseline/Sources/VeloEditCore/EditorialRenderedReview.swift
++++ current/Sources/VeloEditCore/EditorialRenderedReview.swift
+@@ -17,31 +17,35 @@
+         // Completed preview inspection survives a later interruption during
+         // the much longer control export. It is not production evidence until
+         // independent delivery verification has also succeeded.
+-        let previewCache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialPreviewFrames-\(maximumSamples)"))
+-        let cachedFrames = await previewCache.load(timeline: timeline, assets: assets, tracks: tracks)
++        let previewCache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialPreviewFrames-\(maximumSamples)"), visualOnly: true)
+         let cachePaths = CachePaths(root: cacheURL.deletingLastPathComponent().deletingLastPathComponent())
+         let stableSources = cachePaths.stableRenderSources(for: assets)
+         let sourceWarnings = stableSources.keys.compactMap { id in
+             assets.first(where: { $0.id == id }).map { "\($0.displayName): production-проверка использует декодируемую копию" }
+         }
+-        let playback: TimelinePlayback
+-        do {
+-            playback = try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings, derivedMediaCacheURL: cacheURL, forceVideoComposition: true)
+-        } catch {
+-            let value = error as NSError
+-            throw EditorialGenerationError.unsatisfiedIntent("Playback build: \(value.domain) \(value.code): \(value.localizedDescription)")
+-        }
++        let cachedFrames = await previewCache.load(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
+         var frames: [PerceptualRenderedFrameEvidence]
++        var audioReport: EditorialAudioMasteringReport?
+         if let cachedFrames {
+             frames = cachedFrames
+             await FilmBuildReporting.report(FilmBuildProgress(.previewFrames, completed: frames.count, total: frames.count, detail: "Использую сохранённую проверку кадров"))
+         } else {
++          let playback: TimelinePlayback
++          do {
++            playback = try await PerformanceTrace.measure(name: "composition.build", fields: ["signature": EditorialRenderSignature.signature(timeline)]) {
++              try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings, derivedMediaCacheURL: cacheURL, forceVideoComposition: true)
++            }
++          } catch {
++            let value = error as NSError
++            throw EditorialGenerationError.unsatisfiedIntent("Playback build: \(value.domain) \(value.code): \(value.localizedDescription)")
++        }
++          audioReport = playback.audioMasteringReport
+             frames = await PerceptualRenderInspector().inspectAsync(playback: playback, timeline: timeline, maximumSamples: maximumSamples)
+             try Task.checkCancellation()
+-            try await previewCache.store(frames, timeline: timeline, assets: assets, tracks: tracks)
++            try await previewCache.store(frames, timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
+         }
+         if !frames.isEmpty {
+-            frames[0].audioMasteringReport = playback.audioMasteringReport
++            frames[0].audioMasteringReport = audioReport
+             if verifyExport {
+                 do {
+                     frames[0].exportVerification = try await EditorialDeliveryVerifier.verify(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preview: frames, cacheURL: cacheURL, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings)
+@@ -72,10 +76,31 @@
+     // Track allocation is part of the render contract, including the audio
+     // tracks used by connected clips. Old probes/mixes must be recomputed.
+     // v5 also preserves requested source attenuation through export mastering.
+-    static let compositionVersion = 6
+-    static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack]) -> String {
++    static let compositionVersion = 7
++    static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:], visualOnly: Bool = false) -> String {
++        var timeline = timeline
++        if visualOnly {
++            timeline.music = nil; timeline.adaptiveSoundtrack = nil; timeline.audioClips = []
++            timeline.originalAudioVolume = 0; timeline.audioDucking = nil
++            for index in timeline.items.indices { timeline.items[index].audioAdjustments = nil }
++        }
+         let used = Set(timeline.items.compactMap(\.assetID) + timeline.effectiveAudioClips.map(\.assetID))
+-        let hashes = assets.filter { used.contains($0.id) }.map(\.contentHash)
++        let hashes = assets.filter { used.contains($0.id) }.map { asset in
++            "\(asset.id)|\(FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash))|" +
++                (preferredVideoSources[asset.id].map { FrameCacheKey.sourceIdentity(url: $0, contentHash: "render-source") } ?? "original")
++        }
++        let encoder = JSONEncoder()
++        encoder.outputFormatting = [.sortedKeys]
++        let telemetryKey = telemetry.keys.sorted { $0.uuidString < $1.uuidString }.map { id in
++            var summary = telemetry[id]!
++            let streams = summary.streams.sorted()
++            // Codable represents a Set as an array; sortedKeys does not sort
++            // its elements. Strip and encode it separately in stable order.
++            summary.streams = []
++            let data = (try? encoder.encode(summary)) ?? Data()
++            let streamData = (try? encoder.encode(streams)) ?? Data()
++            return id.uuidString + ":" + EditorialIdentity.hash((data + streamData).base64EncodedString())
++        }.joined(separator: "|")
+         let musicIDs = Set([timeline.music?.trackID].compactMap { $0 } + (timeline.effectiveAdaptiveSoundtrack?.segments.compactMap(\.directive.trackID) ?? []) + timeline.effectiveAudioClips.compactMap(\.trackID))
+         let music = tracks.filter { musicIDs.contains($0.id) }.map { track in
+             // URL.resourceValues caches metadata on the URL instance. Stat the
+@@ -85,69 +110,110 @@
+             let modified = (values?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+             return "\(track.id)|\(track.localFileURL.path)|\(size)|\(modified)|\(MusicStructureCache.contentIdentity(track.localFileURL))"
+         }
+-        return EditorialIdentity.hash("composition-\(compositionVersion)|canvas-\(timeline.width)x\(timeline.height)|evidence-\(EditorialEvidenceVerifier.version)|" + EditorialRenderSignature.signature(timeline) + "|" + (hashes + music).sorted().joined(separator: "|"))
++        return EditorialIdentity.hash("composition-\(compositionVersion)|canvas-\(timeline.width)x\(timeline.height)|evidence-\(EditorialEvidenceVerifier.version)|" + EditorialRenderSignature.signature(timeline) + "|" + (hashes + music).sorted().joined(separator: "|") + "|telemetry:" + telemetryKey)
+     }
+ }
+ 
+ public actor RenderedProbeCache {
+-    public static let version = 12
++    public static let version = 13
++    private struct Record: Codable {
++        var version: Int
++        var signature: String
++        var digest: String
++        var payload: Data
++    }
+     private let directory: URL
+-    public init(directory: URL) { self.directory = directory }
+-    private func url(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack]) -> URL {
+-        let key = EditorialIdentity.hash("\(Self.version)|" + EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks))
+-        return directory.appendingPathComponent(key + ".json")
+-    }
+-    public func load(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = []) -> [PerceptualRenderedFrameEvidence]? {
+-        guard let data = try? Data(contentsOf: url(timeline: timeline, assets: assets, tracks: tracks)) else { return nil }
+-        guard var frames = try? JSONDecoder().decode([PerceptualRenderedFrameEvidence].self, from: data) else { return nil }
++    private let visualOnly: Bool
++    public init(directory: URL, visualOnly: Bool = false) { self.directory = directory; self.visualOnly = visualOnly }
++    private func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preferredVideoSources: [UUID: URL]) -> String {
++        EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry,
++            preferredVideoSources: preferredVideoSources, visualOnly: visualOnly)
++    }
++    public func load(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = [], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:]) -> [PerceptualRenderedFrameEvidence]? {
++        let key = signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
++        func miss(_ reason: String) {
++            PerformanceTrace.current?.event("cache.result", fields: ["cache": directory.lastPathComponent, "result": "miss", "reason": reason, "signature": key])
++        }
++        let url = directory.appendingPathComponent(key + ".json")
++        guard let data = try? Data(contentsOf: url) else { miss("dependency-changed-or-absent"); return nil }
++        guard let record = try? JSONDecoder().decode(Record.self, from: data), record.version == Self.version else { miss("incompatible-version"); return nil }
++        guard record.signature == key, record.digest == EditorialIdentity.hash(record.payload.base64EncodedString()),
++              var frames = try? JSONDecoder().decode([PerceptualRenderedFrameEvidence].self, from: record.payload), !frames.isEmpty else { miss("corrupt"); return nil }
+         for index in frames.indices {
++            if visualOnly {
++                // Visual dependency equality is proven above. Rebind only these
++                // pixels; never carry semantic, audio or MP4 receipts across edits.
++                for titleIndex in frames[index].titleEvidence?.indices ?? 0..<0 {
++                    frames[index].titleEvidence?[titleIndex].renderSignature = EditorialRenderSignature.signature(timeline)
++                }
++                frames[index].editorialClaims = nil
++                frames[index].audioMasteringReport = nil
++                frames[index].exportVerification = nil
++                continue
++            }
+             guard var export = frames[index].exportVerification,
+                   export.outputURL != nil || export.provenance.contains("RenderEngine control MP4") else { continue }
+-            guard export.videoDuration != nil, export.artifactIsCurrent else { return nil }
+-            // Legacy probe caches encode Date with fractional seconds, while
+-            // project manifests use ISO8601. Preserve that verified precision
+-            // before the cached receipt crosses into the project manifest.
++            guard export.videoDuration != nil, export.artifactIsCurrent,
++                  export.outputURL.map({ url in export.artifactSHA256 == MusicStructureCache.contentIdentity(url) }) == true else { miss("artifact-changed-or-corrupt"); return nil }
+             export.fileModifiedTime = export.fileModifiedTime ?? export.fileModified?.timeIntervalSince1970
+             frames[index].exportVerification = export
+         }
++        PerformanceTrace.current?.event("cache.result", fields: ["cache": directory.lastPathComponent, "result": "hit", "signature": key])
+         return frames
+     }
+-    public func store(_ frames: [PerceptualRenderedFrameEvidence], timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = []) throws {
++    public func store(_ frames: [PerceptualRenderedFrameEvidence], timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = [], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:]) throws {
++        try Task.checkCancellation()
+         guard !frames.isEmpty, frames.allSatisfy({ $0.decodeFailed != true }) else { return }
++        let key = signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
++        var frames = frames
++        // Newly written receipts enroll an intact artifact in the current
++        // integrity contract, including callers that omit optional hash fields.
++        for index in frames.indices {
++            guard var receipt = frames[index].exportVerification, let output = receipt.outputURL,
++                  receipt.artifactIsCurrent else { continue }
++            receipt.artifactSHA256 = MusicStructureCache.contentIdentity(output)
++            receipt.artifactFileIdentity = FrameCacheKey.sourceIdentity(url: output, contentHash: "export")
++            frames[index].exportVerification = receipt
++        }
++        let payload = try JSONEncoder().encode(frames)
++        let record = Record(version: Self.version, signature: key, digest: EditorialIdentity.hash(payload.base64EncodedString()), payload: payload)
+         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+-        try JSONEncoder().encode(frames).write(to: url(timeline: timeline, assets: assets, tracks: tracks), options: .atomic)
++        try JSONEncoder().encode(record).write(to: directory.appendingPathComponent(key + ".json"), options: .atomic)
+     }
+ }
+ 
+ extension VeloEditPipeline {
+-    static func editorialRenderReview(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false) async -> Timeline {
++    static func editorialRenderReview(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false, normalizePresentation: Bool = true) async -> Timeline {
+         var plan = inputPlan
+         // Materialize legacy/default framing before deriving the render
+         // signature or decoding a preview. RenderEngine applies the same
+         // migration before export; persisting it here makes preview, evidence
+         // and delivery operate on one exact composition instead of allowing
+         // nil adjustments to mean fill in one path and fit in another.
+-        var timeline = AutomaticFramingPolicy.applying(to: source, assets: assets, analyses: analyses)
++        var timeline = normalizePresentation ? AutomaticFramingPolicy.applying(to: source, assets: assets, analyses: analyses) : source
+         if analyzeChapterTransitions {
+             timeline = await NaturalChapterTransitionPlanner().applying(to: timeline, plan: plan, assets: assets, analyses: analyses)
+         }
+         // Structural repair can trim or remove shots. Re-anchor generated
+         // headings before deriving a signature or inspecting pixels, keeping
+         // any presentation that already received a rendered readability fix.
+-        timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true)
++        if normalizePresentation { timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true) }
+         let cache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialProbes"))
+         // A deliberately sparse ranking probe is not production evidence and
+         // must never poison the full-render cache used by the final winner.
+         let isPreliminaryProbe = (prober as? LocalEditorialRenderedProber)?.verifyExport == false
++        let stableSources = CachePaths(root: cacheURL.deletingLastPathComponent().deletingLastPathComponent()).stableRenderSources(for: assets)
+         var frames = isPreliminaryProbe
+             ? nil
+-            : await cache.load(timeline: timeline, assets: assets, tracks: tracks)
++            : await cache.load(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
+         var recoveryNotes: [String] = []
+         if frames == nil {
+             for attempt in 1...2 {
+                 do {
+                     try Task.checkCancellation()
+-                    let probed = try await prober.frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
++                    let probed = try await PerformanceTrace.measure(name: "render.review", fields: ["attempt": String(attempt), "signature": EditorialRenderSignature.signature(timeline)]) {
++                      try await prober.frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
++                    }
+                     try Task.checkCancellation()
+                     frames = probed
+                     if probed.isEmpty || probed.contains(where: { $0.decodeFailed == true }) {
+@@ -155,7 +221,7 @@
+                         continue
+                     }
+                     if !isPreliminaryProbe {
+-                        try? await cache.store(probed, timeline: timeline, assets: assets, tracks: tracks)
++                        try? await cache.store(probed, timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
+                     }
+                     break
+                 } catch is CancellationError {
+@@ -315,17 +381,15 @@
+                 }
+             }
+             if timeline.editorialReview?.findings.contains(where: { $0.kind == .unreadableTitle }) == true {
+-                let titles = timeline.effectiveTitleItems
+-                let alreadyHardened = titles.allSatisfy { $0.templateID == "title.minimal-clean.v1" && ($0.style.backgroundOpacity ?? 0) >= 0.99 && $0.animation.entrance == .none }
+-                if alreadyHardened {
+-                    // Keep a required heading and report the failed check.
+-                    // Deleting it would hide the symptom and publish a film
+-                    // with a missing chapter title.
+-                    return timeline
+-                } else {
+-                    repaired.titleItems = titles.map(EditorialPresentationPolicy.hardeningReadability)
+-                }
+-            }
++                let failedIDs = Set(timeline.editorialReview?.findings.filter { $0.kind == .unreadableTitle }.flatMap(\.itemIDs) ?? [])
++                repaired.titleItems = timeline.effectiveTitleItems.map { title in
++                    failedIDs.contains(title.id) ? EditorialPresentationPolicy.hardeningReadability(title) : title
++                }
++            }
++            PerformanceTrace.current?.event("repair.proposed", fields: ["before": EditorialRenderSignature.signature(timeline),
++                "after": EditorialRenderSignature.signature(repaired), "remaining": String(repairsRemaining),
++                "reason": timeline.editorialReview?.findings.map { $0.kind.rawValue }.joined(separator: ",") ?? ""])
++
+             guard AutomaticFilmDelivery.preservesDelivery(repaired, original: timeline, plan: plan),
+                   EditorialRenderSignature.signature(repaired) != EditorialRenderSignature.signature(timeline) else { return timeline }
+             if let store = AutonomousJobContext.store,
+--- baseline/Sources/VeloEditCore/EditorialReview.swift
++++ current/Sources/VeloEditCore/EditorialReview.swift
+@@ -262,11 +262,11 @@
+                     add(.unsafeReframe, 3, [item.id], .framing, "Лицо устойчиво касается края на реально скомпонованных кадрах")
+                 }
+             }
+-            for frame in renderedFrames {
+-                guard let item = items.first(where: { frame.timelineTime >= $0.timelineStart && frame.timelineTime < $0.timelineStart + $0.timelineDuration }) else { continue }
+-                if let readability = frame.titleReadability, readability < 0.5 {
+-                    add(.unreadableTitle, 2, [item.id], .decoration, "OCR финального кадра распознал менее половины слов титра")
+-                }
++            let titleEvidence = renderedFrames.flatMap { $0.titleEvidence ?? [] }
++                + renderedFrames.compactMap(\.exportVerification).flatMap { $0.titleEvidence ?? [] }
++            for evidence in titleEvidence where evidence.isCurrent(for: timeline) && !evidence.passed {
++                add(.unreadableTitle, 2, [evidence.titleID], .decoration,
++                    "OCR титра на \(evidence.timelineTime) с (\(evidence.source)): \(evidence.failure ?? "ниже порога 0.5")")
+             }
+             for frame in renderedFrames where frame.expectedVisibleContent && (frame.isBlack || frame.decodeFailed == true) {
+                 let ids = items.filter { frame.timelineTime >= $0.timelineStart && frame.timelineTime < $0.timelineStart + $0.timelineDuration }.map(\.id)
+@@ -425,6 +425,15 @@
+ }
+ 
+ public enum EditorialRenderSignature {
++    // JSONEncoder's generic containers otherwise keep several full Timeline
++    // values on the caller's stack. A transparent reference wrapper preserves
++    // exactly the same Codable payload while keeping those containers small.
++    private final class Snapshot: Encodable {
++        let timeline: Timeline
++        init(_ timeline: Timeline) { self.timeline = timeline }
++        func encode(to encoder: Encoder) throws { try timeline.encode(to: encoder) }
++    }
++
+     public static func signature(_ timeline: Timeline) -> String {
+         var copy = timeline
+         copy.editorialReview = nil
+@@ -440,7 +449,7 @@
+         copy.width = Int((aspect * 10_000).rounded())
+         let encoder = JSONEncoder()
+         encoder.outputFormatting = [.sortedKeys]
+-        return (try? encoder.encode(copy)).map { EditorialIdentity.hash($0.base64EncodedString()) } ?? "invalid-signature"
++        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash($0.base64EncodedString()) } ?? "invalid-signature"
+     }
+ }
+ 
+--- baseline/Sources/VeloEditCore/EditorialVerification.swift
++++ current/Sources/VeloEditCore/EditorialVerification.swift
+@@ -108,7 +108,10 @@
+             requested += [start + min(step, duration / 4), start + duration / 2, start + duration - min(step, duration / 4)]
+         }
+         for effect in timeline.effectiveEffects where effect.enabled { interval(effect.startTime, effect.duration) }
+-        for title in timeline.effectiveTitleItems where title.enabled { interval(title.startTime, title.duration) }
++        for title in timeline.effectiveTitleItems where title.enabled {
++            interval(title.startTime, title.duration)
++            requested += TitleReadabilityInspector.times(title, frameRate: timeline.frameRate)
++        }
+         for telemetry in timeline.effectiveTelemetryItems { interval(telemetry.timelineStart, telemetry.timelineDuration) }
+         return Array(Set(requested.filter { $0.isFinite && $0 >= 0 && $0 < timeline.duration }.map { Int(($0 * 600).rounded()) }))
+             .map { min(last, Double($0) / 600) }.sorted()
+@@ -121,12 +124,16 @@
+ }
+ 
+ public enum EditorialEvidenceVerifier {
+-    /// Version 3 activates locally-produced, render-bound semantic evidence.
++    /// Version 4 requires current per-title preview and encoded-file evidence.
+     /// Older reviews remain readable but cannot silently cross this production
+     /// boundary without being rendered and verified again.
+-    public static let version = 3
++    public static let version = 4
+ 
+     static func verify(timeline: Timeline, plan: StoryPlan, analyses: [AnalysisResult], frames: [PerceptualRenderedFrameEvidence], findings: [EditorialFinding], units suppliedUnits: [UUID: EditorialUnit]? = nil) -> [EditorialDomainEvidence] {
++        // All records belong to this immutable snapshot. Encode it once, before
++        // entering nested setters/filters, instead of copying the large value
++        // and JSON-encoding it again for every domain and semantic claim.
++        let renderSignature = EditorialRenderSignature.signature(timeline)
+         let items = timeline.items.filter { $0.overlay == nil && $0.kind != .title }.sorted { $0.timelineStart < $1.timelineStart }
+         let ids = items.map(\.id)
+         let schedule = EditorialProbeSchedule.times(timeline: timeline)
+@@ -159,7 +166,7 @@
+             records[i].status = passed ? .passed : .failed
+             records[i].confidence = 1
+             records[i].coverage = coverage
+-            records[i].provenance = ["deterministic-verifier-v\(EditorialEvidenceVerifier.version)", EditorialRenderSignature.signature(timeline)]
++            records[i].provenance = ["deterministic-verifier-v\(EditorialEvidenceVerifier.version)", renderSignature]
+             records[i].reason = reason
+             records[i].finding = findings.first { kinds.contains($0.kind) }
+             if !passed, records[i].finding == nil, let kind = kinds.first {
+@@ -179,7 +186,7 @@
+             set(.contentBudgetUpperBound, passed: valid && timeline.duration <= upper + tolerance, reason: "Фактически \(timeline.duration) с; безопасный максимум \(upper) с", kinds: [.durationPadding])
+         }
+         set(.sourceAudioPolicy, passed: !findings.contains { $0.kind == .audioPolicyViolation }, reason: "Проверены embedded и detached дорожки против явного intent", kinds: [.audioPolicyViolation])
+-        let export = frames.compactMap(\.exportVerification).first { $0.renderSignature == EditorialRenderSignature.signature(timeline) }
++        let export = frames.compactMap(\.exportVerification).first { $0.renderSignature == renderSignature }
+         if let export {
+             set(.previewExportParity, passed: export.aspectRatioMatches && export.durationDifference <= 2 / max(1, timeline.frameRate) && export.probes.allSatisfy(\.passed), coverage: EditorialProbeSchedule.coverage(required: schedule, observed: export.probes.filter(\.passed).map(\.time)), reason: export.provenance, kinds: [.previewExportMismatch])
+         }
+@@ -194,21 +201,33 @@
+             }
+         }
+         if hasTitles {
+-            let titles = timeline.effectiveTitleItems.filter(\.enabled)
+-            let observed = titles.filter { title in decoded.contains { $0.timelineTime >= title.startTime && $0.timelineTime <= title.endTime && $0.titleReadability != nil } }
+-            if !observed.isEmpty {
+-                set(.titleReadability, passed: !frames.contains { $0.expectedVisibleContent && ($0.titleReadability ?? 1) < 0.5 }, coverage: Double(observed.count) / Double(titles.count), reason: "OCR читаемой части каждого титра", kinds: [.unreadableTitle])
+-            }
+-        }
++            let previewTitles = frames.flatMap { $0.titleEvidence ?? [] }
++            let previewStatus = TitleReadabilityInspector.coverage(timeline: timeline, evidence: previewTitles, source: "preview")
++            let deliveryStatus = TitleReadabilityInspector.coverage(timeline: timeline, evidence: export?.titleEvidence ?? [], source: "mp4")
++            if !previewTitles.isEmpty && (export != nil || !previewStatus.passed) {
++                set(.titleReadability, passed: previewStatus.passed && deliveryStatus.passed,
++                    coverage: previewStatus.complete && deliveryStatus.complete ? 1 : 0,
++                    reason: "OCR каждого титра: начало/середина/конец читаемого показа, отдельно композиция и MP4; порог 0.5",
++                    kinds: [.unreadableTitle])
++            }
++        }
++
+         // Localized independent semantic claims can fill only semantic domains.
+         // They cannot override duration, audio, decode, CAS or parity checks.
+         let semantic: Set<EditorialEvidenceDomain> = [.subjectCoverage, .faceSafety, .bodySafety, .foregroundOcclusion, .dominantForegroundObject, .shotFamilyIdentity, .visualNovelty, .actionProgression, .momentCompletion, .hookFulfillment, .closureFulfillment, .eventBridge, .titleGrounding, .telemetryMeaningfulness, .musicNarrativeFit]
+         let claims = frames.flatMap { $0.editorialClaims ?? [] }
++        // Visibility is independent of the evidence domain. Mapping a timeline
++        // time through every transition is expensive on long montages; retain
++        // the same points once and apply only the domain's item scope below.
++        let visibleSchedule = claims.isEmpty ? [] : schedule.filter { time in
++            FilmEndingFade.expectsVisibleContent(atTimelineTime: time, timeline: timeline)
++                && !NaturalChapterTransitionPlanner.expectsCoveredSource(at: time, timeline: timeline)
++        }
+         for domain in semantic {
+             let index = records.firstIndex { $0.domain == domain }!
+             let relevant: [UUID] = domain == .hookFulfillment ? Array(ids.prefix(1)) : domain == .closureFulfillment ? Array(ids.suffix(1)) : ids
+             let valid = claims.filter { claim in
+-                claim.domain == domain && claim.renderSignature == EditorialRenderSignature.signature(timeline)
++                claim.domain == domain && claim.renderSignature == renderSignature
+                     && claim.confidence.isFinite && (0.7...1).contains(claim.confidence)
+                     && !claim.observation.isEmpty && !claim.method.isEmpty && !claim.itemIDs.isEmpty
+                     && Set(claim.itemIDs).isSubset(of: Set(ids)) && Set(claim.probeTimes).count >= 2
+@@ -219,10 +238,8 @@
+             }
+             guard !valid.isEmpty else { continue }
+             let times = valid.flatMap(\.probeTimes)
+-            let requiredTimes = schedule.filter { time in
+-                FilmEndingFade.expectsVisibleContent(atTimelineTime: time, timeline: timeline) &&
+-                    !NaturalChapterTransitionPlanner.expectsCoveredSource(at: time, timeline: timeline) &&
+-                    items.contains { relevant.contains($0.id) && time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration }
++            let requiredTimes = visibleSchedule.filter { time in
++                items.contains { relevant.contains($0.id) && time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration }
+             }
+             records[index].coverage = EditorialProbeSchedule.coverage(required: requiredTimes, observed: times)
+             records[index].confidence = valid.map(\.confidence).min() ?? 0
+--- baseline/Sources/VeloEditCore/FilmBuildProgress.swift
++++ current/Sources/VeloEditCore/FilmBuildProgress.swift
+@@ -90,3 +90,35 @@
+         }
+     }
+ }
++
++/// Counts every producer update while limiting UI delivery to 10 Hz. Stage
++/// changes and terminal counts are never suppressed.
++actor FilmBuildProgressRelay {
++    private var stage: FilmBuildProgress.Stage?
++    private var lastDelivery = -Double.infinity
++    private var span: String?
++    private let trace: PerformanceTrace?
++    private let observer: FilmBuildProgressHandler?
++    init(trace: PerformanceTrace?, observer: FilmBuildProgressHandler?) {
++        self.trace = trace; self.observer = observer
++    }
++    func report(_ update: FilmBuildProgress) async {
++        trace?.event("film.progress.requested", fields: ["stage": update.stage.rawValue])
++        let changed = stage != update.stage
++        if changed {
++            if let stage { trace?.end(span, stage: "film.stage.\(stage.rawValue)") }
++            stage = update.stage
++            span = trace?.begin("film.stage.\(update.stage.rawValue)")
++        }
++        let now = ProcessInfo.processInfo.systemUptime
++        let terminal = update.total.map { $0 > 0 && (update.completed ?? -1) >= $0 } ?? false
++        guard changed || terminal || now - lastDelivery >= 0.1 else { return }
++        lastDelivery = now
++        trace?.event("film.progress.delivered", fields: ["stage": update.stage.rawValue])
++        await observer?(update)
++    }
++    func finish(status: String) {
++        if let stage { trace?.end(span, stage: "film.stage.\(stage.rawValue)", status: status) }
++        stage = nil; span = nil
++    }
++}
+--- baseline/Sources/VeloEditCore/PerceptualReview.swift
++++ current/Sources/VeloEditCore/PerceptualReview.swift
+@@ -188,6 +188,8 @@
+     /// high-contrast vertical foreground object (for example a nearby pole).
+     public var verticalOccluderScore: Double?
+     public var titleReadability: Double?
++    public var titleEvidence: [TitleReadabilityEvidence]?
++    public var actualPTS: Double?
+     public var decodeFailed: Bool?
+     public var timelineTime: Double
+     public var meanLuma: Double
+@@ -1259,11 +1261,16 @@
+     public func inspectAsync(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096) async -> [PerceptualRenderedFrameEvidence] {
+         guard !Task.isCancelled else { return [] }
+         let cancellation = EditorialProbeCancellation()
++        let trace = PerformanceTrace.current
++        let queued = trace?.begin("preview.queue")
+         return await withTaskCancellationHandler {
+             await FilmBuildReporting.forwarding { report in
+                 await withCheckedContinuation { continuation in
+                     Self.decodeQueue.async {
+-                        continuation.resume(returning: inspect(playback: playback, timeline: timeline, maximumSamples: maximumSamples, cancellationCheck: { cancellation.isCancelled }, progress: report))
++                        trace?.end(queued, stage: "preview.queue")
++                        let span = trace?.begin("preview.inspect", fields: ["signature": EditorialRenderSignature.signature(timeline)])
++                        defer { trace?.end(span, stage: "preview.inspect", status: cancellation.isCancelled ? "cancelled" : "success") }
++                        continuation.resume(returning: inspect(playback: playback, timeline: timeline, maximumSamples: maximumSamples, cancellationCheck: { cancellation.isCancelled }, progress: report, trace: trace))
+                     }
+                 }
+             }
+@@ -1273,7 +1280,7 @@
+     /// Samples cut neighborhoods, effect/title/telemetry centers and a bounded
+     /// set of film positions from the actual AVComposition. It is not a second
+     /// full render and reuses PlaybackEngine's proxy/derived-media cache.
+-    public func inspect(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096, cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }, progress: (@Sendable (FilmBuildProgress) -> Void)? = nil) -> [PerceptualRenderedFrameEvidence] {
++    public func inspect(playback: TimelinePlayback, timeline: Timeline, maximumSamples: Int = 4096, cancellationCheck: @Sendable () -> Bool = { Task.isCancelled }, progress: (@Sendable (FilmBuildProgress) -> Void)? = nil, trace: PerformanceTrace? = nil) -> [PerceptualRenderedFrameEvidence] {
+         let limit = min(max(4, maximumSamples), 4096)
+         let frameStep = 1 / max(15, timeline.frameRate)
+         let endingFade = FilmEndingFade(duration: timeline.endingFadeDuration, movieDuration: playback.duration, frameRate: timeline.frameRate)
+@@ -1305,6 +1312,9 @@
+         // production review from accumulating every 5K source decoder.
+         let decodeChunkSize = 8
+         var generator = makeGenerator()
++        let titleGenerator = makeGenerator()
++        titleGenerator.maximumSize = TitleReadabilityInspector.maximumSize
++        defer { titleGenerator.cancelAllCGImageGeneration() }
+         var result: [PerceptualRenderedFrameEvidence] = []
+         var previousHash: UInt64?
+         var repeatedHashCount = 0
+@@ -1318,7 +1328,12 @@
+             }
+             let playbackTime = min(max(0, playback.duration - frameStep), TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline))
+             let rendered: PerceptualRenderedFrameEvidence = autoreleasepool {
+-                guard let image = try? generator.copyCGImage(at: CMTime(seconds: playbackTime, preferredTimescale: 600), actualTime: nil) else {
++                var actual = CMTime.invalid
++                let decodeSpan = trace?.begin("frame.decode", fields: ["purpose": "preview", "signature": EditorialRenderSignature.signature(timeline), "requested": String(playbackTime), "maximumSize": "640", "tolerance": "0/600"])
++                let decoded = try? generator.copyCGImage(at: CMTime(seconds: playbackTime, preferredTimescale: 600), actualTime: &actual)
++                trace?.end(decodeSpan, stage: "frame.decode", status: decoded == nil ? "failed" : "success")
++                trace?.event("frame.pts", fields: ["purpose": "preview"], values: ["requested": playbackTime, "actual": actual.seconds.isFinite ? actual.seconds : -1])
++                guard let image = decoded else {
+                     var failure = PerceptualRenderedFrameEvidence(timelineTime: time, meanLuma: 0, lumaDeviation: 0, isBlack: false, source: "AVComposition decode failed")
+                     failure.decodeFailed = true
+                     return failure
+@@ -1339,6 +1354,7 @@
+                     source: "AVComposition selective preview"
+                 )
+                 rendered.decodeFailed = false
++                rendered.actualPTS = actual.seconds
+                 rendered.lumaFingerprint = Self.lumaFingerprint(image)
+                 let humanRequest = VNDetectHumanRectanglesRequest()
+                 humanRequest.upperBodyOnly = false
+@@ -1362,24 +1378,20 @@
+                     }
+                 }
+                 rendered.verticalOccluderScore = Self.verticalOccluderScore(rendered.lumaFingerprint ?? [], subjects: rendered.renderedSubjects ?? [])
+-                let readableTitles = timeline.effectiveTitleItems.filter { title in
+-                    guard title.enabled else { return false }
+-                    let template = TitleTemplateRegistry.template(for: title)
+-                    let stagger = Double(template?.layout.elements.map(\.staggerIndex).max() ?? 0)
+-                    let entrance = (template?.animation.animationIn.duration ?? 0.35) + stagger * (template?.animation.animationIn.stagger ?? 0)
+-                    let exit = (template?.animation.animationOut.duration ?? 0.35) + stagger * (template?.animation.animationOut.stagger ?? 0)
+-                    // Check readable hold, not a deliberately partial animated reveal.
+-                    return time >= title.startTime + min(title.duration / 2, entrance + 0.05)
+-                        && time <= title.endTime - min(title.duration / 2, exit + 0.05)
+-                }
++                let readableTitles = TitleReadabilityInspector.titles(at: time, timeline: timeline)
+                 if !readableTitles.isEmpty {
+-                    let request = VNRecognizeTextRequest()
+-                    request.recognitionLevel = .accurate
+-                    request.recognitionLanguages = ["ru-RU", "en-US"]
+-                    if (try? handler.perform([request])) != nil {
+-                        let recognized = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ").lowercased()
+-                        let expected = readableTitles.flatMap { $0.text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) }
+-                        rendered.titleReadability = expected.isEmpty ? 1 : Double(expected.filter { recognized.contains($0) }.count) / Double(expected.count)
++                    var titlePTS = CMTime.invalid
++                    let titleImage = try? titleGenerator.copyCGImage(at: CMTime(seconds: playbackTime, preferredTimescale: 600), actualTime: &titlePTS)
++                    rendered.titleEvidence = readableTitles.map {
++                        TitleReadabilityInspector.inspect(image: titleImage, title: $0, timeline: timeline,
++                            time: time, actualPTS: titlePTS.seconds.isFinite ? titlePTS.seconds : nil, source: "preview")
++                    }
++                    rendered.titleReadability = rendered.titleEvidence?.map(\.score).min()
++                    for evidence in rendered.titleEvidence ?? [] {
++                        trace?.event("title.ocr", fields: ["titleID": evidence.titleID.uuidString, "signature": evidence.renderSignature,
++                            "source": evidence.source, "recognized": evidence.recognizedText, "failure": evidence.failure ?? ""],
++                            values: ["requested": playbackTime, "actualPTS": evidence.actualPTS ?? -1, "score": evidence.score,
++                                     "width": Double(evidence.pixelWidth), "height": Double(evidence.pixelHeight)])
+                     }
+                 }
+                 previousHash = hash
+--- baseline/Sources/VeloEditCore/PerformanceTrace.swift
++++ current/Sources/VeloEditCore/PerformanceTrace.swift
+@@ -5,6 +5,7 @@
+ /// No media, prompts or images are written. Unavailable measurements stay absent.
+ public final class PerformanceTrace: @unchecked Sendable {
+     @TaskLocal public static var current: PerformanceTrace?
++    @TaskLocal public static var parentSpan: String?
+     public let operationID = UUID()
+     private let started = ProcessInfo.processInfo.systemUptime
+     private let lock = NSLock()
+@@ -45,6 +46,7 @@
+     }
+ 
+     public static func measure<T>(name: String, projectID: UUID? = nil, revision: String? = nil,
++                                  fields: [String: String] = [:],
+                                   operation: () async throws -> T) async rethrows -> T {
+         // Nested pipeline operations retain the parent correlation ID.
+         let trace = current ?? PerformanceTrace(name: name, projectID: projectID, revision: revision)
+@@ -52,8 +54,12 @@
+         let span = UUID().uuidString
+         let signpost = OSSignpostID(log: trace.log)
+         os_signpost(.begin, log: trace.log, name: "Operation", signpostID: signpost, "%{public}s", name)
+-        trace.event("span.begin", fields: ["span": span, "stage": name])
++        var metadata = fields
++        metadata.merge(["span": span, "stage": name, "parent": parentSpan ?? "",
++                        "revision": revision ?? ""]) { _, new in new }
++        trace.event("span.begin", fields: metadata)
+         return try await $current.withValue(trace) {
++          try await $parentSpan.withValue(span) {
+             do {
+                 let result = try await operation()
+                 trace.event("span.end", fields: ["span": span, "stage": name, "status": "success"])
+@@ -67,6 +73,22 @@
+                 if ownsTrace { trace.finish(status: status) }
+                 throw error
+             }
++          }
+         }
+     }
++
++    /// Synchronous work (including dispatch queues) retains the same clock and
++    /// parent as async work. Callers on another executor pass the captured trace.
++    public func begin(_ stage: String, fields: [String: String] = [:]) -> String {
++        let span = UUID().uuidString
++        var metadata = fields
++        metadata.merge(["span": span, "stage": stage, "parent": Self.parentSpan ?? ""]) { _, new in new }
++        event("span.begin", fields: metadata)
++        return span
++    }
++
++    public func end(_ span: String?, stage: String, status: String = "success") {
++        guard let span else { return }
++        event("span.end", fields: ["span": span, "stage": stage, "status": status])
++    }
+ }
+--- baseline/Sources/VeloEditCore/ProjectStore.swift
++++ current/Sources/VeloEditCore/ProjectStore.swift
+@@ -449,7 +449,13 @@
+ 
+     @discardableResult
+     private static func write(_ manifest: ProjectManifest, to url: URL, expectedFingerprint: String? = nil) throws -> String {
++        let trace = PerformanceTrace.current
++        let span = trace?.begin("project.save", fields: ["projectID": manifest.id.uuidString, "path": url.path])
++        var outcome = "failed"
++        defer { trace?.end(span, stage: "project.save", status: outcome) }
++        let encode = trace?.begin("project.serialize")
+         let data = try ProjectManifestEncoding.encode(manifest)
++        trace?.end(encode, stage: "project.serialize")
+         do {
+             try withManifestLock(for: url) {
+                 if let expectedFingerprint {
+@@ -464,6 +470,7 @@
+             let nsError = error as NSError
+             throw ProjectStoreError.persistenceFailure(stage: "atomic write", path: url.path, underlying: "\(nsError.domain) \(nsError.code): \(nsError.localizedDescription)")
+         }
++        outcome = "success"
+         return EditorialProjectMigration.hash(data)
+     }
+ 
+--- baseline/Sources/VeloEditCore/TitleReadabilityEvidence.swift
++++ current/Sources/VeloEditCore/TitleReadabilityEvidence.swift
+@@ -0,0 +1,122 @@
++import Foundation
++import CoreGraphics
++import Vision
++
++/// A measurement of one title in actual composited pixels, never a planner's
++/// estimate. Preview and encoded-file observations remain separate receipts.
++public struct TitleReadabilityEvidence: Codable, Hashable, Sendable {
++    public var titleID: UUID
++    public var renderSignature: String
++    public var algorithmVersion: Int
++    public var timelineTime: Double
++    public var actualPTS: Double?
++    public var source: String
++    public var expectedText: String
++    public var recognizedText: String
++    public var confidences: [Double]
++    public var region: NormalizedRegion?
++    public var pixelWidth: Int
++    public var pixelHeight: Int
++    public var score: Double
++    public var failure: String?
++
++    public var passed: Bool { failure == nil && score.isFinite && score >= 0.5 }
++    public func isCurrent(for timeline: Timeline) -> Bool {
++        algorithmVersion == TitleReadabilityInspector.version
++            && renderSignature == EditorialRenderSignature.signature(timeline)
++            && timeline.effectiveTitleItems.contains { $0.id == titleID && $0.enabled && $0.text == expectedText }
++    }
++}
++
++enum TitleReadabilityInspector {
++    static let version = 1
++    // The old 640-pixel whole-frame OCR intermittently lost small outlined
++    // headings. Decode real pixels at 1080p; do not upscale or substitute art.
++    static let maximumSize = CGSize(width: 1920, height: 1920)
++
++    static func holdRange(_ title: TitleTimelineItem, frameRate: Double) -> ClosedRange<Double> {
++        let motion = TitleTemplateRegistry.template(for: title)?.animationFitted(to: title.duration)
++        let stagger = Double(TitleTemplateRegistry.template(for: title)?.layout.elements.map(\.staggerIndex).max() ?? 0)
++        let entrance = title.animation.entrance == .none ? 0 : (motion?.animationIn.duration ?? 0.35) + stagger * (motion?.animationIn.stagger ?? 0)
++        let exit = title.animation.exit == .none ? 0 : (motion?.animationOut.duration ?? 0.35) + stagger * (motion?.animationOut.stagger ?? 0)
++        let margin = 1 / max(15, frameRate)
++        let first = title.startTime + min(title.duration / 2, entrance + margin)
++        let last = title.endTime - min(title.duration / 2, exit + margin)
++        return min(first, last)...max(first, last)
++    }
++
++    static func times(_ title: TitleTimelineItem, frameRate: Double) -> [Double] {
++        let range = holdRange(title, frameRate: frameRate)
++        return Array(Set([range.lowerBound, (range.lowerBound + range.upperBound) / 2, range.upperBound]
++            .map { ($0 * 600).rounded() / 600 })).sorted()
++    }
++
++    static func titles(at time: Double, timeline: Timeline) -> [TitleTimelineItem] {
++        timeline.effectiveTitleItems.filter {
++            $0.enabled && holdRange($0, frameRate: timeline.frameRate).contains(time)
++                || $0.enabled && times($0, frameRate: timeline.frameRate).contains { abs($0 - time) < 1 / 1200 }
++        }
++    }
++
++    static func tokens(_ text: String) -> [String] {
++        text.precomposedStringWithCanonicalMapping.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
++    }
++
++    static func score(expected: String, recognized: String) -> Double {
++        let wanted = tokens(expected)
++        guard !wanted.isEmpty else { return 0 }
++        var available = tokens(recognized)
++        let matched = wanted.reduce(0) { count, word in
++            guard let index = available.firstIndex(of: word) else { return count }
++            available.remove(at: index)
++            return count + 1
++        }
++        return Double(matched) / Double(wanted.count)
++    }
++
++    static func inspect(image: CGImage?, title: TitleTimelineItem, timeline: Timeline,
++                        time: Double, actualPTS: Double?, source: String) -> TitleReadabilityEvidence {
++        var result = TitleReadabilityEvidence(titleID: title.id, renderSignature: EditorialRenderSignature.signature(timeline),
++            algorithmVersion: version, timelineTime: time, actualPTS: actualPTS, source: source,
++            expectedText: title.text, recognizedText: "", confidences: [], pixelWidth: image?.width ?? 0,
++            pixelHeight: image?.height ?? 0, score: 0)
++        guard let image, let actualPTS, actualPTS.isFinite else { result.failure = "decode-failed"; return result }
++        let size = CGSize(width: image.width, height: image.height)
++        let bounds = CGRect(origin: .zero, size: size)
++        let regions = TitleOverlayRenderer.textLayout(item: title, timelineTime: time, renderSize: size)
++            .filter { !$0.requestedText.isEmpty }
++        guard !regions.isEmpty, regions.allSatisfy({
++            bounds.insetBy(dx: -0.5, dy: -0.5).contains($0.bounds) && !$0.bounds.isEmpty
++                && tokens($0.requestedText) == tokens($0.renderedText)
++                && $0.visibility >= 0.9 && $0.textOpacity * title.style.effectiveOpacity >= 0.5
++        }) else { result.failure = "clipped-hidden-or-incomplete-layout"; return result }
++        let rect = regions.reduce(CGRect.null) { $0.union($1.bounds) }.insetBy(dx: -12, dy: -12).intersection(bounds)
++        let roi = CGRect(x: rect.minX / size.width, y: rect.minY / size.height,
++                         width: rect.width / size.width, height: rect.height / size.height)
++        result.region = NormalizedRegion(x: roi.minX, y: roi.minY, width: roi.width, height: roi.height)
++        let request = VNRecognizeTextRequest()
++        request.recognitionLevel = .accurate
++        request.recognitionLanguages = ["ru-RU", "en-US"]
++        request.regionOfInterest = roi
++        do {
++            try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
++            let candidates = (request.results ?? []).compactMap { $0.topCandidates(1).first }
++            result.recognizedText = candidates.map(\.string).joined(separator: " ")
++            result.confidences = candidates.map { Double($0.confidence) }
++            result.score = score(expected: title.text, recognized: result.recognizedText)
++            if result.score < 0.5 { result.failure = "ocr-below-threshold" }
++        } catch { result.failure = "ocr-error: \(error.localizedDescription)" }
++        return result
++    }
++
++    static func coverage(timeline: Timeline, evidence: [TitleReadabilityEvidence], source: String) -> (complete: Bool, passed: Bool) {
++        let titles = timeline.effectiveTitleItems.filter(\.enabled)
++        let current = evidence.filter { $0.source == source && $0.isCurrent(for: timeline) }
++        let complete = titles.allSatisfy { title in
++            times(title, frameRate: timeline.frameRate).allSatisfy { time in
++                current.contains { $0.titleID == title.id && abs($0.timelineTime - time) < 1 / 120 }
++            }
++        }
++        return (complete, complete && current.allSatisfy(\.passed))
++    }
++}
+--- baseline/Sources/VeloEditCore/VeloEditPipeline.swift
++++ current/Sources/VeloEditCore/VeloEditPipeline.swift
+@@ -210,6 +210,36 @@
+             Self.recordMusicCredit(from: timeline, tracks: tracks, in: &project)
+         }
+         return true
++    }
++
++    /// Rechecks the saved edit against an immutable revision. A late review may
++    /// not replace a newer edit. Reuses completed stages, preserving MP4 proof.
++    @discardableResult
++    public func verifyCurrentFilm() async throws -> Timeline {
++        let snapshot = await store.snapshot()
++        let current = snapshot.manifest
++        guard let original = current.timelines.last,
++              let plan = current.storyPlans.first(where: { $0.id == original.storyPlanID }) else {
++            throw NaturalLanguageDirectorError.timelineUnavailable
++        }
++        return try await PerformanceTrace.measure(name: "film.recheck", projectID: current.id, revision: String(snapshot.revision),
++            fields: ["signature": EditorialRenderSignature.signature(original)]) {
++            let tracks = try await musicSystem.tracks()
++            let cache = CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
++            var checked = await Self.editorialRenderReview(timeline: original, plan: plan, assets: current.assets,
++                analyses: current.analyses, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cache,
++                prober: renderedProber, repairsRemaining: 0, events: current.events, normalizePresentation: false)
++            try Task.checkCancellation()
++            checked.filmDeliveryReport = AutomaticFilmDelivery.verifiedReport(for: checked, plan: plan,
++                assets: current.assets, analyses: current.analyses)
++            try await store.update(ifRevision: snapshot.revision) { project in
++                guard let index = project.timelines.indices.last, project.timelines[index].id == original.id else {
++                    throw ProjectStoreError.staleRevision(expected: snapshot.revision, actual: snapshot.revision + 1)
++                }
++                project.timelines[index] = checked
++            }
++            return checked
++        }
+     }
+ 
+     public func snapshot() async -> ProjectManifest {
+@@ -2209,10 +2239,15 @@
+             try await AutonomousJobContext.$store.withValue(store) {
+                 let snapshot = await self.store.snapshot()
+                 return try await PerformanceTrace.measure(name: "film", projectID: snapshot.manifest.id, revision: String(snapshot.revision)) {
+-                    try await self.performFilmJob(request, progress: { update in
+-                        PerformanceTrace.current?.event("film.progress", fields: ["stage": String(describing: update)])
+-                        await observer?(update)
+-                    })
++                    let relay = FilmBuildProgressRelay(trace: PerformanceTrace.current, observer: observer)
++                    do {
++                        let result = try await self.performFilmJob(request, progress: { await relay.report($0) })
++                        await relay.finish(status: "success")
++                        return result
++                    } catch {
++                        await relay.finish(status: error is CancellationError ? "cancelled" : "failed")
++                        throw error
++                    }
+                 }
+             }
+         }
+--- baseline/Tests/VeloEditAppTests/InstantTimelineInteractionTests.swift
++++ current/Tests/VeloEditAppTests/InstantTimelineInteractionTests.swift
+@@ -179,6 +179,31 @@
+         #expect(await model.flushAutosave())
+     }
+ 
++    @Test func queuedSelectionIsNotSilentlyRetargetedAfterClipRemoval() async throws {
++        let fixture = try await Fixture(clipCount: 2)
++        defer { fixture.remove() }
++        let model = fixture.model
++        let original = try #require(model.timeline)
++        model.selectTimelineItem(original.items[0].id)
++        model.isWorking = true
++        model.submitTimelineAIEdit("убери звук выделенного клипа")
++        #expect(model.queuedTimelineAIEditCount == 1)
++        model.project?.timelines[0].items.removeFirst()
++        model.selectTimelineItem(original.items[1].id)
++        model.isWorking = false
++        model.submitTimelineAIEdit("громкость музыки 20%")
++        // The first queued command is rejected immediately against its captured
++        // ID; the newly selected clip is not used as a substitute.
++        #expect(model.status.contains("клип удалён"))
++        #expect(model.timeline?.items.first?.effectiveAudioAdjustments.muted == false)
++        #expect(model.queuedTimelineAIEditCount == 1)
++        let deadline = Date().addingTimeInterval(8)
++        while model.queuedTimelineAIEditCount > 0 || model.isWorking {
++            guard Date() < deadline else { Issue.record("Queue did not drain"); break }
++            try await Task.sleep(for: .milliseconds(20))
++        }
++    }
++
+     private struct Fixture {
+         let root: URL
+         let url: URL
+--- baseline/Tests/VeloEditCoreTests/EditorialFixtureProber.swift
++++ current/Tests/VeloEditCoreTests/EditorialFixtureProber.swift
+@@ -12,6 +12,12 @@
+             var frame = PerceptualRenderedFrameEvidence(timelineTime: time, meanLuma: 0.5, lumaDeviation: 0.2, isBlack: false, source: "Explicit synthetic orchestration fixture; not real media")
+             frame.decodeFailed = false
+             frame.titleReadability = 1
++            frame.titleEvidence = TitleReadabilityInspector.titles(at: time, timeline: timeline).map { title in
++                TitleReadabilityEvidence(titleID: title.id, renderSignature: EditorialRenderSignature.signature(timeline),
++                    algorithmVersion: TitleReadabilityInspector.version, timelineTime: time, actualPTS: time,
++                    source: "preview", expectedText: title.text, recognizedText: title.text, confidences: [1],
++                    pixelWidth: 1920, pixelHeight: 1080, score: 1)
++            }
+             return frame
+         }
+         guard !frames.isEmpty else { return frames }
+@@ -19,6 +25,10 @@
+             EditorialSemanticClaim(domain: domain, status: .passed, itemIDs: items.map(\.id), probeTimes: times.filter { time in items.contains { time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration } }, confidence: 1, observation: "Synthetic independent semantic fixture for orchestration only", method: "FixtureEditorialProber", renderSignature: EditorialRenderSignature.signature(timeline), finding: nil)
+         }
+         frames[0].exportVerification = EditorialExportVerification(renderSignature: EditorialRenderSignature.signature(timeline), probes: times.map { .init(time: $0, decoded: true, hashDistance: 0, meanLumaDifference: 0, meanAbsolutePixelDifference: 0) }, durationDifference: 0, aspectRatioMatches: true, encodedAudio: .init(integratedLUFS: -16, truePeakDBTP: -2, appliedGainDB: 0, outputLUFS: -16, outputTruePeakDBTP: -2, peakLimited: false, measuredFrames: Int(timeline.duration * 48_000)), provenance: "Explicit synthetic export fixture; no claim about real encode")
++        let deliveryTitles = frames.flatMap { $0.titleEvidence ?? [] }.map {
++            var value = $0; value.source = "mp4"; return value
++        }
++        frames[0].exportVerification?.titleEvidence = deliveryTitles
+         return frames
+     }
+ }
+--- baseline/Tests/VeloEditCoreTests/FilmSpeedAndTitlesTests.swift
++++ current/Tests/VeloEditCoreTests/FilmSpeedAndTitlesTests.swift
+@@ -0,0 +1,161 @@
++import Foundation
++import CoreGraphics
++import Testing
++@testable import VeloEditCore
++
++@Suite(.serialized)
++struct FilmSpeedAndTitlesTests {
++    func fixture() -> (Timeline, TitleTimelineItem) {
++        var title = TitleTemplateRegistry.template(id: "title.minimal-clean.v1")!.previewItem()
++        title.text = "В дороге"
++        title.startTime = 0
++        title.duration = 3.5
++        title.animation = .init(entrance: .none, exit: .none, duration: 0)
++        title.style = EditorialPresentationPolicy.compactChapterStyle
++        let timeline = Timeline(storyPlanID: UUID(), items: [.init(kind: .video, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)], titleItems: [title])
++        return (timeline, title)
++    }
++
++    func image(title: TitleTimelineItem, size: CGSize, background: CGFloat = 0.1, blank: Bool = false) throws -> CGImage {
++        let context = try #require(CGContext(data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8,
++            bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
++        context.setFillColor(CGColor(gray: background, alpha: 1)); context.fill(CGRect(origin: .zero, size: size))
++        if !blank {
++            let overlay = try #require(TitleOverlayRenderer.cgImage(item: title, timelineTime: 1.75, renderSize: size))
++            context.draw(overlay, in: CGRect(origin: .zero, size: size))
++        }
++        return try #require(context.makeImage())
++    }
++
++    @Test func titleOCRUsesRealPixelsAndRejectsNegativeExamples() throws {
++        let (timeline, title) = fixture()
++        for size in [CGSize(width: 1920, height: 1080), CGSize(width: 1080, height: 1920)] {
++            let pixels = try image(title: title, size: size)
++            let read = TitleReadabilityInspector.inspect(image: pixels, title: title, timeline: timeline, time: 1.75, actualPTS: 1.75, source: "preview")
++            #expect(read.passed, "\(read)")
++            #expect(read.recognizedText.lowercased().contains("дороге"))
++            let blank = try image(title: title, size: size, blank: true)
++            #expect(!TitleReadabilityInspector.inspect(image: blank, title: title, timeline: timeline, time: 1.75, actualPTS: 1.75, source: "preview").passed)
++            var lowContrast = title
++            lowContrast.style.textColorHex = "#FFFFFF"
++            lowContrast.style.shadow = 0
++            lowContrast.style.strokeWidth = 0
++            lowContrast.style.backgroundOpacity = 0
++            let white = try image(title: lowContrast, size: size, background: 1)
++            #expect(!TitleReadabilityInspector.inspect(image: white, title: lowContrast, timeline: timeline, time: 1.75, actualPTS: 1.75, source: "preview").passed)
++            var outside = title; outside.style.xPosition = 3
++            #expect(!TitleReadabilityInspector.inspect(image: pixels, title: outside, timeline: timeline, time: 1.75, actualPTS: 1.75, source: "preview").passed)
++            var tiny = title; tiny.style.opacity = 0.05
++            let invisible = try image(title: tiny, size: size)
++            #expect(!TitleReadabilityInspector.inspect(image: invisible, title: tiny, timeline: timeline, time: 1.75, actualPTS: 1.75, source: "preview").passed)
++            let clipped = try #require(pixels.cropping(to: CGRect(x: 0, y: 0, width: size.width / 10, height: size.height)))
++            #expect(!TitleReadabilityInspector.inspect(image: clipped, title: title, timeline: timeline, time: 1.75, actualPTS: 1.75, source: "preview").passed)
++        }
++        #expect(!TitleReadabilityInspector.inspect(image: nil, title: title, timeline: timeline, time: 1.75, actualPTS: nil, source: "mp4").passed)
++    }
++
++    @Test func tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() {
++        #expect(TitleReadabilityInspector.score(expected: "В дороге", recognized: "В ДОРОГЕ") == 1)
++        #expect(TitleReadabilityInspector.score(expected: "дома", recognized: "домашний") == 0)
++        #expect(TitleReadabilityInspector.score(expected: "да да да", recognized: "да") == 1.0 / 3)
++        #expect(TitleReadabilityInspector.score(expected: "на\nприроде", recognized: "На природе!") == 1)
++        #expect(TitleReadabilityInspector.score(expected: "Багги", recognized: "") == 0)
++    }
++
++    @Test func everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() {
++        let (timeline, title) = fixture()
++        let times = TitleReadabilityInspector.times(title, frameRate: 30)
++        #expect(times.count == 3)
++        #expect(times.first! < 0.04 && times.last! > 3.46)
++        let evidence = times.map { time in
++            TitleReadabilityEvidence(titleID: title.id, renderSignature: EditorialRenderSignature.signature(timeline), algorithmVersion: TitleReadabilityInspector.version,
++                timelineTime: time, actualPTS: time, source: "preview", expectedText: title.text, recognizedText: title.text, confidences: [1], pixelWidth: 1920, pixelHeight: 1080, score: 1)
++        }
++        #expect(TitleReadabilityInspector.coverage(timeline: timeline, evidence: evidence, source: "preview").passed)
++        #expect(!TitleReadabilityInspector.coverage(timeline: timeline, evidence: Array(evidence.prefix(1)), source: "preview").complete)
++        #expect(!TitleReadabilityInspector.coverage(timeline: timeline, evidence: evidence, source: "mp4").passed)
++        var edited = timeline; edited.titleItems?[0].style.fontSize = 99
++        #expect(!evidence[0].isCurrent(for: edited))
++        #expect(!TitleReadabilityInspector.coverage(timeline: edited, evidence: evidence, source: "preview").complete)
++    }
++
++    @Test func previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() async throws {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        defer { try? FileManager.default.removeItem(at: root) }
++        let (timeline, _) = fixture()
++        let cache = RenderedProbeCache(directory: root, visualOnly: true)
++        var frame = PerceptualRenderedFrameEvidence(timelineTime: 1.75, meanLuma: 80, lumaDeviation: 10, isBlack: false)
++        frame.decodeFailed = false
++        try await cache.store([frame], timeline: timeline, assets: [])
++        var audio = timeline; audio.originalAudioVolume = 0.2
++        #expect(await cache.load(timeline: audio, assets: []) != nil)
++        var title = timeline; title.titleItems?[0].text = "Утро"
++        #expect(await cache.load(timeline: title, assets: []) == nil)
++        let file = try #require(FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).first)
++        var data = try Data(contentsOf: file); data[data.count / 2] ^= 1; try data.write(to: file)
++        #expect(await cache.load(timeline: timeline, assets: []) == nil)
++    }
++
++    @Test func renderDependenciesIncludeCurrentSourceAndProxyBytes() throws {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
++        defer { try? FileManager.default.removeItem(at: root) }
++        let source = root.appendingPathComponent("source.mov"), proxy = root.appendingPathComponent("proxy.mov")
++        try Data([1,2,3]).write(to: source); try Data([1,2,3]).write(to: proxy)
++        let asset = MediaAsset(originalURL: source, kind: .video, byteSize: 3, contentHash: "imported", metadata: .init(duration: 5))
++        var (timeline, _) = fixture(); timeline.items[0].assetID = asset.id
++        func key() -> String { EditorialRenderDependencies.signature(timeline: timeline, assets: [asset], tracks: [], preferredVideoSources: [asset.id: proxy]) }
++        let first = key(); #expect(first == key())
++        try Data([3,2,1]).write(to: source, options: .atomic); let second = key(); #expect(first != second)
++        try Data([3,2,1]).write(to: proxy, options: .atomic); #expect(second != key())
++    }
++
++    @Test func receiptRejectsSameSizeReplacementWithRestoredModificationDate() throws {
++        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        defer { try? FileManager.default.removeItem(at: file) }
++        try Data([1,2,3]).write(to: file)
++        let info = try FileManager.default.attributesOfItem(atPath: file.path)
++        var receipt = EditorialExportVerification(renderSignature: "fixture", probes: [], durationDifference: 0,
++            aspectRatioMatches: true, provenance: "explicit receipt fixture")
++        receipt.outputURL = file
++        receipt.fileSize = 3
++        receipt.fileModified = info[.modificationDate] as? Date
++        receipt.fileModifiedTime = receipt.fileModified?.timeIntervalSince1970
++        receipt.artifactFileIdentity = FrameCacheKey.sourceIdentity(url: file, contentHash: "export")
++        #expect(receipt.artifactIsCurrent)
++        try Data([3,2,1]).write(to: file, options: .atomic)
++        try FileManager.default.setAttributes([.modificationDate: receipt.fileModified!], ofItemAtPath: file.path)
++        #expect(!receipt.artifactIsCurrent)
++    }
++
++    @Test func telemetrySetInsertionOrderCannotChangeRenderSignature() {
++        let (timeline, _) = fixture()
++        let id = UUID()
++        let names = ["GPS5", "ACCL", "GYRO", "TEMP", "SCAL", "GPSU", "UNIT", "ORIN"]
++        let first = TelemetrySummary(streams: Set(names))
++        let expected = EditorialRenderDependencies.signature(timeline: timeline, assets: [], tracks: [], telemetry: [id: first])
++        for _ in 0..<50 {
++            let reordered = TelemetrySummary(streams: Set(names.shuffled()))
++            #expect(EditorialRenderDependencies.signature(timeline: timeline, assets: [], tracks: [], telemetry: [id: reordered]) == expected)
++        }
++        var changed = first; changed.maxSpeedMetersPerSecond = 10
++        #expect(EditorialRenderDependencies.signature(timeline: timeline, assets: [], tracks: [], telemetry: [id: changed]) != expected)
++    }
++
++    @Test func progressRelayKeepsStageChangesAndCompletion() async {
++        let observer = ProgressCapture()
++        let relay = FilmBuildProgressRelay(trace: nil, observer: { await observer.add($0) })
++        for i in 0...100 { await relay.report(.init(.previewFrames, completed: i, total: 100)) }
++        await relay.report(.init(.controlExport))
++        await relay.finish(status: "cancelled")
++        let updates = await observer.updates
++        #expect(updates.count < 10)
++        #expect(updates.contains { $0.completed == 100 })
++        #expect(updates.last?.stage == .controlExport)
++    }
++}
++
++private actor ProgressCapture {
++    var updates: [FilmBuildProgress] = []
++    func add(_ update: FilmBuildProgress) { updates.append(update) }
++}
+--- baseline/Scripts/film-title-recheck-study.py
++++ current/Scripts/film-title-recheck-study.py
+@@ -0,0 +1,21 @@
++#!/usr/bin/env python3
++"""Recheck a fixed saved timeline without replacing its plan or model answers.
++
++Functional/repeat measurements only. This is not a create-film or GUI benchmark.
++"""
++import argparse,json,os,pathlib,subprocess,time,statistics
++p=argparse.ArgumentParser();p.add_argument('--cli',type=pathlib.Path,required=True);p.add_argument('--project',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--count',type=int,default=1);a=p.parse_args()
++a.output.mkdir(parents=True,exist_ok=False);rows=[]
++for index in range(a.count):
++    env=dict(os.environ,VELOEDIT_TRACE_DIRECTORY=str((a.output/f'trace-{index}').resolve()))
++    started=time.monotonic()
++    with (a.output/f'run-{index}.log').open('w') as log:
++        result=subprocess.run([str(a.cli.resolve()),'verify-film',str(a.project.resolve())],stdout=log,stderr=subprocess.STDOUT,env=env)
++    elapsed=time.monotonic()-started
++    manifest=json.loads((a.project/'project.json').read_text());timeline=manifest['timelines'][-1]
++    report=timeline.get('filmDeliveryReport',{});checks=report.get('requirements',[])
++    rows.append({'index':index,'seconds':elapsed,'exitCode':result.returncode,'passed':sum(x['passed'] for x in checks),'total':len(checks),
++                 'requirements':checks,'signature':report.get('renderSignature'),'titleEvidence':report.get('exportVerification',{}).get('titleEvidence',[])})
++    (a.output/'measurements.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
++    print(index,round(elapsed,3),result.returncode,rows[-1]['passed'],rows[-1]['total'],flush=True)
++    if result.returncode:raise SystemExit(result.returncode)
+--- baseline/Scripts/film-title-trace-summary.py
++++ current/Scripts/film-title-trace-summary.py
+@@ -0,0 +1,23 @@
++#!/usr/bin/env python3
++"""Summarize elapsed intervals without adding parallel work to wall time."""
++import argparse, collections, json, pathlib, statistics
++p=argparse.ArgumentParser();p.add_argument('directory',type=pathlib.Path);p.add_argument('--output',type=pathlib.Path,required=True);a=p.parse_args()
++operations=[]
++for path in sorted(a.directory.rglob('*.jsonl')):
++    try: rows=[json.loads(line) for line in path.read_text().splitlines() if line.strip()]
++    except (ValueError,UnicodeError): continue
++    if not rows or 'elapsed' not in rows[0]:continue
++    starts={};stages=collections.defaultdict(list);pending={};caches=collections.Counter();events=collections.Counter()
++    for row in rows:
++        event=row.get('event','');f=row.get('fields',{});events[event]+=1
++        if event=='span.begin':starts[f['span']]=row;pending[f['span']]=row
++        elif event=='span.end' and f.get('span') in starts:
++            begin=starts[f['span']];duration=row['elapsed']-begin['elapsed'];pending.pop(f['span'],None)
++            stages[f.get('stage',begin['fields']['stage'])].append(duration)
++        elif event=='cache.result':caches[(f.get('cache',''),f.get('result',''),f.get('reason',''))]+=1
++    end=next((r for r in reversed(rows) if r.get('event')=='operation.end'),None)
++    operations.append({'trace':str(path),'wallSeconds':end['elapsed'] if end else None,'status':end.get('fields',{}).get('status') if end else 'incomplete',
++        'intervals':{k:{'count':len(v),'sumExecutionSecondsNotWallTime':sum(v),'medianSeconds':statistics.median(v),'maximumSeconds':max(v)} for k,v in stages.items()},
++        'unclosedSpans':[r['fields'] for r in pending.values()], 'events':dict(events),
++        'cache':[{'cache':k[0],'result':k[1],'reason':k[2],'count':v} for k,v in caches.items()]})
++a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(operations,ensure_ascii=False,indent=2))

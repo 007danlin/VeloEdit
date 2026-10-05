@@ -1,0 +1,64 @@
+Building for debugging...
+[Computing dependencies]
+[2 / 6] VeloEditCore
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:767:37: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 765 |     // Kernels use output coordinates, so portrait and offset render bounds
+ 766 |     // behave the same as landscape. All time variation is deterministic.
+ 767 |     private static let waveKernel = CIWarpKernel(source: """
+     |                                     `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 768 |         kernel vec2 waveWarp(vec4 bounds, float amplitude, float phase, float frequency, float radial) {
+ 769 |             vec2 p = destCoord();
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:778:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 776 |         """)
+ 777 | 
+ 778 |     private static let shapeMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 779 |         kernel vec4 reveal(vec4 bounds, float progress, float softness, float rotation, float mode) {
+ 780 |             vec2 p = destCoord() - bounds.xy - bounds.zw * 0.5;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:802:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 800 |         """)
+ 801 | 
+ 802 |     private static let shardMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 803 |         kernel vec4 shard(vec4 tile, float side) {
+ 804 |             vec2 uv = (destCoord() - tile.xy) / tile.zw;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:893:41: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 891 |     }
+ 892 | 
+ 893 |     private static let rgbSplitKernel = CIColorKernel(source: """
+     |                                         `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 894 |         kernel vec4 splitChannels(__sample red, __sample cyan, __sample original) {
+ 895 |             vec4 r = unpremultiply(red);
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[3 / 7] VeloEditCore
+[8 / 11] VeloEditCore
+[9 / 11] VeloEditCore
+[10 / 12] VeloEditCore
+[11 / 14] VeloEdit-product
+[12 / 14] VeloEdit-product
+[14 / 15] VeloEditAppTests-product
+[15 / 16] VeloEditAppTests-product
+[16 / 16] VeloEditAppTests-product
+[17 / 18] VeloEditCoreTests-product
+[19 / 19] VeloEditCoreTests-product
+[21 / 22] veloedit-cli-product
+[22 / 22] veloedit-cli-product
+Build complete! (28,59 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ApplicationAuditRegressionTests started.
+◇ Test titleStylesBelongToTheirTitlesWithUniqueIDs() started.
+✔ Test titleStylesBelongToTheirTitlesWithUniqueIDs() passed after 0.028 seconds.
+◇ Test exportedTitlesEffectsAndTransitionsPassFinalCutDTD() started.
+✔ Test exportedTitlesEffectsAndTransitionsPassFinalCutDTD() passed after 0.064 seconds.
+◇ Test mixedFolderImportReportsEachFileAndPersistsRetryResults() started.
+✔ Test mixedFolderImportReportsEachFileAndPersistsRetryResults() passed after 0.109 seconds.
+◇ Test longUnbrokenTitlesRemainBoundedAcrossTemplatesAndFrames() started.
+✔ Test longUnbrokenTitlesRemainBoundedAcrossTemplatesAndFrames() passed after 0.529 seconds.
+✔ Suite ApplicationAuditRegressionTests passed after 0.733 seconds.
+✔ Test run with 4 tests in 1 suite passed after 0.734 seconds.

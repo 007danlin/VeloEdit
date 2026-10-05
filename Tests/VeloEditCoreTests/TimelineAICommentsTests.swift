@@ -821,7 +821,7 @@ import Testing
     #expect(abs(localFreeze.timelineStart - 2) < 0.000_1)
 }
 
-@Test func timelineAICommentsRejectLocalSplitWithoutDamagingAttachments() async throws {
+@Test func timelineAICommentsSplitLocalRangeWithoutDamagingAttachments() async throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString)
         .appendingPathExtension("veloedit")
@@ -865,9 +865,17 @@ import Testing
     )
     let after = await store.snapshot()
 
-    #expect(!report.hasChanges)
-    #expect(report.ignored.contains { $0.contains("небезопасна") })
-    #expect(after.manifest.timelines == before.manifest.timelines)
-    #expect(after.manifest.timelineCheckpoints == before.manifest.timelineCheckpoints)
-    #expect(after.revision == before.revision)
+    #expect(report.hasChanges)
+    #expect(report.ignored.isEmpty)
+    let result = try #require(after.manifest.timelines.last)
+    #expect(result.items.map(\.timelineDuration) == [2, 2, 2, 2])
+    #expect(result.effectiveAudioClips.map(\.timelineDuration) == [2, 2, 2, 2])
+    #expect(result.effectiveAudioClips.map(\.sourceStart) == [0, 2, 4, 6])
+    #expect(result.effectiveTitleItems.map(\.duration) == [2, 2, 2, 2])
+    for (clip, title) in zip(result.items, result.effectiveTitleItems) {
+        #expect(title.targetClipID == clip.id)
+        #expect(title.startTime == clip.timelineStart)
+    }
+    #expect((after.manifest.timelineCheckpoints?.count ?? 0) == (before.manifest.timelineCheckpoints?.count ?? 0) + 1)
+    #expect(after.revision > before.revision)
 }

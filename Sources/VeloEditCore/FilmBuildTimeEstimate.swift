@@ -64,6 +64,14 @@ public struct FilmBuildTimeEstimate {
     private var child: Work?
     private var isFinished = false
 
+    /// Until this Mac has measured the current operation, a workload heuristic
+    /// is useful internally but is not a trustworthy countdown for the user.
+    public var hasMeasuredPace: Bool {
+        work.measuredCompletion != nil || work.suppliedCompletion != nil
+            || child?.measuredCompletion != nil || child?.suppliedCompletion != nil
+            || calibration[step.rawValue] != nil
+    }
+
     public init(
         sourceSeconds: Double, assetCount: Int, filmSeconds: Double,
         needsAnalysis: Bool, includesMusic: Bool,

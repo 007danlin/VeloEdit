@@ -79,10 +79,20 @@ extension VeloEditPipeline {
 }
 
 enum PortableProjectPaths {
+    static func needsRelocation(_ paths: [String: String]?, to package: URL) -> Bool {
+        paths?.contains { original, relative in
+            isSafe(relative) && original != package.appendingPathComponent(relative).absoluteString
+        } == true
+    }
+
+    private static func isSafe(_ relative: String) -> Bool {
+        !relative.hasPrefix("/") && !relative.split(separator: "/").contains("..")
+    }
+
     static func relocate(_ data: Data, to package: URL) throws -> Data {
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let paths = object["packagedFilePaths"] as? [String: String], !paths.isEmpty else { return data }
-        let safe = paths.filter { !$0.value.hasPrefix("/") && !$0.value.split(separator: "/").contains("..") }
+        let safe = paths.filter { isSafe($0.value) }
         let mapped = safe.mapValues { package.appendingPathComponent($0).absoluteString }
         let roots = Set(safe.compactMap { key, relative -> String? in
             guard var url = URL(string: key), url.isFileURL else { return nil }

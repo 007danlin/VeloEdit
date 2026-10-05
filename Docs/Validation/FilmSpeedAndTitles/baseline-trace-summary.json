@@ -1,0 +1,59 @@
+[
+  {
+    "trace": "Build/Performance/film-speed-and-titles/baseline-functional/film-traces/3CA12D9C-C99F-4CDF-8377-5742AFCFA4C3.jsonl",
+    "wallSeconds": 492.873303291668,
+    "status": "success",
+    "intervals": {
+      "analysis": {
+        "count": 1,
+        "sumExecutionSecondsNotWallTime": 280.698760291667,
+        "medianSeconds": 280.698760291667,
+        "maximumSeconds": 280.698760291667
+      },
+      "film": {
+        "count": 1,
+        "sumExecutionSecondsNotWallTime": 492.8720750416687,
+        "medianSeconds": 492.8720750416687,
+        "maximumSeconds": 492.8720750416687
+      }
+    },
+    "unclosedSpans": [],
+    "events": {
+      "operation.begin": 1,
+      "span.begin": 2,
+      "stage.begin": 33,
+      "stage.end": 33,
+      "film.progress": 5179,
+      "frame.decode": 1109,
+      "frame.vision": 1109,
+      "frame.evaluated": 1168,
+      "vlm.evaluated": 3,
+      "vlm.runtime": 2,
+      "span.end": 2,
+      "sequence.computed": 11,
+      "operation.end": 1
+    },
+    "cache": []
+  },
+  {
+    "trace": "Build/Performance/film-speed-and-titles/baseline-functional/save-video-traces/9B11C97F-67C8-4842-953E-837E87A7B419.jsonl",
+    "wallSeconds": 125.3112260416674,
+    "status": "success",
+    "intervals": {
+      "export": {
+        "count": 1,
+        "sumExecutionSecondsNotWallTime": 125.310037166666,
+        "medianSeconds": 125.310037166666,
+        "maximumSeconds": 125.310037166666
+      }
+    },
+    "unclosedSpans": [],
+    "events": {
+      "operation.begin": 1,
+      "span.begin": 1,
+      "span.end": 1,
+      "operation.end": 1
+    },
+    "cache": []
+  }
+]

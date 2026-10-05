@@ -1,0 +1,11 @@
+{
+  "savedManualText": [
+    "Ручное название"
+  ],
+  "itemsUnchanged": true,
+  "musicUnchanged": true,
+  "partIDsUnchanged": true,
+  "reopenedInApp": true,
+  "exportedThroughApp": "ui-wide.mp4",
+  "testedBundle": "APFS clone of final bundle, with isolated CFBundleIdentifier only"
+}

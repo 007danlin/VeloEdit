@@ -12,7 +12,7 @@ public enum TitleEditInterpreter {
         let text = normalized(instruction.replacingOccurrences(of: #"[«“\"][^»”\"]+[»”\"]"#, with: "", options: .regularExpression))
         guard DirectorRequestIntentInterpreter().mode(for: instruction) == .edit else { return false }
         // Keep wider montage requests on their existing execution path.
-        guard !["фильм", "монтаж", "музык", "звук", "клип", "ролик", "видео", "переход", "все титры", "всех титр"]
+        guard !["фильм", "монтаж", "музык", "звук", "клип", "ролик", "видео", "переход", "эффект", "все титры", "всех титр"]
             .contains(where: text.contains) else { return false }
         return ["титр", "глав", "надпис", "подзаголов", "шрифт", "текст"].contains(where: text.contains)
             || applying(instruction, to: TitleTimelineItem(kind: .title, text: "", startTime: 0, duration: 3)) != nil
@@ -43,16 +43,23 @@ public enum TitleEditInterpreter {
             ("title.end-card.v1", ["финальн", "конечн"]),
             ("title.minimal-clean.v1", ["минимал", "простым", "чистым"])
         ]
+        let isCaption = original.speechAnchor != nil || [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains(original.kind)
         let named = TitleTemplateRegistry.all.first { template in
+            guard template.category != .captions || isCaption || text.contains(template.id) else { return false }
             let escaped = NSRegularExpression.escapedPattern(for: template.name.lowercased())
             return text.range(of: "\\b" + escaped + "\\b", options: .regularExpression) != nil || text.contains(template.id)
         }
-        let template = named ?? aliases.first(where: { contains($0.1) }).flatMap { TitleTemplateRegistry.template(id: $0.0) }
+        let captionAliases = [("cinematic", ["кинош", "кинемат"]), ("vlog", ["влог"]),
+                              ("travel", ["путешеств"]), ("social", ["соцсет"])]
+        let captionTemplate = isCaption ? captionAliases.first(where: { contains($0.1) })
+            .flatMap { TitleTemplateRegistry.template(id: "caption.\($0.0).v1") } : nil
+        let template = named ?? captionTemplate ?? aliases.first(where: { contains($0.1) }).flatMap { TitleTemplateRegistry.template(id: $0.0) }
         if let template {
             if template.id != item.effectiveTemplateID {
                 item.templateID = template.id
                 item.kind = template.kind
                 item.style = template.defaultStyle
+                item.activeWordHighlighting = template.kind == .wordLevelCaptions
             }
             changes.append("шаблон \(template.name)")
         }

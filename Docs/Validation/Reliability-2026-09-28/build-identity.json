@@ -1,0 +1,6 @@
+{
+  "builtAt": "2026-09-28T21:08:33.981492+00:00",
+  "sourceSHA256": "67cd3e17987bcb380df781c4c461c4e47cf43145e17a370c4ccc127c4ada19d0",
+  "build": "2026.271.210833",
+  "runtime": "Ollama 0.32.14"
+}

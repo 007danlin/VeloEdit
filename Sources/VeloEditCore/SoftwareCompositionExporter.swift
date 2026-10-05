@@ -49,6 +49,7 @@ enum SoftwareCompositionExporter {
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
         let encodedVideoURL = temporaryDirectory.appendingPathComponent("video.mp4")
         let writer = try AVAssetWriter(outputURL: encodedVideoURL, fileType: .mp4)
+        writer.movieTimeScale = TimelineTiming.compositionTimescale
         var writerSettings = settings.writerSettings
         if softwareEncoder {
             writerSettings[AVVideoEncoderSpecificationKey] = [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: false]

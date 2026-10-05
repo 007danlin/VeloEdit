@@ -1,0 +1,39 @@
+[0/1] Planning build
+Building for debugging...
+[0/8] Write sources
+[2/8] Write swift-version--58304C5D6DBC2206.txt
+[4/10] Compiling VeloEditCore LocalShotReplacement.swift
+[5/10] Emitting module VeloEditCore
+[5/12] Write Objects.LinkFileList
+[7/14] Linking veloedit-cli
+[8/14] Applying veloedit-cli
+[9/14] Linking VeloEdit
+[10/14] Applying VeloEdit
+[12/15] Emitting module VeloEditAppTests
+[13/16] Compiling VeloEditCoreTests MagicBrushReplacementTests.swift
+[14/16] Emitting module VeloEditCoreTests
+[14/16] Write Objects.LinkFileList
+[15/16] Linking VeloEditPackageTests
+Build complete! (8.85s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite BrushSemanticReplyTests started.
+◇ Suite MagicBrushReplacementTests started.
+◇ Test onlyTypedReplacementInsideBrushChangesFootage() started.
+◇ Test replacementIntentIsNotMusicOrNegativeInstruction() started.
+✔ Test onlyTypedReplacementInsideBrushChangesFootage() passed after 0.001 seconds.
+✔ Suite BrushSemanticReplyTests passed after 0.001 seconds.
+✔ Test replacementIntentIsNotMusicOrNegativeInstruction() passed after 0.010 seconds.
+◇ Test semanticModelReplacementUsesTheSameScopedOperationAndRespectsNegation() started.
+✔ Test semanticModelReplacementUsesTheSameScopedOperationAndRespectsNegation() passed after 0.022 seconds.
+◇ Test partialReplacementPersistsSourceChangeAndKeepsOutsideRange() started.
+✔ Test partialReplacementPersistsSourceChangeAndKeepsOutsideRange() passed after 0.007 seconds.
+◇ Test failedReplacementIsAtomicEvenWithModelAudioCommands() started.
+✔ Test failedReplacementIsAtomicEvenWithModelAudioCommands() passed after 0.004 seconds.
+◇ Test replacementRejectsLeadInToTheSameUnwantedEpisode() started.
+✔ Test replacementRejectsLeadInToTheSameUnwantedEpisode() passed after 0.001 seconds.
+◇ Test realTest7ReplacementAndBuggyLabels() started.
+✔ Test realTest7ReplacementAndBuggyLabels() passed after 0.001 seconds.
+✔ Suite MagicBrushReplacementTests passed after 0.045 seconds.
+✔ Test run with 7 tests in 2 suites passed after 0.045 seconds.

@@ -1,5 +1,9 @@
 // swift-tools-version: 6.0
 import PackageDescription
+import Foundation
+
+let cliInfoPlist = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    .appendingPathComponent("Resources/CLI-Info.plist").path
 
 let package = Package(
     name: "VeloEdit",
@@ -8,6 +12,10 @@ let package = Package(
         .library(name: "VeloEditCore", targets: ["VeloEditCore"]),
         .executable(name: "VeloEdit", targets: ["VeloEdit"]),
         .executable(name: "veloedit-cli", targets: ["VeloEditCLI"])
+    ],
+    dependencies: [
+        .package(path: "ThirdParty/ArgmaxOSS"),
+        .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git", exact: "1.24.2")
     ],
     targets: [
         .target(
@@ -34,7 +42,12 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-weak_framework", "-Xlinker", "FoundationModels"])
             ]
         ),
-        .executableTarget(name: "VeloEditCLI", dependencies: ["VeloEditCore"]),
+        .executableTarget(name: "VeloEditCLI", dependencies: ["VeloEditCore"], linkerSettings: [
+            // A CLI has no main app bundle. TCC still requires the Speech usage
+            // description before the on-device ASR authorization request.
+            .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", cliInfoPlist])
+        ]),
+        .executableTarget(name: "VeloEditSpeechWorker", dependencies: ["VeloEditCore", .product(name: "WhisperKit", package: "ArgmaxOSS"), .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager")]),
         .testTarget(
             name: "VeloEditCoreTests",
             dependencies: ["VeloEditCore"]

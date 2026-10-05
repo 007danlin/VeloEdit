@@ -1,0 +1,40 @@
+{
+  "dtd": "Apple FCPXML 1.11, xmllint exit 0",
+  "projects": [
+    {
+      "name": "VeloEdit Film — Editable",
+      "duration": "540/30s",
+      "primary_clips": 4,
+      "titles": [
+        {
+          "text": "Аудит 🎬 — Русский и Latin",
+          "offset": "90/30s"
+        }
+      ]
+    },
+    {
+      "name": "VeloEdit Film — Rendered Reference",
+      "duration": "540/30s",
+      "primary_clips": 1,
+      "titles": []
+    }
+  ],
+  "media": [
+    {
+      "url": "file:///Users/daniellineckij/.codex/worktrees/9e94/VeloEdit/Docs/Validation/ApplicationAudit/2026-10-01/fixtures/basic/03_Square.mp4",
+      "exists": true
+    },
+    {
+      "url": "file:///Users/daniellineckij/.codex/worktrees/9e94/VeloEdit/Docs/Validation/ApplicationAudit/2026-10-01/fixtures/basic/01_%D0%93%D0%BE%D1%80%D0%B8%D0%B7%D0%BE%D0%BD%D1%82%D0%B0%D0%BB%D1%8C%D0%BD%D1%8B%D0%B8%CC%86_%F0%9F%94%B5.mp4",
+      "exists": true
+    },
+    {
+      "url": "file:///Users/daniellineckij/.codex/worktrees/9e94/VeloEdit/Docs/Validation/ApplicationAudit/2026-10-01/fixtures/basic/02_Vertical.mp4",
+      "exists": true
+    },
+    {
+      "url": "file:///Users/daniellineckij/VeloEdit/Docs/Validation/ApplicationAuditFixes/2026-10-01/Audit-final-rendered-reference.mp4",
+      "exists": true
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "exitCode": 1,
+  "tests": 3,
+  "issues": 6,
+  "result": "Same three functional failures reproduced on saved baseline; run overlaps release build and is not performance evidence",
+  "failures": [
+    "✘ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() failed after 9.640 seconds with 4 issues.",
+    "✘ Test productionPipelineRunsEndToEndAutonomouslyAndPersistsDiagnostics() failed after 198.172 seconds with 1 issue.",
+    "✘ Test productionCreateFilmBuildsAndReportsDistinctDirectedVariants() failed after 249.836 seconds with 1 issue.",
+    "✘ Test run with 3 tests in 0 suites failed after 249.836 seconds with 6 issues."
+  ]
+}

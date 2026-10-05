@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import CoreGraphics
+import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
 @testable import VeloEditCore
@@ -150,4 +151,92 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     try Data("partial export".utf8).write(to: output, options: .atomic)
     _ = try await prober.frames(timeline: timeline, assets: [asset], tracks: [], telemetry: [:], cacheURL: cache)
     #expect(try Data(contentsOf: output).count > 100)
+}
+
+@Test func filmBuildRecoveryFailureRetainsChosenFilmInsteadOfPublishingEarlySourceFallback() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Exact failed composition")
+    var saved = try await savedBuild(store, phase: .readyForPlayback)
+    let valid = saved.timeline.items[0]
+    var broken = valid; broken.id = UUID(); broken.assetID = UUID(); broken.timelineStart = 12
+    saved.timeline.items.append(broken)
+    saved.timeline.music = MusicDirective(style: .calm, bpm: 90, volume: 0.18, trackID: UUID())
+    saved.timeline.titleItems = [TitleTimelineItem(kind: .chapter, text: "Позднее событие поездки",
+        startTime: 12, duration: 5, targetClipID: broken.id)]
+    try await store.checkpointFilmBuild(saved, ifRevision: await store.snapshot().revision)
+    let reopened = try ProjectStore(open: root)
+    do {
+        _ = try await VeloEditPipeline(store: reopened, renderedProber: FixtureEditorialProber()).resumeFilmBuild()
+        Issue.record("A missing selected clip must fail, not deliver another film")
+    } catch {
+        #expect(error.localizedDescription.contains("пропущено 1"))
+        #expect(error.localizedDescription.contains("Выбранный монтаж сохранён"))
+    }
+    let after = await reopened.manifest
+    #expect(after.timelines.isEmpty)
+    #expect(after.autonomousJob?.state == .failed)
+    let draft = try #require(after.filmBuildRecovery?.draft)
+    #expect(draft.phase == .readyForPlayback)
+    #expect(draft.timeline.items == saved.timeline.items)
+    #expect(draft.timeline.music == saved.timeline.music)
+    #expect(draft.timeline.titleItems == saved.timeline.titleItems)
+    #expect(draft.events == saved.events && draft.sourceMap == saved.sourceMap)
+    let again = try ProjectStore(open: root)
+    #expect(await again.recoverableFilmBuild()?.draft?.timeline.items == saved.timeline.items)
+}
+
+@Test func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Exact soundtrack recovery")
+    var saved = try await savedBuild(store, phase: .readyForPlayback)
+    let audio = root.appendingPathComponent("music.caf")
+    let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+    let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 96_000))
+    buffer.frameLength = buffer.frameCapacity
+    for i in 0..<Int(buffer.frameLength) { buffer.floatChannelData![0][i] = Float(0.1 * sin(2 * .pi * 220 * Double(i) / 48_000)) }
+    try AVAudioFile(forWriting: audio, settings: format.settings).write(from: buffer)
+    let track = LocalMusicTrack(title: "Selected track", author: "Fixture", bpm: 90, genres: [], moods: [], energy: 0.3,
+        duration: 2, license: .userFile(), sourceProvider: .user, sourcePageURL: audio, localFileURL: audio, originalFileName: "music.caf")
+    saved.tracks = [track]
+    saved.timeline.music = MusicDirective(style: .calm, bpm: 90, volume: 0.18, trackID: track.id)
+    saved.timeline.titleItems = [TitleTimelineItem(kind: .chapter, text: "Лесная дорога", startTime: 1, duration: 5)]
+    try await store.checkpointFilmBuild(saved, ifRevision: await store.snapshot().revision)
+    let reopened = try ProjectStore(open: root)
+    let completed = try await VeloEditPipeline(store: reopened, renderedProber: FixtureEditorialProber()).resumeFilmBuild()
+    #expect(completed.items == saved.timeline.items)
+    #expect(completed.music == saved.timeline.music)
+    #expect(completed.titleItems == saved.timeline.titleItems)
+    let playback = try await PlaybackEngine().build(timeline: completed, assets: await reopened.manifest.assets, musicTracks: saved.tracks, forceVideoComposition: true)
+    #expect(try await playback.composition.loadTracks(withMediaType: .audio).isEmpty == false)
+    #expect(playback.warnings.isEmpty)
+}
+
+@Test func filmBuildRecoveryCannotCommitWithoutItsSelectedMusicOrVerification() async throws {
+    struct UnavailableProber: EditorialRenderedProbing {
+        func frames(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL) async throws -> [PerceptualRenderedFrameEvidence] {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+    }
+    for missingMusic in [true, false] {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ProjectStore(createAt: root, name: "Unavailable verification")
+        var saved = try await savedBuild(store, phase: .readyForPlayback)
+        if missingMusic { saved.timeline.music = MusicDirective(style: .calm, bpm: 90, volume: 0.18, trackID: UUID()) }
+        try await store.checkpointFilmBuild(saved, ifRevision: await store.snapshot().revision)
+        let reopened = try ProjectStore(open: root)
+        do {
+            _ = try await VeloEditPipeline(store: reopened, renderedProber: UnavailableProber()).resumeFilmBuild()
+            Issue.record("Recovery must not publish without the selected audio and completed verification")
+        } catch {
+            #expect(error.localizedDescription.contains(missingMusic ? "Музыка сохранённого монтажа недоступна" : "Не удалось проверить сохранённый монтаж"))
+        }
+        let after = await reopened.manifest
+        #expect(after.timelines.isEmpty)
+        #expect(after.filmBuildRecovery?.draft?.timeline.items == saved.timeline.items)
+        #expect(after.filmBuildRecovery?.draft?.timeline.music == saved.timeline.music)
+        #expect(after.autonomousJob?.state == .failed)
+    }
 }

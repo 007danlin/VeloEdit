@@ -45,7 +45,8 @@ struct SystemResourceStatusView: View {
                     Text("CPU \(percent(snapshot?.systemCPUPercent))")
                         .font(.system(size: 10, weight: .medium))
                         .monospacedDigit()
-                    loadMeter(snapshot?.systemCPUPercent, label: "Общая нагрузка Mac · CPU", height: 4)
+                    loadMeter(snapshot?.systemCPUPercent, processValue: snapshot?.processCPUPercent,
+                              label: "Общая нагрузка Mac · CPU", height: 4)
                 }
                 .frame(width: 54)
             }
@@ -72,22 +73,32 @@ struct SystemResourceStatusView: View {
                         Text(summary).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                loadRow("Общая нагрузка Mac · CPU", value: snapshot?.systemCPUPercent)
-                    .help("Занятость всех ядер CPU за интервал около секунды. 100% — занят весь процессор Mac.")
-                loadRow("Нагрузка Mac · GPU", value: snapshot?.systemGPUPercent)
-                    .help("Общая занятость GPU по данным драйвера, включая все приложения и системные службы. При нескольких GPU показан самый занятый. Если драйвер не отдаёт показатель, отображается «Нет данных».")
-                loadRow("Память Mac", value: snapshot?.systemMemory?.percent, formattedValue: snapshot?.systemMemory.map {
+                loadRow("Общая нагрузка Mac · CPU", value: snapshot?.systemCPUPercent,
+                        processValue: snapshot?.processCPUPercent)
+                    .help("Занятость всех ядер CPU за интервал около секунды. 100% — занят весь процессор Mac. Синий участок — доля VeloEdit в этой нагрузке.")
+                loadRow("Нагрузка Mac · GPU", value: snapshot?.systemGPUPercent,
+                        processValue: snapshot?.processGPUPercent)
+                    .help("Общая занятость GPU по данным драйвера, включая все приложения и системные службы. При нескольких GPU показан самый занятый. Синий участок — нагрузка VeloEdit по времени работы GPU. Если драйвер не сообщает нагрузку приложения, синий участок не отображается, а значение VeloEdit показано как «Нет данных».")
+                loadRow("Память Mac", value: snapshot?.systemMemory?.percent,
+                        processValue: processMemoryPercent, formattedValue: snapshot?.systemMemory.map {
                     "\(memorySize($0.usedBytes)) из \(memorySize($0.totalBytes))"
                 }, tint: memoryTint)
-                .help("Память приложений, системная и сжатая память всего Mac. Освобождаемый файловый кэш исключён. Цвет отражает давление памяти macOS.")
+                .help("Память приложений, системная и сжатая память всего Mac. Освобождаемый файловый кэш исключён. Синий участок — резидентная память VeloEdit в масштабе всей памяти Mac. Цвет остальной занятой памяти отражает давление памяти macOS.")
                 Text(snapshot?.systemMemory?.pressure?.title ?? "Давление памяти: нет данных")
                     .font(.caption)
                     .foregroundStyle(memoryTint)
                 Divider()
-                Text("VeloEdit: CPU \(percent(snapshot?.processCPUPercent)) · память \(snapshot?.processMemoryBytes.map(memorySize) ?? "—")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help("Только процесс VeloEdit: CPU как доля всех ядер Mac и резидентная память. Другие процессы учитываются в общих показателях выше.")
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "circle.fill")
+                        .font(.system(size: 7))
+                        .foregroundStyle(.blue)
+                        .accessibilityHidden(true)
+                    Text("VeloEdit: CPU \(percent(snapshot?.processCPUPercent)) · GPU \(snapshot?.processGPUPercent.map { percent($0) } ?? "Нет данных") · память \(snapshot?.processMemoryBytes.map(memorySize) ?? "—")")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.caption)
+                .help("Синие участки показывают долю процесса VeloEdit в общей нагрузке. При нулевой или небольшой нагрузке остаётся круглый синий маркер; точные значения указаны рядом. CPU — доля всех ядер Mac, GPU — по данным драйвера, память — резидентная. Другие процессы учитываются в общих показателях выше.")
                 if snapshot?.workLimit == .cooling {
                     Label("Обработка ждёт охлаждения", systemImage: "pause.circle")
                         .foregroundStyle(.red)
@@ -126,7 +137,13 @@ struct SystemResourceStatusView: View {
         ByteCountFormatter.string(fromByteCount: Int64(clamping: bytes), countStyle: .memory)
     }
 
-    private func loadRow(_ label: String, value: Double?, formattedValue: String? = nil, tint: Color? = nil) -> some View {
+    private var processMemoryPercent: Double? {
+        guard let bytes = snapshot?.processMemoryBytes,
+              let totalBytes = snapshot?.systemMemory?.totalBytes, totalBytes > 0 else { return nil }
+        return 100 * Double(bytes) / Double(totalBytes)
+    }
+
+    private func loadRow(_ label: String, value: Double?, processValue: Double?, formattedValue: String? = nil, tint: Color? = nil) -> some View {
         VStack(spacing: 8) {
             HStack {
                 Text(label).foregroundStyle(.secondary)
@@ -134,36 +151,40 @@ struct SystemResourceStatusView: View {
                 Text(formattedValue ?? (value == nil ? "Нет данных" : percent(value)))
                     .font(.callout.weight(.semibold)).monospacedDigit()
             }
-            loadMeter(value, label: label, height: 8, tint: tint)
+            loadMeter(value, processValue: processValue, label: label, height: 8, tint: tint)
         }
     }
 
-    private func loadMeter(_ value: Double?, label: String, height: CGFloat, tint: Color? = nil) -> some View {
+    private func loadMeter(_ value: Double?, processValue: Double?, label: String, height: CGFloat, tint: Color? = nil) -> some View {
         GeometryReader { geometry in
-            // Keep the rounded marker's shape independent of the measured value.
-            // Its travel, rather than its width, represents 0...100% of the scale.
-            let markerWidth = min(geometry.size.width, height * 2.5)
+            // Both segments use the full machine's capacity as their scale.
+            // Clamp independently sampled process usage to the total fill.
             let fraction = CGFloat(min(100, max(0, value ?? 0))) / 100
-            let markerOffset = max(0, geometry.size.width - markerWidth) * fraction
+            let processFraction = min(fraction, CGFloat(min(100, max(0, processValue ?? 0))) / 100)
+            // Keep known idle/low usage visible as a circle, then grow it into
+            // a capsule. Unavailable measurements never get a blue marker.
+            let processWidth = min(geometry.size.width, max(height, geometry.size.width * processFraction))
             let tint = tint ?? loadTint(value)
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.10))
                 if value != nil {
                     Capsule().fill(tint.gradient)
-                        .frame(width: markerOffset + markerWidth)
-                    Capsule().fill(tint.gradient)
-                        .overlay {
-                            Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
-                        }
-                        .frame(width: markerWidth)
-                        .offset(x: markerOffset)
+                        .frame(width: geometry.size.width * fraction)
+                    if processValue != nil {
+                        Capsule().fill(Color.blue.gradient)
+                            .overlay {
+                                Capsule().strokeBorder(.white.opacity(0.3), lineWidth: 0.5)
+                            }
+                            .frame(width: processWidth)
+                    }
                 }
             }
         }
         .frame(height: height)
         .animation(.easeInOut(duration: 0.4), value: value)
+        .animation(.easeInOut(duration: 0.4), value: processValue)
         .accessibilityLabel(label)
-        .accessibilityValue(percent(value))
+        .accessibilityValue("\(percent(value)), VeloEdit: \(processValue.map { percent($0) } ?? "Нет данных")")
     }
 
     private func percent(_ value: Double?) -> String {

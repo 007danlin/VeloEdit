@@ -20,6 +20,21 @@ struct VeloEditCLI {
         guard let command = arguments.first else { printHelp(); return }
         switch command {
         case "help", "--help", "-h": printHelp()
+        case "study-film":
+            try await runEditorialStudy(arguments)
+        case "study-render":
+            try await renderEditorialStudy(arguments)
+        case "decision-examples":
+            try await exportDecisionExamples(arguments)
+        case "audit-chronology":
+            guard arguments.count == 3 else { throw CLIError.usage("audit-chronology <project.veloedit> <report.json>") }
+            // Decode directly: an audit must not migrate or rewrite a project.
+            let data = try Data(contentsOf: projectURL(arguments[1]).appendingPathComponent("project.json"))
+            let project = try JSONDecoder.veloEdit.decode(ProjectManifest.self, from: data)
+            guard let timeline = project.timelines.last else { throw CLIError.verification("Нет сохранённого фильма") }
+            let report = EditorialChronologyReport.inspect(timeline: timeline, assets: project.assets)
+            try JSONEncoder.veloEdit.encode(report).write(to: URL(fileURLWithPath: arguments[2]), options: .atomic)
+            print("Подтверждённых нарушений: \(report.confirmedErrorCount); неопределённостей: \(report.unresolvedCount)")
         case "create":
             guard arguments.count >= 2 else { throw CLIError.usage("create <project.veloedit> [media ...]") }
             let url = projectURL(arguments[1])
@@ -79,6 +94,11 @@ struct VeloEditCLI {
                 progress: printFilmProgress
             )
             print("Timeline: \(timeline.items.count) фрагментов, \(String(format: "%.1f", timeline.duration)) сек")
+        case "verify-film":
+            let (pipeline, _) = try openPipeline(arguments, minimum: 2, usage: "verify-film <project.veloedit>")
+            let timeline = try await pipeline.verifyCurrentFilm()
+            let data = try JSONEncoder.veloEdit.encode(timeline.filmDeliveryReport)
+            print(String(decoding: data, as: UTF8.self))
         case "save-video":
             let (pipeline, _) = try openPipeline(arguments, minimum: 2, usage: "save-video <project.veloedit>")
             let destination = await pipeline.defaultVideoDestination()
@@ -108,6 +128,10 @@ struct VeloEditCLI {
             }
             try await pipeline.store.update { $0.preferences.chapterTitleReference = reference }
             print("Образец титров «\(reference.name)» сохранён; распознано исходников: \(reference.labelsByContentHash.count)")
+        case "refresh-chapter-titles":
+            let (pipeline, rest) = try openPipeline(arguments, minimum: 2, usage: "refresh-chapter-titles <project.veloedit> [--force]")
+            let timeline = try await pipeline.refreshChapterTitles(force: rest.contains("--force"))
+            print(String(decoding: try JSONEncoder.veloEdit.encode(timeline.chapterTitleDecisions ?? []), as: UTF8.self))
         case "learn-approved-reference":
             guard arguments.count >= 2 else { throw CLIError.usage("learn-approved-reference <approved-project.veloedit> [taste-profile.json]") }
             // Decode read-only: learning must not migrate or mutate the example.
@@ -283,9 +307,11 @@ struct VeloEditCLI {
                     project.analysisQueue = []
                 }
                 let pipeline = VeloEditPipeline(store: store)
+                let started = ProcessInfo.processInfo.systemUptime
                 _ = try await pipeline.analyzeMissing(progress: printProgress)
+                let elapsed = ProcessInfo.processInfo.systemUptime - started
                 let measured = await pipeline.snapshot()
-                if let row = AnalysisBenchmarkRow(mode: mode, assets: measured.assets, analyses: measured.analyses) {
+                if let row = AnalysisBenchmarkRow(mode: mode, assets: measured.assets, analyses: measured.analyses, operationDuration: elapsed) {
                     rows.append(row)
                 }
             }
@@ -311,6 +337,7 @@ struct VeloEditCLI {
         print("""
         VeloEdit CLI
           use-title-reference <project.veloedit> <reference.veloedit> [name]
+          refresh-chapter-titles <project.veloedit> [--force]
           learn-approved-reference <approved-project.veloedit> [taste-profile.json]
           create <project.veloedit> [media ...]
           import <project.veloedit> <media ...>
@@ -320,7 +347,12 @@ struct VeloEditCLI {
           thumbnails <project.veloedit>
           verify <project.veloedit>
           film <project.veloedit> <prompt>
+          study-film <experiment.veloedit> <output.mp4>
+          study-render <experiment.veloedit> <output.mp4>
+          audit-chronology <project.veloedit> <report.json>
+          decision-examples <project.veloedit> <examples.json>
           resume-film <project.veloedit>
+          verify-film <project.veloedit>
           save-video <project.veloedit>
           resume-export <project.veloedit>
           collect <project.veloedit> <copy.veloedit>

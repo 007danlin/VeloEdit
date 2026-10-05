@@ -932,7 +932,10 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
 
     let repaired = result.timeline.effectiveTitleItems.first
     #expect(result.canPersist)
-    #expect(repaired?.startTime == 3)
+    // The confirmed first scene has room for all four reading seconds.
+    // Move an automatic heading earlier within its anchor, rather than truncate it.
+    #expect(repaired?.startTime == 1)
+    #expect(repaired?.duration == 4)
     #expect(repaired?.endTime == 5)
     #expect(result.issues.contains { $0.kind == .generatedTitleQuality && $0.resolution == .repaired })
 }

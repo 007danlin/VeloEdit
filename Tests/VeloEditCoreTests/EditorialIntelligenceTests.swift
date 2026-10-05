@@ -324,7 +324,7 @@ private struct EIFailingMinerAnalyzer: EditorialEvidenceAnalyzing {
     #expect(IntentLedgerEngine.validate(.addTitles, timeline: timeline, previous: nil, analyses: [], assets: []).0 != .fulfilled)
     let result = IntentLedgerEngine.validate(.evaluateNewAssets([photoID]), timeline: timeline, previous: nil, analyses: [], assets: [])
     #expect(result.1.first?.assetID == photoID)
-    #expect(result.1.first?.reason == "unsupportedMedia")
+    #expect(result.1.first?.reason.hasPrefix("analysisUnavailable:") == true)
 }
 
 @Test func editorialCancelledGenerationPersistsRecoverableLedgerAndNoTimeline() async throws {
@@ -435,7 +435,10 @@ private func editorialRegressionRunsThroughRenderedWinner(_ fixture: EditorialRe
     #expect(winner.timeline.editorialReview?.duration?.durationConstraintStatus == .compromisedInsufficientContent)
     #expect(!winner.timeline.effectiveEffects.contains { $0.effectType.category == .stylized })
     if fixture == .MutePolicyFixture { #expect(winner.timeline.effectiveAudioClips.isEmpty) }
-    if fixture == .BuggyGroupVerticalFixture { #expect(winner.timeline.items.allSatisfy { $0.effectiveVideoAdjustments.crop == .fit }) }
+    if fixture == .BuggyGroupVerticalFixture {
+        #expect(winner.timeline.items.allSatisfy { $0.effectiveVideoAdjustments.crop == .fit },
+            "rasters directed=\(directed.width)x\(directed.height), winner=\(winner.timeline.width)x\(winner.timeline.height); crops=\(winner.timeline.items.map { $0.effectiveVideoAdjustments.crop }); rejected=\(directed.directorRun?.rejectedOperations ?? [])")
+    }
     if fixture == .MultiDayChapterFixture { #expect(plan.narrativeBeatPlan?.pattern == .eventChapters) }
 }
 
@@ -925,4 +928,84 @@ private actor RepairAwareEditorialProber: EditorialRenderedProbing {
     defer { try? FileManager.default.removeItem(at: cache) }
     _ = await VeloEditPipeline.editorialRenderReview(timeline: Timeline(storyPlanID: plan.id, items: []), plan: plan, assets: [], analyses: [], tracks: [], telemetry: [:], cacheURL: cache, prober: prober)
     #expect(await prober.calls == 1)
+}
+
+@Test func incrementalDuplicateEvaluationMatchesEveryFullPrefix() {
+    let asset = UUID()
+    var units: [EditorialUnit] = []
+    for index in 0..<36 {
+        let source = index % 3 == 0 ? asset : UUID()
+        let candidate = eiCandidate(assetID: source, setup: "setup-\(index % 7)",
+            start: Double(index % 9) * 2, progression: index % 5 == 0)
+        units.append(EditorialUnit(candidate: candidate))
+    }
+    var memo = SequenceDuplicateMemo()
+    for length in 0...units.count {
+        let selected = Array(units.prefix(length))
+        for unit in units {
+            #expect(memo.containsDuplicate(of: unit, in: selected) == selected.contains {
+                ShotFamilyClusterer().isHardDuplicate($0, unit, adjacent: false)
+            })
+        }
+    }
+}
+
+@Test func incrementalSequenceSearchMatchesOriginalCompleteAlgorithm() {
+    let events = [UUID(), UUID(), UUID()]
+    let source = UUID()
+    var units: [EditorialUnit] = []
+    for index in 0..<40 {
+        let candidate = eiCandidate(assetID: index % 4 == 0 ? source : UUID(),
+            setup: "view-\(index % 9)", start: Double(index % 13),
+            duration: index % 11 == 0 ? 0.3 : 4, progression: index % 3 == 0)
+        var unit = EditorialUnit(candidate: candidate)
+        unit.eventID = index % 7 == 0 ? nil : events[index % 3]
+        unit.sceneID = events[(index / 3) % 3]
+        units.append(unit)
+    }
+    let index = ShotFamilyClusterer().cluster(units: units)
+    for pattern in [EditorialNarrativePattern.minimalMontage, .eventChapters, .rapidHighlight] {
+        for target in [12.0, 60.0, 150.0] {
+            for limit in [nil, 5] as [Int?] {
+                for families in [index, ShotFamilyIndex(families: [])] {
+                    let hypothesis = NarrativeHypothesis(eventOrder: events, sceneOrder: target == 60 ? events : nil,
+                        pattern: pattern, evidenceCoverage: 1, reasons: ["equivalence fixture"])
+                    let priorities = [units[4].id: 0.7, units[9].id: 0.4]
+                    let expected = BaselineEditorialSequenceSearch().sequence(hypothesis: hypothesis, units: units,
+                        families: families, target: target, pacing: 0.5, priority: priorities, maximumCount: limit)
+                    let result = EditorialSequenceSearch().sequence(hypothesis: hypothesis, units: units,
+                        families: families, target: target, pacing: 0.5, priority: priorities, maximumCount: limit)
+                    #expect(result.units == expected.units)
+                    #expect(result.beatPlan == expected.beatPlan)
+                    #expect(result.discarded == expected.discarded)
+                }
+            }
+        }
+    }
+}
+
+@Test func sequenceCacheInvalidatesInputsAndReturnsIndependentValues() throws {
+    let units = (0..<8).map { EditorialUnit(candidate: eiCandidate(setup: "cache-view-\($0)", progression: true)) }
+    let families = ShotFamilyClusterer().cluster(units: units)
+    let hypothesis = NarrativeHypothesis(pattern: .rapidHighlight, evidenceCoverage: 1, reasons: [])
+    let search = EditorialSequenceSearch()
+    let original = search.sequence(hypothesis: hypothesis, units: units, families: families, target: 20, pacing: 0.5)
+    var copy = search.sequence(hypothesis: hypothesis, units: units, families: families, target: 20, pacing: 0.5)
+    copy.units.removeAll()
+    #expect(search.sequence(hypothesis: hypothesis, units: units, families: families, target: 20, pacing: 0.5).units == original.units)
+    let preferred = try #require(units.first { candidate in !original.units.contains { $0.id == candidate.id } })
+    let reordered = search.sequence(hypothesis: hypothesis, units: units, families: families, target: 20, pacing: 0.5, priority: [preferred.id: 100])
+    let expectedReordered = BaselineEditorialSequenceSearch().sequence(hypothesis: hypothesis, units: units, families: families,
+        target: 20, pacing: 0.5, priority: [preferred.id: 100])
+    #expect(reordered.units.contains { $0.id == preferred.id })
+    #expect(reordered.units == expectedReordered.units)
+    #expect(reordered.beatPlan == expectedReordered.beatPlan)
+    var changed = units
+    changed[0].candidate.sourceStart = 10
+    changed[0].candidate.sourceDuration = 0.1
+    let actual = search.sequence(hypothesis: hypothesis, units: changed, families: families, target: 20, pacing: 0.5)
+    let expected = BaselineEditorialSequenceSearch().sequence(hypothesis: hypothesis, units: changed, families: families, target: 20, pacing: 0.5)
+    #expect(actual.units == expected.units)
+    #expect(actual.beatPlan == expected.beatPlan)
+    #expect(actual.discarded == expected.discarded)
 }

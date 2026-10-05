@@ -1,0 +1,94 @@
+Building for debugging...
+[Using on-disk description]
+[3 / 13] VeloEdit-product
+[6 / 17] VeloEdit-product
+[7 / 17] VeloEdit-product
+[15 / 24] VeloEdit
+[15 / 24] VeloEdit-product
+[18 / 23] VeloEditAppTests-product
+[20 / 25] VeloEditAppTests-product
+[23 / 26] VeloEditAppTests-product
+[25 / 29] VeloEditAppTests-product
+[27 / 29] VeloEditAppTests-product
+Build complete! (9,55 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite TimelinePlaybackMapTests started.
+◇ Test emptyClockDoesNotRequireSegments() started.
+◇ Test cachedClockMatchesExistingMappingIncludingDisabledAndStaleTransitions() started.
+✔ Test emptyClockDoesNotRequireSegments() passed after 0.001 seconds.
+✔ Test cachedClockMatchesExistingMappingIncludingDisabledAndStaleTransitions() passed after 0.157 seconds.
+✔ Suite TimelinePlaybackMapTests passed after 0.157 seconds.
+✔ Test run with 2 tests in 1 suite passed after 0.157 seconds.
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ProjectInteractionTests started.
+◇ Suite InstantTimelineInteractionTests started.
+◇ Test vlogStylePreservesExplicitPreferencesAndRestoresPreviousPresetAfterReopen() started.
+◇ Suite TimelineResponsivenessTests started.
+◇ Suite TimelineViewportTests started.
+◇ Test renderWindowCoversViewportAndKeepsNearbyScrollsStable() started.
+◇ Test backgroundThumbnailsPreserveOrientationAndShareDecodedImages() started.
+◇ Test copiedEffectsAppearImmediatelyAsIndependentObjects() started.
+✔ Test renderWindowCoversViewportAndKeepsNearbyScrollsStable() passed after 0.026 seconds.
+◇ Test longCanvasesDrawOnlyVisibleBarsAndPreserveTheirIndices() started.
+✔ Test longCanvasesDrawOnlyVisibleBarsAndPreserveTheirIndices() passed after 0.001 seconds.
+◇ Test viewportReaderTracksNativeScrollAndResize() started.
+✔ Test backgroundThumbnailsPreserveOrientationAndShareDecodedImages() passed after 0.086 seconds.
+◇ Test pausedVideoScrubbingDoesNotRepublishTheEditorAndLandsOnFinalFrame() started.
+✔ Test vlogStylePreservesExplicitPreferencesAndRestoresPreviousPresetAfterReopen() passed after 0.121 seconds.
+◇ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() started.
+✔ Test viewportReaderTracksNativeScrollAndResize() passed after 0.098 seconds.
+◇ Test largeTimelineLayoutStudy() started.
+✔ Test copiedEffectsAppearImmediatelyAsIndependentObjects() passed after 0.288 seconds.
+◇ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() started.
+✔ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() passed after 0.171 seconds.
+◇ Test recentCardShowsRealMaterialsBeforeFullLoadAndPreservesSelection() started.
+PERF recent-card-first-materials milliseconds=16.759037971496582
+✔ Test recentCardShowsRealMaterialsBeforeFullLoadAndPreservesSelection() passed after 0.140 seconds.
+◇ Test coldOpenLoadsPresentationWithoutWaitingForTheStore() started.
+PERF actual-swiftui-layout clips=300 subtitles=900 median_ms=11.087124999903608 p95_ms=19.40366666894988
+✔ Test largeTimelineLayoutStudy() passed after 0.343 seconds.
+✔ Suite TimelineViewportTests passed after 0.470 seconds.
+PERF instant-delete clips=120 state_ms=1.7957916679733898
+✔ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() passed after 0.197 seconds.
+◇ Test rapidDeletesAndRefreshNeverResurrectClips() started.
+✔ Test coldOpenLoadsPresentationWithoutWaitingForTheStore() passed after 0.069 seconds.
+◇ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() started.
+✔ Test pausedVideoScrubbingDoesNotRepublishTheEditorAndLandsOnFinalFrame() passed after 0.476 seconds.
+◇ Test slowDecoderOnlyReceivesNewestPositionAndFinishesExactly() started.
+✔ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() passed after 0.072 seconds.
+◇ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() started.
+✔ Test rapidDeletesAndRefreshNeverResurrectClips() passed after 0.102 seconds.
+◇ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() started.
+✔ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() passed after 0.021 seconds.
+◇ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() started.
+✔ Test slowDecoderOnlyReceivesNewestPositionAndFinishesExactly() passed after 0.047 seconds.
+◇ Test replacingPlayerRejectsOldCompletionAndQueuedSeeks() started.
+✔ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() passed after 0.039 seconds.
+◇ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() started.
+✔ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() passed after 0.016 seconds.
+◇ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() started.
+✔ Test replacingPlayerRejectsOldCompletionAndQueuedSeeks() passed after 0.048 seconds.
+◇ Test longTimelinePointerUpdatesStayLocalAndInvalidateTimingAfterEdit() started.
+PERF pointer clips=1000 samples=2000 p95_ms=0.002958331606350839 max_ms=0.041708331991685554
+✔ Test longTimelinePointerUpdatesStayLocalAndInvalidateTimingAfterEdit() passed after 0.014 seconds.
+◇ Test layoutPreservesCutGapsSnappingAndOverlappingLanes() started.
+✔ Test layoutPreservesCutGapsSnappingAndOverlappingLanes() passed after 0.001 seconds.
+✔ Suite TimelineResponsivenessTests passed after 0.674 seconds.
+✔ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() passed after 0.094 seconds.
+◇ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() started.
+PERF optimistic-trim maximum_ms=0.4329681396484375
+✔ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() passed after 0.079 seconds.
+◇ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() started.
+✔ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() passed after 0.105 seconds.
+◇ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() started.
+✔ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() passed after 0.088 seconds.
+◇ Test queuedSelectionIsNotSilentlyRetargetedAfterClipRemoval() started.
+✔ Test queuedSelectionIsNotSilentlyRetargetedAfterClipRemoval() passed after 0.138 seconds.
+✔ Suite InstantTimelineInteractionTests passed after 1.016 seconds.
+✔ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() passed after 0.398 seconds.
+✔ Suite ProjectInteractionTests passed after 1.132 seconds.
+✔ Test run with 27 tests in 4 suites passed after 1.132 seconds.

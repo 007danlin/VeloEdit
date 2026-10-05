@@ -1,0 +1,20 @@
+[
+  "Sources/VeloEdit/AppModel.swift",
+  "Sources/VeloEdit/ContentView.swift",
+  "Sources/VeloEdit/LocalDirectorAgent.swift",
+  "Sources/VeloEditCore/AIExecutionEvidence.swift",
+  "Sources/VeloEditCore/AIProfiles.swift",
+  "Sources/VeloEditCore/AdaptiveAnalysis.swift",
+  "Sources/VeloEditCore/AnalysisBenchmark.swift",
+  "Sources/VeloEditCore/DeepMediaEnricher.swift",
+  "Sources/VeloEditCore/DeepMediaUnderstanding.swift",
+  "Sources/VeloEditCore/LocalAIModelManager.swift",
+  "Sources/VeloEditCore/LocalSpeechRecognizer.swift",
+  "Sources/VeloEditCore/Models.swift",
+  "Sources/VeloEditCore/VeloEditPipeline.swift",
+  "Tests/VeloEditAppTests/AICompletionStatusTests.swift",
+  "Tests/VeloEditAppTests/AIModeRuntimeAuditTests.swift",
+  "Tests/VeloEditCoreTests/AIModeReliabilityTests.swift",
+  "Tests/VeloEditCoreTests/AIProfilesTests.swift",
+  "Tests/VeloEditCoreTests/AnalysisPipelineTests.swift"
+]

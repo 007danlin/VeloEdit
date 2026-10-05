@@ -68,6 +68,7 @@ public enum ExportSettingsPolicy {
     }
 
     public static func timeline(_ source: Timeline, assets: [MediaAsset], quality: RenderQuality, frameRate: Double? = nil) -> Timeline {
+        let source = TimelineFrameRatePolicy.applying(to: source, assets: assets)
         var result = RenderGeometryPolicy.timeline(source, for: quality)
         if quality == .maximum, source.width > 0, source.height > 0 {
             let used = Set(source.items.filter { $0.overlay == nil && $0.kind != .title }.compactMap(\.assetID))
@@ -79,8 +80,10 @@ public enum ExportSettingsPolicy {
             result.width = max(2, Int((Double(source.width) * max(1, scale) / 2).rounded()) * 2)
             result.height = max(2, Int((Double(source.height) * max(1, scale) / 2).rounded()) * 2)
         }
-        let requested = frameRate ?? (quality == .maximum ? maximumSourceFrameRate(timeline: source, assets: assets) : source.frameRate)
+        // Encoding quality must not change the movie's motion cadence.
+        let requested = frameRate ?? source.frameRate
         result.frameRate = requested
+        if frameRate != nil { result.automaticallySelectFrameRate = false }
         return result
     }
 }
@@ -88,9 +91,18 @@ public enum ExportSettingsPolicy {
 /// Rational timestamps retain 23.976/29.97/59.94 instead of rounding to an
 /// integer FPS or the edit clock's coarse 1/600-second tick.
 enum VideoFrameTiming {
+    /// An encoded film only contains frames on this grid. Sampling a native
+    /// composition between them can select a camera frame absent from delivery.
+    static func sampleTime(for seconds: Double, frameRate: Double, duration movieDuration: Double) -> CMTime {
+        let step = duration(for: frameRate)
+        let last = max(0, Int64(ceil(movieDuration / step.seconds - 0.000_001)) - 1)
+        let index = min(last, max(0, Int64(floor(max(0, seconds) / step.seconds + 0.000_001))))
+        return CMTime(value: index * step.value, timescale: step.timescale)
+    }
+
     static func duration(for frameRate: Double) -> CMTime {
         guard frameRate.isFinite, frameRate > 0 else { return CMTime(value: 1, timescale: 30) }
-        for numerator in [24_000, 30_000, 60_000, 120_000, 240_000] {
+        for numerator in [24_000, 30_000, 48_000, 60_000, 96_000, 120_000, 240_000] {
             if abs(frameRate - Double(numerator) / 1001) < 0.001 {
                 return CMTime(value: 1001, timescale: CMTimeScale(numerator))
             }
@@ -109,6 +121,10 @@ public struct EncodedVideoInfo: Sendable {
     public let codec: String
     public let videoBitRate: Double
     public let duration: Double
+    /// Container average may differ slightly when its last frame is clipped
+    /// to an audio/edit timescale. Keep it alongside the measured cadence.
+    public var nominalFrameRate: Double? = nil
+    public var cadenceVerified = false
     public var summary: String {
         "\(width) × \(height) · \(ExportVideoSettings.frameRateLabel(frameRate)) кадров/с · \(codec) · \(String(format: "%.1f", videoBitRate / 1_000_000)) Мбит/с"
     }
@@ -119,7 +135,9 @@ enum ExportVideoVerifier {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else { throw DerivedMediaError.noVideoTrack }
         let size = try await track.load(.naturalSize)
-        let fps = Double(try await track.load(.nominalFrameRate))
+        let nominalFPS = Double(try await track.load(.nominalFrameRate))
+        var fps = nominalFPS
+        var cadenceVerified = false
         let actualDuration = try await asset.load(.duration).seconds
         let formats = try await track.load(.formatDescriptions)
         let primaries = formats.first.flatMap {
@@ -130,6 +148,16 @@ enum ExportVideoVerifier {
         }
         let subtype = formats.first.map { CMFormatDescriptionGetMediaSubType($0) }
         let expected: FourCharCode = settings.codec == .hevc ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264
+        if abs(nominalFPS - settings.frameRate) >= 0.005 || !nominalFPS.isFinite {
+            // Do not loosen the FPS tolerance. A short, otherwise CFR MP4 can
+            // report 30.006 after a sub-frame end trim. Check every compressed
+            // sample's presentation time instead; gaps and wrong cadence fail.
+            if let measured = try await measuredCadence(asset: asset, track: track,
+                expectedRate: settings.frameRate, duration: duration) {
+                fps = measured
+                cadenceVerified = true
+            }
+        }
         guard Int(size.width) == settings.width, Int(size.height) == settings.height,
               abs(fps - settings.frameRate) < 0.005, subtype == expected,
               primaries == AVVideoColorPrimaries_ITU_R_709_2, transfer == AVVideoTransferFunction_ITU_R_709_2,
@@ -157,6 +185,41 @@ enum ExportVideoVerifier {
         // The average bitrate is content-dependent (VBR), not a promised
         // minimum. Check the real stream and display its measured value.
         return EncodedVideoInfo(width: Int(size.width), height: Int(size.height), frameRate: fps,
-                                codec: settings.codecName, videoBitRate: Double(try await track.load(.estimatedDataRate)), duration: actualDuration)
+                                codec: settings.codecName, videoBitRate: Double(try await track.load(.estimatedDataRate)), duration: actualDuration,
+                                nominalFrameRate: nominalFPS, cadenceVerified: cadenceVerified)
+    }
+
+    static func measuredCadence(asset: AVAsset, track: AVAssetTrack, expectedRate: Double, duration: Double) async throws -> Double? {
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        defer { if reader.status == .reading { reader.cancelReading() } }
+        var times: [Double] = []
+        while let sample = try await MediaSampleReader.next(from: output, reader: reader) {
+            // AVAssetReader also emits zero-sample boundary/format markers,
+            // including NaN timestamps at the end of a passthrough edit.
+            // They contain no video frame and must not count as a gap/duplicate.
+            if CMSampleBufferGetNumSamples(sample) == 0 { continue }
+            guard CMSampleBufferGetNumSamples(sample) == 1 else { return nil }
+            times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
+        }
+        guard reader.status == .completed else { return nil }
+        return regularCadence(times: times, expectedRate: expectedRate, duration: duration)
+    }
+
+    static func regularCadence(times: [Double], expectedRate: Double, duration: Double) -> Double? {
+        guard expectedRate.isFinite, expectedRate > 0, duration.isFinite, duration > 0,
+              times.count >= 2, times.allSatisfy(\.isFinite) else { return nil }
+        // Compressed H.264 can arrive in decode order. Presentation order is
+        // authoritative; duplicates and missing frames still fail below.
+        let ordered = times.sorted()
+        let tolerance = 0.000_001
+        guard abs(ordered[0]) <= tolerance,
+              abs(Double(ordered.count) - ceil(duration * expectedRate - tolerance)) <= 1,
+              zip(ordered, ordered.dropFirst()).allSatisfy({ abs($1 - $0 - 1 / expectedRate) <= tolerance }) else { return nil }
+        return Double(ordered.count - 1) / (ordered.last! - ordered[0])
     }
 }

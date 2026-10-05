@@ -373,7 +373,28 @@ public struct SourceTimelineAnalyzer: Sendable {
         for (index, members) in rawGroups.enumerated() {
             let decisions = groupDecisions[index]
             let tags = members.reduce(into: Set<String>()) { $0.formUnion($1.semanticTokens) }
-            let titleDecision = activityTitle(tags: tags, memberCount: members.count)
+            var titleDecision = activityTitle(tags: tags, memberCount: members.count)
+            // Different camera angles can fail the visual grouping threshold
+            // yet corroborate one activity. Keep their chronology/groups, but
+            // inspect a close neighbour before calling a buggy a bicycle.
+            for neighbourIndex in [index - 1, index + 1] where rawGroups.indices.contains(neighbourIndex) {
+                guard !tags.isDisjoint(with: ["machine", "vehicle", "car", "automobile", "wheel", "tire", "buggy", "utv"]) else { continue }
+                let neighbours = rawGroups[neighbourIndex]
+                let left = neighbourIndex < index ? neighbours.last! : members.last!
+                let right = neighbourIndex < index ? members.first! : neighbours.first!
+                guard min(left.dateReliability, right.dateReliability) >= 0.65,
+                      !temporalHardSplit(first: left, second: right),
+                      !strongActivityConflict(left.activityTokens, right.activityTokens),
+                      let sequence = sequenceContinuity(left.sequence, right.sequence), sequence.primaryGap <= 8 else { continue }
+                let combined = neighbours.reduce(into: tags) { $0.formUnion($1.semanticTokens) }
+                let corroborated = activityTitle(tags: combined, memberCount: members.count + neighbours.count)
+                if corroborated.title == "Багги", corroborated.confidence >= 0.84,
+                   !combined.contains(where: { ["cycling", "cyclist", "велосипедист"].contains($0) }) {
+                    titleDecision = corroborated
+                    titleDecision.explanation += "; подтверждено соседним ракурсом той же поездки"
+                    break
+                }
+            }
             let confidence: Double
             if decisions.isEmpty {
                 confidence = (0.52 + members[0].chronologyConfidence * 0.18 + titleDecision.confidence * 0.12).clamped01
@@ -699,9 +720,7 @@ private struct Node: Sendable {
         self.captureDate = asset.metadata.effectiveCaptureDate ?? sequence?.captureDate
         switch asset.metadata.dateSource {
         case .embeddedMetadata: self.dateReliability = asset.metadata.dateConfidence ?? 0.98
-        case .fileCreationDate: self.dateReliability = asset.metadata.dateConfidence ?? 0.68
-        case .fileModificationDate: self.dateReliability = asset.metadata.dateConfidence ?? 0.32
-        case .importDate: self.dateReliability = asset.metadata.dateConfidence ?? 0.12
+        case .fileCreationDate, .fileModificationDate, .importDate: self.dateReliability = 0
         case nil: self.dateReliability = sequence?.captureDate == nil ? 0.10 : 0.72
         }
         self.syntheticDate = nil

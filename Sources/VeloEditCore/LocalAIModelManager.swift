@@ -23,9 +23,19 @@ private struct OllamaPullEvent: Decodable {
     let error: String?
 }
 
+public struct InstalledAIModel: Codable, Sendable, Hashable {
+    public struct Details: Codable, Sendable, Hashable {
+        public let quantization_level: String?
+        public let parameter_size: String?
+    }
+    public let name: String
+    public let digest: String?
+    public let details: Details?
+    public var quantization: String? { details?.quantization_level }
+}
+
 private struct OllamaLocalTags: Decodable {
-    struct Model: Decodable { let name: String }
-    let models: [Model]
+    let models: [InstalledAIModel]
 }
 
 private struct OllamaWarmRequest: Encodable {
@@ -45,7 +55,14 @@ public actor LocalAIModelManager {
 
     private let baseURL = URL(string: "http://127.0.0.1:11434")!
     private var serverProcess: Process?
-    private var warmedModels: Set<String> = []
+    private var warmedModels: [String: TimeInterval] = [:]
+    private var warming: [String: Task<Void, Error>] = [:]
+    private var serviceStart: Task<Void, Error>?
+    private var tagsRequest: Task<[String]?, Never>?
+    private var tagsSnapshot: (names: [String], time: TimeInterval)?
+    private let availabilityLifetime: TimeInterval = 2
+    private var modelDigests: [String: String] = [:]
+    private var modelDetails: [String: InstalledAIModel] = [:]
 
     public init() {}
 
@@ -64,12 +81,13 @@ public actor LocalAIModelManager {
         try await Self.recoveringRequest { try await self.warmUp(model: model) }
     }
 
-    static func recoveringRequest<T: Sendable>(_ operation: @Sendable () async throws -> T) async throws -> T {
+    static func recoveringRequest<T: Sendable>(retryTimeouts: Bool = true, _ operation: @Sendable () async throws -> T) async throws -> T {
         var attempts = 0
         while true {
             try Task.checkCancellation()
             do { return try await operation() }
             catch {
+                if !retryTimeouts, (error as? URLError)?.code == .timedOut { throw error }
                 let cause = AutonomousFailureCause.classify(error)
                 guard cause == .transientNetwork || cause == .localService else { throw error }
                 let delay: TimeInterval
@@ -82,6 +100,7 @@ public actor LocalAIModelManager {
                 }
                 attempts += 1
                 try await Task.sleep(for: .seconds(delay))
+                await Self.shared.invalidateReadiness()
                 try await Self.shared.ensureService()
             }
         }
@@ -97,7 +116,9 @@ public actor LocalAIModelManager {
             return LocalModelAvailability(
                 serviceAvailable: true,
                 installed: installed,
-                message: installed ? "\(model) загружена и готова" : "\(model) ещё не загружена"
+                message: installed
+                    ? "Установлена: \(model) · \(modelDetails[model]?.quantization ?? modelDetails[model + ":latest"]?.quantization ?? "битность неизвестна")"
+                    : "\(model) не установлена — полный нейроанализ этого режима недоступен"
             )
         } catch {
             return LocalModelAvailability(serviceAvailable: false, installed: false, message: error.localizedDescription)
@@ -129,13 +150,23 @@ public actor LocalAIModelManager {
             }
             progress?(LocalModelDownloadProgress(status: event.status ?? "Загружаю модель", fraction: fraction))
         }
+        tagsSnapshot = nil
         let result = await availability(model: model, startService: false)
         guard result.installed else { throw LocalAIModelError.downloadFailed("Ollama не подтвердил установку модели") }
     }
 
     public func warmUp(model: String) async throws {
         try await ensureService()
-        if warmedModels.contains(model) { return }
+        if let time = warmedModels[model], ProcessInfo.processInfo.systemUptime - time < 60 { return }
+        if let task = warming[model] { return try await task.value }
+        let task = Task { try await self.performWarmUp(model: model) }
+        warming[model] = task
+        defer { warming.removeValue(forKey: model) }
+        try await task.value
+        try Task.checkCancellation()
+    }
+
+    private func performWarmUp(model: String) async throws {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
         request.httpMethod = "POST"
         request.timeoutInterval = 45
@@ -145,11 +176,24 @@ public actor LocalAIModelManager {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
-        warmedModels.insert(model)
+        warmedModels[model] = ProcessInfo.processInfo.systemUptime
+    }
+
+    public func invalidateReadiness() {
+        tagsSnapshot = nil
+        warmedModels.removeAll()
     }
 
     public func ensureService() async throws {
         if await installedModels() != nil { return }
+        if let task = serviceStart { return try await task.value }
+        let task = Task { try await self.startService() }
+        serviceStart = task
+        defer { serviceStart = nil }
+        try await task.value
+    }
+
+    private func startService() async throws {
         // Only a Process instance launched by this manager may be stopped.
         // A foreign service on the same port is never a termination target.
         if let process = serverProcess, process.isRunning {
@@ -175,12 +219,38 @@ public actor LocalAIModelManager {
         throw LocalAIModelError.serviceUnavailable
     }
 
-    private func installedModels() async -> [String]? {
+    public func installedModelDigest(model: String) async -> String? {
+        // A same-name model replacement must never validate an older answer.
+        guard await installedModels(forceRefresh: true) != nil else { return nil }
+        return modelDigests[model] ?? modelDigests["\(model):latest"]
+    }
+
+    public func installedModelInfo(model: String) async -> InstalledAIModel? {
+        guard await installedModels(forceRefresh: true) != nil else { return nil }
+        return modelDetails[model] ?? modelDetails["\(model):latest"]
+    }
+
+    private func installedModels(forceRefresh: Bool = false) async -> [String]? {
+        if !forceRefresh, let snapshot = tagsSnapshot,
+           ProcessInfo.processInfo.systemUptime - snapshot.time < availabilityLifetime { return snapshot.names }
+        if let task = tagsRequest { return await task.value }
+        let task = Task { await self.fetchInstalledModels() }
+        tagsRequest = task
+        let names = await task.value
+        tagsRequest = nil
+        if let names { tagsSnapshot = (names, ProcessInfo.processInfo.systemUptime) }
+        else { tagsSnapshot = nil }
+        return names
+    }
+
+    private func fetchInstalledModels() async -> [String]? {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/tags"))
         request.timeoutInterval = 1
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse, http.statusCode == 200,
               let tags = try? JSONDecoder().decode(OllamaLocalTags.self, from: data) else { return nil }
+        modelDigests = Dictionary(tags.models.compactMap { model in model.digest.map { (model.name, $0) } }, uniquingKeysWith: { _, new in new })
+        modelDetails = Dictionary(tags.models.map { ($0.name, $0) }, uniquingKeysWith: { _, new in new })
         return tags.models.map(\.name)
     }
 

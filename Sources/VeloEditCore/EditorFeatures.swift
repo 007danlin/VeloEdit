@@ -8,7 +8,7 @@ public struct MusicPromptInterpreter: Sendable {
         preset: FilmPreset,
         automaticDefault: Bool = false
     ) -> MusicDirective? {
-        let value = prompt.lowercased()
+        let value = prompt.lowercased().replacingOccurrences(of: "ё", with: "е")
         if value.contains("без музы") || value.contains("убери музыку") || value.contains("no music") {
             return nil
         }
@@ -48,7 +48,7 @@ public struct MusicPromptInterpreter: Sendable {
             case .cinematic: style = .cinematic
             case .memories: style = .calm
             case .summerFilm: style = .joyful
-            case .story: style = .acoustic
+            case .story, .vlog: style = .acoustic
             }
         }
         var bpm: Double

@@ -1,0 +1,11 @@
+{
+  "items": true,
+  "titleItems": true,
+  "transitionItems": true,
+  "music": true,
+  "originalAudioVolume": true,
+  "width": true,
+  "height": true,
+  "frameRate": true,
+  "endingFadeDuration": true
+}

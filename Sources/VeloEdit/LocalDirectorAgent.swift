@@ -10,12 +10,14 @@ struct DirectorAIReply: Sendable {
     let runtimeLabel: String
     let normalizedBrief: String?
     let commands: [EditorCommand]
+    let replacesSelectedFootage: Bool
 
-    init(text: String, runtimeLabel: String, normalizedBrief: String?, commands: [EditorCommand] = []) {
+    init(text: String, runtimeLabel: String, normalizedBrief: String?, commands: [EditorCommand] = [], replacesSelectedFootage: Bool = false) {
         self.text = text
         self.runtimeLabel = runtimeLabel
         self.normalizedBrief = normalizedBrief
         self.commands = commands
+        self.replacesSelectedFootage = replacesSelectedFootage
     }
 }
 
@@ -29,7 +31,7 @@ private struct OllamaOptions: Encodable {
     // A typed multi-action plan is larger than the old two-string response.
     // Keep enough room so a request with several edits is not truncated into
     // invalid JSON and silently downgraded to the deterministic fallback.
-    let numPredict = 480
+    let numPredict = 1200
 
     enum CodingKeys: String, CodingKey {
         case temperature
@@ -40,7 +42,7 @@ private struct OllamaOptions: Encodable {
 private struct OllamaChatRequest: Encodable {
     let model: String
     let messages: [OllamaMessage]
-    let stream = false
+    let stream = true
     let think = false
     let format = OllamaDirectorSchema()
     let keepAlive = "15m"
@@ -109,8 +111,8 @@ private struct OllamaDirectorPayload: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         reply = try container.decode(String.self, forKey: .reply)
-        normalizedBrief = try? container.decodeIfPresent(String.self, forKey: .normalizedBrief)
-        commands = (try? container.decodeIfPresent([OllamaDirectorCommand].self, forKey: .commands)) ?? []
+        normalizedBrief = try container.decodeIfPresent(String.self, forKey: .normalizedBrief)
+        commands = try container.decode([OllamaDirectorCommand].self, forKey: .commands)
     }
 }
 
@@ -121,7 +123,7 @@ private struct OllamaDirectorCommand: Decodable {
     let secondaryTarget: String
 
     static let supportedActions = [
-        "set_speed", "set_speed_ramp", "set_duration", "set_filter", "set_crop", "rotate",
+        "replace_footage", "set_speed", "remove_slow_motion", "set_speed_ramp", "set_duration", "set_filter", "set_crop", "rotate",
         "set_brightness", "set_contrast", "set_saturation", "set_warmth", "set_opacity",
         "set_exposure", "set_highlights", "set_shadows", "set_vignette", "set_grain",
         "set_sharpening", "set_video_denoise", "set_blur", "set_stabilization",
@@ -130,8 +132,8 @@ private struct OllamaDirectorCommand: Decodable {
         "detach_audio", "set_audio_ducking",
         "set_transition", "set_transition_pattern", "set_effect", "set_effect_pattern", "set_overlay",
         "set_telemetry", "insert_freeze_frame", "insert_instant_replay", "set_reverse", "add_title",
-        "remove_titles", "delete", "duplicate", "split", "move", "set_original_audio_volume",
-        "set_music", "set_music_volume"
+        "set_title_text", "set_title_style", "remove_titles", "delete", "duplicate", "split", "move", "set_original_audio_volume",
+        "set_music", "set_music_volume", "insert_background", "insert_source", "add_library_effect", "apply_title_template"
     ]
 }
 
@@ -142,6 +144,12 @@ private struct OllamaTagsResponse: Decodable {
 
 @MainActor
 final class LocalDirectorAgent {
+    typealias ResponseProvider = @MainActor (String, DirectorContext, DirectorRequestMode, Bool) async -> DirectorAIReply
+    private let responseProvider: ResponseProvider?
+
+    init(responseProvider: ResponseProvider? = nil) {
+        self.responseProvider = responseProvider
+    }
     private static let ollamaModel = "qwen3:4b-instruct"
     private static let ollamaRuntimeLabel = "Qwen3 4B Instruct · локальная нейросеть"
     private static let ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
@@ -194,16 +202,32 @@ final class LocalDirectorAgent {
         to userMessage: String,
         context: DirectorContext,
         mode: DirectorRequestMode = .edit,
-        recordInHistory: Bool = true
+        recordInHistory: Bool = true,
+        allowsFootageReplacement: Bool = false,
+        onPartialReply: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> DirectorAIReply {
+        if let responseProvider {
+            return await responseProvider(userMessage, context, mode, allowsFootageReplacement)
+        }
+        if mode == .edit, let commands = EditorCommandParser().parseComplete(userMessage, hasSelection: context.selectedItemSummary != nil) {
+            let reply = "Применю точную правку и сохраню результат."
+            if recordInHistory {
+                ollamaHistory.append(OllamaMessage(role: "user", content: userMessage))
+                ollamaHistory.append(OllamaMessage(role: "assistant", content: reply))
+            }
+            return DirectorAIReply(text: reply, runtimeLabel: "Точная монтажная команда", normalizedBrief: nil, commands: commands)
+        }
         do {
             return try await respondWithOllama(
                 to: userMessage,
                 context: context,
                 mode: mode,
-                recordInHistory: recordInHistory
+                recordInHistory: recordInHistory,
+                allowsFootageReplacement: allowsFootageReplacement,
+                onPartialReply: onPartialReply
             )
         } catch {
+            await LocalAIModelManager.shared.invalidateReadiness()
             guard !Task.isCancelled else {
                 return DirectorAIReply(text: "", runtimeLabel: Self.currentRuntimeLabel(), normalizedBrief: nil)
             }
@@ -219,8 +243,13 @@ final class LocalDirectorAgent {
                 } else {
                     session = makeAppleSession()
                 }
+                let replacementInstruction = allowsFootageReplacement && mode == .edit
+                    ? "Для локального выделения определи смысл просьбы. Если нужен другой исходный кусок видео вместо текущего, верни JSON {\"reply\":\"Подберу другой момент\",\"normalizedBrief\":\"\",\"commands\":[{\"action\":\"replace_footage\",\"target\":\"selected\",\"value\":\"\",\"secondaryTarget\":\"\"}]}. Для других просьб верни обычный ответ. Учитывай перефразирования; смена музыки, цвета, титра и удаление без замены не означают смену видео."
+                    : ""
                 let response = try await session.respond(to: """
                     \(context.modelPrompt)
+
+                    \(replacementInstruction)
 
                     Последнее сообщение пользователя:
                     \(userMessage)
@@ -230,6 +259,8 @@ final class LocalDirectorAgent {
                     """)
                 let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !text.isEmpty {
+                    if allowsFootageReplacement && mode == .edit,
+                       let typed = try? Self.decodeReply(text, userMessage: userMessage, runtimeLabel: "Apple Intelligence · локальная нейросеть", allowsFootageReplacement: true) { return typed }
                     return DirectorAIReply(text: text, runtimeLabel: "Apple Intelligence · локальная нейросеть", normalizedBrief: nil)
                 }
             } catch {
@@ -251,23 +282,39 @@ final class LocalDirectorAgent {
         to userMessage: String,
         context: DirectorContext,
         mode: DirectorRequestMode,
-        recordInHistory: Bool
+        recordInHistory: Bool,
+        allowsFootageReplacement: Bool,
+        onPartialReply: (@MainActor @Sendable (String) -> Void)?
     ) async throws -> DirectorAIReply {
         guard await hasOllamaModel(startService: true) else { throw URLError(.cannotConnectToHost) }
         let requestModeInstruction = mode == .advisory
             ? "РЕЖИМ СОВЕТА: предложи музыку, название или объясни звук по данным анализа. Ничего не применяй, пиши в настоящем времени, верни commands: [] и пустой normalizedBrief. Обязательно скажи, что исходник и Timeline не изменены."
             : "РЕЖИМ МОНТАЖА: подготовь исполняемый план только для явно запрошенных изменений."
-        let system = OllamaMessage(role: "system", content: """
+        let editingSystem = OllamaMessage(role: "system", content: """
             Ты монтажный режиссёр внутри VeloEdit. Отвечай естественно по-русски, ровно 1–2 короткими предложениями. Реагируй только на пожелание пользователя: не пересказывай служебную сводку, не делай арифметических расчётов и не выдумывай стиль или длительность. Точные числа повторяй буквально и считай жёсткими ограничениями. Сейчас ты только принимаешь задачу: пиши в будущем времени и не утверждай, что фильм, звук или музыка уже изменены. Например, говори «отключу звук исходников после применения правок», а не «звук убран». Не притворяйся, что просмотрел кадры, если анализ не завершён.
 
             \(requestModeInstruction)
 
+            \(allowsFootageReplacement && mode == .edit ? "Пользователь работает Волшебной кистью с выделенным диапазоном. Понимай смысл произвольной формулировки: просьба взять другой материал, неудачный дубль, заменить этот кусок, показать здесь что-то другое означает replace_footage, target selected, пустые value и secondaryTarget. Это реальная замена исходного видео другим моментом той же сцены. Смена музыки, цвета, титра, перестановка и удаление без замены не означают replace_footage. Не подменяй замену настройками звука или эффектами." : "Операция replace_footage недоступна вне Волшебной кисти.")
+
             Верни только JSON по выданной схеме: reply — ответ пользователю; normalizedBrief — краткий русский бриф для подбора истории; commands — полный исполняемый план. На каждое действие создавай отдельный элемент commands. target всегда один из: all, selected, first, last или number:N. Для неиспользуемых value и secondaryTarget передавай пустую строку. secondaryTarget нужен только наложению и использует тот же формат цели.
+            Для переименования существующего титра используй set_title_text: новый текст в value, выбранный титр — target selected. Сохраняй регистр и пунктуацию текста. Не заменяй переименование добавлением нового титра.
+            add_library_effect: value — код эффекта из полного каталога: \(TimelineEffectType.allCases.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")). Добавляет редактируемый эффект на указанные клипы. Не дублируй то же действие через set_effect.
+            apply_title_template: value — ID шаблона, target указывает титр. Каталог: \(TitleTemplateRegistry.all.map { "\($0.id)=\($0.name)" }.joined(separator: "; ")). Для нового титра сначала add_title, затем apply_title_template; текст сохраняется.
+            Полный каталог set_transition: \(TransitionStyle.allCases.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")).
+            insert_background: target beginning/end; value — JSON строкой {"background":"clouds","title":"Путешествие","duration":4}; title можно опустить. Это отдельный клип из библиотеки и привязанный титр, а не set_overlay. Для неба используй clouds, для звёздного неба stars. Каталог фонов: \(BackgroundPreset.catalogPresets.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")).
+            insert_source: target beginning/end; value — краткое описание искомой сцены из запроса (например «собака»). Ищет неиспользованный момент во всех проанализированных исходниках. Не заменяй это duplicate, move или пересборкой фильма. Не утверждай, что момент найден, до выполнения поиска.
+            set_title_style: value — JSON-объект, закодированный строкой, с нужными полями fontSize (18...220), textColorHex, backgroundColorHex (#RRGGBB) и alignment (left, center, right); отсутствующие поля не меняются. remove_slow_motion убирает только замедление, сохраняя ускоренные участки; value пустой.
 
             Значения пиши только кодами движка. set_transition: cross-dissolve, fade, fade-through-black, blur-dissolve, light-flash, slide-left, slide-right, push, zoom, wipe-left, wipe-right или none. set_transition_pattern: список этих кодов через запятую. Переход хранится на входящем клипе: «после первого клипа» означает target number:2, «между вторым и третьим» — number:3. set_effect: ken-burns, zoom-in, zoom-out, push-in, pull-out, pan-left, pan-right, mirror или none. set_effect_pattern: список кодов через запятую. set_filter: none, monochrome, noir, sepia, vivid, warm, cool, dramatic. set_crop: fit или fill. set_eq: flat, voice, music, bass-reduction, presence. set_overlay: cutaway, picture-in-picture, split-screen, green-screen или none. set_telemetry: speed, route, altitude, distance, g-force через запятую или none. Числовые value передавай десятичным числом без единиц; true/false — буквально. set_clip_fades: два числа fade-in,fade-out. add_title: текст в value и beginning/end в target. move: beginning/end в value. set_music: energetic, cinematic, calm, joyful, electronic, acoustic, different или none.
 
             Для set_sharpening, set_video_denoise, set_blur и set_stabilization value — 0...1. set_rolling_shutter, set_smooth_slow_motion и set_audio_ducking принимают true/false. detach_audio не использует value. «Приглуши музыку» означает set_music_volume, а «музыку тише под речь» — set_audio_ducking. «Приглуши звук исходников» означает set_original_audio_volume со значением \(DirectorSourceAudioPolicy.duck.volume): оставить 20% исходной громкости. Не приглушай при этом музыку под камеру. «Убери шум» означает set_noise_reduction; отличай аудиошум от video denoise. «Сделай голос/речь тише» может уменьшить громкость исходной дорожки через set_clip_volume, но не обещай изоляцию голоса из уже смешанной фонограммы. Фразы «только ключевые титры», «минимум титров» и ответы на вопрос о количестве титров задают частоту, а не текст: никогда не превращай слова «ключевой момент» или «важный момент» в add_title. add_title допустим только когда пользователь явно просит добавить надпись; текст должен быть дан пользователем или подтверждаться анализом содержания. Сохраняй все действия, точные числа и цели пользователя. Количество моментов, темп истории, предпочтения по содержанию и общую длительность сохраняй в normalizedBrief, но не выдумывай для них command, если такого action нет. При просьбе «сделай динамичнее» выбирай локальные монтажные решения по контексту: убрать слабое, укоротить затянутое, усилить action и кульминацию; не ускоряй автоматически все клипы. Полная пересборка разрешает Story Engine вернуть ранее неиспользованные фрагменты и изменить структуру, но commands должны содержать только доступные typed actions. VeloEdit сам ищет и скачивает разрешённые non-premium треки через официальный Free To Use API, даже если локальная библиотека сейчас пуста. Никогда не отвечай, что пользователь должен вручную добавить музыку или что локальный трек не найден: для монтажного музыкального запроса подтверди подбор, а приложение сообщит фактический результат загрузки. Музыку нельзя генерировать. Не добавляй действий, которых пользователь не просил, и не называй в reply эффекты, которых нет в commands.
             """)
+        let system = mode == .advisory ? OllamaMessage(role: "system", content: """
+            Ты монтажный режиссёр внутри VeloEdit. Пользователь просит только совет, никаких изменений проекта.
+            Ответь непосредственно на вопрос по-русски, конкретно и кратко. Сначала дай запрошенный результат: если нужно название, предложи готовое название в кавычках «»; если варианты музыки — назови подходящие варианты и объясни выбор. Учитывай описание пользователя и доступный анализ, не выдумывай просмотренные кадры. Не заменяй ответ подтверждением получения задачи или фразой об отсутствии изменений. После содержательного ответа можно кратко подтвердить, что проект не изменён.
+            Верни только JSON по выданной схеме: reply — содержательный совет, normalizedBrief — пустая строка, commands — пустой массив. Не обещай выполнить или применить совет.
+            """) : editingSystem
         let hardConstraint: String
         if let count = PromptInterpreter.requestedClipCount(from: userMessage.lowercased()) {
             hardConstraint = "Жёсткое ограничение из сообщения: количество моментов равно \(count). Это обязательное точное число."
@@ -286,16 +333,25 @@ final class LocalDirectorAgent {
         let payload = OllamaChatRequest(model: Self.ollamaModel, messages: messages)
         var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
-        request.timeoutInterval = 180
+        request.timeoutInterval = allowsFootageReplacement ? 20 : 180
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let started = ProcessInfo.processInfo.systemUptime
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
-        let envelope = try JSONDecoder().decode(OllamaChatResponse.self, from: data)
-        let content = Self.cleanedJSON(envelope.message.content)
+        var stream = DirectorReplyStream()
+        for try await line in bytes.lines where !line.isEmpty {
+            try Task.checkCancellation()
+            if let text = try stream.append(line) {
+                PerformanceTrace.current?.event("director.first-reply", values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
+                onPartialReply?(text)
+            }
+        }
+        let content = Self.cleanedJSON(try stream.completedContent())
+        PerformanceTrace.current?.event("director.plan-complete", values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
         let decoded = try JSONDecoder().decode(OllamaDirectorPayload.self, from: Data(content.utf8))
         let reply = decoded.reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.isEmpty else { throw URLError(.cannotParseResponse) }
@@ -305,14 +361,37 @@ final class LocalDirectorAgent {
             ollamaHistory.append(OllamaMessage(role: "assistant", content: reply))
             if ollamaHistory.count > 10 { ollamaHistory.removeFirst(ollamaHistory.count - 10) }
         }
+        return try Self.decodeReply(content, userMessage: userMessage, runtimeLabel: Self.ollamaRuntimeLabel,
+                                    allowsFootageReplacement: allowsFootageReplacement && mode == .edit, mode: mode)
+    }
+
+    /// A structured action, never words in the assistant's prose, authorizes
+    /// source replacement. The brush supplies the only supported target scope.
+    static func decodeReply(_ content: String, userMessage: String, runtimeLabel: String, allowsFootageReplacement: Bool, mode: DirectorRequestMode = .edit) throws -> DirectorAIReply {
+        let decoded = try JSONDecoder().decode(OllamaDirectorPayload.self, from: Data(cleanedJSON(content).utf8))
+        let reply = decoded.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.isEmpty else { throw URLError(.cannotParseResponse) }
+        // Advisory mode cannot carry executable edits, even when the model
+        // ignores its empty-plan instruction or echoes actions from history.
+        if mode == .advisory {
+            return DirectorAIReply(text: reply, runtimeLabel: runtimeLabel, normalizedBrief: nil)
+        }
+        // Validate every action before returning any executable plan. Dropping a
+        // malformed item would silently turn a compound request into a partial edit.
+        let commands = try decoded.commands.compactMap { command -> EditorCommand? in
+            if command.action.trimmingCharacters(in: .whitespacesAndNewlines) == "replace_footage" { return nil }
+            guard let result = Self.editorCommand(command) else { throw URLError(.cannotParseResponse) }
+            return result
+        }
         return DirectorAIReply(
             text: reply,
-            runtimeLabel: Self.ollamaRuntimeLabel,
+            runtimeLabel: runtimeLabel,
             normalizedBrief: decoded.normalizedBrief?.trimmingCharacters(in: .whitespacesAndNewlines),
-            commands: Self.sanitizedCommands(
-                decoded.commands.compactMap(Self.editorCommand),
-                for: userMessage
-            )
+            commands: Self.sanitizedCommands(commands, for: userMessage),
+            replacesSelectedFootage: allowsFootageReplacement && decoded.commands.contains {
+                $0.action.trimmingCharacters(in: .whitespacesAndNewlines) == "replace_footage"
+                    && $0.target.trimmingCharacters(in: .whitespacesAndNewlines) == "selected"
+            }
         )
     }
 
@@ -320,7 +399,8 @@ final class LocalDirectorAgent {
         let request = userMessage.lowercased().replacingOccurrences(of: "ё", with: "е")
         let explicitlyRequestsTitle = [
             "добавь титр", "добавить титр", "добавь надпись", "напиши на экране",
-            "сделай титр", "покажи текст", "title card"
+            "сделай титр", "покажи текст", "title card", "вставь титр", "вставь надпись",
+            "создай титр", "наложи текст", "наложи надпись", "хочу надпись", "нужен титр", "с титром", "с надписью"
         ].contains(where: request.contains)
         var seen = Set<EditorCommand>()
         return commands.compactMap { command in
@@ -339,7 +419,23 @@ final class LocalDirectorAgent {
         let number = numericValue(value)
 
         switch action {
+        case "add_library_effect":
+            return target.flatMap { target in TimelineEffectType(rawValue: value).map { .addLibraryEffect($0, target) } }
+        case "apply_title_template":
+            guard let target, TitleTemplateRegistry.template(id: value) != nil else { return nil }
+            return .applyTitleTemplate(value, target)
+        case "insert_background":
+            struct Background: Decodable { var background: String; var title: String?; var duration: Double? }
+            guard let details = try? JSONDecoder().decode(Background.self, from: Data(command.value.utf8)),
+                  details.duration.map({ $0.isFinite && (0.25...120).contains($0) }) ?? true else { return nil }
+            return .insertBackground(.init(background: details.background, title: details.title,
+                duration: details.duration ?? 4, position: command.target == "end" || command.target == "last" ? .end : .beginning))
+        case "insert_source":
+            guard !value.isEmpty else { return nil }
+            return .insertSource(command.value.trimmingCharacters(in: .whitespacesAndNewlines),
+                command.target == "beginning" || command.target == "first" ? .beginning : .end)
         case "set_speed": return target.flatMap { target in number.map { .setSpeed($0, target) } }
+        case "remove_slow_motion": return target.map(EditorCommand.removeSlowMotion)
         case "set_speed_ramp":
             guard let target else { return nil }
             let ramp: SpeedRamp? = value == "none" || value == "off" ? nil
@@ -419,8 +515,26 @@ final class LocalDirectorAgent {
         case "add_title":
             let title = command.value.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { return nil }
-            let position: TimelineInsertionPosition = command.target.lowercased().contains("end") ? .end : .beginning
+            let position: TimelineInsertionPosition = ["end", "last"].contains(command.target.lowercased()) ? .end : .beginning
             return .addTitle(title, position)
+        case "set_title_text":
+            let text = command.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : target.map { .setTitleText(text, $0) }
+        case "set_title_style":
+            struct Style: Decodable {
+                var fontSize: Double?
+                var textColorHex: String?
+                var backgroundColorHex: String?
+                var alignment: TitleAlignment?
+            }
+            guard let target,
+                  let style = try? JSONDecoder().decode(Style.self, from: Data(command.value.utf8)),
+                  style.fontSize != nil || style.textColorHex != nil || style.backgroundColorHex != nil || style.alignment != nil,
+                  style.fontSize.map({ $0.isFinite && (18...220).contains($0) }) ?? true,
+                  [style.textColorHex, style.backgroundColorHex].compactMap({ $0 }).allSatisfy({
+                      $0.range(of: #"^#?[0-9a-fA-F]{6}$"#, options: .regularExpression) != nil
+                  }) else { return nil }
+            return .setTitleStyle(style.fontSize, style.textColorHex, style.backgroundColorHex, style.alignment, target)
         case "remove_titles": return .removeTitles
         case "delete": return target.map(EditorCommand.delete)
         case "duplicate": return target.map(EditorCommand.duplicate)
@@ -496,17 +610,7 @@ final class LocalDirectorAgent {
     }
 
     private func hasOllamaModel(startService: Bool) async -> Bool {
-        if startService { _ = try? await LocalAIModelManager.shared.ensureService() }
-        var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/tags"))
-        request.timeoutInterval = 1.5
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                  let tags = try? JSONDecoder().decode(OllamaTagsResponse.self, from: data) else { return false }
-            return tags.models.contains { $0.name == Self.ollamaModel }
-        } catch {
-            return false
-        }
+        await LocalAIModelManager.shared.availability(model: Self.ollamaModel, startService: startService).installed
     }
 
     #if canImport(FoundationModels)

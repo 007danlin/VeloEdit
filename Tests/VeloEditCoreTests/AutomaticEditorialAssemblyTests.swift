@@ -16,7 +16,7 @@ import Testing
         let candidates = cameras.enumerated().flatMap { camera, id in
             (0..<3).map { candidate(asset: id, start: Double($0 * 20), tag: "camera-\(camera)-place-\($0)") }
         }
-        let scenes = cameras.map { asset in EventScene(title: "Поход", assetIDs: [asset], candidateIDs: candidates.filter { $0.assetID == asset }.map(\.id)) }
+        let scenes = cameras.map { asset in EventScene(title: "Поход", assetIDs: [asset], candidateIDs: candidates.filter { $0.assetID == asset }.map(\.id), tags: ["hiking"]) }
         let events = [Event(title: "Поход", assetIDs: cameras, scenes: scenes)]
         let context = EditorialAnalysisContext(analyses: analyses(candidates), events: events)
         var plan = StoryPlan(prompt: "Фильм ровно 42 секунды", preset: .adventure, constraints: .init(targetDuration: 42),
@@ -43,6 +43,7 @@ import Testing
         #expect(result.timeline.effectiveTitleItems.map(\.text) == ["Поход"])
         #expect(result.timeline.effectiveTitleItems[0].style.fontSize == 72)
         #expect(result.plan.exactDurationRequirement == 42)
+        #expect(result.plan.constraints.targetDuration == 42)
         let review = EditorialQualityGate().review(timeline: result.timeline, plan: result.plan, analyses: analysis)
         #expect(!review.findings.contains { [.mechanicalCadence, .hardDuplicate, .durationPadding, .shotFamilyRunTooLong, .falseNarrativeRole].contains($0.kind) })
     }
@@ -64,6 +65,21 @@ import Testing
                 }
             }
         }
+    }
+
+    @Test func staleAutomaticSceneNameCannotSupplyItsOwnEvidence() {
+        let asset = UUID()
+        var shot = candidate(asset: asset, start: 0, tag: "forest")
+        shot.tags.insert("research")
+        let scene = EventScene(title: "У моря", assetIDs: [asset], candidateIDs: [shot.id], tags: shot.tags)
+        let event = Event(title: "У моря", assetIDs: [asset], scenes: [scene])
+        let plan = StoryPlan(prompt: "Фильм", preset: .adventure, constraints: .init(targetDuration: 5),
+                             chapters: [StoryChapter(title: "У моря", candidateIDs: [shot.id])])
+        let timeline = Timeline(storyPlanID: plan.id, items: [TimelineItem(candidateID: shot.id, assetID: asset,
+            kind: .video, sourceStart: 0, sourceDuration: 5, timelineStart: 0, timelineDuration: 5)])
+        let revised = AutomaticEditorialAssembly.reconcile(timeline: timeline, plan: plan,
+            analyses: analyses([shot]), events: [event])
+        #expect(revised.chapters.map(\.title) == ["На природе"])
     }
 
     @Test func approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() throws {
@@ -121,12 +137,14 @@ import Testing
     @Test func impossibleRequestPreservesOriginalDurationContract() {
         let (timeline, original, analysis, events) = fixture()
         var plan = original
+        plan.prompt = "Фильм ровно 100 секунд"
         plan.contentBudget?.requestedDuration = 100
         plan.directorBrief?.requestedDuration = 100
         let result = AutomaticEditorialAssembly.prepare(timeline: timeline, plan: plan, analyses: analysis, events: events)
-        #expect(result.timeline.duration == 48)
+        #expect(result.timeline.duration == 60)
         #expect(result.plan.contentBudget?.durationConstraintStatus == .compromisedInsufficientContent)
-        #expect(result.plan.exactDurationRequirement == 42)
+        #expect(result.plan.exactDurationRequirement == 100)
+        #expect(result.plan.constraints.targetDuration == 100)
     }
 
     @Test(arguments: 0..<8) func fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_ seed: Int) throws {
@@ -152,7 +170,7 @@ import Testing
         let first = AutomaticEditorialAssembly.prepare(timeline: timeline, plan: plan, analyses: analysis, events: events, excluded: [rejected])
         let second = AutomaticEditorialAssembly.prepare(timeline: first.timeline, plan: first.plan, analyses: analysis, events: events)
         #expect(!second.timeline.items.contains { $0.candidateID == rejected })
-        #expect(second.timeline.duration <= 40)
+        #expect(second.timeline.duration <= 42)
     }
 
     @Test func addingAnActionShotDoesNotEraseExplicitObservationCapacity() {

@@ -1,0 +1,2978 @@
+[
+  {
+    "scenario": "empty-title-cache-model-may-be-warm",
+    "iteration": 1,
+    "wallSeconds": 100.11514933401486,
+    "newModelCalls": 3,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "theme": {
+          "contradictions": [],
+          "unknowns": [],
+          "setting": "Лесная тропа, открытый ландшафт",
+          "theme": "Действие на природе",
+          "secondaryActivities": [],
+          "titles": [
+            {
+              "text": "Двигательная активность",
+              "claims": [
+                {
+                  "text": "Двигательная активность",
+                  "kind": "activity",
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Оффроад в лесу",
+              "claims": [
+                {
+                  "text": "Оффроад в лесу",
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "claims": [],
+        "source": "fallback",
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "verifications": [
+          {
+            "reasons": [
+              "В наблюдениях отсутствует доказательство движения, активности или действия: в e4, e5, e6, e7 — статичный первый-лицо, без движения; в e0, e1 — стоящие люди, без активности; в e2, e3 — два мотоциклиста на тропе, но не указано, что они движутся или действуют; в e4–e7 — отсутствие движения, только статичные кадры. Название «Двигательная активность» не соответствует наблюдаемым данным, так как не подтверждено наличие движения или активности. Название не описывает тему, обстановку или события, а лишь предполагает активность, которая не подтверждена.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ],
+            "accepted": false,
+            "coversWholePart": true,
+            "unsupportedClaims": [
+              "Двигательная активность"
+            ],
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ]
+          },
+          {
+            "reasons": [
+              "Название «Оффроад в лесу» не охватывает всю часть: в ней присутствуют сцены с UTV и мотоциклами, но также есть статичные сцены с первого лица, где нет движения, и не происходит никакого действия — это не «оффроад», а просто статичный вид из кабины. Также в начале и конце — люди в куртках, стоящие рядом с UTV, что не соответствует «оффроаду в лесу» как общей теме. Сцены с UTV и мотоциклами — это лишь часть, а не вся часть. Название не отражает длительность и распределение событий, и не охватывает всю часть по смыслу.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ],
+            "accepted": false,
+            "coversWholePart": false,
+            "unsupportedClaims": [
+              "Название «Оффроад в лесу» предполагает активность, но в части есть статичные сцены без движения, что не подтверждается наблюдениями. Также в части есть сцены с UTV и мотоциклами, но они не являются единственным содержанием — это не «оффроад в лесу» как обобщающая тема."
+            ],
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ]
+          }
+        ],
+        "evidence": [
+          {
+            "id": "e0",
+            "timelineEnd": 17.033333333081103,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "selected": true,
+            "origin": "visualSummary",
+            "timelineStart": 14.866666666918901,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 62.2,
+            "sourceEnd": 64.36666666666667
+          },
+          {
+            "id": "e1",
+            "timelineEnd": 17.033333333081103,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "selected": true,
+            "origin": "objectLabels",
+            "timelineStart": 14.866666666918901,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 62.2,
+            "sourceEnd": 64.36666666666667
+          },
+          {
+            "id": "e2",
+            "timelineEnd": 21.13333333285603,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "selected": true,
+            "origin": "visualSummary",
+            "timelineStart": 17.03333333381064,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 398.7,
+            "sourceEnd": 402.8
+          },
+          {
+            "id": "e3",
+            "timelineEnd": 21.13333333285603,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "selected": true,
+            "origin": "objectLabels",
+            "timelineStart": 17.03333333381064,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 398.7,
+            "sourceEnd": 402.8
+          },
+          {
+            "id": "e4",
+            "timelineEnd": 47.666666666329064,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "origin": "visualSummary",
+            "timelineStart": 44.76666666700427,
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          },
+          {
+            "id": "e5",
+            "timelineEnd": 47.666666666329064,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "origin": "objectLabels",
+            "timelineStart": 44.76666666700427,
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          },
+          {
+            "id": "e6",
+            "timelineEnd": 47.666666666329064,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "origin": "visualSummary",
+            "timelineStart": 44.76666666700427,
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          },
+          {
+            "id": "e7",
+            "timelineEnd": 47.666666666329064,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "origin": "objectLabels",
+            "timelineStart": 44.76666666700427,
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "frameTimes": [],
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          }
+        ],
+        "modelCalls": 3,
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "text": "Часть 1",
+        "rulesVersion": 1,
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "elapsedSeconds": 95.35772800000268,
+        "coverage": {
+          "beginning": true,
+          "middle": true,
+          "sampledEvidenceCount": 8,
+          "availableEvidenceCount": 8,
+          "selectedSeconds": 47.666666666666664,
+          "observedSeconds": 9.166666664532384,
+          "end": true
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "valid-title-cache",
+    "iteration": 1,
+    "wallSeconds": 3.5759825829882175,
+    "newModelCalls": 0,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "claims": [],
+        "coverage": {
+          "availableEvidenceCount": 8,
+          "observedSeconds": 9.166666664532384,
+          "beginning": true,
+          "end": true,
+          "selectedSeconds": 47.666666666666664,
+          "middle": true,
+          "sampledEvidenceCount": 8
+        },
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "evidence": [
+          {
+            "timelineEnd": 17.033333333081103,
+            "sourceEnd": 64.36666666666667,
+            "origin": "visualSummary",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 62.2,
+            "actionSequence": false,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "id": "e0",
+            "timelineStart": 14.866666666918901,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке."
+          },
+          {
+            "timelineEnd": 17.033333333081103,
+            "sourceEnd": 64.36666666666667,
+            "origin": "objectLabels",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 62.2,
+            "actionSequence": false,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "id": "e1",
+            "timelineStart": 14.866666666918901,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people"
+          },
+          {
+            "timelineEnd": 21.13333333285603,
+            "sourceEnd": 402.8,
+            "origin": "visualSummary",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 398.7,
+            "actionSequence": false,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "id": "e2",
+            "timelineStart": 17.03333333381064,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail"
+          },
+          {
+            "timelineEnd": 21.13333333285603,
+            "sourceEnd": 402.8,
+            "origin": "objectLabels",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 398.7,
+            "actionSequence": false,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "id": "e3",
+            "timelineStart": 17.03333333381064,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders"
+          },
+          {
+            "timelineEnd": 47.666666666329064,
+            "sourceEnd": 2.9,
+            "origin": "visualSummary",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 0,
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "id": "e4",
+            "timelineStart": 44.76666666700427,
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames."
+          },
+          {
+            "timelineEnd": 47.666666666329064,
+            "sourceEnd": 2.9,
+            "origin": "objectLabels",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 0,
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "id": "e5",
+            "timelineStart": 44.76666666700427,
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees"
+          },
+          {
+            "timelineEnd": 47.666666666329064,
+            "sourceEnd": 2.9,
+            "origin": "visualSummary",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 0,
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "id": "e6",
+            "timelineStart": 44.76666666700427,
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected."
+          },
+          {
+            "timelineEnd": 47.666666666329064,
+            "sourceEnd": 2.9,
+            "origin": "objectLabels",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "selected": true,
+            "frameTimes": [],
+            "sourceStart": 0,
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "id": "e7",
+            "timelineStart": 44.76666666700427,
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees"
+          }
+        ],
+        "verifications": [
+          {
+            "coversWholePart": true,
+            "unsupportedClaims": [
+              "Двигательная активность"
+            ],
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "reasons": [
+              "В наблюдениях отсутствует доказательство движения, активности или действия: в e4, e5, e6, e7 — статичный первый-лицо, без движения; в e0, e1 — стоящие люди, без активности; в e2, e3 — два мотоциклиста на тропе, но не указано, что они движутся или действуют; в e4–e7 — отсутствие движения, только статичные кадры. Название «Двигательная активность» не соответствует наблюдаемым данным, так как не подтверждено наличие движения или активности. Название не описывает тему, обстановку или события, а лишь предполагает активность, которая не подтверждена.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ],
+            "accepted": false
+          },
+          {
+            "coversWholePart": false,
+            "unsupportedClaims": [
+              "Название «Оффроад в лесу» предполагает активность, но в части есть статичные сцены без движения, что не подтверждается наблюдениями. Также в части есть сцены с UTV и мотоциклами, но они не являются единственным содержанием — это не «оффроад в лесу» как обобщающая тема."
+            ],
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "reasons": [
+              "Название «Оффроад в лесу» не охватывает всю часть: в ней присутствуют сцены с UTV и мотоциклами, но также есть статичные сцены с первого лица, где нет движения, и не происходит никакого действия — это не «оффроад», а просто статичный вид из кабины. Также в начале и конце — люди в куртках, стоящие рядом с UTV, что не соответствует «оффроаду в лесу» как общей теме. Сцены с UTV и мотоциклами — это лишь часть, а не вся часть. Название не отражает длительность и распределение событий, и не охватывает всю часть по смыслу.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ],
+            "accepted": false
+          }
+        ],
+        "source": "fallback",
+        "theme": {
+          "setting": "Лесная тропа, открытый ландшафт",
+          "secondaryActivities": [],
+          "contradictions": [],
+          "unknowns": [],
+          "titles": [
+            {
+              "claims": [
+                {
+                  "kind": "activity",
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7"
+                  ],
+                  "text": "Двигательная активность"
+                }
+              ],
+              "text": "Двигательная активность"
+            },
+            {
+              "claims": [
+                {
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7"
+                  ],
+                  "text": "Оффроад в лесу"
+                }
+              ],
+              "text": "Оффроад в лесу"
+            }
+          ],
+          "theme": "Действие на природе"
+        },
+        "text": "Часть 1",
+        "elapsedSeconds": 95.35772800000268,
+        "rulesVersion": 1,
+        "modelCalls": 3,
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b"
+      }
+    ]
+  },
+  {
+    "scenario": "one-part-source-interval-changed",
+    "iteration": 1,
+    "wallSeconds": 24.39646316698054,
+    "newModelCalls": 1,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "verifications": [
+          {
+            "accepted": false,
+            "evidenceIDs": [
+              "e2",
+              "e3"
+            ],
+            "coversWholePart": true,
+            "reasons": [
+              "An object or one observation does not establish an activity: два человека едут на мотоциклах по лесной тропе",
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "unsupportedClaims": [
+              "An object or one observation does not establish an activity: два человека едут на мотоциклах по лесной тропе",
+              "Missing observations across the beginning, middle or end of the part"
+            ]
+          },
+          {
+            "accepted": false,
+            "evidenceIDs": [
+              "e2",
+              "e3"
+            ],
+            "coversWholePart": true,
+            "reasons": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "unsupportedClaims": [
+              "Missing observations across the beginning, middle or end of the part"
+            ]
+          }
+        ],
+        "source": "fallback",
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "elapsedSeconds": 20.190216791670537,
+        "claims": [],
+        "evidence": [
+          {
+            "timelineEnd": 17.033333333081103,
+            "timelineStart": 14.866666666918901,
+            "selected": true,
+            "id": "e0",
+            "actionSequence": false,
+            "sourceEnd": 64.36666666666667,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "origin": "visualSummary",
+            "frameTimes": [],
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "sourceStart": 62.2
+          },
+          {
+            "timelineEnd": 17.033333333081103,
+            "timelineStart": 14.866666666918901,
+            "selected": true,
+            "id": "e1",
+            "actionSequence": false,
+            "sourceEnd": 64.36666666666667,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "origin": "objectLabels",
+            "frameTimes": [],
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "sourceStart": 62.2
+          },
+          {
+            "timelineEnd": 21.13333333285603,
+            "timelineStart": 17.03333333381064,
+            "selected": true,
+            "id": "e2",
+            "actionSequence": false,
+            "sourceEnd": 402.8,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "origin": "visualSummary",
+            "frameTimes": [],
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "sourceStart": 398.7
+          },
+          {
+            "timelineEnd": 21.13333333285603,
+            "timelineStart": 17.03333333381064,
+            "selected": true,
+            "id": "e3",
+            "actionSequence": false,
+            "sourceEnd": 402.8,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "origin": "objectLabels",
+            "frameTimes": [],
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "sourceStart": 398.7
+          }
+        ],
+        "text": "Часть 1",
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "theme": {
+          "theme": "приключение на мотоциклах в лесу",
+          "setting": "лесная тропа, два человека на мотоциклах",
+          "contradictions": [],
+          "secondaryActivities": [],
+          "unknowns": [],
+          "titles": [
+            {
+              "text": "Двое на тропе",
+              "claims": [
+                {
+                  "evidenceIDs": [
+                    "e2",
+                    "e3"
+                  ],
+                  "text": "два человека едут на мотоциклах по лесной тропе",
+                  "kind": "activity"
+                }
+              ]
+            },
+            {
+              "text": "Лесная тропа",
+              "claims": [
+                {
+                  "evidenceIDs": [
+                    "e2",
+                    "e3"
+                  ],
+                  "text": "действие происходит на лесной тропе",
+                  "kind": "setting"
+                }
+              ]
+            }
+          ]
+        },
+        "modelCalls": 1,
+        "coverage": {
+          "middle": true,
+          "beginning": true,
+          "availableEvidenceCount": 4,
+          "selectedSeconds": 47.666666666666664,
+          "observedSeconds": 6.266666665207593,
+          "sampledEvidenceCount": 4,
+          "end": false
+        },
+        "inputSignature": "27463510c20520487c2dd06f80f906b1681d3b4c59c8069c604a122ea8327f26",
+        "rulesVersion": 1
+      }
+    ]
+  },
+  {
+    "scenario": "empty-title-cache-model-may-be-warm",
+    "iteration": 2,
+    "wallSeconds": 46.69848895800533,
+    "newModelCalls": 3,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "source": "model",
+        "elapsedSeconds": 42.7720745416882,
+        "verifications": [
+          {
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "reasons": [
+              "Все наблюдения, подтверждающие название, относятся к selected=true, и описывают сцену в лесу: UTV, мотоциклы, лесная тропа, деревья, трава, небо, гравитационные эффекты, первоисточник — визуальные описания и метки объектов. Название «Двигатели в лесу» не соответствует действительности, так как в наблюдениях нет никаких двигателей, а есть транспортные средства (UTV, мотоциклы), находящиеся в лесу. Название не отражает действительную тему, а является необоснованным обобщением.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ],
+            "coversWholePart": false,
+            "unsupportedClaims": [
+              "Название «Двигатели в лесу» не соответствует наблюдаемым данным: в тексте нет упоминания двигателей, а есть транспортные средства, находящиеся в лесу. Название не описывает действие, а является необоснованным обобщением."
+            ],
+            "accepted": false
+          },
+          {
+            "evidenceIDs": [
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7",
+              "e1",
+              "e0"
+            ],
+            "reasons": [
+              "Все наблюдения, подтверждающие название, относятся к selected=true, и они описывают лесную тропу с мотоциклами, что соответствует теме.",
+              "Название «Мотоциклы в лесной тропе» точно отражает основную обстановку и действие, присутствующие в части, и не содержит противоречий или необоснованных утверждений."
+            ],
+            "coversWholePart": true,
+            "unsupportedClaims": [],
+            "accepted": true
+          }
+        ],
+        "rulesVersion": 1,
+        "theme": {
+          "setting": "Лесная тропа",
+          "contradictions": [],
+          "unknowns": [],
+          "titles": [
+            {
+              "claims": [
+                {
+                  "text": "Действие происходит в лесу",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ],
+                  "kind": "setting"
+                }
+              ],
+              "text": "Двигатели в лесу"
+            },
+            {
+              "claims": [
+                {
+                  "text": "Действие происходит в лесной тропе",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ],
+                  "kind": "setting"
+                }
+              ],
+              "text": "Мотоциклы в лесной тропе"
+            }
+          ],
+          "secondaryActivities": [],
+          "theme": "Движение в природе"
+        },
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "claims": [
+          {
+            "evidenceIDs": [
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7",
+              "e1",
+              "e0"
+            ],
+            "text": "Действие происходит в лесной тропе",
+            "kind": "setting"
+          }
+        ],
+        "coverage": {
+          "sampledEvidenceCount": 8,
+          "observedSeconds": 9.166666664532384,
+          "availableEvidenceCount": 8,
+          "selectedSeconds": 47.666666666666664,
+          "middle": true,
+          "end": true,
+          "beginning": true
+        },
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "modelCalls": 3,
+        "evidence": [
+          {
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "sourceStart": 62.2,
+            "frameTimes": [],
+            "id": "e0",
+            "origin": "visualSummary",
+            "selected": true,
+            "timelineStart": 14.866666666918901,
+            "timelineEnd": 17.033333333081103,
+            "actionSequence": false,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceEnd": 64.36666666666667
+          },
+          {
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "sourceStart": 62.2,
+            "frameTimes": [],
+            "id": "e1",
+            "origin": "objectLabels",
+            "selected": true,
+            "timelineStart": 14.866666666918901,
+            "timelineEnd": 17.033333333081103,
+            "actionSequence": false,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceEnd": 64.36666666666667
+          },
+          {
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "sourceStart": 398.7,
+            "frameTimes": [],
+            "id": "e2",
+            "origin": "visualSummary",
+            "selected": true,
+            "timelineStart": 17.03333333381064,
+            "timelineEnd": 21.13333333285603,
+            "actionSequence": false,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceEnd": 402.8
+          },
+          {
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "sourceStart": 398.7,
+            "frameTimes": [],
+            "id": "e3",
+            "origin": "objectLabels",
+            "selected": true,
+            "timelineStart": 17.03333333381064,
+            "timelineEnd": 21.13333333285603,
+            "actionSequence": false,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceEnd": 402.8
+          },
+          {
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "id": "e4",
+            "origin": "visualSummary",
+            "selected": true,
+            "timelineStart": 44.76666666700427,
+            "timelineEnd": 47.666666666329064,
+            "actionSequence": false,
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceEnd": 2.9
+          },
+          {
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "id": "e5",
+            "origin": "objectLabels",
+            "selected": true,
+            "timelineStart": 44.76666666700427,
+            "timelineEnd": 47.666666666329064,
+            "actionSequence": false,
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceEnd": 2.9
+          },
+          {
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "id": "e6",
+            "origin": "visualSummary",
+            "selected": true,
+            "timelineStart": 44.76666666700427,
+            "timelineEnd": 47.666666666329064,
+            "actionSequence": false,
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceEnd": 2.9
+          },
+          {
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "id": "e7",
+            "origin": "objectLabels",
+            "selected": true,
+            "timelineStart": 44.76666666700427,
+            "timelineEnd": 47.666666666329064,
+            "actionSequence": false,
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceEnd": 2.9
+          }
+        ],
+        "text": "Мотоциклы в лесной тропе"
+      }
+    ]
+  },
+  {
+    "scenario": "valid-title-cache",
+    "iteration": 2,
+    "wallSeconds": 3.4288534589868505,
+    "newModelCalls": 0,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "claims": [
+          {
+            "text": "Действие происходит в лесной тропе",
+            "evidenceIDs": [
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7",
+              "e1",
+              "e0"
+            ],
+            "kind": "setting"
+          }
+        ],
+        "elapsedSeconds": 42.7720745416882,
+        "theme": {
+          "titles": [
+            {
+              "claims": [
+                {
+                  "text": "Действие происходит в лесу",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ],
+                  "kind": "setting"
+                }
+              ],
+              "text": "Двигатели в лесу"
+            },
+            {
+              "claims": [
+                {
+                  "text": "Действие происходит в лесной тропе",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ],
+                  "kind": "setting"
+                }
+              ],
+              "text": "Мотоциклы в лесной тропе"
+            }
+          ],
+          "secondaryActivities": [],
+          "theme": "Движение в природе",
+          "setting": "Лесная тропа",
+          "contradictions": [],
+          "unknowns": []
+        },
+        "coverage": {
+          "availableEvidenceCount": 8,
+          "middle": true,
+          "end": true,
+          "selectedSeconds": 47.666666666666664,
+          "beginning": true,
+          "observedSeconds": 9.166666664532384,
+          "sampledEvidenceCount": 8
+        },
+        "verifications": [
+          {
+            "coversWholePart": false,
+            "accepted": false,
+            "unsupportedClaims": [
+              "Название «Двигатели в лесу» не соответствует наблюдаемым данным: в тексте нет упоминания двигателей, а есть транспортные средства, находящиеся в лесу. Название не описывает действие, а является необоснованным обобщением."
+            ],
+            "reasons": [
+              "Все наблюдения, подтверждающие название, относятся к selected=true, и описывают сцену в лесу: UTV, мотоциклы, лесная тропа, деревья, трава, небо, гравитационные эффекты, первоисточник — визуальные описания и метки объектов. Название «Двигатели в лесу» не соответствует действительности, так как в наблюдениях нет никаких двигателей, а есть транспортные средства (UTV, мотоциклы), находящиеся в лесу. Название не отражает действительную тему, а является необоснованным обобщением.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ],
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ]
+          },
+          {
+            "coversWholePart": true,
+            "accepted": true,
+            "unsupportedClaims": [],
+            "reasons": [
+              "Все наблюдения, подтверждающие название, относятся к selected=true, и они описывают лесную тропу с мотоциклами, что соответствует теме.",
+              "Название «Мотоциклы в лесной тропе» точно отражает основную обстановку и действие, присутствующие в части, и не содержит противоречий или необоснованных утверждений."
+            ],
+            "evidenceIDs": [
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7",
+              "e1",
+              "e0"
+            ]
+          }
+        ],
+        "rulesVersion": 1,
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "source": "model",
+        "text": "Мотоциклы в лесной тропе",
+        "evidence": [
+          {
+            "actionSequence": false,
+            "timelineStart": 14.866666666918901,
+            "id": "e0",
+            "sourceEnd": 64.36666666666667,
+            "timelineEnd": 17.033333333081103,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "origin": "visualSummary",
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "sourceStart": 62.2,
+            "frameTimes": [],
+            "selected": true
+          },
+          {
+            "actionSequence": false,
+            "timelineStart": 14.866666666918901,
+            "id": "e1",
+            "sourceEnd": 64.36666666666667,
+            "timelineEnd": 17.033333333081103,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "origin": "objectLabels",
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "sourceStart": 62.2,
+            "frameTimes": [],
+            "selected": true
+          },
+          {
+            "actionSequence": false,
+            "timelineStart": 17.03333333381064,
+            "id": "e2",
+            "sourceEnd": 402.8,
+            "timelineEnd": 21.13333333285603,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "origin": "visualSummary",
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "sourceStart": 398.7,
+            "frameTimes": [],
+            "selected": true
+          },
+          {
+            "actionSequence": false,
+            "timelineStart": 17.03333333381064,
+            "id": "e3",
+            "sourceEnd": 402.8,
+            "timelineEnd": 21.13333333285603,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "origin": "objectLabels",
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "sourceStart": 398.7,
+            "frameTimes": [],
+            "selected": true
+          },
+          {
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427,
+            "id": "e4",
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "visualSummary",
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "selected": true
+          },
+          {
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427,
+            "id": "e5",
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "objectLabels",
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "selected": true
+          },
+          {
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427,
+            "id": "e6",
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "visualSummary",
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "selected": true
+          },
+          {
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427,
+            "id": "e7",
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "objectLabels",
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "sourceStart": 0,
+            "frameTimes": [],
+            "selected": true
+          }
+        ],
+        "modelCalls": 3,
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b"
+      }
+    ]
+  },
+  {
+    "scenario": "one-part-source-interval-changed",
+    "iteration": 2,
+    "wallSeconds": 13.064410542021506,
+    "newModelCalls": 1,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "verifications": [
+          {
+            "coversWholePart": true,
+            "reasons": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "unsupportedClaims": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "accepted": false,
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3"
+            ]
+          },
+          {
+            "coversWholePart": true,
+            "reasons": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "unsupportedClaims": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "accepted": false,
+            "evidenceIDs": [
+              "e2",
+              "e3"
+            ]
+          }
+        ],
+        "elapsedSeconds": 9.728002958319848,
+        "inputSignature": "27463510c20520487c2dd06f80f906b1681d3b4c59c8069c604a122ea8327f26",
+        "text": "Часть 1",
+        "modelCalls": 1,
+        "evidence": [
+          {
+            "sourceStart": 62.2,
+            "timelineEnd": 17.033333333081103,
+            "id": "e0",
+            "origin": "visualSummary",
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "timelineStart": 14.866666666918901,
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452"
+          },
+          {
+            "sourceStart": 62.2,
+            "timelineEnd": 17.033333333081103,
+            "id": "e1",
+            "origin": "objectLabels",
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "timelineStart": 14.866666666918901,
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452"
+          },
+          {
+            "sourceStart": 398.7,
+            "timelineEnd": 21.13333333285603,
+            "id": "e2",
+            "origin": "visualSummary",
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "timelineStart": 17.03333333381064,
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889"
+          },
+          {
+            "sourceStart": 398.7,
+            "timelineEnd": 21.13333333285603,
+            "id": "e3",
+            "origin": "objectLabels",
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "timelineStart": 17.03333333381064,
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889"
+          }
+        ],
+        "claims": [],
+        "source": "fallback",
+        "rulesVersion": 1,
+        "coverage": {
+          "middle": true,
+          "selectedSeconds": 47.666666666666664,
+          "sampledEvidenceCount": 4,
+          "observedSeconds": 6.266666665207593,
+          "beginning": true,
+          "availableEvidenceCount": 4,
+          "end": false
+        },
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "theme": {
+          "secondaryActivities": [],
+          "unknowns": [],
+          "theme": "Лесная тропа",
+          "contradictions": [],
+          "titles": [
+            {
+              "text": "Два человека в лесу",
+              "claims": [
+                {
+                  "text": "Два человека в лесу",
+                  "kind": "people",
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Лесная тропа",
+              "claims": [
+                {
+                  "text": "Лесная тропа",
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3"
+                  ]
+                }
+              ]
+            }
+          ],
+          "setting": "Лесная тропа"
+        },
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "fallbackReason": "No proposed title passed grounding and whole-part verification"
+      }
+    ]
+  },
+  {
+    "scenario": "empty-title-cache-model-may-be-warm",
+    "iteration": 3,
+    "wallSeconds": 45.79305233398918,
+    "newModelCalls": 3,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "theme": {
+          "titles": [
+            {
+              "text": "Двигатели в лесу",
+              "claims": [
+                {
+                  "text": "Действие происходит в лесу",
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Мотоциклы в лесной тропе",
+              "claims": [
+                {
+                  "text": "Действие происходит в лесной тропе",
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ]
+                }
+              ]
+            }
+          ],
+          "unknowns": [],
+          "contradictions": [],
+          "theme": "Движение в природе, приключенческая обстановка",
+          "secondaryActivities": [],
+          "setting": "Лесная тропа, лес, открытый ландшафт"
+        },
+        "evidence": [
+          {
+            "origin": "visualSummary",
+            "frameTimes": [],
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "id": "e0",
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "selected": true,
+            "timelineEnd": 17.033333333081103,
+            "sourceStart": 62.2,
+            "actionSequence": false,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "origin": "objectLabels",
+            "frameTimes": [],
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "id": "e1",
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "selected": true,
+            "timelineEnd": 17.033333333081103,
+            "sourceStart": 62.2,
+            "actionSequence": false,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "origin": "visualSummary",
+            "frameTimes": [],
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "id": "e2",
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "selected": true,
+            "timelineEnd": 21.13333333285603,
+            "sourceStart": 398.7,
+            "actionSequence": false,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "timelineStart": 17.03333333381064
+          },
+          {
+            "origin": "objectLabels",
+            "frameTimes": [],
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "id": "e3",
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "selected": true,
+            "timelineEnd": 21.13333333285603,
+            "sourceStart": 398.7,
+            "actionSequence": false,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "timelineStart": 17.03333333381064
+          },
+          {
+            "origin": "visualSummary",
+            "frameTimes": [],
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "id": "e4",
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "selected": true,
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "actionSequence": false,
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "origin": "objectLabels",
+            "frameTimes": [],
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "id": "e5",
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "selected": true,
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "actionSequence": false,
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "origin": "visualSummary",
+            "frameTimes": [],
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "id": "e6",
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "selected": true,
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "actionSequence": false,
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "origin": "objectLabels",
+            "frameTimes": [],
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "id": "e7",
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "selected": true,
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "actionSequence": false,
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "timelineStart": 44.76666666700427
+          }
+        ],
+        "elapsedSeconds": 42.27966324999579,
+        "source": "model",
+        "coverage": {
+          "selectedSeconds": 47.666666666666664,
+          "observedSeconds": 9.166666664532384,
+          "end": true,
+          "sampledEvidenceCount": 8,
+          "availableEvidenceCount": 8,
+          "middle": true,
+          "beginning": true
+        },
+        "rulesVersion": 1,
+        "verifications": [
+          {
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "coversWholePart": false,
+            "reasons": [
+              "Название «Двигатели в лесу» не соответствует наблюдаемым фактам: в части присутствуют сцены с UTV и мотоциклами, но не «двигателями» как объектами, а сценарий включает статичные кадры, без действия, и не указывает на движение или работу двигателей. Также в сцене с UTV и мотоциклами — не «двигатели», а транспортные средства, и их движение не подтверждено. Название не отражает основную тему, а лишь упоминает лес, что не является основной темой всей части. Сцены с UTV и мотоциклами — не «двигатели», а транспортные средства, и их движение не подтверждено. Название не отражает основную тему, а лишь упоминает лес, что не является основной темой всей части.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ],
+            "unsupportedClaims": [
+              "Действие происходит в лесу"
+            ],
+            "accepted": false
+          },
+          {
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "coversWholePart": true,
+            "reasons": [
+              "Все наблюдения, подтверждающие название, относятся к selected=true, и они описывают лесную тропу с мотоциклами, что соответствует теме.",
+              "Название «Мотоциклы в лесной тропе» точно отражает основную обстановку и действие, присутствующие в части, и не содержит противоречий или необоснованных утверждений."
+            ],
+            "unsupportedClaims": [],
+            "accepted": true
+          }
+        ],
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "claims": [
+          {
+            "kind": "setting",
+            "text": "Действие происходит в лесной тропе",
+            "evidenceIDs": [
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7",
+              "e1",
+              "e0"
+            ]
+          }
+        ],
+        "text": "Мотоциклы в лесной тропе",
+        "modelCalls": 3,
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b"
+      }
+    ]
+  },
+  {
+    "scenario": "valid-title-cache",
+    "iteration": 3,
+    "wallSeconds": 2.8004695840063505,
+    "newModelCalls": 0,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "text": "Мотоциклы в лесной тропе",
+        "evidence": [
+          {
+            "sourceStart": 62.2,
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "origin": "visualSummary",
+            "id": "e0",
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "sourceStart": 62.2,
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "origin": "objectLabels",
+            "id": "e1",
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "sourceStart": 398.7,
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "origin": "visualSummary",
+            "id": "e2",
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 17.03333333381064
+          },
+          {
+            "sourceStart": 398.7,
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "origin": "objectLabels",
+            "id": "e3",
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 17.03333333381064
+          },
+          {
+            "sourceStart": 0,
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "visualSummary",
+            "id": "e4",
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "sourceStart": 0,
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "objectLabels",
+            "id": "e5",
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "sourceStart": 0,
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "visualSummary",
+            "id": "e6",
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "sourceStart": 0,
+            "sourceEnd": 2.9,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "origin": "objectLabels",
+            "id": "e7",
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "frameTimes": [],
+            "actionSequence": false,
+            "timelineStart": 44.76666666700427
+          }
+        ],
+        "source": "model",
+        "verifications": [
+          {
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "accepted": false,
+            "unsupportedClaims": [
+              "Действие происходит в лесу"
+            ],
+            "coversWholePart": false,
+            "reasons": [
+              "Название «Двигатели в лесу» не соответствует наблюдаемым фактам: в части присутствуют сцены с UTV и мотоциклами, но не «двигателями» как объектами, а сценарий включает статичные кадры, без действия, и не указывает на движение или работу двигателей. Также в сцене с UTV и мотоциклами — не «двигатели», а транспортные средства, и их движение не подтверждено. Название не отражает основную тему, а лишь упоминает лес, что не является основной темой всей части. Сцены с UTV и мотоциклами — не «двигатели», а транспортные средства, и их движение не подтверждено. Название не отражает основную тему, а лишь упоминает лес, что не является основной темой всей части.",
+              "Verifier did not establish grounded coverage of the whole part"
+            ]
+          },
+          {
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "accepted": true,
+            "unsupportedClaims": [],
+            "coversWholePart": true,
+            "reasons": [
+              "Все наблюдения, подтверждающие название, относятся к selected=true, и они описывают лесную тропу с мотоциклами, что соответствует теме.",
+              "Название «Мотоциклы в лесной тропе» точно отражает основную обстановку и действие, присутствующие в части, и не содержит противоречий или необоснованных утверждений."
+            ]
+          }
+        ],
+        "coverage": {
+          "sampledEvidenceCount": 8,
+          "availableEvidenceCount": 8,
+          "middle": true,
+          "observedSeconds": 9.166666664532384,
+          "selectedSeconds": 47.666666666666664,
+          "end": true,
+          "beginning": true
+        },
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "theme": {
+          "titles": [
+            {
+              "text": "Двигатели в лесу",
+              "claims": [
+                {
+                  "text": "Действие происходит в лесу",
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Мотоциклы в лесной тропе",
+              "claims": [
+                {
+                  "text": "Действие происходит в лесной тропе",
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7",
+                    "e1",
+                    "e0"
+                  ]
+                }
+              ]
+            }
+          ],
+          "setting": "Лесная тропа, лес, открытый ландшафт",
+          "theme": "Движение в природе, приключенческая обстановка",
+          "contradictions": [],
+          "secondaryActivities": [],
+          "unknowns": []
+        },
+        "claims": [
+          {
+            "evidenceIDs": [
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7",
+              "e1",
+              "e0"
+            ],
+            "text": "Действие происходит в лесной тропе",
+            "kind": "setting"
+          }
+        ],
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "modelCalls": 3,
+        "elapsedSeconds": 42.27966324999579,
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "rulesVersion": 1
+      }
+    ]
+  },
+  {
+    "scenario": "one-part-source-interval-changed",
+    "iteration": 3,
+    "wallSeconds": 14.324903624976287,
+    "newModelCalls": 1,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "modelCalls": 1,
+        "inputSignature": "27463510c20520487c2dd06f80f906b1681d3b4c59c8069c604a122ea8327f26",
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "verifications": [
+          {
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3"
+            ],
+            "accepted": false,
+            "reasons": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "unsupportedClaims": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "coversWholePart": true
+          },
+          {
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3"
+            ],
+            "accepted": false,
+            "reasons": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "unsupportedClaims": [
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "coversWholePart": true
+          }
+        ],
+        "evidence": [
+          {
+            "frameTimes": [],
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceStart": 62.2,
+            "id": "e0",
+            "sourceEnd": 64.36666666666667,
+            "actionSequence": false,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "timelineStart": 14.866666666918901,
+            "selected": true,
+            "origin": "visualSummary",
+            "timelineEnd": 17.033333333081103
+          },
+          {
+            "frameTimes": [],
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceStart": 62.2,
+            "id": "e1",
+            "sourceEnd": 64.36666666666667,
+            "actionSequence": false,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "timelineStart": 14.866666666918901,
+            "selected": true,
+            "origin": "objectLabels",
+            "timelineEnd": 17.033333333081103
+          },
+          {
+            "frameTimes": [],
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceStart": 398.7,
+            "id": "e2",
+            "sourceEnd": 402.8,
+            "actionSequence": false,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "timelineStart": 17.03333333381064,
+            "selected": true,
+            "origin": "visualSummary",
+            "timelineEnd": 21.13333333285603
+          },
+          {
+            "frameTimes": [],
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceStart": 398.7,
+            "id": "e3",
+            "sourceEnd": 402.8,
+            "actionSequence": false,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "timelineStart": 17.03333333381064,
+            "selected": true,
+            "origin": "objectLabels",
+            "timelineEnd": 21.13333333285603
+          }
+        ],
+        "rulesVersion": 1,
+        "text": "Часть 1",
+        "claims": [],
+        "theme": {
+          "secondaryActivities": [],
+          "unknowns": [],
+          "contradictions": [],
+          "titles": [
+            {
+              "claims": [
+                {
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3"
+                  ],
+                  "text": "Лесная тропа, UTV и мотоциклы",
+                  "kind": "setting"
+                }
+              ],
+              "text": "Лесная тропа"
+            },
+            {
+              "claims": [
+                {
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3"
+                  ],
+                  "text": "Двигательные транспортные средства на лесной тропе",
+                  "kind": "activity"
+                }
+              ],
+              "text": "Транспорт на тропе"
+            }
+          ],
+          "theme": "Действие на природе",
+          "setting": "Лесная тропа"
+        },
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "source": "fallback",
+        "coverage": {
+          "beginning": true,
+          "end": false,
+          "availableEvidenceCount": 4,
+          "sampledEvidenceCount": 4,
+          "middle": true,
+          "observedSeconds": 6.266666665207593,
+          "selectedSeconds": 47.666666666666664
+        },
+        "elapsedSeconds": 11.075967749988195
+      }
+    ]
+  },
+  {
+    "scenario": "empty-title-cache-model-may-be-warm",
+    "iteration": 4,
+    "wallSeconds": 29.998402875004103,
+    "newModelCalls": 2,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "source": "fallback",
+        "modelCalls": 2,
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "theme": {
+          "setting": "лесная тропа, UTV, мотоциклы, первоисточник",
+          "contradictions": [],
+          "titles": [
+            {
+              "text": "Двигатели в лесу",
+              "claims": [
+                {
+                  "text": "Обстановка: лес, UTV, мотоциклы, первоисточник, сцена с движением и статикой",
+                  "kind": "setting",
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7"
+                  ]
+                }
+              ]
+            }
+          ],
+          "secondaryActivities": [],
+          "theme": "действие на природе",
+          "unknowns": []
+        },
+        "text": "Часть 1",
+        "elapsedSeconds": 26.75176991664921,
+        "evidence": [
+          {
+            "sourceStart": 62.2,
+            "id": "e0",
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 14.866666666918901,
+            "sourceEnd": 64.36666666666667,
+            "timelineEnd": 17.033333333081103,
+            "origin": "visualSummary",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "actionSequence": false,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452"
+          },
+          {
+            "sourceStart": 62.2,
+            "id": "e1",
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 14.866666666918901,
+            "sourceEnd": 64.36666666666667,
+            "timelineEnd": 17.033333333081103,
+            "origin": "objectLabels",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "actionSequence": false,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452"
+          },
+          {
+            "sourceStart": 398.7,
+            "id": "e2",
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 17.03333333381064,
+            "sourceEnd": 402.8,
+            "timelineEnd": 21.13333333285603,
+            "origin": "visualSummary",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "actionSequence": false,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889"
+          },
+          {
+            "sourceStart": 398.7,
+            "id": "e3",
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 17.03333333381064,
+            "sourceEnd": 402.8,
+            "timelineEnd": 21.13333333285603,
+            "origin": "objectLabels",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "actionSequence": false,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889"
+          },
+          {
+            "sourceStart": 0,
+            "id": "e4",
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 44.76666666700427,
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "origin": "visualSummary",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D"
+          },
+          {
+            "sourceStart": 0,
+            "id": "e5",
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 44.76666666700427,
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "origin": "objectLabels",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D"
+          },
+          {
+            "sourceStart": 0,
+            "id": "e6",
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 44.76666666700427,
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "origin": "visualSummary",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D"
+          },
+          {
+            "sourceStart": 0,
+            "id": "e7",
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "selected": true,
+            "frameTimes": [],
+            "timelineStart": 44.76666666700427,
+            "sourceEnd": 2.9,
+            "timelineEnd": 47.666666666329064,
+            "origin": "objectLabels",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "actionSequence": false,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D"
+          }
+        ],
+        "rulesVersion": 1,
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "coverage": {
+          "beginning": true,
+          "selectedSeconds": 47.666666666666664,
+          "middle": true,
+          "end": true,
+          "availableEvidenceCount": 8,
+          "observedSeconds": 9.166666664532384,
+          "sampledEvidenceCount": 8
+        },
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "verifications": [
+          {
+            "unsupportedClaims": [
+              "Двигатели в лесу"
+            ],
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "accepted": false,
+            "coversWholePart": false,
+            "reasons": [
+              "Название «Двигатели в лесу» не соответствует наблюдаемым фактам: в материалах нет упоминания двигателей, а есть UTV, мотоциклы, лес, сцены с движением и статикой. Упоминание «двигателей» — это не наблюдаемое действие или объект, а выдумка. Название не описывает основную тему всей части, так как в ней присутствуют разные сцены: стоящие люди, UTV, мотоциклы, первоисточник, статичные кадры с мотоциклом. Также в части нет единой темы, а есть смешанные сцены, что не подтверждает «действие» или «тему».",
+              "Verifier did not establish grounded coverage of the whole part"
+            ]
+          }
+        ],
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "claims": []
+      }
+    ]
+  },
+  {
+    "scenario": "valid-title-cache",
+    "iteration": 4,
+    "wallSeconds": 2.882151249999879,
+    "newModelCalls": 0,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "modelCalls": 2,
+        "source": "fallback",
+        "text": "Часть 1",
+        "elapsedSeconds": 26.75176991664921,
+        "rulesVersion": 1,
+        "claims": [],
+        "theme": {
+          "theme": "действие на природе",
+          "setting": "лесная тропа, UTV, мотоциклы, первоисточник",
+          "secondaryActivities": [],
+          "titles": [
+            {
+              "claims": [
+                {
+                  "kind": "setting",
+                  "text": "Обстановка: лес, UTV, мотоциклы, первоисточник, сцена с движением и статикой",
+                  "evidenceIDs": [
+                    "e0",
+                    "e1",
+                    "e2",
+                    "e3",
+                    "e4",
+                    "e5",
+                    "e6",
+                    "e7"
+                  ]
+                }
+              ],
+              "text": "Двигатели в лесу"
+            }
+          ],
+          "unknowns": [],
+          "contradictions": []
+        },
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "coverage": {
+          "selectedSeconds": 47.666666666666664,
+          "observedSeconds": 9.166666664532384,
+          "end": true,
+          "sampledEvidenceCount": 8,
+          "beginning": true,
+          "availableEvidenceCount": 8,
+          "middle": true
+        },
+        "evidence": [
+          {
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "selected": true,
+            "sourceEnd": 64.36666666666667,
+            "actionSequence": false,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "timelineEnd": 17.033333333081103,
+            "sourceStart": 62.2,
+            "timelineStart": 14.866666666918901,
+            "id": "e0"
+          },
+          {
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "selected": true,
+            "sourceEnd": 64.36666666666667,
+            "actionSequence": false,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "timelineEnd": 17.033333333081103,
+            "sourceStart": 62.2,
+            "timelineStart": 14.866666666918901,
+            "id": "e1"
+          },
+          {
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "selected": true,
+            "sourceEnd": 402.8,
+            "actionSequence": false,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "timelineEnd": 21.13333333285603,
+            "sourceStart": 398.7,
+            "timelineStart": 17.03333333381064,
+            "id": "e2"
+          },
+          {
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "selected": true,
+            "sourceEnd": 402.8,
+            "actionSequence": false,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "timelineEnd": 21.13333333285603,
+            "sourceStart": 398.7,
+            "timelineStart": 17.03333333381064,
+            "id": "e3"
+          },
+          {
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "selected": true,
+            "sourceEnd": 2.9,
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "timelineStart": 44.76666666700427,
+            "id": "e4"
+          },
+          {
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "selected": true,
+            "sourceEnd": 2.9,
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "timelineStart": 44.76666666700427,
+            "id": "e5"
+          },
+          {
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "selected": true,
+            "sourceEnd": 2.9,
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "timelineStart": 44.76666666700427,
+            "id": "e6"
+          },
+          {
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "selected": true,
+            "sourceEnd": 2.9,
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "timelineEnd": 47.666666666329064,
+            "sourceStart": 0,
+            "timelineStart": 44.76666666700427,
+            "id": "e7"
+          }
+        ],
+        "verifications": [
+          {
+            "unsupportedClaims": [
+              "Двигатели в лесу"
+            ],
+            "evidenceIDs": [
+              "e0",
+              "e1",
+              "e2",
+              "e3",
+              "e4",
+              "e5",
+              "e6",
+              "e7"
+            ],
+            "coversWholePart": false,
+            "accepted": false,
+            "reasons": [
+              "Название «Двигатели в лесу» не соответствует наблюдаемым фактам: в материалах нет упоминания двигателей, а есть UTV, мотоциклы, лес, сцены с движением и статикой. Упоминание «двигателей» — это не наблюдаемое действие или объект, а выдумка. Название не описывает основную тему всей части, так как в ней присутствуют разные сцены: стоящие люди, UTV, мотоциклы, первоисточник, статичные кадры с мотоциклом. Также в части нет единой темы, а есть смешанные сцены, что не подтверждает «действие» или «тему».",
+              "Verifier did not establish grounded coverage of the whole part"
+            ]
+          }
+        ],
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887"
+      }
+    ]
+  },
+  {
+    "scenario": "one-part-source-interval-changed",
+    "iteration": 4,
+    "wallSeconds": 15.17626045900397,
+    "newModelCalls": 1,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "text": "Часть 1",
+        "modelCalls": 1,
+        "source": "fallback",
+        "evidence": [
+          {
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "origin": "visualSummary",
+            "id": "e0",
+            "actionSequence": false,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceEnd": 64.36666666666667,
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "sourceStart": 62.2,
+            "timelineStart": 14.866666666918901,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "frameTimes": []
+          },
+          {
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "origin": "objectLabels",
+            "id": "e1",
+            "actionSequence": false,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceEnd": 64.36666666666667,
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "sourceStart": 62.2,
+            "timelineStart": 14.866666666918901,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "frameTimes": []
+          },
+          {
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "origin": "visualSummary",
+            "id": "e2",
+            "actionSequence": false,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceEnd": 402.8,
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "sourceStart": 398.7,
+            "timelineStart": 17.03333333381064,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "frameTimes": []
+          },
+          {
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "origin": "objectLabels",
+            "id": "e3",
+            "actionSequence": false,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceEnd": 402.8,
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "sourceStart": 398.7,
+            "timelineStart": 17.03333333381064,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "frameTimes": []
+          }
+        ],
+        "verifications": [
+          {
+            "evidenceIDs": [
+              "e0"
+            ],
+            "accepted": false,
+            "reasons": [
+              "Cited observations do not cover the predominant part of available footage evidence",
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "coversWholePart": false,
+            "unsupportedClaims": [
+              "Cited observations do not cover the predominant part of available footage evidence",
+              "Missing observations across the beginning, middle or end of the part"
+            ]
+          },
+          {
+            "evidenceIDs": [
+              "e2"
+            ],
+            "accepted": false,
+            "reasons": [
+              "An object or one observation does not establish an activity: Два райдера на мотоциклах едут по лесной тропе",
+              "Missing observations across the beginning, middle or end of the part"
+            ],
+            "coversWholePart": true,
+            "unsupportedClaims": [
+              "An object or one observation does not establish an activity: Два райдера на мотоциклах едут по лесной тропе",
+              "Missing observations across the beginning, middle or end of the part"
+            ]
+          }
+        ],
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "elapsedSeconds": 12.15339370831498,
+        "coverage": {
+          "sampledEvidenceCount": 4,
+          "beginning": true,
+          "middle": true,
+          "availableEvidenceCount": 4,
+          "end": false,
+          "selectedSeconds": 47.666666666666664,
+          "observedSeconds": 6.266666665207593
+        },
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "claims": [],
+        "theme": {
+          "theme": "Оффроадное движение",
+          "secondaryActivities": [
+            "Сидение рядом с UTV",
+            "Езда на мотоциклах по тропе"
+          ],
+          "setting": "Лесная местность",
+          "titles": [
+            {
+              "claims": [
+                {
+                  "kind": "people",
+                  "text": "Два человека в куртках стоят рядом с UTV на фоне леса",
+                  "evidenceIDs": [
+                    "e0"
+                  ]
+                }
+              ],
+              "text": "Человеки у УТВ"
+            },
+            {
+              "claims": [
+                {
+                  "kind": "activity",
+                  "text": "Два райдера на мотоциклах едут по лесной тропе",
+                  "evidenceIDs": [
+                    "e2"
+                  ]
+                }
+              ],
+              "text": "Мотоциклисты в лесу"
+            }
+          ],
+          "contradictions": [],
+          "unknowns": []
+        },
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "rulesVersion": 1,
+        "inputSignature": "27463510c20520487c2dd06f80f906b1681d3b4c59c8069c604a122ea8327f26"
+      }
+    ]
+  },
+  {
+    "scenario": "empty-title-cache-model-may-be-warm",
+    "iteration": 5,
+    "wallSeconds": 14.63630120799644,
+    "newModelCalls": 1,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "verifications": [
+          {
+            "coversWholePart": false,
+            "evidenceIDs": [
+              "e0"
+            ],
+            "accepted": false,
+            "reasons": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ],
+            "unsupportedClaims": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ]
+          },
+          {
+            "coversWholePart": false,
+            "evidenceIDs": [
+              "e2"
+            ],
+            "accepted": false,
+            "reasons": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ],
+            "unsupportedClaims": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ]
+          }
+        ],
+        "theme": {
+          "theme": "Оффроадное движение",
+          "contradictions": [],
+          "unknowns": [],
+          "secondaryActivities": [],
+          "setting": "Лесная тропа, UTV, мотоциклисты",
+          "titles": [
+            {
+              "claims": [
+                {
+                  "evidenceIDs": [
+                    "e0"
+                  ],
+                  "text": "Два человека в куртках стоят рядом с UTV",
+                  "kind": "people"
+                }
+              ],
+              "text": "Человеки и УТВ"
+            },
+            {
+              "claims": [
+                {
+                  "evidenceIDs": [
+                    "e2"
+                  ],
+                  "text": "Два мотоциклиста едут по лесной тропе",
+                  "kind": "people"
+                }
+              ],
+              "text": "Мотоциклисты в лесу"
+            }
+          ]
+        },
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "source": "fallback",
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "claims": [],
+        "text": "Часть 1",
+        "elapsedSeconds": 11.439184499991825,
+        "evidence": [
+          {
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "timelineStart": 14.866666666918901,
+            "id": "e0",
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "actionSequence": false,
+            "sourceStart": 62.2,
+            "sourceEnd": 64.36666666666667
+          },
+          {
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "timelineStart": 14.866666666918901,
+            "id": "e1",
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "actionSequence": false,
+            "sourceStart": 62.2,
+            "sourceEnd": 64.36666666666667
+          },
+          {
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "timelineStart": 17.03333333381064,
+            "id": "e2",
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "actionSequence": false,
+            "sourceStart": 398.7,
+            "sourceEnd": 402.8
+          },
+          {
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "timelineStart": 17.03333333381064,
+            "id": "e3",
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "actionSequence": false,
+            "sourceStart": 398.7,
+            "sourceEnd": 402.8
+          },
+          {
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "timelineStart": 44.76666666700427,
+            "id": "e4",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          },
+          {
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "timelineStart": 44.76666666700427,
+            "id": "e5",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          },
+          {
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "visualSummary",
+            "timelineStart": 44.76666666700427,
+            "id": "e6",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          },
+          {
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "frameTimes": [],
+            "origin": "objectLabels",
+            "timelineStart": 44.76666666700427,
+            "id": "e7",
+            "timelineEnd": 47.666666666329064,
+            "selected": true,
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "actionSequence": false,
+            "sourceStart": 0,
+            "sourceEnd": 2.9
+          }
+        ],
+        "rulesVersion": 1,
+        "modelCalls": 1,
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "coverage": {
+          "beginning": true,
+          "observedSeconds": 9.166666664532384,
+          "middle": true,
+          "sampledEvidenceCount": 8,
+          "selectedSeconds": 47.666666666666664,
+          "availableEvidenceCount": 8,
+          "end": true
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "valid-title-cache",
+    "iteration": 5,
+    "wallSeconds": 2.8762508330109995,
+    "newModelCalls": 0,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "fallbackReason": "No proposed title passed grounding and whole-part verification",
+        "claims": [],
+        "modelCalls": 1,
+        "source": "fallback",
+        "evidence": [
+          {
+            "actionSequence": false,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "timelineEnd": 17.033333333081103,
+            "origin": "visualSummary",
+            "sourceEnd": 64.36666666666667,
+            "frameTimes": [],
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceStart": 62.2,
+            "selected": true,
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "id": "e0",
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "actionSequence": false,
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "timelineEnd": 17.033333333081103,
+            "origin": "objectLabels",
+            "sourceEnd": 64.36666666666667,
+            "frameTimes": [],
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "sourceStart": 62.2,
+            "selected": true,
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "id": "e1",
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "actionSequence": false,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "timelineEnd": 21.13333333285603,
+            "origin": "visualSummary",
+            "sourceEnd": 402.8,
+            "frameTimes": [],
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceStart": 398.7,
+            "selected": true,
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "id": "e2",
+            "timelineStart": 17.03333333381064
+          },
+          {
+            "actionSequence": false,
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "timelineEnd": 21.13333333285603,
+            "origin": "objectLabels",
+            "sourceEnd": 402.8,
+            "frameTimes": [],
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "sourceStart": 398.7,
+            "selected": true,
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "id": "e3",
+            "timelineStart": 17.03333333381064
+          },
+          {
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "timelineEnd": 47.666666666329064,
+            "origin": "visualSummary",
+            "sourceEnd": 2.9,
+            "frameTimes": [],
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceStart": 0,
+            "selected": true,
+            "observation": "First-person view from a motorcycle, hands resting on handlebars, surrounded by tall grass and trees under a bright sky with power lines visible in the distance. No movement or action occurs between frames.",
+            "id": "e4",
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "timelineEnd": 47.666666666329064,
+            "origin": "objectLabels",
+            "sourceEnd": 2.9,
+            "frameTimes": [],
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceStart": 0,
+            "selected": true,
+            "observation": "4k, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, structure, sun, telemetry-event, trees",
+            "id": "e5",
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "timelineEnd": 47.666666666329064,
+            "origin": "visualSummary",
+            "sourceEnd": 2.9,
+            "frameTimes": [],
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceStart": 0,
+            "selected": true,
+            "observation": "Still first-person view from a motorcycle; handlebars and dashboard remain unchanged. Background includes tall grass, trees, and power lines under a clear sky. No motion detected.",
+            "id": "e6",
+            "timelineStart": 44.76666666700427
+          },
+          {
+            "actionSequence": false,
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "timelineEnd": 47.666666666329064,
+            "origin": "objectLabels",
+            "sourceEnd": 2.9,
+            "frameTimes": [],
+            "itemID": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "sourceStart": 0,
+            "selected": true,
+            "observation": "4k, atmosphere, blue_sky, cloudy, dashboard, first-person, g-force, grass, horizontal, land, motorcycle, outdoor, power lines, salient-object, sky, sun, telemetry-event, trees",
+            "id": "e7",
+            "timelineStart": 44.76666666700427
+          }
+        ],
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "inputSignature": "00bb515a5c8f4c1af476b461fa21f9f777bec35fe1c8807a8ff0a22df6064887",
+        "theme": {
+          "setting": "Лесная тропа, UTV, мотоциклисты",
+          "theme": "Оффроадное движение",
+          "unknowns": [],
+          "secondaryActivities": [],
+          "contradictions": [],
+          "titles": [
+            {
+              "text": "Человеки и УТВ",
+              "claims": [
+                {
+                  "kind": "people",
+                  "text": "Два человека в куртках стоят рядом с UTV",
+                  "evidenceIDs": [
+                    "e0"
+                  ]
+                }
+              ]
+            },
+            {
+              "text": "Мотоциклисты в лесу",
+              "claims": [
+                {
+                  "kind": "people",
+                  "text": "Два мотоциклиста едут по лесной тропе",
+                  "evidenceIDs": [
+                    "e2"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "verifications": [
+          {
+            "accepted": false,
+            "unsupportedClaims": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ],
+            "reasons": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ],
+            "coversWholePart": false,
+            "evidenceIDs": [
+              "e0"
+            ]
+          },
+          {
+            "accepted": false,
+            "unsupportedClaims": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ],
+            "reasons": [
+              "Cited observations do not cover the predominant part of available footage evidence"
+            ],
+            "coversWholePart": false,
+            "evidenceIDs": [
+              "e2"
+            ]
+          }
+        ],
+        "rulesVersion": 1,
+        "text": "Часть 1",
+        "elapsedSeconds": 11.439184499991825,
+        "coverage": {
+          "sampledEvidenceCount": 8,
+          "observedSeconds": 9.166666664532384,
+          "selectedSeconds": 47.666666666666664,
+          "beginning": true,
+          "end": true,
+          "availableEvidenceCount": 8,
+          "middle": true
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "one-part-source-interval-changed",
+    "iteration": 5,
+    "wallSeconds": 55.489119750011014,
+    "newModelCalls": 1,
+    "additionalDecodedFrames": 0,
+    "decisions": [
+      {
+        "elapsedSeconds": 52.25605549997999,
+        "evidence": [
+          {
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "frameTimes": [],
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "observation": "Человек в куртке стоит и смотрит на UTV, рядом сидит другой человек, также в куртке.",
+            "origin": "visualSummary",
+            "actionSequence": false,
+            "sourceStart": 62.2,
+            "id": "e0",
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "timelineEnd": 17.033333333081103,
+            "selected": true,
+            "sourceEnd": 64.36666666666667,
+            "itemID": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "frameTimes": [],
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "observation": "4k, UTV, cloudy, face, forest, g-force, grass, helmet, horizontal, land, outdoor, people, sky, telemetry-event, two people",
+            "origin": "objectLabels",
+            "actionSequence": false,
+            "sourceStart": 62.2,
+            "id": "e1",
+            "timelineStart": 14.866666666918901
+          },
+          {
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "frameTimes": [],
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "observation": "Two riders on motorcycles on a narrow forest trail. tags: motorcycle, offroad, forest, trail",
+            "origin": "visualSummary",
+            "actionSequence": false,
+            "sourceStart": 398.7,
+            "id": "e2",
+            "timelineStart": 17.03333333381064
+          },
+          {
+            "timelineEnd": 21.13333333285603,
+            "selected": true,
+            "sourceEnd": 402.8,
+            "itemID": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "frameTimes": [],
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "observation": "4k, action, adult, clothing, forest, g-force, horizontal, jacket, motorcycle, offroad, people, person, plant, structure, telemetry-event, trail, two riders",
+            "origin": "objectLabels",
+            "actionSequence": false,
+            "sourceStart": 398.7,
+            "id": "e3",
+            "timelineStart": 17.03333333381064
+          }
+        ],
+        "rulesVersion": 1,
+        "verifications": [],
+        "text": "Часть 1",
+        "coverage": {
+          "observedSeconds": 6.266666665207593,
+          "availableEvidenceCount": 4,
+          "sampledEvidenceCount": 4,
+          "beginning": true,
+          "selectedSeconds": 47.666666666666664,
+          "middle": true,
+          "end": false
+        },
+        "source": "retained",
+        "partID": "DD0FD866-CBA7-55BE-B986-064366D95F61",
+        "modelID": "qwen3-vl:4b-instruct@ee4b975b58c17ce268cd19d40db35d5edc64603035d2ffc1fee1968eb0947f7b",
+        "modelCalls": 1,
+        "inputSignature": "27463510c20520487c2dd06f80f906b1681d3b4c59c8069c604a122ea8327f26",
+        "fallbackReason": "DecodingError.dataCorrupted: Data was corrupted. Debug description: The given data was not valid JSON.. Underlying error: Error Domain=NSCocoaErrorDomain Code=3840 \"Unexpected end of file\" UserInfo={NSDebugDescription=Unexpected end of file}",
+        "claims": []
+      }
+    ]
+  }
+]

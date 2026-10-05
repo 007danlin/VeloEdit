@@ -116,6 +116,9 @@ import Testing
     try await store.update { $0.editorialDevelopmentEnabled = true }
     let pipeline = VeloEditPipeline(
         store: store,
+        // Exercise unavailable-media recovery, independently of a running
+        // Ollama server. No fixture supplies readable frames or candidates.
+        analyzer: FixtureEditorialAnalyzer(analyses: await store.manifest.analyses),
         personalTasteStore: LocalPersonalTasteStore(url: tasteURL)
     )
     let brief = DirectorBrief(
@@ -150,7 +153,9 @@ import Testing
         project.analyses = []
     }
 
-    let pipeline = VeloEditPipeline(store: store)
+    let pipeline = VeloEditPipeline(store: store, analyzer: FixtureEditorialAnalyzer(analyses: [
+        AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash, candidates: [])
+    ]))
     do {
         _ = try await pipeline.createFilm(
             prompt: "Собери фильм",

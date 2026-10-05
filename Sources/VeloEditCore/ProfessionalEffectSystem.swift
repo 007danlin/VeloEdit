@@ -216,10 +216,10 @@ public enum AIEffectBudgetPolicy {
             base = AIEffectBudget(maximumEffectsPerClip: 3, maximumSimultaneousHeavyEffects: 1, maximumTransitionsPerMinute: 6)
         case .cinematic, .memories:
             base = AIEffectBudget(maximumEffectsPerClip: 3, maximumSimultaneousHeavyEffects: 1, maximumTransitionsPerMinute: 5)
-        case .story, .none:
+        case .story, .vlog, .none:
             base = AIEffectBudget(maximumEffectsPerClip: 3, maximumSimultaneousHeavyEffects: 1, maximumTransitionsPerMinute: 4)
         }
-        guard let estimate = taste?.adaptiveEstimate(for: "effectPreference"), estimate.confidence >= 0.55 else { return base }
+        guard let estimate = BundledEditorialTaste.resolving(taste ?? PersonalTasteProfile()).adaptiveEstimate(for: "effectPreference"), estimate.confidence >= 0.55 else { return base }
         if estimate.value < -0.45 {
             return AIEffectBudget(
                 maximumEffectsPerClip: max(1, base.maximumEffectsPerClip - 1),

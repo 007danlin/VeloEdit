@@ -56,6 +56,7 @@ public actor PlaybackEngine {
         var track: AVMutableCompositionTrack
         var start: CMTime
         var duration: CMTime
+        var duckingEnabled: Bool? = nil
         var end: CMTime { start + duration }
     }
 
@@ -74,16 +75,20 @@ public actor PlaybackEngine {
         preferStableRealtimePreview: Bool = false,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> TimelinePlayback {
+        let timeline = TimelineFrameRatePolicy.applying(to: timeline, assets: assets)
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
         let colorProfile = outputColorProfile ?? VideoColorPipeline.profile(timeline: timeline, assets: assets)
         let composition = AVMutableComposition()
         let videoTracks = (0..<4).compactMap { _ in composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) }
         guard videoTracks.count == 4 else { throw DerivedMediaError.noVideoTrack }
+        // Reusing a track for a camera with a different clock must not inherit
+        // the first camera's coarse timebase and round subsequent edit points.
+        videoTracks.forEach { $0.naturalTimeScale = TimelineTiming.compositionTimescale }
         let originalAudioVolume = min(max(0, timeline.effectiveOriginalAudioVolume), 1)
         let originalAudioTracks: [AVMutableCompositionTrack?] = originalAudioVolume > 0.0001
             ? (0..<4).map { _ in composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) }
             : [nil, nil, nil, nil]
-        let timescale: CMTimeScale = 600
+        let timescale = TimelineTiming.compositionTimescale
         let transitions = TimelineTiming.resolvedTransitions(items: timeline.items, transitionItems: timeline.effectiveTransitionItems)
         var resolvedItems = timeline.items
         for index in resolvedItems.indices where resolvedItems[index].overlay == nil {
@@ -110,7 +115,8 @@ public actor PlaybackEngine {
         let usesNativeCameraPath = !hasEndingFade && realtimeTelemetryItems.isEmpty && realtimeEffects.isEmpty && realtimeTitles.isEmpty && realtimeTransitionItems.isEmpty && !forceVideoComposition && Self.shouldUseNativeCameraPath(
             items: playableItems,
             assets: assetByID,
-            targetAspectRatio: targetAspectRatio
+            targetAspectRatio: targetAspectRatio,
+            frameRate: timeline.frameRate
         )
         let usesSafeFitBackground = playableItems.contains { item in
             guard item.kind == .video,
@@ -121,7 +127,17 @@ public actor PlaybackEngine {
                   sourceAspectRatio > 0 else { return false }
             return abs(log(sourceAspectRatio / targetAspectRatio)) > 0.015
         }
-        let usesColorCompositor = playableItems.contains {
+        // AVFoundation's neutral layer compositor may elide repeated frames:
+        // frameDuration is a maximum cadence, not a CFR guarantee. Our tweening
+        // compositor requests every delivery frame for mixed/retimed footage.
+        let requiresFrameSampling = playableItems.contains { item in
+            guard item.kind == .video else { return false }
+            let rate = item.assetID.flatMap { assetByID[$0]?.metadata.frameRate }
+            return (rate.map { abs($0 - timeline.frameRate) >= 0.001 } ?? true)
+                || item.isFreezeFrame || item.isReversed || item.speedRamp != nil
+                || abs(item.sourceDuration - item.timelineDuration) >= 0.000_001
+        }
+        let usesColorCompositor = requiresFrameSampling || playableItems.contains {
             Self.requiresPixelProcessing($0.effectiveVideoAdjustments) ||
             $0.overlay?.style == .greenScreen || $0.telemetryOverlay != nil
         } || hasEndingFade || usesSafeFitBackground || !realtimeTelemetryItems.isEmpty || !realtimeEffects.isEmpty || !realtimeTitles.isEmpty || !realtimeTransitionItems.isEmpty
@@ -174,7 +190,7 @@ public actor PlaybackEngine {
                             duration: item.timelineDuration,
                             width: timeline.width,
                             height: timeline.height,
-                            frameRate: Int32(timeline.frameRate.rounded()),
+                            frameRate: timeline.frameRate,
                             destination: temporary,
                             codec: forceVideoComposition && derivedMediaCacheURL == nil ? .proRes4444 : .h264
                         )
@@ -205,7 +221,7 @@ public actor PlaybackEngine {
                             duration: item.timelineDuration,
                             width: timeline.width,
                             height: timeline.height,
-                            frameRate: Int32(timeline.frameRate.rounded()),
+                            frameRate: timeline.frameRate,
                             destination: temporary,
                             codec: forceVideoComposition && derivedMediaCacheURL == nil ? .proRes4444 : .h264,
                             motion: bakedMotion,
@@ -245,10 +261,10 @@ public actor PlaybackEngine {
             }
             let sourceVideo = metadata.track
             let sourceRange = CMTimeRange(
-                start: CMTime(seconds: sourceStart, preferredTimescale: timescale),
-                duration: CMTime(seconds: insertedSourceDuration, preferredTimescale: timescale)
+                start: TimelineTiming.compositionTime(sourceStart),
+                duration: TimelineTiming.compositionTime(insertedSourceDuration)
             )
-            let requestedDuration = CMTime(seconds: item.timelineDuration, preferredTimescale: timescale)
+            let requestedDuration = TimelineTiming.compositionTime(item.timelineDuration)
             let overlayStart = item.overlay == nil ? 0 : TimelineTiming.playbackTime(forTimelineTime: item.timelineStart, timeline: timeline)
             let overlayEnd = item.overlay == nil ? 0 : TimelineTiming.playbackTime(forTimelineTime: item.timelineStart + item.timelineDuration, timeline: timeline)
             let targetDuration = item.overlay == nil
@@ -256,7 +272,7 @@ public actor PlaybackEngine {
                 : CMTime(seconds: max(1.0 / timeline.frameRate, overlayEnd - overlayStart), preferredTimescale: timescale)
             let previousPrimary = placements.last(where: { $0.item.overlay == nil })
             let overlap = item.overlay == nil && !usesNativeCameraPath
-                ? CMTime(seconds: TimelineTiming.transitionOverlap(incoming: item, previous: previousPrimary?.item, transitionItems: transitions), preferredTimescale: timescale)
+                ? TimelineTiming.compositionTime(TimelineTiming.transitionOverlap(incoming: item, previous: previousPrimary?.item, transitionItems: transitions))
                 : .zero
             let at = item.overlay == nil
                 ? max(.zero, cursor - overlap)
@@ -304,6 +320,7 @@ public actor PlaybackEngine {
             }
 
             let audioTrack = originalAudioTracks[trackIndex]
+            var insertedAudioTrack: AVMutableCompositionTrack?
             if originalAudioVolume > 0.0001,
                item.kind == .video,
                !item.isReversed,
@@ -338,23 +355,23 @@ public actor PlaybackEngine {
                         start: CMTime(seconds: audioSourceStart, preferredTimescale: timescale),
                         duration: CMTime(seconds: item.sourceDuration, preferredTimescale: timescale)
                     )
-                    if let audioTrack, let ramp = item.speedRamp {
-                        _ = try? insert(
-                            ramp: ramp,
-                            sourceRange: audioRange,
-                            sourceTrack: sourceAudio,
-                            destinationTrack: audioTrack,
-                            at: at
-                        )
-                    } else {
-                        try? audioTrack?.insertTimeRange(audioRange, of: sourceAudio, at: at)
+                    if let audioTrack {
+                        do {
+                            if let ramp = item.speedRamp {
+                                _ = try insert(ramp: ramp, sourceRange: audioRange, sourceTrack: sourceAudio,
+                                    destinationTrack: audioTrack, at: at)
+                            } else {
+                                try audioTrack.insertTimeRange(audioRange, of: sourceAudio, at: at)
+                            }
+                            insertedAudioTrack = audioTrack
+                        } catch { /* A missing audio segment must not duck the soundtrack. */ }
                     }
                 }
             }
             if insertedTimelineDuration != targetDuration {
                 let insertedRange = CMTimeRange(start: at, duration: insertedTimelineDuration)
                 videoTrack.scaleTimeRange(insertedRange, toDuration: targetDuration)
-                audioTrack?.scaleTimeRange(insertedRange, toDuration: targetDuration)
+                insertedAudioTrack?.scaleTimeRange(insertedRange, toDuration: targetDuration)
             }
 
             var placedItem = item
@@ -375,7 +392,7 @@ public actor PlaybackEngine {
                 index: placements.count,
                 item: placedItem,
                 track: videoTrack,
-                audioTrack: audioTrack,
+                audioTrack: insertedAudioTrack,
                 start: at,
                 duration: targetDuration,
                 naturalSize: metadata.size,
@@ -477,7 +494,16 @@ public actor PlaybackEngine {
             additionalAudio: audioResult.placements + adaptiveMusic,
             ducking: SourceAudioMixPolicy.musicDucking(in: timeline),
             movieDuration: cursor.seconds,
-            frameRate: timeline.frameRate
+            frameRate: timeline.frameRate,
+            speechRanges: timeline.speechRecords == nil ? nil : timeline.items.flatMap { item -> [ClosedRange<Double>] in
+                guard item.overlay == nil, item.effectiveAudioAdjustments.effectiveVolume > 0, originalAudioVolume > 0,
+                      let id = item.assetID, let record = timeline.speechRecords?.first(where: { $0.assetID == id }) else { return [] }
+                return (record.transcript.speechRanges ?? record.transcript.sentences.map { $0.startTime...$0.endTime }).compactMap { range in
+                    let a = max(item.sourceStart, range.lowerBound); let b = min(item.sourceStart + item.sourceDuration, range.upperBound)
+                    guard b > a else { return nil }
+                    return SpeechTimeMap.playbackRange(anchor: SpeechCaptionAnchor(key: "mix", assetID: id, sourceStart: a, sourceEnd: b, words: []), item: item, timeline: timeline)
+                }
+            }
         )
 
         // Exact loudness mastering happens against an encoded first pass in
@@ -532,9 +558,9 @@ public actor PlaybackEngine {
     private static func titleCacheIdentity(item: TimelineItem, timeline: Timeline) -> String {
         let style = (try? JSONEncoder.veloEdit.encode(item.effectiveTitleStyle)).map { $0.base64EncodedString() } ?? "style"
         return ProductionCacheIdentity.hash([
-            "title-v3-full-resolution", item.title ?? "", style,
+            "title-v4-rational-fps", item.title ?? "", style,
             String(Int((item.timelineDuration * 1_000).rounded())),
-            "\(timeline.width)x\(timeline.height)@\(Int(timeline.frameRate.rounded()))"
+            "\(timeline.width)x\(timeline.height)@\(timeline.frameRate)"
         ])
     }
 
@@ -545,14 +571,14 @@ public actor PlaybackEngine {
         preset: BackgroundPreset?
     ) -> String {
         ProductionCacheIdentity.hash([
-            "photo-v5", asset.contentHash, item.effect ?? "zoom-in",
+            "photo-v8-rational-fps", asset.contentHash, item.effect ?? "zoom-in",
             item.effectiveVideoAdjustments.crop.rawValue,
             preset?.rawValue ?? "photo", preset?.animationStyle?.rawValue ?? "none",
             item.effectiveVideoAdjustments.subjectReframe.map {
                 (try? JSONEncoder().encode($0).base64EncodedString()) ?? "invalid-reframe"
             } ?? "no-reframe",
             String(Int((item.timelineDuration * 1_000).rounded())),
-            "\(timeline.width)x\(timeline.height)@\(Int(timeline.frameRate.rounded()))"
+            "\(timeline.width)x\(timeline.height)@\(timeline.frameRate)"
         ])
     }
 
@@ -578,12 +604,16 @@ public actor PlaybackEngine {
     private static func shouldUseNativeCameraPath(
         items: [TimelineItem],
         assets: [UUID: MediaAsset],
-        targetAspectRatio: Double
+        targetAspectRatio: Double,
+        frameRate: Double
     ) -> Bool {
         guard !items.isEmpty, items.allSatisfy({
             $0.kind == .video && $0.effect == nil &&
             $0.transition == nil && $0.overlay == nil &&
-            $0.telemetryOverlay == nil && $0.effectiveVideoAdjustments.isNeutral
+            $0.telemetryOverlay == nil && $0.effectiveVideoAdjustments.isNeutral &&
+            !$0.isFreezeFrame && !$0.isReversed && $0.speedRamp == nil &&
+            abs($0.sourceDuration - $0.timelineDuration) < 0.000_001 &&
+            $0.assetID.flatMap { assets[$0]?.metadata.frameRate }.map { abs($0 - frameRate) < 0.001 } == true
         }) else { return false }
         let descriptors = items.compactMap { item -> String? in
             guard let id = item.assetID, let metadata = assets[id]?.metadata,
@@ -614,7 +644,8 @@ public actor PlaybackEngine {
         guard let plan else { return nil }
         let available = Set(tracks.filter(\.isPlayable).map(\.id))
         return plan.segments.allSatisfy { segment in
-            segment.directive.trackID.map(available.contains) == true
+            (plan.userEdited == true && segment.directive.volume <= 0.001)
+                || segment.directive.trackID.map(available.contains) == true
         } ? nil : "Один или несколько адаптивных музыкальных фрагментов недоступны."
     }
 
@@ -698,11 +729,26 @@ public actor PlaybackEngine {
         result.frameDuration = VideoFrameTiming.duration(for: frameRate)
         Self.apply(colorProfile, to: result)
         let placementByClipID = Dictionary(uniqueKeysWithValues: placements.map { ($0.item.id, $0) })
+        // Speech captions follow the audio placement, including the portion of
+        // an outgoing voice that continues through a transition overlap.
+        let titles = titles.map { title -> TitleTimelineItem in
+            guard let anchor = title.speechAnchor, let id = title.targetClipID,
+                  let placement = placementByClipID[id],
+                  let a = SpeechTimeMap.timelineTime(sourceTime: anchor.sourceStart, item: placement.item),
+                  let b = SpeechTimeMap.timelineTime(sourceTime: anchor.sourceEnd, item: placement.item) else { return title }
+            var value = title
+            value.startTime = a
+            value.duration = b - a
+            value.words = SpeechSubtitleBuilder.measuredCaptionWords(for: value, item: placement.item)
+            value.startTime = placement.start.seconds + a - placement.item.timelineStart
+            return value
+        }
+
         func playbackTime(_ time: Double) -> CMTime {
-            CMTime(seconds: TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline), preferredTimescale: 600)
+            TimelineTiming.compositionTime(TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline))
         }
         func editorTime(_ time: CMTime) -> CMTime {
-            CMTime(seconds: TimelineTiming.timelineTime(forPlaybackTime: time.seconds, timeline: timeline), preferredTimescale: 600_000)
+            TimelineTiming.compositionTime(TimelineTiming.timelineTime(forPlaybackTime: time.seconds, timeline: timeline))
         }
         let telemetryRanges = Dictionary(uniqueKeysWithValues: telemetryItems.map {
             ($0.id, CMTimeRange(start: playbackTime($0.timelineStart), end: playbackTime($0.timelineEnd)))
@@ -711,8 +757,8 @@ public actor PlaybackEngine {
         let effectBoundaries = effects.filter(\.enabled).flatMap {
             [playbackTime($0.startTime), playbackTime($0.endTime)]
         }
-        let titleBoundaries = titles.filter(\.enabled).flatMap {
-            [playbackTime($0.startTime), playbackTime($0.endTime)]
+        let titleBoundaries = titles.filter(\.enabled).flatMap { title in
+            title.speechAnchor == nil ? [playbackTime(title.startTime), playbackTime(title.endTime)] : [TimelineTiming.compositionTime(title.startTime), TimelineTiming.compositionTime(title.endTime)]
         }
         // Boundaries arrive from both media timebases and JSON seconds. Two
         // mathematically identical instants can therefore differ by a tiny
@@ -737,6 +783,7 @@ public actor PlaybackEngine {
                     item: placement.item,
                     start: placement.start,
                     duration: placement.duration,
+                    naturalSize: placement.naturalSize,
                     transform: Self.displayTransform(for: placement, active: active, renderSize: renderSize),
                     telemetry: placement.item.assetID.flatMap { telemetry[$0] }
                 )
@@ -764,7 +811,7 @@ public actor PlaybackEngine {
             let activeEffects = effects.filter { $0.enabled && $0.startTime < timelineRange.end.seconds && $0.endTime > timelineRange.start.seconds }
             let activeClipIDs = Set(active.map(\.item.id))
             let activeTitles = titles.filter {
-                $0.enabled && $0.startTime < timelineRange.end.seconds && $0.endTime > timelineRange.start.seconds &&
+                $0.enabled && $0.startTime < ($0.speechAnchor == nil ? timelineRange.end.seconds : range.end.seconds) && $0.endTime > ($0.speechAnchor == nil ? timelineRange.start.seconds : range.start.seconds) &&
                 ($0.targetClipID.map { activeClipIDs.contains($0) } ?? true)
             }
             return VeloVideoInstruction(timeRange: range, layers: layers, telemetryLayers: activeTelemetry, effects: activeEffects, titles: activeTitles, transition: transitionItem?.style, transitionItem: transitionItem, renderSize: renderSize, colorProfile: colorProfile, endingFade: endingFade, timelineTimeRange: timelineRange)
@@ -773,7 +820,7 @@ public actor PlaybackEngine {
     }
 
     private static func instructionBoundary(_ time: CMTime) -> CMTime {
-        CMTimeConvertScale(time, timescale: 600, method: .roundHalfAwayFromZero)
+        CMTimeConvertScale(time, timescale: TimelineTiming.compositionTimescale, method: .roundHalfAwayFromZero)
     }
 
     private static func apply(_ profile: VideoColorProfile, to composition: AVMutableVideoComposition) {
@@ -1045,6 +1092,7 @@ public actor PlaybackEngine {
         var placements: [AudioPlacement] = []
         for index in plan.segments.indices {
             let segment = plan.segments[index]
+            if plan.userEdited == true && segment.directive.volume <= 0.001 { continue }
             guard let trackID = segment.directive.trackID,
                   let localTrack = tracks.first(where: { $0.id == trackID }),
                   localTrack.isPlayable,
@@ -1081,7 +1129,7 @@ public actor PlaybackEngine {
             let renderedEnd = CMTime(seconds: renderedEndSeconds, preferredTimescale: 600)
             let speed = segment.directive.effectiveSpeed
             var destinationCursor = renderedStart
-            var sourceCursor = min(max(0, segment.sourceStart), max(0, safeSourceDuration - 0.05))
+            var sourceCursor = max(0, segment.sourceStart).truncatingRemainder(dividingBy: safeSourceDuration)
             while destinationCursor < renderedEnd {
                 let remainingOutput = (renderedEnd - destinationCursor).seconds
                 let availableSource = max(0.05, safeSourceDuration - sourceCursor)
@@ -1125,7 +1173,7 @@ public actor PlaybackEngine {
                 timelineDuration: renderedDuration,
                 speed: speed,
                 adjustments: AudioAdjustments(
-                    volume: min(1, master.volume * energyGain),
+                    volume: plan.userEdited == true ? segment.directive.volume : min(1, master.volume * energyGain),
                     fadeIn: fadeIn,
                     fadeOut: fadeOut,
                     eqPreset: .music,
@@ -1136,7 +1184,8 @@ public actor PlaybackEngine {
                 clip: clip,
                 track: destinationTrack,
                 start: renderedStart,
-                duration: renderedEnd - renderedStart
+                duration: renderedEnd - renderedStart,
+                duckingEnabled: segment.duckingEnabled
             ))
         }
         return placements
@@ -1208,7 +1257,7 @@ public actor PlaybackEngine {
         return (placements, temporaryFiles)
     }
 
-    private func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double) -> AVMutableAudioMix? {
+    private func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double, speechRanges: [ClosedRange<Double>]? = nil) -> AVMutableAudioMix? {
         guard !originalTracks.isEmpty || music != nil || !additionalAudio.isEmpty else { return nil }
         func clipVolume(_ placement: Placement) -> Float {
             originalAudioVolume * Float(placement.item.effectiveAudioAdjustments.effectiveVolume)
@@ -1297,6 +1346,9 @@ public actor PlaybackEngine {
             let value = AVMutableAudioMixInputParameters(track: placement.track)
             let audio = placement.clip.adjustments
             let volume = Float(audio.effectiveVolume)
+            // Each connected clip has its own track. Initialize its gain before
+            // preroll too; AVFoundation otherwise starts a later region at unity.
+            value.setVolume(volume, at: .zero)
             let fadeIn = min(audio.fadeIn, placement.duration.seconds * 0.45)
             let fadeOut = min(audio.fadeOut, placement.duration.seconds * 0.45)
             if fadeIn > 0.001 {
@@ -1372,14 +1424,14 @@ public actor PlaybackEngine {
                 scheduleVolumeRamp(on: value, from: reduced, to: normal, timeRange: CMTimeRange(start: end - ramp, duration: ramp))
             }
         }
-        if ducking.enabled {
-            let audibleStoryRanges = (placements
+        if ducking.enabled || additionalAudio.contains(where: { $0.duckingEnabled == true }) {
+            let audibleStoryRanges = (speechRanges?.map { (start: $0.lowerBound, end: $0.upperBound) } ?? (placements
                 .filter { $0.audioTrack != nil && clipVolume($0) > 0.001 }
                 .map { (start: $0.start.seconds, end: $0.end.seconds) }
                 + additionalAudio
                 .filter { $0.clip.role != .music && $0.clip.adjustments.effectiveVolume > 0.001 }
                 .map { (start: $0.start.seconds, end: $0.end.seconds) })
-                .sorted { $0.start < $1.start }
+                .sorted { $0.start < $1.start })
             var mergedStoryRanges: [(start: Double, end: Double)] = []
             for range in audibleStoryRanges {
                 if let last = mergedStoryRanges.last,
@@ -1390,6 +1442,7 @@ public actor PlaybackEngine {
                 }
             }
             for background in additionalAudio where background.clip.role == .music {
+                guard background.duckingEnabled ?? ducking.enabled else { continue }
                 guard let value = parameters.first(where: {
                     $0.trackID == background.track.trackID
                 }) as? AVMutableAudioMixInputParameters else { continue }
@@ -1439,13 +1492,13 @@ public actor PlaybackEngine {
             value.setVolume(normal, at: .zero)
             if ducking.enabled {
                 let reduced = normal * Float(ducking.attenuation)
-                let sourceRanges = (placements
+                let sourceRanges = (speechRanges?.map { (start: $0.lowerBound, end: $0.upperBound) } ?? (placements
                     .filter { $0.audioTrack != nil && clipVolume($0) > 0.001 }
                     .map { (start: $0.start.seconds, end: $0.end.seconds) }
                     + additionalAudio
                     .filter { $0.clip.role != .music && $0.clip.adjustments.effectiveVolume > 0.001 }
                     .map { (start: $0.start.seconds, end: $0.end.seconds) })
-                    .sorted { $0.start < $1.start }
+                    .sorted { $0.start < $1.start })
                 var merged: [(start: Double, end: Double)] = []
                 for range in sourceRanges {
                     if let last = merged.last, range.start <= last.end + max(ducking.attack, ducking.release) {

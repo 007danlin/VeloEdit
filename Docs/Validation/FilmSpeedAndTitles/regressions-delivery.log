@@ -1,0 +1,201 @@
+Building for debugging...
+[Computing dependencies]
+[1 / 1]
+[2 / 22] VeloEditCore
+[4 / 24] VeloEditCore
+[9 / 25] VeloEditCore
+[12 / 21] veloedit-cli-product
+[13 / 21] veloedit-cli-product
+[15 / 24] VeloEditCoreTests-product
+[15 / 22] VeloEdit-product
+[16 / 24] VeloEdit-product
+[18 / 20] VeloEditAppTests-product
+[20 / 22] VeloEditAppTests-product
+[21 / 21] veloedit-cli-product
+Build complete! (11,69 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test verificationIgnoresOneFrameVisionNoiseButRejectsPersistentOcclusion() started.
+◇ Test partialAndFailedVisionResponsesCannotPopulateTheCache() started.
+➜ Test verificationRealProjectRecoveryCommitsFullyVerifiedFilm() skipped.
+◇ Suite FilmSpeedAndTitlesTests started.
+◇ Test temporalFeatureCacheDependsOnFramesOrderModelAndExactWindow() started.
+◇ Test verificationEveryRequiredUnknownAndEvidenceRemovalBlocksProduction() started.
+◇ Test verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) started.
+◇ Test verificationMissingEvidenceCannotBeCompensatedByScoresOrPlannerLabels() started.
+◇ Test exactCommentRoutingRequiresTheWholeRequestAndSelection() started.
+◇ Suite AutomaticFilmDeliveryTests started.
+◇ Test independentAnalyzerCacheDoesNotDependOnInstalledOllamaModels() started.
+◇ Test distinctFrameRequestsRespectDecodeMemoryReservations() started.
+◇ Test frameMotionIsRecomputedForEveryTemporalNeighbour() started.
+◇ Test verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test verificationUpperBudgetAndShortExplicitIntent() started.
+◇ Test identicalDecoderTimesShareFramesWithoutRoundingDistinctRequestsTogether() started.
+◇ Test verificationDetectsNarrowHighContrastVerticalOccluder() started.
+◇ Test verificationRecordedShortFilmRegressionsFailIndependently(_:) started.
+◇ Test simultaneousFrameConsumersShareWorkAndCancellationIsIsolated() started.
+◇ Test visionCacheCoalescesOnlyIdenticalRequestsAndSurvivesRestart() started.
+◇ Test verificationLowerBoundRepairUsesOnlyMeasuredSelectedHandles() started.
+◇ Test thermalAndBatteryPressurePreserveEveryEvaluationTask() started.
+◇ Test sourceReplacementAtSamePathInvalidatesEvenWithSameSizeAndModificationDate() started.
+◇ Test verificationAcceptsOnlyMeasuredPeakLimitedDynamicLoudnessException() started.
+◇ Test verificationFailureMessageSummarizesDistinctProblemsWithoutDumpingEvidence() started.
+◇ Test verificationPreliminaryRankingDoesNotReportIntentionallyMissingProductionChecks() started.
+◇ Test verificationCoverageCountsRiskZonesNotArbitraryProbeQuantity() started.
+◇ Test verificationReusesUnitsWithoutChangingAnyEvidenceDomain() started.
+◇ Test verificationScopedClaimsNeedDecodedFramesAndMatchingSignature() started.
+◇ Test verificationEvidenceStatesRoundTripWithoutOptimisticMigration() started.
+◇ Test tenIndependentEditContextsInfluenceFullDirectorVariantSelection() started.
+◇ Test failedFrameProductionIsRetriedAndNeverCached() started.
+◇ Test verificationEncodedLoudnessFailsBothBounds(_:) started.
+◇ Test persistentFrameCachePreservesPixelsAndPTSAndRejectsCorruption() started.
+◇ Test verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test verificationLocalSemanticClaimsAreBoundToExactRenderAndRequiredScopes() started.
+◇ Test verificationDoesNotTreatBackgroundOrClothingBoundaryAsOcclusion() started.
+◇ Test verificationParityUsesNormalizedPixelsAndRejectsMissingComparison() started.
+◇ Test frameCacheUsesBytesAndExactDependencyKeys() started.
+◇ Test case passing 1 argument count → 2 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument lufs → -32.0 to verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) started.
+◇ Test case passing 1 argument count → 4 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 3 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 8 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument count → 20 to verificationEqualFamiliesAreMathematicallyFeasible(_:) started.
+◇ Test case passing 1 argument lufs → -9.0 to verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) started.
+◇ Test case passing 1 argument text → "Съёмка на озере" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument text → "Фильм о рыбалке" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument text → "Съёмка · 11 июля 2026" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument values → (15.66, 24.51, 34.88) to verificationRecordedShortFilmRegressionsFailIndependently(_:) started.
+◇ Test case passing 1 argument text → "Часть 1" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument values → (26.83, 30.68, 45.02) to verificationRecordedShortFilmRegressionsFailIndependently(_:) started.
+◇ Test case passing 1 argument text → "Chapter by the lake" to verificationDescriptiveTitlesAreNotPlaceholders(text:) started.
+◇ Test case passing 1 argument lufs → -28.0 to verificationEncodedLoudnessFailsBothBounds(_:) started.
+◇ Test case passing 1 argument lufs → -9.0 to verificationEncodedLoudnessFailsBothBounds(_:) started.
+◇ Test case passing 1 argument text → "Съёмка" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() started.
+◇ Test case passing 1 argument text → "Глава 1" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "Фильм" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test freshCreationSelectsAndSavesDespiteEveryVariantHavingAQualityFinding() started.
+◇ Test case passing 1 argument text → "Untitled" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "123" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+◇ Test case passing 1 argument text → "Кульминация" to verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) started.
+✔ Test verificationEqualFamiliesAreMathematicallyFeasible(_:) with 5 test cases passed after 0.100 seconds.
+✔ Test frameMotionIsRecomputedForEveryTemporalNeighbour() passed after 0.101 seconds.
+✔ Test identicalDecoderTimesShareFramesWithoutRoundingDistinctRequestsTogether() passed after 0.101 seconds.
+✔ Test temporalFeatureCacheDependsOnFramesOrderModelAndExactWindow() passed after 0.101 seconds.
+✔ Test exactCommentRoutingRequiresTheWholeRequestAndSelection() passed after 0.101 seconds.
+✔ Test verificationDetectsNarrowHighContrastVerticalOccluder() passed after 0.101 seconds.
+✔ Test verificationIgnoresOneFrameVisionNoiseButRejectsPersistentOcclusion() passed after 0.102 seconds.
+✔ Test verificationDescriptiveTitlesAreNotPlaceholders(text:) with 5 test cases passed after 0.102 seconds.
+✔ Test thermalAndBatteryPressurePreserveEveryEvaluationTask() passed after 0.102 seconds.
+✔ Test verificationAcceptsOnlyMeasuredPeakLimitedDynamicLoudnessException() passed after 0.102 seconds.
+✔ Test sourceReplacementAtSamePathInvalidatesEvenWithSameSizeAndModificationDate() passed after 0.102 seconds.
+✔ Test verificationUpperBudgetAndShortExplicitIntent() passed after 0.102 seconds.
+✔ Test verificationFailureMessageSummarizesDistinctProblemsWithoutDumpingEvidence() passed after 0.102 seconds.
+✔ Test verificationEveryRequiredUnknownAndEvidenceRemovalBlocksProduction() passed after 0.102 seconds.
+✔ Test verificationMissingEvidenceCannotBeCompensatedByScoresOrPlannerLabels() passed after 0.102 seconds.
+✔ Test verificationRespectsRequestedAttenuationWithoutAllowingLoudMixes(_:) with 2 test cases passed after 0.102 seconds.
+✔ Test verificationCoverageCountsRiskZonesNotArbitraryProbeQuantity() passed after 0.102 seconds.
+✔ Test persistentFrameCachePreservesPixelsAndPTSAndRejectsCorruption() passed after 0.102 seconds.
+✔ Test verificationDoesNotTreatBackgroundOrClothingBoundaryAsOcclusion() passed after 0.102 seconds.
+✔ Test verificationReusesUnitsWithoutChangingAnyEvidenceDomain() passed after 0.102 seconds.
+✔ Test verificationLowerBoundRepairUsesOnlyMeasuredSelectedHandles() passed after 0.102 seconds.
+✔ Test verificationEvidenceStatesRoundTripWithoutOptimisticMigration() passed after 0.102 seconds.
+✔ Test verificationParityUsesNormalizedPixelsAndRejectsMissingComparison() passed after 0.102 seconds.
+✔ Test verificationRecordedShortFilmRegressionsFailIndependently(_:) with 2 test cases passed after 0.102 seconds.
+✔ Test frameCacheUsesBytesAndExactDependencyKeys() passed after 0.102 seconds.
+✔ Test verificationEncodedLoudnessFailsBothBounds(_:) with 2 test cases passed after 0.103 seconds.
+✔ Test verificationLocalSemanticClaimsAreBoundToExactRenderAndRequiredScopes() passed after 0.103 seconds.
+✔ Test verificationPreliminaryRankingDoesNotReportIntentionallyMissingProductionChecks() passed after 0.105 seconds.
+✔ Test verificationScopedClaimsNeedDecodedFramesAndMatchingSignature() passed after 0.105 seconds.
+✔ Test partialAndFailedVisionResponsesCannotPopulateTheCache() passed after 0.108 seconds.
+✔ Test failedFrameProductionIsRetriedAndNeverCached() passed after 0.107 seconds.
+✔ Test verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text:) with 6 test cases passed after 0.119 seconds.
+✔ Test independentAnalyzerCacheDoesNotDependOnInstalledOllamaModels() passed after 0.126 seconds.
+✔ Test simultaneousFrameConsumersShareWorkAndCancellationIsIsolated() passed after 0.207 seconds.
+✔ Test distinctFrameRequestsRespectDecodeMemoryReservations() passed after 0.300 seconds.
+✔ Test visionCacheCoalescesOnlyIdenticalRequestsAndSurvivesRestart() passed after 0.412 seconds.
+✔ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() passed after 1.072 seconds.
+◇ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() started.
+✔ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() passed after 0.001 seconds.
+◇ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() started.
+✔ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() passed after 0.001 seconds.
+◇ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() started.
+✔ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() passed after 0.003 seconds.
+◇ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() started.
+✔ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() passed after 0.003 seconds.
+◇ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() started.
+✔ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() passed after 0.001 seconds.
+◇ Test telemetrySetInsertionOrderCannotChangeRenderSignature() started.
+✔ Test telemetrySetInsertionOrderCannotChangeRenderSignature() passed after 0.016 seconds.
+◇ Test progressRelayKeepsStageChangesAndCompletion() started.
+✔ Test progressRelayKeepsStageChangesAndCompletion() passed after 0.001 seconds.
+✔ Suite FilmSpeedAndTitlesTests passed after 1.180 seconds.
+✔ Test tenIndependentEditContextsInfluenceFullDirectorVariantSelection() passed after 2.155 seconds.
+✔ Test freshCreationSelectsAndSavesDespiteEveryVariantHavingAQualityFinding() passed after 4.637 seconds.
+◇ Test persistentQualityFindingStillCompletesAndReopens(_:) started.
+◇ Test case passing 1 argument kind → .unsafeReframe to persistentQualityFindingStillCompletesAndReopens(_:) started.
+◇ Test case passing 1 argument kind → .foregroundOcclusion to persistentQualityFindingStillCompletesAndReopens(_:) started.
+◇ Test case passing 1 argument kind → .hardDuplicate to persistentQualityFindingStillCompletesAndReopens(_:) started.
+✔ Test persistentQualityFindingStillCompletesAndReopens(_:) with 3 test cases passed after 1.580 seconds.
+◇ Test selectorKeepsBestAvailableAndPrefersPassingQuality() started.
+✔ Test selectorKeepsBestAvailableAndPrefersPassingQuality() passed after 0.007 seconds.
+◇ Test deliveryReportDoesNotTransferToAnEditedOrEmptyTimeline() started.
+✔ Test deliveryReportDoesNotTransferToAnEditedOrEmptyTimeline() passed after 0.001 seconds.
+◇ Test qualityRepairKeepsLastShotAndRequestedDuration() started.
+✔ Test qualityRepairKeepsLastShotAndRequestedDuration() passed after 0.006 seconds.
+◇ Test unmetTitleRequestIsRecordedWithoutDiscardingTheFilm() started.
+✔ Test unmetTitleRequestIsRecordedWithoutDiscardingTheFilm() passed after 0.005 seconds.
+➜ Test realSavedTest7DraftCompletesWithOriginalEvidence() skipped.
+✔ Suite AutomaticFilmDeliveryTests passed after 6.325 seconds.
+✔ Test run with 53 tests in 2 suites passed after 6.325 seconds.
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test truncatedOrFailedModelStreamsCannotBecomeCommands() started.
+◇ Test invalidActionRejectsEntireCompoundPlan() started.
+◇ Suite InstantTimelineInteractionTests started.
+➜ Test measureExactDirectorCommandLatencyAndAccuracy() skipped.
+◇ Suite BrushSemanticReplyTests started.
+◇ Test streamedReplyNeverPublishesAnIncompletePlan() started.
+◇ Suite ProjectInteractionTests started.
+◇ Test copiedEffectsAppearImmediatelyAsIndependentObjects() started.
+◇ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() started.
+◇ Test onlyTypedReplacementInsideBrushChangesFootage() started.
+✔ Test truncatedOrFailedModelStreamsCannotBecomeCommands() passed after 0.001 seconds.
+✔ Test streamedReplyNeverPublishesAnIncompletePlan() passed after 0.001 seconds.
+✔ Test invalidActionRejectsEntireCompoundPlan() passed after 0.003 seconds.
+✔ Test onlyTypedReplacementInsideBrushChangesFootage() passed after 0.029 seconds.
+✔ Suite BrushSemanticReplyTests passed after 0.030 seconds.
+✔ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() passed after 0.045 seconds.
+◇ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() started.
+✔ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() passed after 0.090 seconds.
+◇ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() started.
+✔ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() passed after 0.027 seconds.
+◇ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() started.
+✔ Test copiedEffectsAppearImmediatelyAsIndependentObjects() passed after 0.188 seconds.
+◇ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() started.
+✔ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() passed after 0.063 seconds.
+◇ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() started.
+✔ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() passed after 0.021 seconds.
+◇ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() started.
+PERF optimistic-trim maximum_ms=1.3370513916015625
+✔ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() passed after 0.090 seconds.
+◇ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() started.
+PERF instant-delete clips=120 state_ms=2.6486666647542734
+✔ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() passed after 0.248 seconds.
+◇ Test rapidDeletesAndRefreshNeverResurrectClips() started.
+✔ Test rapidDeletesAndRefreshNeverResurrectClips() passed after 0.266 seconds.
+◇ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() started.
+✔ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() passed after 0.258 seconds.
+◇ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() started.
+✔ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() passed after 0.724 seconds.
+✔ Suite ProjectInteractionTests passed after 1.063 seconds.
+✔ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() passed after 0.273 seconds.
+◇ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() started.
+✔ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() passed after 0.182 seconds.
+◇ Test queuedSelectionIsNotSilentlyRetargetedAfterClipRemoval() started.
+✔ Test queuedSelectionIsNotSilentlyRetargetedAfterClipRemoval() passed after 0.234 seconds.
+✔ Suite InstantTimelineInteractionTests passed after 1.654 seconds.
+✔ Test run with 19 tests in 3 suites passed after 1.654 seconds.

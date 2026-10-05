@@ -1,0 +1,12 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite MusicCascadeTests started.
+◇ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() started.
+◇ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() started.
+◇ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() started.
+✔ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() passed after 0.280 seconds.
+✔ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() passed after 0.533 seconds.
+✔ Suite MusicCascadeTests passed after 0.533 seconds.
+✔ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() passed after 5.452 seconds.
+✔ Test run with 3 tests in 1 suite passed after 5.452 seconds.

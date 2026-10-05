@@ -1,0 +1,20 @@
+Another instance of SwiftPM (PID: 40820) is already running using '/Users/daniellineckij/Library/Caches/VeloEditBuild/swift', waiting until that process has finished execution...[0/1] Planning build
+Building for debugging...
+[0/8] Write sources
+[1/8] Write swift-version--58304C5D6DBC2206.txt
+[3/8] Compiling VeloEditCoreTests EventIntelligenceTests.swift
+[4/8] Compiling VeloEditCoreTests PreviousSourceTimelineAnalyzer.swift
+[5/8] Compiling VeloEditCoreTests MagicBrushReplacementTests.swift
+[6/8] Emitting module VeloEditCoreTests
+[6/8] Write Objects.LinkFileList
+[7/8] Linking VeloEditPackageTests
+Build complete! (8.33s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test sourceTimelineRestoresTest3OrderAndKeepsBuggyFilesTogether() started.
+BASELINE PREVIOUS CLASSIFIER: 2 scenes; ["Велопрогулка", "Съёмка", "Багги"]
+✘ Test sourceTimelineRestoresTest3OrderAndKeepsBuggyFilesTogether() recorded an issue at EventIntelligenceTests.swift:224:5: Expectation failed: (Set(plan.chapters.compactMap(\.eventSceneID)).count → 2) == 3
+✘ Test sourceTimelineRestoresTest3OrderAndKeepsBuggyFilesTogether() recorded an issue at EventIntelligenceTests.swift:226:5: Expectation failed: (Set(timeline.items.compactMap(\.eventSceneID)).count → 2) == 3
+✘ Test sourceTimelineRestoresTest3OrderAndKeepsBuggyFilesTogether() failed after 0.521 seconds with 2 issues.
+✘ Test run with 1 test in 0 suites failed after 0.521 seconds with 2 issues.

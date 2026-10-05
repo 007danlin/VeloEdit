@@ -8,7 +8,39 @@ import Testing
 
 @Suite(.serialized)
 struct ExportSettingsTests {
-    @Test func maximumUsesOnlyEditedOriginalsAndHonorsExplicitFrameRate() {
+    @Test func measuredCadenceRejectsMissingDuplicatedAndWrongRateFrames() {
+        let times = (0..<15).map { Double($0) / 30 }
+        #expect(ExportVideoVerifier.regularCadence(times: times, expectedRate: 30, duration: 0.5) == 30)
+        #expect(ExportVideoVerifier.regularCadence(times: Array(times.reversed()), expectedRate: 30, duration: 0.5) == 30)
+        #expect(ExportVideoVerifier.regularCadence(times: times, expectedRate: 25, duration: 0.5) == nil)
+        var gap = times; gap.remove(at: 7)
+        #expect(ExportVideoVerifier.regularCadence(times: gap, expectedRate: 30, duration: 0.5) == nil)
+        var repeated = times; repeated[7] = repeated[6]
+        #expect(ExportVideoVerifier.regularCadence(times: repeated, expectedRate: 30, duration: 0.5) == nil)
+    }
+
+    @Test func shortMP4WithFractionalTailUsesActualCadence() async throws {
+        let fixture = try await Fixture.make(duration: 0.5)
+        defer { fixture.remove() }
+        let output = fixture.root.appendingPathComponent("cadence-original.mp4")
+        _ = try await RenderEngine().render(timeline: fixture.timeline, assets: [fixture.asset], quality: .preview720p,
+                                            frameRate: 30, destination: output)
+        let trimmed = fixture.root.appendingPathComponent("cadence-trimmed.mp4")
+        let session = try #require(AVAssetExportSession(asset: AVURLAsset(url: output), presetName: AVAssetExportPresetPassthrough))
+        session.outputURL = trimmed; session.outputFileType = .mp4
+        session.timeRange = CMTimeRange(start: .zero, duration: CMTime(value: 299, timescale: 600))
+        try await EditorialAudioMastering.export(session, timeout: 60)
+        var timeline = fixture.timeline; timeline.width = 1280; timeline.height = 720; timeline.frameRate = 30
+        let info = try await ExportVideoVerifier.verify(url: trimmed,
+            settings: ExportVideoSettings(timeline: timeline, quality: .preview720p), duration: 0.5)
+        #expect(abs(info.frameRate - 30) < 0.005)
+        let asset = AVURLAsset(url: trimmed)
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        #expect(try await ExportVideoVerifier.measuredCadence(asset: asset, track: track, expectedRate: 30, duration: 0.5) != nil)
+        #expect(try await ExportVideoVerifier.measuredCadence(asset: asset, track: track, expectedRate: 25, duration: 0.5) == nil)
+    }
+
+    @Test func maximumUsesOnlyEditedOriginalsAndPreservesTimelineFrameRate() {
         let used = MediaAsset(originalURL: URL(fileURLWithPath: "/original.mov"), kind: .video, byteSize: 1, contentHash: "used",
                               metadata: MediaMetadata(width: 5312, height: 2988, frameRate: 60_000.0 / 1001))
         let unused = MediaAsset(originalURL: URL(fileURLWithPath: "/unused.mov"), kind: .video, byteSize: 1, contentHash: "unused",
@@ -17,7 +49,7 @@ struct ExportSettingsTests {
                                 items: [TimelineItem(assetID: used.id, kind: .video, sourceDuration: 1, timelineStart: 0, timelineDuration: 1)])
         let auto = ExportSettingsPolicy.timeline(timeline, assets: [used, unused], quality: .maximum)
         #expect(auto.width == 5312 && auto.height == 2988)
-        #expect(abs(auto.frameRate - 60_000.0 / 1001) < 0.00001)
+        #expect(auto.frameRate == timeline.frameRate)
         let manual = ExportSettingsPolicy.timeline(timeline, assets: [used, unused], quality: .maximum, frameRate: 25)
         #expect(manual.frameRate == 25)
         let fixed = ExportSettingsPolicy.timeline(timeline, assets: [used, unused], quality: .final1080p, frameRate: 30_000.0 / 1001)
@@ -146,7 +178,9 @@ struct ExportSettingsTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let store = try ProjectStore(createAt: root.appendingPathComponent("gopro.veloedit"), name: "Export QA")
         let item = TimelineItem(assetID: asset.id, kind: .video, sourceStart: 10, sourceDuration: 0.5, timelineStart: 0, timelineDuration: 0.5)
-        let timeline = Timeline(storyPlanID: UUID(), width: 1920, height: 1080, frameRate: 30, items: [item], originalAudioVolume: 0)
+        var timeline = Timeline(storyPlanID: UUID(), width: 1920, height: 1080, items: [item], originalAudioVolume: 0)
+        timeline.automaticallySelectFrameRate = true
+        timeline = TimelineFrameRatePolicy.applying(to: timeline, assets: [asset])
         try await store.update { project in project.assets = [asset]; project.timelines = [timeline] }
         let proxyImage = root.appendingPathComponent("black-proxy.png")
         try Self.save(CIImage(color: .black).cropped(to: CGRect(x: 0, y: 0, width: 320, height: 180)), to: proxyImage)

@@ -1,0 +1,18 @@
+{
+  "build": "ba4b4afe8a7fb4f396d5aabbdeed99fbbc50c138af742e23c891bfd0ae7fae28",
+  "seconds": [
+    1.1331827079993673,
+    1.7275372500007506,
+    2.911097250002058,
+    2.4307697090007423,
+    1.7394710420012416
+  ],
+  "median": 1.7394710420012416,
+  "range": [
+    1.1331827079993673,
+    2.911097250002058
+  ],
+  "allSevenOfSeven": true,
+  "renderSignature": "c6e62f45599a8f195345b454808700793309139ff3497fd16862f335f9b7c5da",
+  "purpose": "warm recheck of same fixed film only; not repeated creation or before/after series"
+}

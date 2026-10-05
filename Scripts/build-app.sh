@@ -58,6 +58,8 @@ if [[ "${VELOEDIT_BUILD_CLI:-0}" == "1" ]]; then
   product_args=()
 fi
 swift build --package-path "$build_package_dir" --disable-sandbox "${scratch_args[@]}" --jobs "${VELOEDIT_BUILD_JOBS:-2}" -c "$configuration" "${product_args[@]}"
+swift build --package-path "$build_package_dir" --disable-sandbox "${scratch_args[@]}" --jobs "${VELOEDIT_BUILD_JOBS:-2}" -c "$configuration" --product VeloEditSpeechWorker
+cp "${binary_path:h}/VeloEditSpeechWorker" "$staging_root/VeloEditSpeechWorker"
 cp "$binary_path" "$staging_root/VeloEdit"
 
 # Optional acceptance runner built from exactly the same immutable sources.
@@ -73,6 +75,16 @@ fi
 mkdir -p "$staging_app/Contents/MacOS" "$staging_app/Contents/Resources"
 cp "$staging_root/VeloEdit" "$staging_app/Contents/MacOS/VeloEdit"
 cp "$ovrley_binary" "$staging_app/Contents/MacOS/VeloEditOVRLEY"
+cp "$staging_root/VeloEditSpeechWorker" "$staging_app/Contents/MacOS/VeloEditSpeechWorker"
+cp -R "$build_package_dir/Resources/Speech" "$staging_app/Contents/Resources/Speech"
+if [[ -f "$repo_dir/Build/SpeechPackage/package.json" ]]; then
+  cp -R "$repo_dir/Build/SpeechPackage" "$staging_app/Contents/Resources/Speech/ModelsPackage"
+fi
+cp -R "$build_package_dir/ThirdParty/ArgmaxOSS" "$staging_app/Contents/Resources/ArgmaxOSS-Source"
+if [[ -f "$app_scratch_path/checkouts/onnxruntime-swift-package-manager/LICENSE" ]]; then
+  cp "$app_scratch_path/checkouts/onnxruntime-swift-package-manager/LICENSE" "$staging_app/Contents/Resources/Speech/ONNX-Runtime-LICENSE"
+  chmod u+w "$staging_app/Contents/Resources/Speech/ONNX-Runtime-LICENSE"
+fi
 cp "$build_package_dir/Resources/Info.plist" "$staging_app/Contents/Info.plist"
 cp "$build_package_dir/Resources/AppIcon.icns" "$staging_app/Contents/Resources/AppIcon.icns"
 cp -R "$build_package_dir/Resources/Backgrounds" "$staging_app/Contents/Resources/Backgrounds"
@@ -80,10 +92,12 @@ cp -R "$build_package_dir/Resources/TransitionPreviews" "$staging_app/Contents/R
 cp -R "$build_package_dir/Resources/Music" "$staging_app/Contents/Resources/Music"
 cp -R "$build_package_dir/Resources/Ollama" "$staging_app/Contents/Resources/Ollama"
 cp -R "$build_package_dir/ThirdParty/OVRLEY" "$staging_app/Contents/Resources/OVRLEY-Source"
+python3 "$repo_dir/Scripts/bundle-ffmpeg.py" "$staging_app"
 python3 "$repo_dir/Scripts/write-build-identity.py" "$build_package_dir" "$staging_app"
 if [[ "$configuration" == "release" ]]; then
   /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEdit"
   /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEditOVRLEY"
+  /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEditSpeechWorker"
 fi
 xattr -cr "$staging_app"
 

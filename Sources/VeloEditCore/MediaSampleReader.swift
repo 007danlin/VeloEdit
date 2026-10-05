@@ -4,8 +4,8 @@ import AVFoundation
 /// Never occupy a cooperative executor thread with that synchronous wait: a
 /// handful of simultaneous exports could otherwise stall every pending task.
 enum MediaSampleReader {
-    // Exactly one read is in flight, awaited before another read or status
-    // access. AVAssetReader's cancellation may interrupt that blocking read.
+    // Exactly one read is in flight, awaited before another read, status
+    // access, or teardown. Keep both objects alive until the worker returns.
     private final class ReadOperation: @unchecked Sendable {
         let output: AVAssetReaderOutput
         let reader: AVAssetReader
@@ -18,15 +18,17 @@ enum MediaSampleReader {
     static func next(from output: AVAssetReaderOutput, reader: AVAssetReader) async throws -> CMSampleBuffer? {
         try Task.checkCancellation()
         let operation = ReadOperation(output: output, reader: reader)
-        let buffer: CMSampleBuffer? = await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    continuation.resume(returning: operation.output.copyNextSampleBuffer())
+        let buffer: CMSampleBuffer? = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let sample = withExtendedLifetime(operation) {
+                    operation.output.copyNextSampleBuffer()
                 }
+                continuation.resume(returning: sample)
             }
-        } onCancel: {
-            operation.reader.cancelReading()
         }
+        // Do not cancel the reader from a task cancellation handler: AVFoundation
+        // can free its visual context while copyNextSampleBuffer still uses it.
+        // Await this one sample, then throw so the caller's defer cancels safely.
         try Task.checkCancellation()
         return buffer
     }

@@ -1,0 +1,26 @@
+[0/1] Planning build
+Building for debugging...
+[0/7] Write sources
+[1/7] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling VeloEditCoreTests VerticalTitleAuditTests.swift
+[4/5] Emitting module VeloEditCoreTests
+[4/6] Write Objects.LinkFileList
+[5/6] Linking VeloEditPackageTests
+Build complete! (8.61s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite VerticalTitleAuditTests started.
+◇ Test allTemplatesAcrossPortraitScenarios() started.
+VERTICAL AUDIT: 84 scenarios; 0 text problems
+✔ Test allTemplatesAcrossPortraitScenarios() passed after 4.099 seconds.
+◇ Test portraitAccentBarsStayOutsideTextAndPanelsContainTheirLabels() started.
+✔ Test portraitAccentBarsStayOutsideTextAndPanelsContainTheirLabels() passed after 0.005 seconds.
+◇ Test shortPortraitTitlesHaveASettledReadableMiddleFrame() started.
+✔ Test shortPortraitTitlesHaveASettledReadableMiddleFrame() passed after 0.085 seconds.
+◇ Test verticalMixedSourcesAndRotatedPhoneVideoMatchExport() started.
+✔ Test verticalMixedSourcesAndRotatedPhoneVideoMatchExport() passed after 53.073 seconds.
+◇ Test portraitMotionAndFormatsKeepReadableTextInsideCanvas() started.
+✔ Test portraitMotionAndFormatsKeepReadableTextInsideCanvas() passed after 0.844 seconds.
+✔ Suite VerticalTitleAuditTests passed after 58.110 seconds.
+✔ Test run with 5 tests in 1 suite passed after 58.110 seconds.

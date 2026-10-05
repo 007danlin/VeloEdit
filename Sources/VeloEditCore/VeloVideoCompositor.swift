@@ -4,19 +4,32 @@ import CoreImage
 import CoreVideo
 import Vision
 
+/// AVFoundation transforms use a top-left origin; Core Image uses bottom-left.
+/// Conjugating both coordinate spaces preserves identity and fixes quarter-turn
+/// camera metadata without introducing another orientation pass.
+enum CoreImageVideoGeometry {
+    static func transform(_ avTransform: CGAffineTransform, source: CGSize, target: CGSize) -> CGAffineTransform {
+        CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: source.height)
+            .concatenating(avTransform)
+            .concatenating(CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: target.height))
+    }
+}
+
 final class VeloCompositorLayer {
     let trackID: CMPersistentTrackID
     let item: TimelineItem
     let start: CMTime
     let duration: CMTime
+    let naturalSize: CGSize
     let transform: CGAffineTransform
     let telemetry: TelemetrySummary?
 
-    init(trackID: CMPersistentTrackID, item: TimelineItem, start: CMTime, duration: CMTime, transform: CGAffineTransform, telemetry: TelemetrySummary? = nil) {
+    init(trackID: CMPersistentTrackID, item: TimelineItem, start: CMTime, duration: CMTime, naturalSize: CGSize, transform: CGAffineTransform, telemetry: TelemetrySummary? = nil) {
         self.trackID = trackID
         self.item = item
         self.start = start
         self.duration = duration
+        self.naturalSize = naturalSize
         self.transform = transform
         self.telemetry = telemetry
     }
@@ -285,8 +298,19 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
             for layer in instruction.layers.reversed() {
                 guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { continue }
                 var image = CIImage(cvPixelBuffer: buffer)
+                // AVKit's native compositor accounts for non-square pixels;
+                // Core Image receives the encoded raster instead (for example
+                // 720×576 for a 1024×576 anamorphic movie). Placement transforms
+                // use naturalSize, so first map that raster into the same space.
+                // Keep stabilization in buffer coordinates and derive this map
+                // before it adds overscan or changes the image extent.
+                let sourceToNatural = CGAffineTransform(
+                    scaleX: layer.naturalSize.width / image.extent.width,
+                    y: layer.naturalSize.height / image.extent.height
+                )
                 image = AdjustedClipGenerator.apply(layer.item.effectiveVideoAdjustments, to: image)
                 image = stabilizedImage(image, buffer: buffer, layer: layer)
+                image = image.transformed(by: sourceToNatural)
                 let clipTrack = layer.item.overlay == nil ? 0 : 1
                 let standaloneEffects = instruction.effects.active(at: timelineTime, for: layer.item.id, clipTrack: clipTrack)
                 image = TransitionEffectRenderer.applyEffects(standaloneEffects, to: image, timelineTime: timelineTime)
@@ -294,7 +318,7 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
                     image = Self.removeGreen(from: image)
                 }
                 var transform = Self.effectTransform(
-                    base: layer.transform,
+                    base: CoreImageVideoGeometry.transform(layer.transform, source: layer.naturalSize, target: instruction.renderSize),
                     effect: layer.item.effect.flatMap(ClipEffect.init(rawValue:)),
                     progress: Self.progress(time: request.compositionTime, start: layer.start, duration: layer.duration),
                     renderSize: instruction.renderSize
@@ -380,7 +404,7 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
             for title in instruction.titles.sorted(by: { $0.track < $1.track }) {
                 result = TitleOverlayRenderer.composited(
                     item: title,
-                    timelineTime: timelineTime,
+                    timelineTime: title.speechAnchor == nil ? timelineTime : request.compositionTime.seconds,
                     renderSize: instruction.renderSize,
                     over: result,
                     adaptation: titleBackgroundRenderer

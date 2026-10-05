@@ -101,7 +101,7 @@ public struct SmartTitleEngine: Sendable {
                 primary = requested
                 confidence = 0.92
                 explanation.append("Название следует подтверждённой теме фильма")
-            } else if evidence.contains(where: { $0.contains("лет") || $0.contains("summer") }) {
+            } else if Self.hasEvidence(["summer", "лето", "летом", "летний", "летняя", "летние"], in: evidence) {
                 primary = "Моё лето"
                 confidence = 0.78
                 explanation.append("Летняя тема подтверждена содержанием")
@@ -121,11 +121,7 @@ public struct SmartTitleEngine: Sendable {
         case .chapter:
             let base = requested ?? activity?.eventTitle ?? location
             guard let base, !Self.isMeaningless(base) else { return nil }
-            if let index = context.sequenceIndex, (context.sequenceCount ?? 0) > 1, let activity {
-                primary = "День \(max(1, index)) — \(activity.shortTitle)"
-                confidence = min(0.96, activity.confidence + 0.04)
-                explanation.append("Глава связана с хронологией и распознанной активностью")
-            } else if context.dateAddsContext, let date, base.count + date.count + 3 <= 48 {
+            if context.dateAddsContext, let date, base.count + date.count + 3 <= 48 {
                 primary = "\(base) — \(date)"
                 confidence = max(activity?.confidence ?? 0.68, 0.72)
                 explanation.append("Дата различает события в хронологии")
@@ -183,10 +179,10 @@ public struct SmartTitleEngine: Sendable {
             secondary = nil
 
         case .ending:
-            if evidence.contains(where: { $0.contains("road") || $0.contains("дорог") || $0.contains("drive") || $0.contains("домой") }) {
+            if Self.hasEvidence(["возвращение домой", "дорога домой", "returning home", "going home"], in: evidence) {
                 primary = "Дорога домой"
                 confidence = 0.86
-                explanation.append("Финал подтверждён дорожной сценой")
+                explanation.append("Возвращение домой явно указано в контексте")
             } else if let requested {
                 primary = requested
                 confidence = 0.84
@@ -264,7 +260,7 @@ public struct SmartTitleEngine: Sendable {
         let evidence = (Array(tags) + summaries).map(Self.normalizePhrase)
         let proposed = proposedTitle.map(Self.normalizePhrase)
         func has(_ values: [String]) -> Bool {
-            evidence.contains { item in values.contains(where: item.contains) }
+            Self.hasEvidence(values, in: evidence)
         }
         // A SourceActivityGroup-labelled buggy block can still carry one stray
         // `bicycle` classifier. Trust that provenance only when several
@@ -297,6 +293,7 @@ public struct SmartTitleEngine: Sendable {
     }
 
     private func recognizedActivity(in evidence: [String]) -> Activity? {
+        func has(_ values: [String]) -> Bool { Self.hasEvidence(values, in: evidence) }
         let sharedEvidence = ActivityCompatibilityContract.evidence(in: Set(evidence))
         if let family = sharedEvidence.family {
             let confidence = min(0.96, 0.76 + sharedEvidence.confidence * 0.20)
@@ -327,24 +324,29 @@ public struct SmartTitleEngine: Sendable {
             case .surfing:
                 return .init(eventTitle: "Сёрфинг", shortTitle: "Сёрфинг", confidence: confidence, explanation: "Общий activity vocabulary распознал сёрфинг")
             case .climbing:
-                return .init(eventTitle: "Скалолазание", shortTitle: "Скалолазание", confidence: confidence, explanation: "Общий activity vocabulary распознал скалолазание")
+                // A person climbing a tree or stairs is not evidence of rock
+                // climbing. Keep the broad activity family for clustering,
+                // but require the specific setting before naming this sport.
+                if has(["rock climbing", "sport climbing", "bouldering", "скалолазан", "скалодром"])
+                    || has(["rock", "cliff", "crag", "скал"]) {
+                    return .init(eventTitle: "Скалолазание", shortTitle: "Скалолазание", confidence: confidence, explanation: "Лазание подтверждено вместе со скалой или скалодромом")
+                }
             case .equestrian:
                 return .init(eventTitle: "Конная прогулка", shortTitle: "Конная прогулка", confidence: confidence, explanation: "Общий activity vocabulary распознал конную прогулку")
             }
         }
-        let text = evidence.joined(separator: " ")
-        func has(_ values: [String]) -> Bool { values.contains(where: text.contains) }
         if has(["buggy", "багги", "side by side", "utv"]) { return .init(eventTitle: "Поездка на багги", shortTitle: "Багги", confidence: 0.96, explanation: "Распознана поездка на багги") }
         if has(["cycling", "cyclist", "bicycle", "bike ride", "велосип", "велопрогул"]) { return .init(eventTitle: "Велопрогулка", shortTitle: "Велопрогулка", confidence: 0.94, explanation: "Распознана велосипедная прогулка") }
         if has(["rafting", "kayak", "каяк", "сплав", "порог"]) { return .init(eventTitle: "Сплав", shortTitle: "Сплав", confidence: 0.94, explanation: "Распознана водная активность") }
         if has(["fishing", "angler", "рыбал"]) { return .init(eventTitle: "Рыбалка", shortTitle: "Рыбалка", confidence: 0.94, explanation: "Распознана рыбалка") }
         if has(["sunset", "закат"]) { return .init(eventTitle: "Закат", shortTitle: "Закат", confidence: 0.92, explanation: "Распознан закат") }
         if has(["morning", "утро"]) && has(["lake", "озер"]) { return .init(eventTitle: "Утро у озера", shortTitle: "Утро у озера", confidence: 0.91, explanation: "Распознаны время суток и место") }
-        if has(["hiking", "trekking", "trail", "поход"]) { return .init(eventTitle: "Поход", shortTitle: "Поход", confidence: 0.88, explanation: "Распознан пеший маршрут") }
+        if has(["hiking", "trekking", "поход"]) { return .init(eventTitle: "Поход", shortTitle: "Поход", confidence: 0.88, explanation: "Распознан пеший маршрут") }
         if has(["mountain", "горы", "горн"]) { return .init(eventTitle: "Поездка в горы", shortTitle: "В горах", confidence: 0.84, explanation: "Распознан горный маршрут") }
         if has(["campfire", "bonfire", "костер", "костёр"]) { return .init(eventTitle: "Вечер у костра", shortTitle: "У костра", confidence: 0.90, explanation: "Распознан вечер у костра") }
-        if has(["beach", "sea", "море", "пляж"]) { return .init(eventTitle: "День у моря", shortTitle: "У моря", confidence: 0.84, explanation: "Распознана съёмка у моря") }
+        if has(["sea", "ocean", "море", "моря", "океан"]) { return .init(eventTitle: "День у моря", shortTitle: "У моря", confidence: 0.84, explanation: "Море явно указано в анализе") }
         if has(["lake", "озер"]) { return .init(eventTitle: "У озера", shortTitle: "У озера", confidence: 0.80, explanation: "Распознано озеро") }
+        if has(["beach", "пляж"]) { return .init(eventTitle: "На пляже", shortTitle: "На пляже", confidence: 0.80, explanation: "Пляж подтверждён; тип водоёма неизвестен") }
         if has(["river", "река"]) { return .init(eventTitle: "На реке", shortTitle: "На реке", confidence: 0.78, explanation: "Распознана река") }
         if has(["cottage", "country house", "дача"]) { return .init(eventTitle: "Поездка на дачу", shortTitle: "На даче", confidence: 0.88, explanation: "Распознана поездка на дачу") }
         if has(["birthday", "день рождения"]) { return .init(eventTitle: "День рождения", shortTitle: "День рождения", confidence: 0.90, explanation: "Распознан день рождения") }
@@ -484,6 +486,29 @@ public struct SmartTitleEngine: Sendable {
             .replacingOccurrences(of: "ё", with: "е")
             .split { !$0.isLetter && !$0.isNumber }
             .joined(separator: " ")
+    }
+
+    /// Match complete words/phrases, never `sea` inside `research` or `car`
+    /// inside `scarf`. Only the explicitly listed Russian stems accept suffixes.
+    /// Separate observations cannot accidentally assemble a new phrase.
+    private static func hasEvidence(_ terms: [String], in evidence: [String]) -> Bool {
+        let stems: Set<String> = ["велосип", "велопрогул", "рыбал", "озер", "горн", "свадьб",
+            "прогул", "набереж", "дорог", "бездорож", "колес", "шина", "грунт", "поход",
+            "пляж", "океан", "скалолазан", "скалодром", "скал"]
+        let phrases = evidence.map { normalizePhrase($0).split(separator: " ").map(String.init) }
+        return terms.contains { term in
+            let wanted = normalizePhrase(term).split(separator: " ").map(String.init)
+            guard !wanted.isEmpty else { return false }
+            return phrases.contains { words in
+                guard words.count >= wanted.count else { return false }
+                return (0...(words.count - wanted.count)).contains { offset in
+                    wanted.indices.allSatisfy { index in
+                        let word = words[offset + index], expected = wanted[index]
+                        return stems.contains(expected) ? word.hasPrefix(expected) : word == expected
+                    }
+                }
+            }
+        }
     }
 
     private static func shortened(_ value: String, limit: Int) -> String {
@@ -632,7 +657,15 @@ public enum AutomatedTitlePolicy {
         var scopes: [UUID: ClosedRange<Double>] = [:]
 
         for title in source where isGenerated(title) && !isCaption(title.kind) {
-            let anchorIndex = title.targetClipID.flatMap { targetID in
+            if let partID = title.filmPartID, let part = timeline.filmParts?.first(where: { $0.id == partID }) {
+                let ids = Set(part.itemIDs)
+                let items = primaries.filter { ids.contains($0.id) }
+                if let first = items.first, let last = items.last {
+                    scopes[title.id] = first.timelineStart...(last.timelineStart + last.timelineDuration)
+                    continue
+                }
+            }
+            let anchorIndex = title.effectiveAnchorClipID.flatMap { targetID in
                 primaries.firstIndex { $0.id == targetID }
             } ?? primaries.firstIndex {
                 title.startTime + 0.000_001 >= $0.timelineStart

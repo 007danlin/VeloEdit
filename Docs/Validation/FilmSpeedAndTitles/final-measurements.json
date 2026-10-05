@@ -1,0 +1,17 @@
+{
+  "coldSeconds": 64.05443362500228,
+  "warmSeconds": [
+    1.9848456250001618,
+    1.8309160000026168,
+    1.7922448749995965,
+    1.6995505000013509,
+    1.7208226250004373
+  ],
+  "warmMedian": 1.7922448749995965,
+  "warmRange": [
+    1.6995505000013509,
+    1.9848456250001618
+  ],
+  "allSevenOfSeven": true,
+  "kind": "fixed-film recheck; not film creation; no before/after speed claim"
+}

@@ -1,0 +1,8 @@
+    Finished `release` profile [optimized] target(s) in 0.23s
+Another instance of SwiftPM (PID: 35782) is already running using '/Users/daniellineckij/Library/Caches/VeloEditBuild/swift', waiting until that process has finished execution...Building for production...
+Build complete! (0,19 с)
+Building for production...
+[1 / 11]
+Build complete! (0,45 с)
+/tmp/veloedit-app.pcgptt/VeloEdit.app: replacing existing signature
+/Users/daniellineckij/VeloEdit/Build/VeloEdit.app

@@ -132,10 +132,11 @@ import Testing
         #expect(pip[1] > 0.95 && pip[0] < 0.05 && pip[2] < 0.05)
     }
 
-    @Test func encodedTransitionMatchesPreviewFramesAndDuration() async throws {
+    @Test(arguments: [TransitionStyle.fadeThroughBlack, .glitch, .rgbSplit, .digitalDistortion, .shatter])
+    func encodedTransitionMatchesPreviewFramesAndDuration(_ style: TransitionStyle) async throws {
         let fixture = try await Fixture.make()
         defer { fixture.remove() }
-        let timeline = fixture.timeline(style: .fadeThroughBlack)
+        let timeline = fixture.timeline(style: style)
         let playback = try await PlaybackEngine().build(timeline: timeline, assets: fixture.assets, preferStableRealtimePreview: true)
         let destination = fixture.root.appendingPathComponent("transition.mp4")
         let report = try await RenderEngine().render(timeline: timeline, assets: fixture.assets,
@@ -149,6 +150,9 @@ import Testing
         for generator in [preview, exported] {
             generator.requestedTimeToleranceBefore = .zero
             generator.requestedTimeToleranceAfter = .zero
+            // Compare the entire frame in the same raster. 720p export is
+            // larger than this fixture; a 320x180 crop only sees its corner.
+            generator.maximumSize = CGSize(width: 320, height: 180)
         }
         let bounds = CGRect(x: 0, y: 0, width: 320, height: 180)
         for time in [0.5, 1.2, 1.4, 1.6, 1.8, 2.0, 2.7, 3.1] {
@@ -156,12 +160,13 @@ import Testing
             let live = try Self.average(CIImage(cgImage: preview.copyCGImage(at: when, actualTime: nil)), bounds: bounds)
             let movie = try Self.average(CIImage(cgImage: exported.copyCGImage(at: when, actualTime: nil)), bounds: bounds)
             for channel in 0..<3 { #expect(abs(live[channel] - movie[channel]) < 0.09, "at \(time)s") }
-            if time == 1.6 { #expect(movie.prefix(3).allSatisfy { $0 < 0.06 }) }
+            if time == 1.6 && style == .fadeThroughBlack { #expect(movie.prefix(3).allSatisfy { $0 < 0.06 }) }
+            if style != .fadeThroughBlack { #expect(movie[0] + movie[2] > 0.8, "\(style) must not generate a black frame") }
             if time == 0.5 { #expect(movie[0] > 0.8 && movie[2] < 0.1) }
             if time == 2.7 { #expect(movie[2] > 0.8 && movie[0] < 0.1) }
         }
         // Opt-in retention gives manual QA the exact encoded fixture tested.
-        if let output = ProcessInfo.processInfo.environment["VELOEDIT_TRANSITION_QA_OUTPUT"] {
+        if style == .fadeThroughBlack, let output = ProcessInfo.processInfo.environment["VELOEDIT_TRANSITION_QA_OUTPUT"] {
             let target = URL(fileURLWithPath: output)
             try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
             for style in [TransitionStyle.fadeThroughBlack, .pushLeft, .lensBlur, .exposureFlash, .crossDissolve] {
@@ -241,6 +246,26 @@ import Testing
         if let folder = ProcessInfo.processInfo.environment["VELOEDIT_TRANSITION_QA_OUTPUT"] {
             _ = try await RenderEngine().render(timeline: timeline, assets: [asset], telemetry: telemetry, quality: .preview720p,
                                                 destination: URL(fileURLWithPath: folder).appendingPathComponent("gopro-push-left.mp4"))
+        }
+    }
+
+    @Test func fractionalClipDurationsUseOneCompositionClockWithoutAccumulatedDrift() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.remove() }
+        // AVFoundation's seconds initializer truncates 0.156 * 600 to 93,
+        // while the timeline clock used 94. Fifty-two clips lose 2.6 frames.
+        for overlap in [false, true] {
+            let items = TimelineTiming.retimed((0..<52).map { index in
+                TimelineItem(assetID: fixture.assets[index % 2].id, kind: .video,
+                             sourceDuration: 0.156, timelineStart: 0, timelineDuration: 0.156,
+                             transition: overlap ? TransitionStyle.crossDissolve.rawValue : nil)
+            })
+            let timeline = Timeline(storyPlanID: UUID(), width: 320, height: 180, frameRate: 30, items: items)
+            let playback = try await PlaybackEngine().build(timeline: timeline, assets: fixture.assets, forceVideoComposition: true)
+            #expect(playback.skippedItemIDs.isEmpty)
+            #expect(playback.renderedItemCount == items.count)
+            #expect(abs(playback.duration - AutomaticFilmDurationPolicy.renderedDuration(of: timeline)) < 1 / 600.0,
+                    "Composition \(playback.duration), expected \(AutomaticFilmDurationPolicy.renderedDuration(of: timeline))")
         }
     }
 

@@ -17,31 +17,35 @@ public struct LocalEditorialRenderedProber: EditorialRenderedProbing {
         // Completed preview inspection survives a later interruption during
         // the much longer control export. It is not production evidence until
         // independent delivery verification has also succeeded.
-        let previewCache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialPreviewFrames-\(maximumSamples)"))
-        let cachedFrames = await previewCache.load(timeline: timeline, assets: assets, tracks: tracks)
+        let previewCache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialPreviewFrames-\(maximumSamples)"), visualOnly: true)
         let cachePaths = CachePaths(root: cacheURL.deletingLastPathComponent().deletingLastPathComponent())
         let stableSources = cachePaths.stableRenderSources(for: assets)
         let sourceWarnings = stableSources.keys.compactMap { id in
             assets.first(where: { $0.id == id }).map { "\($0.displayName): production-проверка использует декодируемую копию" }
         }
-        let playback: TimelinePlayback
-        do {
-            playback = try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings, derivedMediaCacheURL: cacheURL, forceVideoComposition: true)
-        } catch {
-            let value = error as NSError
-            throw EditorialGenerationError.unsatisfiedIntent("Playback build: \(value.domain) \(value.code): \(value.localizedDescription)")
-        }
+        let cachedFrames = await previewCache.load(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
         var frames: [PerceptualRenderedFrameEvidence]
+        var audioReport: EditorialAudioMasteringReport?
         if let cachedFrames {
             frames = cachedFrames
             await FilmBuildReporting.report(FilmBuildProgress(.previewFrames, completed: frames.count, total: frames.count, detail: "Использую сохранённую проверку кадров"))
         } else {
+          let playback: TimelinePlayback
+          do {
+            playback = try await PerformanceTrace.measure(name: "composition.build", fields: ["signature": EditorialRenderSignature.signature(timeline)]) {
+              try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings, derivedMediaCacheURL: cacheURL, forceVideoComposition: true)
+            }
+          } catch {
+            let value = error as NSError
+            throw EditorialGenerationError.unsatisfiedIntent("Playback build: \(value.domain) \(value.code): \(value.localizedDescription)")
+        }
+          audioReport = playback.audioMasteringReport
             frames = await PerceptualRenderInspector().inspectAsync(playback: playback, timeline: timeline, maximumSamples: maximumSamples)
             try Task.checkCancellation()
-            try await previewCache.store(frames, timeline: timeline, assets: assets, tracks: tracks)
+            try await previewCache.store(frames, timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
         }
         if !frames.isEmpty {
-            frames[0].audioMasteringReport = playback.audioMasteringReport
+            frames[0].audioMasteringReport = audioReport
             if verifyExport {
                 do {
                     frames[0].exportVerification = try await EditorialDeliveryVerifier.verify(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preview: frames, cacheURL: cacheURL, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings)
@@ -72,71 +76,145 @@ enum EditorialRenderDependencies {
     // Track allocation is part of the render contract, including the audio
     // tracks used by connected clips. Old probes/mixes must be recomputed.
     // v5 also preserves requested source attenuation through export mastering.
-    static let compositionVersion = 5
-    static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack]) -> String {
+    static let compositionVersion = 10
+    static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:], visualOnly: Bool = false) -> String {
+        var timeline = timeline
+        if visualOnly {
+            timeline.music = nil; timeline.adaptiveSoundtrack = nil; timeline.audioClips = []
+            timeline.originalAudioVolume = 0; timeline.audioDucking = nil
+            for index in timeline.items.indices { timeline.items[index].audioAdjustments = nil }
+        }
         let used = Set(timeline.items.compactMap(\.assetID) + timeline.effectiveAudioClips.map(\.assetID))
-        let hashes = assets.filter { used.contains($0.id) }.map(\.contentHash)
-        let musicIDs = Set([timeline.music?.trackID].compactMap { $0 } + (timeline.effectiveAdaptiveSoundtrack?.segments.compactMap(\.directive.trackID) ?? []))
+        let hashes = assets.filter { used.contains($0.id) }.map { asset in
+            "\(asset.id)|\(FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash))|" +
+                (preferredVideoSources[asset.id].map { FrameCacheKey.sourceIdentity(url: $0, contentHash: "render-source") } ?? "original")
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let telemetryKey = telemetry.keys.sorted { $0.uuidString < $1.uuidString }.map { id in
+            var summary = telemetry[id]!
+            let streams = summary.streams.sorted()
+            // Codable represents a Set as an array; sortedKeys does not sort
+            // its elements. Strip and encode it separately in stable order.
+            summary.streams = []
+            let data = (try? encoder.encode(summary)) ?? Data()
+            let streamData = (try? encoder.encode(streams)) ?? Data()
+            return id.uuidString + ":" + EditorialIdentity.hash((data + streamData).base64EncodedString())
+        }.joined(separator: "|")
+        let musicIDs = Set([timeline.music?.trackID].compactMap { $0 } + (timeline.effectiveAdaptiveSoundtrack?.segments.compactMap(\.directive.trackID) ?? []) + timeline.effectiveAudioClips.compactMap(\.trackID))
         let music = tracks.filter { musicIDs.contains($0.id) }.map { track in
             // URL.resourceValues caches metadata on the URL instance. Stat the
             // current file so replacing it invalidates the review immediately.
             let values = try? FileManager.default.attributesOfItem(atPath: track.localFileURL.path)
             let size = (values?[.size] as? NSNumber)?.int64Value ?? 0
             let modified = (values?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-            return "\(track.id)|\(track.localFileURL.path)|\(size)|\(modified)"
+            return "\(track.id)|\(track.localFileURL.path)|\(size)|\(modified)|\(MusicStructureCache.contentIdentity(track.localFileURL))"
         }
-        return EditorialIdentity.hash("composition-\(compositionVersion)|canvas-\(timeline.width)x\(timeline.height)|evidence-\(EditorialEvidenceVerifier.version)|" + EditorialRenderSignature.signature(timeline) + "|" + (hashes + music).sorted().joined(separator: "|"))
+        return EditorialIdentity.hash("composition-\(compositionVersion)|canvas-\(timeline.width)x\(timeline.height)|evidence-\(EditorialEvidenceVerifier.version)|" + EditorialRenderSignature.signature(timeline) + "|" + (hashes + music).sorted().joined(separator: "|") + "|telemetry:" + telemetryKey)
     }
 }
 
 public actor RenderedProbeCache {
-    public static let version = 12
+    public static let version = 13
+    private struct Record: Codable {
+        var version: Int
+        var signature: String
+        var digest: String
+        var payload: Data
+    }
     private let directory: URL
-    public init(directory: URL) { self.directory = directory }
-    private func url(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack]) -> URL {
-        let key = EditorialIdentity.hash("\(Self.version)|" + EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks))
-        return directory.appendingPathComponent(key + ".json")
+    private let visualOnly: Bool
+    public init(directory: URL, visualOnly: Bool = false) { self.directory = directory; self.visualOnly = visualOnly }
+    private func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preferredVideoSources: [UUID: URL]) -> String {
+        EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry,
+            preferredVideoSources: preferredVideoSources, visualOnly: visualOnly)
     }
-    public func load(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = []) -> [PerceptualRenderedFrameEvidence]? {
-        guard let data = try? Data(contentsOf: url(timeline: timeline, assets: assets, tracks: tracks)) else { return nil }
-        return try? JSONDecoder().decode([PerceptualRenderedFrameEvidence].self, from: data)
+    public func load(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = [], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:]) -> [PerceptualRenderedFrameEvidence]? {
+        let key = signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
+        func miss(_ reason: String) {
+            PerformanceTrace.current?.event("cache.result", fields: ["cache": directory.lastPathComponent, "result": "miss", "reason": reason, "signature": key])
+        }
+        let url = directory.appendingPathComponent(key + ".json")
+        guard let data = try? Data(contentsOf: url) else { miss("dependency-changed-or-absent"); return nil }
+        guard let record = try? JSONDecoder().decode(Record.self, from: data), record.version == Self.version else { miss("incompatible-version"); return nil }
+        guard record.signature == key, record.digest == EditorialIdentity.hash(record.payload.base64EncodedString()),
+              var frames = try? JSONDecoder().decode([PerceptualRenderedFrameEvidence].self, from: record.payload), !frames.isEmpty else { miss("corrupt"); return nil }
+        for index in frames.indices {
+            if visualOnly {
+                // Visual dependency equality is proven above. Rebind only these
+                // pixels; never carry semantic, audio or MP4 receipts across edits.
+                for titleIndex in frames[index].titleEvidence?.indices ?? 0..<0 {
+                    frames[index].titleEvidence?[titleIndex].renderSignature = EditorialRenderSignature.signature(timeline)
+                }
+                frames[index].editorialClaims = nil
+                frames[index].audioMasteringReport = nil
+                frames[index].exportVerification = nil
+                continue
+            }
+            guard var export = frames[index].exportVerification,
+                  export.outputURL != nil || export.provenance.contains("RenderEngine control MP4") else { continue }
+            guard export.videoDuration != nil, export.artifactIsCurrent,
+                  export.outputURL.map({ url in export.artifactSHA256 == MusicStructureCache.contentIdentity(url) }) == true else { miss("artifact-changed-or-corrupt"); return nil }
+            export.fileModifiedTime = export.fileModifiedTime ?? export.fileModified?.timeIntervalSince1970
+            frames[index].exportVerification = export
+        }
+        PerformanceTrace.current?.event("cache.result", fields: ["cache": directory.lastPathComponent, "result": "hit", "signature": key])
+        return frames
     }
-    public func store(_ frames: [PerceptualRenderedFrameEvidence], timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = []) throws {
+    public func store(_ frames: [PerceptualRenderedFrameEvidence], timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = [], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:]) throws {
+        try Task.checkCancellation()
         guard !frames.isEmpty, frames.allSatisfy({ $0.decodeFailed != true }) else { return }
+        let key = signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
+        var frames = frames
+        // Newly written receipts enroll an intact artifact in the current
+        // integrity contract, including callers that omit optional hash fields.
+        for index in frames.indices {
+            guard var receipt = frames[index].exportVerification, let output = receipt.outputURL,
+                  receipt.artifactIsCurrent else { continue }
+            receipt.artifactSHA256 = MusicStructureCache.contentIdentity(output)
+            receipt.artifactFileIdentity = FrameCacheKey.sourceIdentity(url: output, contentHash: "export")
+            frames[index].exportVerification = receipt
+        }
+        let payload = try JSONEncoder().encode(frames)
+        let record = Record(version: Self.version, signature: key, digest: EditorialIdentity.hash(payload.base64EncodedString()), payload: payload)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try JSONEncoder().encode(frames).write(to: url(timeline: timeline, assets: assets, tracks: tracks), options: .atomic)
+        try JSONEncoder().encode(record).write(to: directory.appendingPathComponent(key + ".json"), options: .atomic)
     }
 }
 
 extension VeloEditPipeline {
-    static func editorialRenderReview(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false) async -> Timeline {
+    static func editorialRenderReview(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false, normalizePresentation: Bool = true) async -> Timeline {
         var plan = inputPlan
         // Materialize legacy/default framing before deriving the render
         // signature or decoding a preview. RenderEngine applies the same
         // migration before export; persisting it here makes preview, evidence
         // and delivery operate on one exact composition instead of allowing
         // nil adjustments to mean fill in one path and fit in another.
-        var timeline = AutomaticFramingPolicy.applying(to: source, assets: assets, analyses: analyses)
+        var timeline = normalizePresentation ? AutomaticFramingPolicy.applying(to: source, assets: assets, analyses: analyses) : source
         if analyzeChapterTransitions {
             timeline = await NaturalChapterTransitionPlanner().applying(to: timeline, plan: plan, assets: assets, analyses: analyses)
         }
         // Structural repair can trim or remove shots. Re-anchor generated
         // headings before deriving a signature or inspecting pixels, keeping
         // any presentation that already received a rendered readability fix.
-        timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true)
+        if normalizePresentation { timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true) }
+        timeline = TitleTimelineAnchoring.reconcile(timeline)
         let cache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialProbes"))
         // A deliberately sparse ranking probe is not production evidence and
         // must never poison the full-render cache used by the final winner.
         let isPreliminaryProbe = (prober as? LocalEditorialRenderedProber)?.verifyExport == false
+        let stableSources = CachePaths(root: cacheURL.deletingLastPathComponent().deletingLastPathComponent()).stableRenderSources(for: assets)
         var frames = isPreliminaryProbe
             ? nil
-            : await cache.load(timeline: timeline, assets: assets, tracks: tracks)
+            : await cache.load(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
         var recoveryNotes: [String] = []
         if frames == nil {
             for attempt in 1...2 {
                 do {
                     try Task.checkCancellation()
-                    let probed = try await prober.frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
+                    let probed = try await PerformanceTrace.measure(name: "render.review", fields: ["attempt": String(attempt), "signature": EditorialRenderSignature.signature(timeline)]) {
+                      try await prober.frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
+                    }
                     try Task.checkCancellation()
                     frames = probed
                     if probed.isEmpty || probed.contains(where: { $0.decodeFailed == true }) {
@@ -144,7 +222,7 @@ extension VeloEditPipeline {
                         continue
                     }
                     if !isPreliminaryProbe {
-                        try? await cache.store(probed, timeline: timeline, assets: assets, tracks: tracks)
+                        try? await cache.store(probed, timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources)
                     }
                     break
                 } catch is CancellationError {
@@ -304,18 +382,17 @@ extension VeloEditPipeline {
                 }
             }
             if timeline.editorialReview?.findings.contains(where: { $0.kind == .unreadableTitle }) == true {
-                let titles = timeline.effectiveTitleItems
-                let alreadyHardened = titles.allSatisfy { $0.templateID == "title.minimal-clean.v1" && ($0.style.backgroundOpacity ?? 0) >= 0.99 && $0.animation.entrance == .none }
-                if alreadyHardened {
-                    // Keep a required heading and report the failed check.
-                    // Deleting it would hide the symptom and publish a film
-                    // with a missing chapter title.
-                    return timeline
-                } else {
-                    repaired.titleItems = titles.map(EditorialPresentationPolicy.hardeningReadability)
+                let failedIDs = Set(timeline.editorialReview?.findings.filter { $0.kind == .unreadableTitle }.flatMap(\.itemIDs) ?? [])
+                repaired.titleItems = timeline.effectiveTitleItems.map { title in
+                    failedIDs.contains(title.id) ? EditorialPresentationPolicy.hardeningReadability(title) : title
                 }
             }
-            guard EditorialRenderSignature.signature(repaired) != EditorialRenderSignature.signature(timeline) else { return timeline }
+            PerformanceTrace.current?.event("repair.proposed", fields: ["before": EditorialRenderSignature.signature(timeline),
+                "after": EditorialRenderSignature.signature(repaired), "remaining": String(repairsRemaining),
+                "reason": timeline.editorialReview?.findings.map { $0.kind.rawValue }.joined(separator: ",") ?? ""])
+
+            guard AutomaticFilmDelivery.preservesDelivery(repaired, original: timeline, plan: plan),
+                  EditorialRenderSignature.signature(repaired) != EditorialRenderSignature.signature(timeline) else { return timeline }
             if let store = AutonomousJobContext.store,
                (try? await store.claimCompositionRepair(signature: EditorialRenderSignature.signature(repaired))) != true { return timeline }
             repaired = await editorialRenderReview(timeline: repaired, plan: plan, assets: assets, analyses: analyses, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL, prober: prober, repairsRemaining: repairsRemaining - 1, events: events, analyzeChapterTransitions: analyzeChapterTransitions)

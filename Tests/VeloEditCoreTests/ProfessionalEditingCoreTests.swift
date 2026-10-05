@@ -75,7 +75,7 @@ private func professionalCandidate(
     let signals = [
         MomentSignal(timestamp: 0.8, motion: 0.12, interest: 0.30, semantic: 0.32),
         MomentSignal(timestamp: 1.5, motion: 0.55, interest: 0.58, semantic: 0.54),
-        MomentSignal(timestamp: 2.2, motion: 0.96, interest: 0.90, semantic: 0.86, audioOnset: 0.88, audioEvent: 0.92),
+        MomentSignal(timestamp: 2.2, motion: 0.96, interest: 0.90, semantic: 0.86, audioOnset: 0.88, audioEvent: 0.92, actionConfirmation: 0.94),
         MomentSignal(timestamp: 2.8, motion: 0.70, interest: 0.72, semantic: 0.68),
         MomentSignal(timestamp: 3.7, motion: 0.18, interest: 0.42, semantic: 0.46),
     ]

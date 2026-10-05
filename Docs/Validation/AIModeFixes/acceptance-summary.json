@@ -1,0 +1,14 @@
+{
+  "runs": 12,
+  "vlmFailures": 0,
+  "appliedSceneJudgements": 24,
+  "appliedIndependentRechecks": 2,
+  "modelsWithActualResponses": [
+    "qwen3-vl:2b-instruct",
+    "qwen3-vl:30b-a3b-instruct",
+    "qwen3-vl:4b-instruct",
+    "qwen3-vl:8b-instruct"
+  ],
+  "allPlansComplete": true,
+  "note": "Includes both cold computation and warm cache reuse; counts are not the number of unique scenes."
+}

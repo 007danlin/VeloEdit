@@ -15,7 +15,7 @@ public enum DirectorRequestContract {
 
     public static func requiresStoryRebuild(_ prompt: String) -> Bool {
         let text = prompt.lowercased()
-        return requestsChapterTitles(prompt) || ["раздели", "разбей", "по частям", "не смешивай", "не перемешивай", "по порядку", "хронолог", "split into", "chapters", "don't mix", "chronolog"].contains(where: text.contains)
+        return requestsChapterTitles(prompt) || ["раздели", "разбей", "по частям", "не смешивай", "не перемешивай", "по порядку", "хронолог", "новые материалы", "новых материалов", "вновь добавленные", "new footage", "new materials", "split into", "chapters", "don't mix", "chronolog"].contains(where: text.contains)
     }
 
     /// A full generation has already resolved these commands, including online
@@ -30,6 +30,12 @@ public enum DirectorRequestContract {
 
     public static func requestsColorCorrection(_ prompt: String) -> Bool {
         explicitlyRequests(prompt, subjects: ["цветокор", "цветокорр", "грейд", "color grad", "color correct", "контраст", "насыщен", "экспозиц", "яркость", "фильтр", "filter"])
+    }
+
+    public static func requestsSlowMotion(_ prompt: String) -> Bool {
+        let text = prompt.lowercased()
+        guard !["без замедл", "не замедл", "без слоу", "no slow", "without slow"].contains(where: text.contains) else { return false }
+        return ["замедл", "слоу мо", "slow motion", "slow-motion"].contains(where: text.contains)
     }
 
     public static func requestsEffects(_ prompt: String) -> Bool {

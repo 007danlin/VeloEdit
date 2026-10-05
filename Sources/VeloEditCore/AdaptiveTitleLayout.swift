@@ -47,14 +47,14 @@ public struct AdaptiveTitleLayout: Hashable, Sendable {
     public var safeRect: CGRect
     public var elements: [AdaptiveTitleLayoutElement]
 
-    public static func resolve(template: TitleTemplateDefinition, renderSize: CGSize) -> AdaptiveTitleLayout {
+    public static func resolve(template: TitleTemplateDefinition, renderSize: CGSize, item: TitleTimelineItem? = nil) -> AdaptiveTitleLayout {
         let geometry = VideoFrameGeometry(
             width: Int(max(1, renderSize.width.rounded())),
             height: Int(max(1, renderSize.height.rounded()))
         )
         let bounds = CGRect(origin: .zero, size: renderSize)
         let safeRect = template.safeArea.rect(in: renderSize)
-        let elements = template.layout.elements.map { element in
+        var elements = template.layout.elements.map { element in
             let container = element.followsSafeArea ? safeRect : bounds
             return AdaptiveTitleLayoutElement(
                 id: element.id,
@@ -66,6 +66,18 @@ public struct AdaptiveTitleLayout: Hashable, Sendable {
                     portraitInfluence: geometry.portraitInfluence
                 )
             )
+        }
+        // Without a subtitle, use the panel's remaining text space to center
+        // the heading. Retain its fitted size and the original landscape layout.
+        if let item, item.additionalText?.isEmpty != false, geometry.portraitInfluence > 0,
+           let primary = template.layout.elements.first(where: { $0.content == .primaryText }),
+           let secondary = template.layout.elements.first(where: { $0.content == .secondaryText }),
+           let primaryIndex = elements.firstIndex(where: { $0.id == primary.id }),
+           let secondaryFrame = elements.first(where: { $0.id == secondary.id })?.frame,
+           elements.contains(where: { $0.kind == .roundedRectangle && $0.frame.contains(elements[primaryIndex].frame) && $0.frame.contains(secondaryFrame) }) {
+            let frame = elements[primaryIndex].frame
+            let available = frame.union(secondaryFrame)
+            elements[primaryIndex].frame = frame.offsetBy(dx: 0, dy: (available.midY - frame.midY) * geometry.portraitInfluence)
         }
         return AdaptiveTitleLayout(geometry: geometry, safeRect: safeRect, elements: elements)
     }
@@ -86,6 +98,12 @@ public struct AdaptiveTitleLayout: Hashable, Sendable {
         portraitInfluence: Double
     ) -> Int {
         guard element.kind == .text else { return base }
+        // A long heading should wrap before being reduced to a tiny single
+        // line, including templates originally authored with short labels.
+        let base = element.content == .primaryText || element.content == .activeCaption ? max(2, base) : base
+        if let portraitLines = element.portraitMaxLines, portraitInfluence > 0 {
+            return max(base, Int(ceil(Double(base) + Double(portraitLines - base) * portraitInfluence)))
+        }
         let additional = Int(ceil(portraitInfluence * (element.content == .primaryText || element.content == .activeCaption ? 2 : 1)))
         return min(4, max(1, base + additional))
     }
@@ -99,10 +117,15 @@ public struct AdaptiveTitleLayout: Hashable, Sendable {
         let p = CGFloat(portraitInfluence)
         if let portrait = element.portraitFrame {
             func blend(_ a: Double, _ b: Double) -> Double { a + (b - a) * portraitInfluence }
-            return TitleNormalizedRect(
+            let frame = TitleNormalizedRect(
                 x: blend(original.x, portrait.x), y: blend(original.y, portrait.y),
                 width: blend(original.width, portrait.width), height: blend(original.height, portrait.height)
             ).rect(in: container)
+            if element.kind == .circle {
+                let diameter = min(frame.width, frame.height)
+                return CGRect(x: frame.midX - diameter / 2, y: frame.midY - diameter / 2, width: diameter, height: diameter)
+            }
+            return frame
         }
         var width = CGFloat(original.width)
         var height = CGFloat(original.height)

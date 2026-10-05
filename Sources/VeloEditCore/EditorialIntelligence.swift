@@ -82,6 +82,31 @@ public struct EditorialEvidence: Codable, Hashable, Sendable {
 
     public var hasProgression: Bool { confidence >= 0.55 && actionDelta >= 0.18 }
     public var hasHardOcclusion: Bool { (foregroundOcclusion ?? 0) > 0.28 && !intentionalReveal }
+
+    /// Keep one uninterrupted observed interval. First/last-good bounds can
+    /// otherwise bridge a near-black or unusable middle frame. Re-evaluates
+    /// saved samples as well, without inventing a semantic occlusion label.
+    var continuousUsableRange: EditorialSourceRange {
+        let ordered = samples.filter {
+            $0.sourceTime >= usableRange.start && $0.sourceTime <= usableRange.end
+        }.sorted { $0.sourceTime < $1.sourceTime }
+        func usable(_ sample: EditorialTemporalSample) -> Bool {
+            sample.quality >= 0.38 && (intentionalReveal || sample.confidence < 0.65 || (sample.accidentalOcclusion ?? 0) <= 0.28)
+        }
+        guard ordered.count >= 3, ordered.contains(where: { !usable($0) }) else { return usableRange }
+        var runs: [[EditorialTemporalSample]] = [], current: [EditorialTemporalSample] = []
+        for sample in ordered {
+            if usable(sample) { current.append(sample) }
+            else if !current.isEmpty { runs.append(current); current = [] }
+        }
+        if !current.isEmpty { runs.append(current) }
+        let ranges = runs.filter { $0.count >= 2 }.map { run in
+            EditorialSourceRange(start: max(usableRange.start, run[0].sourceTime),
+                end: min(usableRange.end, run[run.count - 1].sourceTime + 0.05), confidence: confidence)
+        }
+        return ranges.max { $0.end - $0.start < $1.end - $1.start }
+            ?? .init(start: usableRange.start, end: usableRange.start, confidence: confidence)
+    }
 }
 
 public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
@@ -107,6 +132,16 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
             confidence: 0.15,
             provenance: ["legacy: temporal evidence unavailable; conservative duration"]
         )
+        if !candidate.tags.contains("photo") {
+            let continuous = evidence.continuousUsableRange
+            if continuous.start != evidence.usableRange.start || continuous.end != evidence.usableRange.end {
+                evidence.usableRange = continuous
+                let retained = evidence.samples.filter { $0.sourceTime >= continuous.start && $0.sourceTime <= continuous.end }
+                evidence.entryQuality = retained.first?.quality ?? 0
+                evidence.exitQuality = retained.last?.quality ?? 0
+                evidence.provenance.append("continuous observed quality range; unusable interior samples excluded")
+            }
+        }
     }
 
     public var quality: Double { candidate.insights?.bestTakeScore ?? candidate.scores.composite }
@@ -117,7 +152,7 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
     public var usableDuration: Double {
         let range = max(0, min(sourceRange.end, evidence.usableRange.end) - max(sourceRange.start, evidence.usableRange.start))
         guard discardReason == nil, !evidence.hasHardOcclusion, quality >= 0.38 else { return 0 }
-        if let boundary = candidate.momentBoundary, boundary.confidence >= 0.65 {
+        if let boundary = candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65 {
             return min(range, max(speechSeconds, boundary.completionEnd - boundary.anticipationStart))
         }
         if speechSeconds > 0 { return min(range, speechSeconds) }
@@ -130,7 +165,7 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
 
     public func preferredDuration(pacing: Double) -> Double {
         if candidate.tags.contains("photo") { return min(usableDuration, PhotoPresentationPolicy.duration) }
-        if speechSeconds > 0 || (candidate.momentBoundary?.confidence ?? 0) >= 0.65 { return usableDuration }
+        if speechSeconds > 0 || (candidate.momentBoundary?.confirmedActionConfidence ?? 0) >= 0.65 { return usableDuration }
         if evidence.hasProgression && evidence.completion >= 0.65 { return usableDuration }
         let base = evidence.atmosphereValue >= 0.65 ? 4.2 : evidence.actionDelta >= 0.18 ? 1.6 : 2.5
         return min(usableDuration, max(1.2, base + 1.7 * evidence.informationGain + 1.3 * quality - pacing * 0.7))

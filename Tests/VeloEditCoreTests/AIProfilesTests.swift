@@ -17,7 +17,7 @@ import Testing
     let baseMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
     let largeMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 32 * 1_073_741_824, thermalState: .nominal)
     #expect(baseMemory.ollamaModelID == "qwen3-vl:8b-instruct")
-    #expect(baseMemory.quantization == .q8)
+    #expect(baseMemory.quantization == .q4)
     #expect(largeMemory.ollamaModelID == "qwen3-vl:30b-a3b-instruct")
 }
 
@@ -35,11 +35,11 @@ import Testing
     }
 }
 
-@Test func thermalPressureReducesSamplingWithoutInvalidatingCacheIdentity() {
+@Test func thermalPressurePreservesSamplingAndLimitsConcurrency() {
     let cool = AIAnalysisProfile.resolve(mode: .quality, physicalMemory: 24 * 1_073_741_824, thermalState: .nominal)
     let hot = AIAnalysisProfile.resolve(mode: .quality, physicalMemory: 24 * 1_073_741_824, thermalState: .critical)
-    #expect(hot.maximumCoarseFrames < cool.maximumCoarseFrames)
-    #expect(hot.framesPerCandidate < cool.framesPerCandidate)
+    #expect(hot.maximumCoarseFrames == cool.maximumCoarseFrames)
+    #expect(hot.framesPerCandidate == cool.framesPerCandidate)
     #expect(hot.aiConcurrency == 1)
     #expect(hot.cacheKey == cool.cacheKey)
 }
@@ -53,10 +53,10 @@ import Testing
     #expect(dense.allSatisfy { $0 >= 0 && $0 < 120 })
 }
 
-@Test func manualModelAndQuantizationOverrideTheFriendlyMode() {
+@Test func manualModelUsesItsInstalledQuantization() {
     let advanced = AdvancedAISettings(enabled: true, runtime: .ollama, modelID: "my-local-vlm", quantization: .q8)
     let profile = AIAnalysisProfile.resolve(mode: .fast, advanced: advanced, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
     #expect(profile.modelID == "my-local-vlm")
-    #expect(profile.quantization == .q8)
+    #expect(profile.quantization == .modelProvided)
     #expect(profile.mode == .fast)
 }

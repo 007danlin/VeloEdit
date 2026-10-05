@@ -6,9 +6,20 @@ enum TitleEditPreservation {
     static func applying(from previous: Timeline, to generated: Timeline,
                          clipIDs: [UUID: UUID]) -> Timeline {
         var result = generated
+        if let parts = previous.filmParts {
+            let carried = parts.compactMap { part -> FilmPart? in
+                var value = part
+                value.itemIDs = part.itemIDs.compactMap { clipIDs[$0] }
+                return value.itemIDs.isEmpty ? nil : value
+            }
+            if !carried.isEmpty {
+                result.filmParts = carried
+                result.chapterTitleDecisions = previous.chapterTitleDecisions
+            }
+        }
         var titles = generated.effectiveTitleItems
         let edited = previous.effectiveTitleItems.filter { !AutomatedTitlePolicy.isGenerated($0) }
-        guard !edited.isEmpty else { return generated }
+        guard !edited.isEmpty else { return result }
         for original in edited {
             let oldAnchor = previous.items.first { item in
                 item.overlay == nil && item.kind != .title &&
@@ -19,7 +30,7 @@ enum TitleEditPreservation {
                 clipIDs[old.id].flatMap { id in result.items.first { $0.id == id } }
             }
             let matching = titles.filter {
-                AutomatedTitlePolicy.isGenerated($0) && $0.text == original.text && $0.track == original.track
+                AutomatedTitlePolicy.isGenerated($0) && ($0.text == original.text || (original.filmPartID != nil && $0.filmPartID == original.filmPartID)) && $0.track == original.track
             }.min { abs($0.startTime - (newAnchor?.timelineStart ?? original.startTime)) < abs($1.startTime - (newAnchor?.timelineStart ?? original.startTime)) }
             var title = original
             if let target = original.targetClipID {

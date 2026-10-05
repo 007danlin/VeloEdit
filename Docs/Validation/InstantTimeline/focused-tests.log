@@ -1,0 +1,182 @@
+[0/1] Planning build
+Building for debugging...
+[0/8] Write sources
+[2/8] Write swift-version--58304C5D6DBC2206.txt
+[4/8] Compiling VeloEdit AppModel.swift
+[5/8] Emitting module VeloEdit
+[5/10] Write Objects.LinkFileList
+[6/10] Linking VeloEdit
+[7/10] Applying VeloEdit
+[9/12] Emitting module VeloEditAppTests
+[10/12] Compiling VeloEditAppTests InstantTimelineInteractionTests.swift
+[10/12] Write Objects.LinkFileList
+[11/12] Linking VeloEditPackageTests
+Build complete! (11.48s)
+Test Suite 'Selected tests' started at 2026-09-15 11:41:37.966.
+Test Suite 'VeloEditPackageTests.xctest' started at 2026-09-15 11:41:37.968.
+Test Suite 'VeloEditPackageTests.xctest' passed at 2026-09-15 11:41:37.968.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-09-15 11:41:37.968.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ProjectInteractionTests started.
+◇ Suite EditorPreviewParityTests started.
+◇ Test previewInvalidationDistinguishesOverlayOnlyAndStructuralEdits() started.
+◇ Test timelineAICommentsMagicBrushSlicingKeepsAttachmentsAndOutsideSegmentsStable() started.
+◇ Test directorBriefContractRepairsFormatSpecificMusicAudioAndTitlesButBlocksOriginalRequestedDuration() started.
+◇ Test timelineAICommentsMixedDeepAndTypedRequestKeepsBothPlanParts() started.
+◇ Test perceptualReviewFlagsUnnecessaryCutAndJumpCutRisk() started.
+◇ Test previewGeometryContractKeepsTheWholeCameraFrame() started.
+◇ Test musicSyncBuildsStructureAndSnapsEditableObjects() started.
+◇ Test pipelineDiscardsOutOfOrderOptimisticCommits() started.
+◇ Test productionPlaybackActuallyReusesDerivedPhotoMedia() started.
+◇ Test oldMomentBoundaryJSONDecodesAndNewPhaseContractProtectsPeak() started.
+◇ Test composerUsesCleanCutsUnlessBoundaryHasAReason() started.
+◇ Test productionCachesHaveHardMemoryBounds() started.
+◇ Test deliveryContractRejectsCroppingPreviewConfiguration() started.
+◇ Test measuredMusicBuildsDownbeatsPhrasesDropsAndRealAccents() started.
+◇ Test timelineAICommentsMagicBrushPatternsAlternateInsideRange() started.
+◇ Test fcpxmlCarriesEditableObjectMetadataAndFallbackSignal() started.
+◇ Test deliveryContractRepairsExplicitMusicTitleAndSourceAudioRequirements() started.
+◇ Test deliveryContractReappliesEventSceneTitleContainmentAfterMusicSync() started.
+◇ Test deliveryContractRequiresStableRealtimePathForDecorated5KCameraMedia() started.
+◇ Test timelineAICommentsNoOpDoesNotCreateCheckpointOrRevision() started.
+◇ Test interactionLatencySummaryUsesP95BudgetsAndBoundedHistory() started.
+◇ Test timelineAICommentsVariantSearchPreservesExplicitGrammarConstraints() started.
+◇ Test timelineAICommentsLocalRemoveTitlesPreservesModernTitlesOutsideRange() started.
+◇ Test productionCacheIdentityIsStableAndInputSensitive() started.
+◇ Test timelineAICommentsMagicBrushAllTargetDoesNotEscapeRange() started.
+◇ Test composerKeepsUsefulContainedDialogueSynchronous() started.
+◇ Test optimisticTimelineInsertionsAppearImmediatelyAndStayNormalized() started.
+◇ Test deliveryContractValidatesCanonicalTagCoverageSharesAndRoleAnchors() started.
+◇ Test deliveryContractBlocksMismatchedExactDurationAndMomentCount() started.
+◇ Test timelineAICommentsDistinguishesFilmDurationFromClipDuration() started.
+◇ Test standaloneTimelineObjectsRoundTripAndInterpolate() started.
+◇ Test timelineAICommentsStoryRebuildKeepsTypedMusicRemoval() started.
+◇ Test timelineAICommentsExecutorRemovesOnlyTargetedModernTransitionAndEffectObjects() started.
+◇ Test composerBuildsEditableJLCutForUsefulDialogue() started.
+◇ Test deliveryContractBlocksConfirmedRenderedBlackFramesButNotMissingSamples() started.
+◇ Test projectStoreRejectsStaleBackgroundCommit() started.
+◇ Test workspaceAutosaveDoesNotInvalidateBackgroundCommit() started.
+◇ Test timelineAICommentsRejectLocalSplitWithoutDamagingAttachments() started.
+◇ Test timelineAICommentsNegativeDirectivesAreNotInverted() started.
+◇ Test frameQualityRejectsTrueBlackButKeepsDarkTexture() started.
+◇ Suite InstantTimelineInteractionTests started.
+◇ Test deliveryContractRemovesPlaceholderAndCollidingAutomaticTitles() started.
+◇ Test timelineAICommentsPreserveAssetBackedFreezeFrameDuration() started.
+◇ Test storyPlanPersistsReactionBeatAndCoveragePurpose() started.
+◇ Test directorToolsMutateIndependentObjects() started.
+◇ Test directorBriefContractEnforcesSoftMusicDuckAndPreservesEveryKeyTitle() started.
+◇ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() started.
+◇ Test optimisticTimelineMutationsAreSynchronousAndKeepMagneticTiming() started.
+◇ Test everyTitleTemplateAndInspectorEditMatchesEncodedFilm() started.
+✔ Test previewGeometryContractKeepsTheWholeCameraFrame() passed after 0.052 seconds.
+✔ Test previewInvalidationDistinguishesOverlayOnlyAndStructuralEdits() passed after 0.054 seconds.
+✔ Test musicSyncBuildsStructureAndSnapsEditableObjects() passed after 0.054 seconds.
+✔ Test oldMomentBoundaryJSONDecodesAndNewPhaseContractProtectsPeak() passed after 0.054 seconds.
+✔ Test measuredMusicBuildsDownbeatsPhrasesDropsAndRealAccents() passed after 0.054 seconds.
+✔ Test perceptualReviewFlagsUnnecessaryCutAndJumpCutRisk() passed after 0.054 seconds.
+✔ Test deliveryContractRejectsCroppingPreviewConfiguration() passed after 0.054 seconds.
+✔ Test productionCachesHaveHardMemoryBounds() passed after 0.054 seconds.
+✔ Test fcpxmlCarriesEditableObjectMetadataAndFallbackSignal() passed after 0.054 seconds.
+✔ Test directorBriefContractRepairsFormatSpecificMusicAudioAndTitlesButBlocksOriginalRequestedDuration() passed after 0.054 seconds.
+✔ Test timelineAICommentsMixedDeepAndTypedRequestKeepsBothPlanParts() passed after 0.054 seconds.
+✔ Test interactionLatencySummaryUsesP95BudgetsAndBoundedHistory() passed after 0.054 seconds.
+✔ Test pipelineDiscardsOutOfOrderOptimisticCommits() passed after 0.055 seconds.
+✔ Test timelineAICommentsNoOpDoesNotCreateCheckpointOrRevision() passed after 0.055 seconds.
+✔ Test productionCacheIdentityIsStableAndInputSensitive() passed after 0.055 seconds.
+✔ Test deliveryContractRepairsExplicitMusicTitleAndSourceAudioRequirements() passed after 0.055 seconds.
+✔ Test deliveryContractReappliesEventSceneTitleContainmentAfterMusicSync() passed after 0.055 seconds.
+✔ Test timelineAICommentsMagicBrushPatternsAlternateInsideRange() passed after 0.055 seconds.
+✔ Test timelineAICommentsMagicBrushSlicingKeepsAttachmentsAndOutsideSegmentsStable() passed after 0.055 seconds.
+✔ Test optimisticTimelineInsertionsAppearImmediatelyAndStayNormalized() passed after 0.055 seconds.
+✔ Test deliveryContractRequiresStableRealtimePathForDecorated5KCameraMedia() passed after 0.055 seconds.
+✔ Test composerKeepsUsefulContainedDialogueSynchronous() passed after 0.055 seconds.
+✔ Test standaloneTimelineObjectsRoundTripAndInterpolate() passed after 0.055 seconds.
+✔ Test timelineAICommentsExecutorRemovesOnlyTargetedModernTransitionAndEffectObjects() passed after 0.055 seconds.
+✔ Test timelineAICommentsLocalRemoveTitlesPreservesModernTitlesOutsideRange() passed after 0.055 seconds.
+✔ Test timelineAICommentsMagicBrushAllTargetDoesNotEscapeRange() passed after 0.055 seconds.
+✔ Test deliveryContractBlocksMismatchedExactDurationAndMomentCount() passed after 0.055 seconds.
+✔ Test projectStoreRejectsStaleBackgroundCommit() passed after 0.055 seconds.
+✔ Test composerBuildsEditableJLCutForUsefulDialogue() passed after 0.055 seconds.
+✔ Test composerUsesCleanCutsUnlessBoundaryHasAReason() passed after 0.055 seconds.
+✔ Test frameQualityRejectsTrueBlackButKeepsDarkTexture() passed after 0.055 seconds.
+✔ Test timelineAICommentsRejectLocalSplitWithoutDamagingAttachments() passed after 0.055 seconds.
+◇ Test copiedEffectsAppearImmediatelyAsIndependentObjects() started.
+✔ Test workspaceAutosaveDoesNotInvalidateBackgroundCommit() passed after 0.055 seconds.
+✔ Test storyPlanPersistsReactionBeatAndCoveragePurpose() passed after 0.055 seconds.
+✔ Test deliveryContractBlocksConfirmedRenderedBlackFramesButNotMissingSamples() passed after 0.055 seconds.
+✔ Test directorToolsMutateIndependentObjects() passed after 0.055 seconds.
+✔ Test timelineAICommentsStoryRebuildKeepsTypedMusicRemoval() passed after 0.055 seconds.
+✔ Test optimisticTimelineMutationsAreSynchronousAndKeepMagneticTiming() passed after 0.054 seconds.
+✔ Test timelineAICommentsPreserveAssetBackedFreezeFrameDuration() passed after 0.066 seconds.
+✔ Test timelineAICommentsDistinguishesFilmDurationFromClipDuration() passed after 0.075 seconds.
+✔ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() passed after 0.082 seconds.
+◇ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() started.
+✔ Test deliveryContractRemovesPlaceholderAndCollidingAutomaticTitles() passed after 0.087 seconds.
+✔ Test deliveryContractValidatesCanonicalTagCoverageSharesAndRoleAnchors() passed after 0.090 seconds.
+✔ Test directorBriefContractEnforcesSoftMusicDuckAndPreservesEveryKeyTitle() passed after 0.090 seconds.
+✔ Test timelineAICommentsNegativeDirectivesAreNotInverted() passed after 0.107 seconds.
+✔ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() passed after 0.088 seconds.
+◇ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() started.
+✔ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() passed after 0.020 seconds.
+◇ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() started.
+✔ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() passed after 0.044 seconds.
+◇ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() started.
+✔ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() passed after 0.020 seconds.
+◇ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() started.
+PERF optimistic-trim maximum_ms=0.2579689025878906
+✔ Test copiedEffectsAppearImmediatelyAsIndependentObjects() passed after 0.243 seconds.
+◇ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() started.
+✔ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() passed after 0.068 seconds.
+◇ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() started.
+✔ Test timelineAICommentsVariantSearchPreservesExplicitGrammarConstraints() passed after 0.373 seconds.
+✔ Test productionPlaybackActuallyReusesDerivedPhotoMedia() passed after 0.395 seconds.
+PERF instant-delete clips=120 state_ms=1.5218749176710844
+✔ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() passed after 0.211 seconds.
+◇ Test rapidDeletesAndRefreshNeverResurrectClips() started.
+✔ Test rapidDeletesAndRefreshNeverResurrectClips() passed after 0.163 seconds.
+◇ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() started.
+✔ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() passed after 0.155 seconds.
+◇ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() started.
+✔ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() passed after 0.189 seconds.
+◇ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() started.
+✔ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() passed after 0.181 seconds.
+✔ Suite InstantTimelineInteractionTests passed after 1.200 seconds.
+✔ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() passed after 0.921 seconds.
+✔ Suite ProjectInteractionTests passed after 1.247 seconds.
+✔ Test everyTitleTemplateAndInspectorEditMatchesEncodedFilm() passed after 18.492 seconds.
+◇ Test everyEffectAndStackChangesPreviewAndSurvivesVideoExport() started.
+✔ Test everyEffectAndStackChangesPreviewAndSurvivesVideoExport() passed after 10.190 seconds.
+◇ Test editsBypassParametersAndKeyframesChangePausedCompositionFrames() started.
+✔ Test editsBypassParametersAndKeyframesChangePausedCompositionFrames() passed after 0.451 seconds.
+◇ Test titlesTelemetryAndEffectsKeepEditorTimeAfterMultipleTransitions() started.
+✔ Test titlesTelemetryAndEffectsKeepEditorTimeAfterMultipleTransitions() passed after 0.569 seconds.
+◇ Test allAudioEffectsAndEqualizersProcessMonoVoiceWithoutCrashingOrChangingDuration() started.
+2026-09-15 11:42:07.853 swiftpm-testing-helper[53555:16413571] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:07.874 swiftpm-testing-helper[53555:16416055] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:07.894 swiftpm-testing-helper[53555:16413571] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:07.915 swiftpm-testing-helper[53555:16413564] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:07.934 swiftpm-testing-helper[53555:16413646] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:07.955 swiftpm-testing-helper[53555:16413571] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:07.975 swiftpm-testing-helper[53555:16413564] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:07.993 swiftpm-testing-helper[53555:16413571] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:08.015 swiftpm-testing-helper[53555:16413571] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:08.033 swiftpm-testing-helper[53555:16416055] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:08.054 swiftpm-testing-helper[53555:16416055] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:08.076 swiftpm-testing-helper[53555:16413564] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:08.094 swiftpm-testing-helper[53555:16416055] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:08.119 swiftpm-testing-helper[53555:16413564] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test allAudioEffectsAndEqualizersProcessMonoVoiceWithoutCrashingOrChangingDuration() passed after 0.315 seconds.
+◇ Test replacingPlaybackCannotDeleteNewPhotoTitleOrProcessedAudioSources() started.
+2026-09-15 11:42:08.460 swiftpm-testing-helper[53555:16413831] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:42:08.694 swiftpm-testing-helper[53555:16416055] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test replacingPlaybackCannotDeleteNewPhotoTitleOrProcessedAudioSources() passed after 0.736 seconds.
+◇ Test pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) started.
+◇ Test case passing 1 argument editsTitle → false to pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) started.
+◇ Test case passing 1 argument editsTitle → true to pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) started.
+✔ Test pausedPlayerReplacementImmediatelyShowsTheEditedFrame(_:) with 2 test cases passed after 0.782 seconds.
+✔ Suite EditorPreviewParityTests passed after 31.563 seconds.
+✔ Test run with 66 tests in 3 suites passed after 31.563 seconds.

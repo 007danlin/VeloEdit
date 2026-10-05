@@ -1,0 +1,13 @@
+    Finished `release` profile [optimized] target(s) in 0.21s
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/Caches/org.swift.swiftpm is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/Caches/org.swift.swiftpm is not accessible or not writable, disabling user-level cache features.
+warning: 'veloedit': failed storing manifest for 'veloedit' in cache: attempt to write a readonly database
+Building for production...
+[1 / 2] VeloEditCore
+Build complete! (0,33 с)
+/tmp/veloedit-app.Y2sPPs/VeloEdit.app: replacing existing signature
+/Users/daniellineckij/VeloEdit/Build/VeloEdit.app

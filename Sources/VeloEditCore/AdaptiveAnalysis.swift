@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import AVFoundation
 import CoreGraphics
 import ImageIO
@@ -38,17 +39,20 @@ public struct AdaptiveSamplingPlan: Hashable, Sendable {
 }
 
 struct VisualFrameSample: Codable, Hashable, Sendable {
-    let timestamp: Double
+    var timestamp: Double
     let motion: Double
     let exposure: Double
     let detail: Double
     let labels: Set<String>
     let labelConfidence: Double
     let faceCount: Int
-    let jpegBase64: String
+    var jpegBase64: String
     let histogram: [Double]
     let luminanceFingerprint: [UInt8]
     let subjects: [FrameSubjectObservation]?
+    var actualTimestamp: Double? = nil
+    var pixelWidth: Int? = nil
+    var pixelHeight: Int? = nil
 
     init(
         timestamp: Double,
@@ -74,6 +78,16 @@ struct VisualFrameSample: Codable, Hashable, Sendable {
         self.histogram = histogram
         self.luminanceFingerprint = luminanceFingerprint
         self.subjects = subjects
+    }
+
+    func withMotion(_ motion: Double) -> VisualFrameSample {
+        var value = VisualFrameSample(timestamp: timestamp, motion: motion, exposure: exposure, detail: detail,
+            labels: labels, labelConfidence: labelConfidence, faceCount: faceCount, jpegBase64: jpegBase64,
+            histogram: histogram, luminanceFingerprint: luminanceFingerprint, subjects: subjects)
+        value.actualTimestamp = actualTimestamp
+        value.pixelWidth = pixelWidth
+        value.pixelHeight = pixelHeight
+        return value
     }
 
     var interest: Double {
@@ -110,10 +124,8 @@ actor AdaptiveFrameSampler {
         maximumSize: Int,
         frameCache: FrameCache
     ) async throws -> FrameSamplingOutcome {
-        let key = FrameCacheKey(sourceFile: sourceHash, timestamp: 0, resolution: maximumSize, processingPurpose: .adaptiveSampling)
-        if let cached = await frameCache.value(for: key) {
-            return FrameSamplingOutcome(samples: [cached], scenes: [], decodedFrameCount: 0, cacheHitCount: 1, visionCallCount: 0)
-        }
+        let key = FrameCacheKey(sourceFile: FrameCacheKey.sourceIdentity(url: url, contentHash: sourceHash), timestamp: 0, resolution: maximumSize, processingPurpose: .adaptiveSampling)
+        let resolved = try await frameCache.resolve(key) {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -126,7 +138,7 @@ actor AdaptiveFrameSampler {
         let fingerprint = Self.fingerprint(image)
         let mean = fingerprint.isEmpty ? 128 : Double(fingerprint.reduce(0) { $0 + Int($1) }) / Double(fingerprint.count)
         let vision = Self.visionFeatures(for: image)
-        let sample = VisualFrameSample(
+        var sample = VisualFrameSample(
             timestamp: 0,
             motion: 0,
             exposure: max(0, 1 - abs(mean - 128) / 128),
@@ -139,8 +151,13 @@ actor AdaptiveFrameSampler {
             luminanceFingerprint: fingerprint,
             subjects: vision.subjects
         )
-        try? await frameCache.store(sample, for: key)
-        return FrameSamplingOutcome(samples: [sample], scenes: [], decodedFrameCount: 1, cacheHitCount: 0, visionCallCount: 1)
+        sample.actualTimestamp = 0
+        sample.pixelWidth = image.width
+        sample.pixelHeight = image.height
+        return sample
+        }
+        let computed = resolved.origin == .computed
+        return FrameSamplingOutcome(samples: [resolved.sample], scenes: [], decodedFrameCount: computed ? 1 : 0, cacheHitCount: computed ? 0 : 1, visionCallCount: computed ? 1 : 0)
     }
 
     func sample(
@@ -200,8 +217,8 @@ actor AdaptiveFrameSampler {
         generator.maximumSize = CGSize(width: maximumSize, height: maximumSize)
         generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
         generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
-        var previousFingerprint: [UInt8]?
-        var previousTimestamp: Double?
+        let sourceIdentity = FrameCacheKey.sourceIdentity(url: url, contentHash: sourceHash)
+        var previous: VisualFrameSample?
         var result: [VisualFrameSample] = []
         var decoded = 0
         var cacheHits = 0
@@ -209,48 +226,51 @@ actor AdaptiveFrameSampler {
         result.reserveCapacity(timestamps.count)
         var resourcePacer = ResourceWorkPacer()
         for timestamp in timestamps {
-            if Task.isCancelled { throw CancellationError() }
-            let key = FrameCacheKey(sourceFile: sourceHash, timestamp: timestamp, resolution: maximumSize, processingPurpose: purpose)
-            if let cached = await frameCache.value(for: key) {
-                result.append(cached)
-                cacheHits += 1
-                previousFingerprint = cached.luminanceFingerprint
-                previousTimestamp = timestamp
-                continue
-            }
+            try Task.checkCancellation()
+            let key = FrameCacheKey(sourceFile: sourceIdentity, timestamp: timestamp, resolution: maximumSize, processingPurpose: purpose, decodeTimeScale: 600)
             try await resourcePacer.checkpoint()
-            let image = try generator.copyCGImage(at: CMTime(seconds: timestamp, preferredTimescale: 600), actualTime: nil)
-            decoded += 1
-            let fingerprint = Self.fingerprint(image)
-            let rawMotion = previousFingerprint.map { Self.motion(between: $0, and: fingerprint) } ?? 0
-            let deltaTime = previousTimestamp.map { max(0.001, timestamp - $0) } ?? 1
-            // A large difference between sparse frames is not necessarily
-            // motion; discount long gaps while preserving dense action peaks.
-            let motion = min(1, rawMotion * min(1, max(0.15, 1 / deltaTime)))
-            previousFingerprint = fingerprint
-            previousTimestamp = timestamp
-            let mean = fingerprint.isEmpty ? 128 : Double(fingerprint.reduce(0) { $0 + Int($1) }) / Double(fingerprint.count)
-            let exposure = max(0, 1 - abs(mean - 128) / 128)
-            let detail = Self.detail(fingerprint, width: 32)
-            let vision = Self.visionFeatures(for: image)
-            visionCalls += 1
-            let sample = VisualFrameSample(
-                timestamp: timestamp,
-                motion: motion,
-                exposure: exposure,
-                detail: detail,
-                labels: vision.labels,
-                labelConfidence: vision.confidence,
-                faceCount: vision.faceCount,
-                jpegBase64: Self.jpegBase64(image),
-                histogram: Self.histogram(fingerprint),
-                luminanceFingerprint: fingerprint,
-                subjects: vision.subjects
-            )
+            let trace = PerformanceTrace.current
+            let resolved = try await frameCache.resolve(key) {
+                let started = ProcessInfo.processInfo.systemUptime
+                var actualTime = CMTime.invalid
+                let image = try generator.copyCGImage(at: CMTime(seconds: timestamp, preferredTimescale: 600), actualTime: &actualTime)
+                trace?.event("frame.decode", values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
+                let fingerprint = Self.fingerprint(image)
+                let mean = fingerprint.isEmpty ? 128 : Double(fingerprint.reduce(0) { $0 + Int($1) }) / Double(fingerprint.count)
+                let visionStarted = ProcessInfo.processInfo.systemUptime
+                let vision = Self.visionFeatures(for: image)
+                trace?.event("frame.vision", values: ["seconds": ProcessInfo.processInfo.systemUptime - visionStarted])
+                var sample = VisualFrameSample(
+                    timestamp: timestamp, motion: 0,
+                    exposure: max(0, 1 - abs(mean - 128) / 128), detail: Self.detail(fingerprint, width: 32),
+                    labels: vision.labels, labelConfidence: vision.confidence, faceCount: vision.faceCount,
+                    jpegBase64: Self.jpegBase64(image), histogram: Self.histogram(fingerprint),
+                    luminanceFingerprint: fingerprint, subjects: vision.subjects)
+                sample.actualTimestamp = actualTime.seconds.isFinite ? actualTime.seconds : nil
+                sample.pixelWidth = image.width
+                sample.pixelHeight = image.height
+                return sample
+            }
+            if resolved.origin == .computed { decoded += 1; visionCalls += 1 }
+            else { cacheHits += 1 }
+            var requestedSample = resolved.sample
+            requestedSample.timestamp = timestamp
+            let sample = Self.contextualSample(requestedSample, previous: previous)
+            trace?.event("frame.evaluated", fields: ["source": sourceIdentity, "purpose": purpose.rawValue,
+                "origin": resolved.origin.rawValue, "representation": key.representation], values: [
+                "requested": timestamp, "actual": sample.actualTimestamp ?? timestamp,
+                "previous": previous?.timestamp ?? -1, "width": Double(sample.pixelWidth ?? maximumSize),
+                "height": Double(sample.pixelHeight ?? maximumSize)])
+            previous = sample
             result.append(sample)
-            try? await frameCache.store(sample, for: key)
         }
         return (result, decoded, cacheHits, visionCalls)
+    }
+
+    static func contextualSample(_ sample: VisualFrameSample, previous: VisualFrameSample?) -> VisualFrameSample {
+        let rawMotion = previous.map { motion(between: $0.luminanceFingerprint, and: sample.luminanceFingerprint) } ?? 0
+        let deltaTime = previous.map { max(0.001, sample.timestamp - $0.timestamp) } ?? 1
+        return sample.withMotion(min(1, rawMotion * min(1, max(0.15, 1 / deltaTime))))
     }
 
     private func diversePeaks(in samples: [VisualFrameSample], limit: Int, minimumGap: Double) -> [VisualFrameSample] {
@@ -393,7 +413,58 @@ private struct OllamaVisionMessage: Codable {
     let images: [String]?
 }
 
-private struct OllamaVisionResponse: Decodable { let message: OllamaVisionMessage }
+private struct OllamaVisionResponse: Decodable {
+    let message: OllamaVisionMessage?
+    let model: String?
+    let done: Bool?
+    let done_reason: String?
+    let error: String?
+    let load_duration: Double?
+    let prompt_eval_duration: Double?
+    let eval_duration: Double?
+    let prompt_eval_count: Double?
+    let eval_count: Double?
+
+    var runtimeMeasurements: [String: Double] {
+        var values: [String: Double] = [:]
+        if let load_duration { values["loadSeconds"] = load_duration / 1_000_000_000 }
+        if let prompt_eval_duration { values["promptSeconds"] = prompt_eval_duration / 1_000_000_000 }
+        if let eval_duration { values["generationSeconds"] = eval_duration / 1_000_000_000 }
+        if let prompt_eval_count { values["promptTokens"] = prompt_eval_count }
+        if let eval_count { values["generatedTokens"] = eval_count }
+        return values
+    }
+}
+
+/// Only a finished, validated response may enter the semantic cache.
+struct OllamaVisionStream {
+    private(set) var content = ""
+    private(set) var finished = false
+    private(set) var measurements: [String: Double] = [:]
+    let expectedModel: String
+
+    mutating func append(_ line: String) throws {
+        guard !finished else { throw URLError(.cannotParseResponse) }
+        let event = try JSONDecoder().decode(OllamaVisionResponse.self, from: Data(line.utf8))
+        if let error = event.error {
+            throw NSError(domain: "OllamaInference", code: 1, userInfo: [NSLocalizedDescriptionKey: error])
+        }
+        if let model = event.model, model != expectedModel && model != expectedModel + ":latest" {
+            throw URLError(.cannotParseResponse)
+        }
+        content += event.message?.content ?? ""
+        guard content.utf8.count <= 2_000_000, event.done_reason != "length" else {
+            throw URLError(.cannotParseResponse)
+        }
+        finished = event.done == true
+        if finished { measurements = event.runtimeMeasurements }
+    }
+
+    func completedContent() throws -> String {
+        guard finished, !content.isEmpty else { throw URLError(.cannotParseResponse) }
+        return content
+    }
+}
 private struct OllamaModelTags: Decodable {
     struct Model: Decodable { let name: String }
     let models: [Model]
@@ -435,6 +506,7 @@ private struct VLMSceneInput: Sendable {
     let index: Int
     let frames: [VisualFrameSample]
     let telemetry: TelemetryMoment?
+    var sourceWindow: ClosedRange<Double>? = nil
 }
 
 actor OllamaVisionRuntime {
@@ -494,11 +566,14 @@ actor OllamaVisionRuntime {
         scenes: [VLMSceneInput],
         model: String,
         thinking: Bool,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        cache: DeepAnalysisCache? = nil,
+        cacheContext: String? = nil,
+        metrics: AnalysisMetricsRecorder? = nil
     ) async throws -> [Int: DeepFrameJudgement] {
         do {
-            return try await LocalAIModelManager.recoveringRequest {
-                try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout)
+            return try await LocalAIModelManager.recoveringRequest(retryTimeouts: false) {
+                try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -512,7 +587,7 @@ actor OllamaVisionRuntime {
             for scene in scenes {
                 try Task.checkCancellation()
                 do {
-                    let answer = try await requestBatch(scenes: [scene], model: model, thinking: thinking, timeout: timeout)
+                    let answer = try await requestBatch(scenes: [scene], model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics)
                     recovered.merge(answer) { _, new in new }
                 } catch is CancellationError {
                     throw CancellationError()
@@ -525,7 +600,8 @@ actor OllamaVisionRuntime {
     }
 
     private func requestBatch(
-        scenes: [VLMSceneInput], model: String, thinking: Bool, timeout: TimeInterval
+        scenes: [VLMSceneInput], model: String, thinking: Bool, timeout: TimeInterval,
+        cache: DeepAnalysisCache?, cacheContext: String?, metrics: AnalysisMetricsRecorder?
     ) async throws -> [Int: DeepFrameJudgement] {
         var resourcePacer = ResourceWorkPacer()
         try await resourcePacer.checkpoint()
@@ -544,17 +620,77 @@ actor OllamaVisionRuntime {
         """
         let payload: [String: Any] = ["model": model,
             "messages": [["role": "user", "content": prompt, "images": images]],
-            "stream": false, "think": thinking, "keep_alive": "10m",
+            "stream": true, "think": thinking, "keep_alive": "10m",
+            // Structured scene judgements are short. A model stuck repeating
+            // text must return control to batch repair/local recovery.
+            "options": ["num_predict": max(768, scenes.count * 384) + (thinking ? 4096 : 0)],
             "format": Self.responseSchema(indices: scenes.map(\.index))]
         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-        let envelope = try JSONDecoder().decode(OllamaVisionResponse.self, from: data)
-        return try Self.parseBatch(envelope.message.content, indices: scenes.map(\.index))
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let preparedRequest = request
+        let indices = scenes.map(\.index)
+        let trace = PerformanceTrace.current
+        let produce: @Sendable () async throws -> String = {
+            let started = ProcessInfo.processInfo.systemUptime
+            var recorded = false
+            do {
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.timeoutIntervalForRequest = timeout
+                configuration.timeoutIntervalForResource = timeout + 600
+                let session = URLSession(configuration: configuration)
+                defer { session.invalidateAndCancel() }
+                let (bytes, response) = try await session.bytes(for: preparedRequest)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    throw NSError(domain: "OllamaHTTP", code: (response as? HTTPURLResponse)?.statusCode ?? 0)
+                }
+                var stream = OllamaVisionStream(expectedModel: model)
+                var receivedText = false
+                for try await line in bytes.lines where !line.isEmpty {
+                    try Task.checkCancellation()
+                    try stream.append(line)
+                    if !receivedText && !stream.content.isEmpty {
+                        receivedText = true
+                        trace?.event("vlm.first-token", fields: ["model": model],
+                                     values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
+                    }
+                    if stream.finished { break }
+                }
+                let content = try stream.completedContent()
+                _ = try Self.parseBatch(content, indices: indices)
+                await metrics?.recordVLMCall(latency: ProcessInfo.processInfo.systemUptime - started)
+                recorded = true
+                trace?.event("vlm.runtime", fields: ["model": model], values: stream.measurements)
+                return content
+            } catch {
+                if !recorded { await metrics?.recordVLMCall(latency: ProcessInfo.processInfo.systemUptime - started) }
+                let failure = error as NSError
+                trace?.event("vlm.failed", fields: ["error": String(describing: type(of: error)),
+                    "domain": failure.domain, "code": String(failure.code), "message": failure.localizedDescription,
+                    "model": model], values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
+                throw error
+            }
+        }
+        if let cache, let cacheContext,
+           let digest = await LocalAIModelManager.shared.installedModelDigest(model: model) {
+            let windows = scenes.map { scene in
+                "\(scene.index):\(scene.sourceWindow?.lowerBound.bitPattern ?? 0):\(scene.sourceWindow?.upperBound.bitPattern ?? 0):" + scene.frames.map {
+                    "\($0.timestamp.bitPattern)/\($0.actualTimestamp?.bitPattern ?? 0)"
+                }.joined(separator: ",")
+            }.joined(separator: "|")
+            var input = Data("vision-v1|\(digest)|\(cacheContext)|\(windows)|".utf8)
+            input.append(preparedRequest.httpBody ?? Data())
+            let identity = SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined()
+            let response = try await cache.visionResponse(identity: identity, indices: indices, produce: produce)
+            if response.reused { await metrics?.recordVLMCacheHit() }
+            trace?.event("vlm.evaluated", fields: ["inputSHA256": identity, "modelDigest": digest,
+                "origin": response.reused ? "reused" : "computed", "indices": indices.map(String.init).joined(separator: ",")])
+            return try Self.parseBatch(response.content, indices: indices)
+        }
+        // Independent rechecks deliberately omit the cache, even with equal inputs.
+        return try Self.parseBatch(try await produce(), indices: indices)
     }
 }
 
@@ -580,17 +716,13 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         detailedProgress: (@Sendable (AnalysisStageUpdate) -> Void)? = nil
     ) async throws -> AnalysisResult {
         await metrics?.start(.fastInspection)
-        var baseline: AnalysisResult
-        if let previous,
-           previous.assetID == asset.id,
-           previous.analyzedContentHash == asset.contentHash,
-           previous.schemaVersion == schemaVersion {
-            baseline = previous
-        } else {
-            baseline = try await LocalHeuristicAnalyzer(schemaVersion: schemaVersion).analyze(asset: asset)
-        }
+        // Rebuild local scores; a retry must not blend a previous VLM answer twice.
+        var baseline = try await LocalHeuristicAnalyzer(schemaVersion: schemaVersion).analyze(asset: asset)
+        baseline.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: false)
+        baseline.completedDepth = .metadata
         await metrics?.finish(.fastInspection)
         baseline.analysisProfileKey = profile.cacheKey
+        baseline.analyzedSourceIdentity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
         baseline.usedProxy = usedProxy
         baseline.telemetry = telemetry
         if asset.kind == .photo {
@@ -628,14 +760,16 @@ public struct AdaptiveLocalAnalyzer: Sendable {
             }
             baseline.deepMediaVersion = DeepAnalysisCache.version
             baseline.aiRuntimeLabel = "Apple Vision · локально"
-            baseline.completedDepth = profile.targetDepth
-            progress?("Быстрый анализ фото готов", 1)
+            let photoComplete = (baseline.sampledFrameCount ?? 0) > 0
+            baseline.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: photoComplete)
+            baseline.completedDepth = photoComplete ? profile.targetDepth : .metadata
+            progress?(photoComplete ? "Анализ фото готов" : "Фото требует повторного анализа", 1)
             detailedProgress?(AnalysisStageUpdate(stage: .fusion, fraction: 1))
             return baseline
         }
         guard let duration = asset.metadata.duration, duration > 0 else {
             baseline.aiRuntimeLabel = "Метаданные · локальный fallback"
-            baseline.completedDepth = profile.targetDepth
+            baseline.completedDepth = .metadata
             baseline.deepMediaVersion = DeepAnalysisCache.version
             progress?("Metadata fallback готов", 1)
             detailedProgress?(AnalysisStageUpdate(stage: .fusion, fraction: 1))
@@ -690,6 +824,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                 currentScene: sampling.scenes.isEmpty ? nil : 1,
                 sceneCount: sampling.scenes.count
             ))
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             await metrics?.finish(.adaptiveSampling)
             baseline.warnings.append("Адаптивная выборка кадров недоступна: \(error.localizedDescription)")
@@ -705,8 +841,11 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         if profile.audioAnalysisLevel != .none, asset.metadata.hasAudio {
             await metrics?.start(.audio)
             detailedProgress?(AnalysisStageUpdate(stage: .audio, fraction: 0.41))
-            let persistentAudio = await deepCache?.load(contentHash: asset.contentHash)?.audioAnalysis
-            let previousAudio = previous?.audioAnalysis
+            let stored = await deepCache?.load(contentHash: asset.contentHash)
+            let sourceIdentity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+            let persistentAudio = stored?.sourceIdentity == sourceIdentity ? stored?.audioAnalysis : nil
+            let previousAudio = previous?.analyzedContentHash == asset.contentHash && previous?.analyzedSourceIdentity == sourceIdentity
+                ? previous?.audioAnalysis : nil
             let cachedAudio = persistentAudio ?? previousAudio
             let cacheSupportsRequestedDepth = cachedAudio.map { value in
                 profile.audioAnalysisLevel == .basic || (value.featureWindows != nil && value.onsetEnvelope != nil)
@@ -818,21 +957,25 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         await metrics?.finish(.localScoring, workUnits: candidates.count)
 
         let runtime = OllamaVisionRuntime()
-        let thermalCritical = ProcessInfo.processInfo.thermalState == .critical
-        let ollamaAllowed = profile.maximumVLMScenes > 0 && profile.runtime != .mlx && !thermalCritical
-        let hasVisionModel = ollamaAllowed
-            ? await LocalAIModelManager.shared.availability(
-                model: profile.ollamaModelID
-            ).installed
-            : false
+        // ResourceWorkPacer waits for cooling; it never drops scheduled VLM work.
+        let availability = await LocalAIModelManager.shared.availability(model: profile.ollamaModelID)
+        let modelInfo = availability.installed
+            ? await LocalAIModelManager.shared.installedModelInfo(model: profile.ollamaModelID) : nil
+        let hasVisionModel = modelInfo != nil
+        baseline.analysisModelDigest = modelInfo?.digest
+        let selectedIndices = selectedVLMIndices(in: candidates)
+        var execution = AIExecutionEvidence(
+            visualAnalysisCompleted: !samples.isEmpty,
+            audioAnalysisCompleted: profile.audioAnalysisLevel == .none || !asset.metadata.hasAudio || audioSummary != nil,
+            plannedScenes: selectedIndices.count,
+            plannedRechecks: profile.rechecksImportantScenes ? min(2, selectedIndices.count) : 0,
+            modelAvailable: hasVisionModel, modelQuantization: modelInfo?.quantization)
         var deepIndices: Set<Int> = []
         var deepFailures = 0
         if hasVisionModel {
             var resourcePacer = ResourceWorkPacer()
             try await resourcePacer.checkpoint()
             await metrics?.start(.vlm)
-            try? await LocalAIModelManager.shared.warmUp(model: profile.ollamaModelID)
-            let selectedIndices = selectedVLMIndices(in: candidates)
             let batches = stride(from: 0, to: selectedIndices.count, by: profile.scenesPerVLMRequest).map {
                 Array(selectedIndices[$0..<min(selectedIndices.count, $0 + profile.scenesPerVLMRequest)])
             }
@@ -856,18 +999,20 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                         telemetry: telemetryDetector.strongestMoment(
                             in: candidates[index].sourceStart...(candidates[index].sourceStart + candidates[index].sourceDuration),
                             moments: telemetryMoments
-                        ).flatMap { $0.score >= 0.08 ? $0 : nil }
+                        ).flatMap { $0.score >= 0.08 ? $0 : nil },
+                        sourceWindow: candidates[index].sourceStart...(candidates[index].sourceStart + candidates[index].sourceDuration)
                     )
                 }
-                let started = Date()
                 do {
                     let judgements = try await runtime.analyzeBatch(
                         scenes: inputs,
                         model: profile.ollamaModelID,
                         thinking: profile.thinkingEnabled,
-                        timeout: profile.vlmTimeout
+                        timeout: profile.vlmPrefillTimeout(imageCount: inputs.reduce(0) { $0 + $1.frames.count }),
+                        cache: deepCache,
+                        cacheContext: profile.cacheKey + "|" + FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash),
+                        metrics: metrics
                     )
-                    await metrics?.recordVLMCall(latency: Date().timeIntervalSince(started))
                     for index in indices {
                         guard let judgement = judgements[index] else {
                             deepFailures += 1
@@ -879,33 +1024,33 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    await metrics?.recordVLMCall(latency: Date().timeIntervalSince(started))
                     deepFailures += indices.count
                 }
             }
 
             if profile.rechecksImportantScenes {
-                let recheck = selectedIndices.filter { index in
-                    let confidenceDistance = abs(candidates[index].scores.composite - 0.72)
-                    return confidenceDistance < 0.22
-                }.prefix(2)
-                if !recheck.isEmpty {
+                // Always independently verify the strongest/ambiguous planned
+                // moments, even when none passes the former arbitrary threshold.
+                let recheck = selectedIndices.sorted {
+                    abs(candidates[$0].scores.composite - 0.72) < abs(candidates[$1].scores.composite - 0.72)
+                }.prefix(execution.plannedRechecks)
+                for index in recheck {
                     try await resourcePacer.checkpoint()
-                    let inputs = recheck.map { index in
-                        VLMSceneInput(index: index, frames: nearbyFrames(for: candidates[index], in: samples), telemetry: nil)
-                    }
-                    let started = Date()
-                    if let judgements = try? await runtime.analyzeBatch(
-                        scenes: inputs,
-                        model: profile.ollamaModelID,
-                        thinking: profile.thinkingEnabled,
-                        timeout: profile.vlmTimeout
-                    ) {
-                        await metrics?.recordVLMCall(latency: Date().timeIntervalSince(started))
-                        for index in recheck {
-                            guard let judgement = judgements[index] else { continue }
+                    let inputs = [VLMSceneInput(index: index, frames: nearbyFrames(for: candidates[index], in: samples), telemetry: nil)]
+                    do {
+                        let judgements = try await runtime.analyzeBatch(
+                            scenes: inputs, model: profile.ollamaModelID, thinking: profile.thinkingEnabled,
+                            timeout: profile.vlmPrefillTimeout(imageCount: inputs[0].frames.count), metrics: metrics)
+                        if let judgement = judgements[index] {
                             apply(judgement, to: &candidates[index])
+                            execution.evaluatedRechecks += 1
+                            PerformanceTrace.current?.event("vlm.recheck-completed", fields: ["index": String(index)])
                         }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        if (error as? URLError)?.code == .cancelled { throw CancellationError() }
+                        baseline.warnings.append("Независимая перепроверка сцены не завершена: \(error.localizedDescription)")
                     }
                 }
             }
@@ -917,17 +1062,13 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                 ? "Apple Vision + video/telemetry · локальный fallback"
                 : "Qwen3-VL batch + video/telemetry · Ollama · локально"
         } else {
-            let reason = thermalCritical
-                ? "Глубокий AI-анализ приостановлен до охлаждения Mac; адаптивный анализ сохранён."
-                : profile.runtime == .mlx
-                ? "Нативный MLX runtime выбран, но модель ещё не установлена в сборку; использован Apple Vision."
-                : "Модель \(profile.ollamaModelID) не загружена; использован адаптивный Apple Vision-анализ."
+            let reason = "Модель \(profile.ollamaModelID) не установлена; нейроанализ не завершён. Сохранён локальный анализ кадров."
             baseline.warnings.append(reason)
             baseline.aiRuntimeLabel = telemetryMoments.isEmpty
                 ? "Apple Vision + adaptive sampling · локально"
                 : "Apple Vision + video/GPMF · локально"
         }
-        detailedProgress?(AnalysisStageUpdate(stage: .embeddings, label: "Embeddings, объекты, звук и речь", fraction: 0.94))
+        detailedProgress?(AnalysisStageUpdate(stage: .embeddings, label: "Локальные признаки, объекты, звук и речь", fraction: 0.94))
         let deepMedia = await DeepMediaCandidateEnricher().enrich(
             candidates: candidates,
             samples: samples,
@@ -941,6 +1082,10 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         if audioSummary != nil { audioSummary?.events = deepMedia.audioEvents }
         baseline.deepMediaVersion = DeepAnalysisCache.version
         baseline.deepMediaDiagnostics = deepMedia.diagnostics
+        if let speech = deepMedia.diagnostics.stages.first(where: { $0.stage == .asr }),
+           !speech.ran, speech.reason.contains("недоступен") {
+            baseline.warnings.append(speech.reason)
+        }
         await metrics?.start(.fusion)
         baseline.deepAnalyzedCandidateCount = deepIndices.count
         baseline.candidates = candidates
@@ -953,10 +1098,15 @@ public struct AdaptiveLocalAnalyzer: Sendable {
             telemetryMoments: telemetryMoments,
             audio: audioSummary
         )
-        baseline.completedDepth = profile.targetDepth
+        try Task.checkCancellation()
+        execution.evaluatedScenes = deepIndices.count
+        baseline.aiExecution = execution
+        baseline.completedDepth = execution.isComplete ? profile.targetDepth : min(profile.targetDepth, .quick)
+        if !execution.isComplete { baseline.warnings.append(execution.summary) }
         await metrics?.finish(.fusion, workUnits: baseline.scenes?.count ?? 0)
         progress?("Передаю лучшие моменты Story Engine", 1)
-        detailedProgress?(AnalysisStageUpdate(stage: .fusion, label: "Анализ готов для AI Director", fraction: 1))
+        detailedProgress?(AnalysisStageUpdate(stage: .fusion, label: execution.isComplete
+            ? "Анализ готов для AI Director" : "Частичный анализ: \(execution.summary)", fraction: 1))
         return baseline
     }
 
@@ -1025,7 +1175,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         return selected.sorted { $0.timestamp < $1.timestamp }
     }
 
-    private func selectedVLMIndices(in candidates: [Candidate]) -> [Int] {
+    func selectedVLMIndices(in candidates: [Candidate]) -> [Int] {
         let ranked = candidates.indices.sorted { lhs, rhs in
             let left = candidates[lhs]
             let right = candidates[rhs]
@@ -1049,12 +1199,15 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         case .broadScenes, .temporalRecheck:
             selected = ranked
         }
-        return Array(selected.prefix(profile.maximumVLMScenes))
+        // Keep the preferred semantic ordering, then fill the mode's budget
+        // with representative scenes. Calm scenery must still reach the VLM.
+        let remaining = ranked.filter { !selected.contains($0) }
+        return Array((selected + remaining).prefix(profile.maximumVLMScenes))
     }
 
-    private func nearbyFrames(for candidate: Candidate, in samples: [VisualFrameSample]) -> [VisualFrameSample] {
+    func nearbyFrames(for candidate: Candidate, in samples: [VisualFrameSample]) -> [VisualFrameSample] {
         let center = candidate.sourceStart + candidate.sourceDuration / 2
-        let maximumPerScene = max(2, min(profile.framesPerCandidate, max(3, 18 / profile.scenesPerVLMRequest)))
+        let maximumPerScene = profile.framesPerCandidate
         return Array(samples.sorted { abs($0.timestamp - center) < abs($1.timestamp - center) }
             .prefix(maximumPerScene))
             .sorted { $0.timestamp < $1.timestamp }

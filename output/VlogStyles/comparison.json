@@ -1,0 +1,42 @@
+{
+  "source": "file:///Users/daniellineckij/Downloads/%D1%82%D0%B5%D1%81%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%81%D1%83%D0%B1%D1%82%D0%B8%D1%82%D1%80%D0%BE%D0%B2/IMG_3747.MOV",
+  "sourceStart": 32,
+  "sourceEnd": 72,
+  "duration": 40,
+  "automaticTextUnedited": true,
+  "timingIdentical": true,
+  "defaultSelected": false,
+  "styles": [
+    {
+      "name": "Киношный",
+      "video": "/Users/daniellineckij/VeloEdit/output/VlogStyles/01-cinematic.mp4",
+      "project": "/Users/daniellineckij/VeloEdit/output/VlogStyles/01-cinematic.veloedit",
+      "templateID": "caption.cinematic.v1"
+    },
+    {
+      "name": "Влог",
+      "video": "/Users/daniellineckij/VeloEdit/output/VlogStyles/02-vlog.mp4",
+      "project": "/Users/daniellineckij/VeloEdit/output/VlogStyles/02-vlog.veloedit",
+      "templateID": "caption.vlog.v1"
+    },
+    {
+      "name": "Путешествие",
+      "video": "/Users/daniellineckij/VeloEdit/output/VlogStyles/03-travel.mp4",
+      "project": "/Users/daniellineckij/VeloEdit/output/VlogStyles/03-travel.veloedit",
+      "templateID": "caption.travel.v1"
+    },
+    {
+      "name": "Соцсети",
+      "video": "/Users/daniellineckij/VeloEdit/output/VlogStyles/04-social.mp4",
+      "project": "/Users/daniellineckij/VeloEdit/output/VlogStyles/04-social.veloedit",
+      "templateID": "caption.social.v1"
+    }
+  ],
+  "questionnaireChoices": [
+    "vlog",
+    "travel",
+    "social"
+  ],
+  "cinematicRejectedByUser": true,
+  "selectionScope": "per-project"
+}

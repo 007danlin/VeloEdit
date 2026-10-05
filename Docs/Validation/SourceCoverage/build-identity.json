@@ -1,0 +1,19 @@
+{
+  "identity": {
+    "builtAt": "2026-09-15T08:52:07.472041+00:00",
+    "sourceSHA256": "2cfa2512f0dad29ccad50521b81d07e13bdd30f03ec4a73c7dc717fc8bc6041d",
+    "build": "2026.258.085207",
+    "runtime": "Ollama 0.32.14"
+  },
+  "sourceIdentityMatches": true,
+  "originalProjectUnchanged": true,
+  "originalManifestSHA256": "534a5171a80b278ae797d5ad2c99118f62bffc16b16478568d9ee1743f7a3b85",
+  "baselineSources": 11,
+  "verifiedSources": 13,
+  "verifiedShots": 42,
+  "verifiedDuration": 300.0,
+  "structuralFindings": [],
+  "focusedTestsPassed": 22,
+  "knownExistingSceneGroupingTestFailure": true,
+  "isolatedPerformanceTestSeconds": 6.101
+}

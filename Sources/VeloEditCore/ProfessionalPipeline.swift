@@ -58,14 +58,19 @@ public enum VideoColorPipeline {
 
     public static func cgColorSpace(for profile: VideoColorProfile) -> CGColorSpace {
         if profile.dynamicRange == .hdr {
-            return CGColorSpace(name: CGColorSpace.itur_2020)
-                ?? CGColorSpace(name: CGColorSpace.extendedLinearITUR_2020)
-                ?? CGColorSpaceCreateDeviceRGB()
+            // Primaries alone are not a color space contract: Rec.2020's SDR
+            // transfer curve must never be written into buffers tagged HLG/PQ.
+            // That mismatch brightens every shot in a mixed HDR/SDR timeline,
+            // even when no exposure or color effect is present on the clip.
+            let name = profile.transferFunction == .pq
+                ? CGColorSpace.itur_2100_PQ : CGColorSpace.itur_2100_HLG
+            return CGColorSpace(name: name)!
         }
         return CGColorSpace(name: CGColorSpace.itur_709)
             ?? CGColorSpace(name: CGColorSpace.sRGB)
             ?? CGColorSpaceCreateDeviceRGB()
     }
+
 }
 
 /// Repairs timelines created before automatic canvas framing was persisted.
@@ -84,7 +89,7 @@ public enum AutomaticFramingPolicy {
 
         for index in result.items.indices {
             let item = result.items[index]
-            guard item.kind == .video,
+            guard [.video, .photo].contains(item.kind),
                   item.overlay == nil,
                   item.videoAdjustments == nil,
                   let assetID = item.assetID,
@@ -97,7 +102,8 @@ public enum AutomaticFramingPolicy {
                let reframe = SubjectAwareReframeEngine().plan(
                    tracking: tracking,
                    sourceAspectRatio: sourceAspect,
-                   targetAspectRatio: targetAspect
+                   targetAspectRatio: targetAspect,
+                   isPhoto: item.kind == .photo
                ),
                reframe.confidence >= 0.42 {
                 adjustments.crop = .fill

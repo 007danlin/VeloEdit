@@ -14,8 +14,11 @@ public struct MomentSignal: Hashable, Sendable {
     public var subject: Double
     public var speechBoundary: Double
     public var vlm: Double
+    /// Confidence in a separately observed temporal action, not a scene's
+    /// generic interest/story score or the presence of a tracked person.
+    public var actionConfirmation: Double
 
-    public init(timestamp: Double, motion: Double, interest: Double, semantic: Double, audioOnset: Double = 0, telemetry: Double = 0, audioEvent: Double = 0, subject: Double = 0, speechBoundary: Double = 0, vlm: Double = 0) {
+    public init(timestamp: Double, motion: Double, interest: Double, semantic: Double, audioOnset: Double = 0, telemetry: Double = 0, audioEvent: Double = 0, subject: Double = 0, speechBoundary: Double = 0, vlm: Double = 0, actionConfirmation: Double = 0) {
         self.timestamp = max(0, timestamp)
         self.motion = motion.clamped01
         self.interest = interest.clamped01
@@ -26,6 +29,7 @@ public struct MomentSignal: Hashable, Sendable {
         self.subject = subject.clamped01
         self.speechBoundary = speechBoundary.clamped01
         self.vlm = vlm.clamped01
+        self.actionConfirmation = actionConfirmation.clamped01
     }
 
     public var activity: Double {
@@ -113,11 +117,13 @@ public struct MomentBoundaryRefiner: MomentBoundaryRefining, Sendable {
         let temporalCoverage = min(1, Double(local.count) / 6)
         let prominence = max(0, peak.activity - baseline)
         let confidence = min(1, 0.28 + temporalCoverage * 0.30 + prominence * 0.68 + (sawCompletion ? 0.14 : 0))
-        var evidence = ["peak activity \(Int((peak.activity * 100).rounded()))%", "anticipation → peak → completion"]
+        let confirmedAction = local.contains { $0.actionConfirmation >= 0.65 }
+        var evidence = ["peak activity \(Int((peak.activity * 100).rounded()))%",
+                        confirmedAction ? "observed temporal action" : "activity envelope; action semantics unverified"]
         if peak.telemetry >= 0.35 { evidence.append("telemetry-confirmed peak") }
         if peak.audioOnset >= 0.35 { evidence.append("audio-confirmed peak") }
         if peak.audioEvent >= 0.35 { evidence.append("audio-event-confirmed peak") }
-        if peak.subject >= 0.35 { evidence.append("subject-confirmed peak") }
+        if peak.subject >= 0.35 { evidence.append("subject visible near activity peak") }
         if local.contains(where: { $0.speechBoundary >= 0.35 }) { evidence.append("speech phrase boundary") }
         if peak.vlm >= 0.58 { evidence.append("VLM semantic evidence") }
         let activeBeforePeak = local.filter {
@@ -133,7 +139,7 @@ public struct MomentBoundaryRefiner: MomentBoundaryRefining, Sendable {
         let protectedReason = peak.audioEvent >= 0.35 || peak.audioOnset >= 0.35
             ? "Не разрывать действие и подтверждающий его звуковой акцент"
             : "Не разрывать действие вокруг подтверждённого peak"
-        let protected = actionEnd - actionStart >= 0.08
+        let protected = confirmedAction && actionEnd - actionStart >= 0.08
             ? [EditorialSourceRange(start: actionStart, end: actionEnd, phase: .action, reason: protectedReason, confidence: protectedConfidence)]
             : []
         return MomentBoundary(
@@ -146,7 +152,8 @@ public struct MomentBoundaryRefiner: MomentBoundaryRefining, Sendable {
             completionEnd: end,
             doNotCutRanges: protected,
             confidence: confidence,
-            evidence: evidence
+            evidence: evidence,
+            actionEvidenceConfirmed: confirmedAction
         )
     }
 }

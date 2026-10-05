@@ -1,6 +1,7 @@
 import Foundation
 
 public enum DirectorBriefFulfillmentError: LocalizedError, Sendable {
+    case requestedMusicUnavailable(String)
     case unavailableMusicTrack(UUID)
     case automaticMusicUnavailable
     case specificMusicTrackNotSelected
@@ -10,6 +11,8 @@ public enum DirectorBriefFulfillmentError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
+        case .requestedMusicUnavailable(let query):
+            return "Запрошенная песня «\(query)» недоступна. Текущая версия сохранена; выберите доступный файл или другую песню."
         case .unavailableMusicTrack:
             return "Выбранный музыкальный трек недоступен. Верните файл трека или выберите другой — фильм не будет сохранён с подменой музыки."
         case .automaticMusicUnavailable:
@@ -29,6 +32,7 @@ public enum DirectorBriefFulfillmentError: LocalizedError, Sendable {
 public actor VeloEditPipeline {
     public let store: ProjectStore
     private let renderedProber: any EditorialRenderedProbing
+    private let speechRecognizer: (any LocalSpeechRecognizing)?
     private let importer: MediaImporter
     private let analyzer: (any VisionModelProtocol)?
     private let musicLibrary: LocalMusicLibrary
@@ -46,6 +50,7 @@ public actor VeloEditPipeline {
     public init(
         store: ProjectStore,
         importer: MediaImporter = MediaImporter(),
+        speechRecognizer: (any LocalSpeechRecognizing)? = nil,
         renderedProber: any EditorialRenderedProbing = LocalEditorialRenderedProber(),
         analyzer: (any VisionModelProtocol)? = nil,
         musicLibrary: LocalMusicLibrary? = nil,
@@ -56,6 +61,7 @@ public actor VeloEditPipeline {
     ) {
         self.store = store
         self.importer = importer
+        self.speechRecognizer = speechRecognizer
         self.renderedProber = renderedProber
         self.analyzer = analyzer
         let projectMusicLibrary = musicLibrary ?? LocalMusicLibrary(rootURL: store.musicLibraryURL)
@@ -80,6 +86,59 @@ public actor VeloEditPipeline {
         }
     }
 
+    /// Rename an existing film without invoking selection, chronology, music or
+    /// montage assembly. The store revision rejects any late result after edits.
+    @discardableResult
+    public func refreshChapterTitles(force: Bool = false, model suppliedModel: (any ChapterTitleModel)? = nil) async throws -> Timeline {
+        let snapshot = await store.snapshot()
+        let project = snapshot.manifest
+        guard let timeline = project.timelines.last,
+              var plan = project.storyPlans.last(where: { $0.id == timeline.storyPlanID }) else {
+            throw DirectorBriefFulfillmentError.missingGeneratedTimeline
+        }
+        if let reference = project.preferences.chapterTitleReference { plan = reference.applying(to: plan, assets: project.assets) }
+        let model: any ChapterTitleModel
+        if let suppliedModel { model = suppliedModel }
+        else { model = await LocalChapterTitleModel.configured(preferences: project.preferences, previousModelIdentity: timeline.chapterTitleDecisions?.first?.modelID) }
+        let renamed = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: project.assets,
+            analyses: project.analyses, mode: project.preferences.effectiveAIPowerMode, model: model, force: force)
+        try Task.checkCancellation()
+        try await store.update(ifRevision: snapshot.revision) { current in
+            guard let index = current.timelines.firstIndex(where: { $0.id == timeline.id }) else { return }
+            if renamed != timeline { Self.appendCheckpoint(timeline: timeline, reason: "Названия частей", to: &current) }
+            current.timelines[index] = renamed
+        }
+        return renamed
+    }
+
+    public func applySpeechCaptionSettings(_ brief: DirectorBrief) async throws -> Timeline {
+        let snapshot = await store.snapshot()
+        var project = snapshot.manifest
+        guard var timeline = project.timelines.last, let planIndex = project.storyPlans.firstIndex(where: { $0.id == timeline.storyPlanID }) else { throw DirectorBriefFulfillmentError.missingGeneratedTimeline }
+        let preset = project.storyPlans[planIndex].preset
+        let enabled = brief.subtitlesEnabled(preset: preset)
+        var records = timeline.speechRecords ?? []
+        if enabled {
+            let ids = Set(timeline.items.compactMap(\.assetID))
+            let speechCacheURL = await store.cacheURL
+            let recognizer: any LocalSpeechRecognizing = speechRecognizer ?? WhisperKitSpeechRecognizer(cacheURL: speechCacheURL)
+            for asset in project.assets where ids.contains(asset.id) && asset.metadata.hasAudio && !records.contains(where: { $0.assetID == asset.id }) {
+                if let transcript = try await recognizer.transcribe(url: asset.originalURL, localeIdentifier: "ru") { records.append(SpeechSourceRecord(assetID: asset.id, transcript: transcript)) }
+            }
+        }
+        timeline.speechRecords = records
+        if brief.titlePolicy == .none { timeline.titleItems = timeline.effectiveTitleItems.filter { [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains($0.kind) } }
+        timeline = SpeechSubtitleBuilder.applying(to: timeline, records: records, enabled: enabled, allowMuted: brief.subtitlesWithoutAudio == true, style: brief.subtitleStyle)
+        project.storyPlans[planIndex].directorBrief = brief
+        try Task.checkCancellation()
+        try await store.update(ifRevision: snapshot.revision) { current in
+            if let old = current.timelines.last { Self.appendCheckpoint(timeline: old, reason: "Настройка субтитров", to: &current) }
+            current.storyPlans[planIndex].directorBrief = brief
+            if let i = current.timelines.firstIndex(where: { $0.id == timeline.id }) { current.timelines[i] = timeline }
+        }
+        return timeline
+    }
+
     public func updateWorkspaceState(_ state: ProjectWorkspaceState) async throws {
         try await store.updateWorkspaceState(state)
     }
@@ -96,11 +155,21 @@ public actor VeloEditPipeline {
             throw DirectorBriefFulfillmentError.missingGeneratedTimeline
         }
         plan.directorBrief = brief
-        // Preserve the material-bounded duration chosen during film creation.
-        // A late format/title/audio command must not turn an already valid
-        // best-effort film back into an impossible original runtime.
-        plan.constraints.targetDuration = plan.autonomousDecision?.duration.seconds
-            ?? brief.requestedDuration
+        if plan.preset == .vlog {
+            timeline.originalAudioVolume = brief.sourceAudioPolicy.volume
+            timeline.audioDucking = AudioDuckingSettings(enabled: brief.sourceAudioPolicy != .mute)
+            if brief.musicPolicy == .none { timeline.music = nil; timeline.adaptiveSoundtrack = nil }
+            if brief.titlePolicy == .none { timeline.titleItems = timeline.effectiveTitleItems.filter { [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains($0.kind) } }
+            timeline = SpeechSubtitleBuilder.applying(to: timeline, records: timeline.speechRecords ?? [], enabled: brief.subtitlesEnabled(preset: .vlog), allowMuted: brief.subtitlesWithoutAudio == true, style: brief.subtitleStyle)
+            try await store.update(ifRevision: snapshot.revision) { project in
+                if let index = project.storyPlans.firstIndex(where: { $0.id == plan.id }) { project.storyPlans[index] = plan }
+                if let index = project.timelines.firstIndex(where: { $0.id == timeline.id }) { project.timelines[index] = timeline }
+            }
+            return timeline
+        }
+        // A late format/title/audio change preserves the duration contract.
+        plan.constraints.targetDuration = brief.explicitRequestedDuration
+            ?? plan.constraints.targetDuration
         plan.constraints.pacing = brief.mood.pacing
 
         let tracks = try await musicSystem.tracks()
@@ -184,17 +253,61 @@ public actor VeloEditPipeline {
     /// of order after preview work; only the newest client revision is allowed
     /// to become project state.
     @discardableResult
-    public func commitLatestTimeline(_ timeline: Timeline, clientRevision: UInt64) async throws -> Bool {
+    public func commitLatestTimeline(_ timeline: Timeline, clientRevision: UInt64, checkpointReason: String? = nil) async throws -> Bool {
         guard clientRevision >= latestClientTimelineRevision else { return false }
         latestClientTimelineRevision = clientRevision
         let tracks = (try? await musicSystem.tracks()) ?? []
         guard clientRevision >= latestClientTimelineRevision else { return false }
         try await store.update { project in
             guard let index = project.timelines.indices.last else { return }
+            if let checkpointReason, project.timelines[index] != timeline {
+                Self.appendCheckpoint(timeline: project.timelines[index], reason: checkpointReason, to: &project)
+            }
+            // The lock is edited instantly with the clip. Keep the source
+            // candidate in sync so a later AI assembly respects that choice.
+            let previousItems = Dictionary(uniqueKeysWithValues: project.timelines[index].items.map { ($0.id, $0) })
+            for item in timeline.items where previousItems[item.id]?.locked != item.locked {
+                guard let candidateID = item.candidateID else { continue }
+                for analysisIndex in project.analyses.indices {
+                    guard let candidateIndex = project.analyses[analysisIndex].candidates.firstIndex(where: { $0.id == candidateID }) else { continue }
+                    project.analyses[analysisIndex].candidates[candidateIndex].locked = item.locked
+                    if item.locked { project.analyses[analysisIndex].candidates[candidateIndex].excluded = false }
+                }
+            }
             project.timelines[index] = timeline
             Self.recordMusicCredit(from: timeline, tracks: tracks, in: &project)
         }
         return true
+    }
+
+    /// Rechecks the saved edit against an immutable revision. A late review may
+    /// not replace a newer edit. Reuses completed stages, preserving MP4 proof.
+    @discardableResult
+    public func verifyCurrentFilm() async throws -> Timeline {
+        let snapshot = await store.snapshot()
+        let current = snapshot.manifest
+        guard let original = current.timelines.last,
+              let plan = current.storyPlans.first(where: { $0.id == original.storyPlanID }) else {
+            throw NaturalLanguageDirectorError.timelineUnavailable
+        }
+        return try await PerformanceTrace.measure(name: "film.recheck", projectID: current.id, revision: String(snapshot.revision),
+            fields: ["signature": EditorialRenderSignature.signature(original)]) {
+            let tracks = try await musicSystem.tracks()
+            let cache = CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
+            var checked = await Self.editorialRenderReview(timeline: original, plan: plan, assets: current.assets,
+                analyses: current.analyses, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cache,
+                prober: renderedProber, repairsRemaining: 0, events: current.events, normalizePresentation: false)
+            try Task.checkCancellation()
+            checked.filmDeliveryReport = AutomaticFilmDelivery.verifiedReport(for: checked, plan: plan,
+                assets: current.assets, analyses: current.analyses)
+            try await store.update(ifRevision: snapshot.revision) { project in
+                guard let index = project.timelines.indices.last, project.timelines[index].id == original.id else {
+                    throw ProjectStoreError.staleRevision(expected: snapshot.revision, actual: snapshot.revision + 1)
+                }
+                project.timelines[index] = checked
+            }
+            return checked
+        }
     }
 
     public func snapshot() async -> ProjectManifest {
@@ -455,6 +568,37 @@ public actor VeloEditPipeline {
         return itemID
     }
 
+    /// Prepare resources without publishing any Timeline changes. The caller
+    /// commits resources, clips and titles together under the snapshot revision.
+    private func preparingDirectorBackgrounds(_ commands: [EditorCommand], in source: ProjectManifest, timeline: Timeline) async throws -> ProjectManifest {
+        var project = source
+        let cache = CachePaths(root: await store.cacheURL)
+        for command in commands {
+            guard case .insertBackground(let insertion) = command,
+                  let preset = DirectorLibraryEdits.background(matching: insertion.background),
+                  insertion.duration.isFinite, (0.25...120).contains(insertion.duration) else { continue }
+            try Task.checkCancellation()
+            let width = max(16, timeline.width), height = max(16, timeline.height)
+            let hash = "\(preset.contentHashPrefix)\(width)x\(height)"
+            let imageURL = cache.background(preset, width: width, height: height)
+            if !FileManager.default.fileExists(atPath: imageURL.path) {
+                try FileManager.default.createDirectory(at: cache.backgroundsDirectory, withIntermediateDirectories: true)
+                try BackgroundPresetRenderer.render(preset, width: width, height: height,
+                    sourceImageURL: preset.bundledImageURL(), to: imageURL)
+            }
+            if let index = project.assets.firstIndex(where: { $0.contentHash == hash }) {
+                project.assets[index].originalURL = imageURL
+                project.assets[index].missing = false
+            } else {
+                let values = try imageURL.resourceValues(forKeys: [.fileSizeKey])
+                project.assets.append(MediaAsset(originalURL: imageURL, displayName: preset.localizedTitle,
+                    kind: .photo, byteSize: Int64(values.fileSize ?? 0), contentHash: hash,
+                    metadata: MediaMetadata(width: width, height: height, codec: "png", dynamicRange: .sdr)))
+            }
+        }
+        return project
+    }
+
     /// Upgrades background assets created by an earlier catalogue version in
     /// place. Timeline item IDs and asset references stay intact, but playback
     /// immediately uses the new shared browser/render artwork.
@@ -598,35 +742,7 @@ public actor VeloEditPipeline {
         var createdID: UUID?
         try await store.update { project in
             guard let timelineIndex = project.timelines.indices.last else { return }
-            var timeline = project.timelines[timelineIndex]
-            timeline.items = Self.retimed(timeline.items)
-            guard let index = timeline.items.firstIndex(where: { $0.id == id }),
-                  timeline.items[index].kind != .title else { return }
-            let original = timeline.items[index]
-            let frame = 1 / max(1, timeline.frameRate)
-            let splitTime = TimelineTiming.quantized(requestedTime, frameRate: timeline.frameRate)
-            let localTime = splitTime - original.timelineStart
-            guard localTime >= frame, original.timelineDuration - localTime >= frame else { return }
-            let fraction = localTime / original.timelineDuration
-            let firstSourceDuration = original.sourceDuration * fraction
-            var left = original
-            left.sourceDuration = firstSourceDuration
-            left.timelineDuration = localTime
-            var right = original
-            right.id = UUID()
-            right.sourceStart = original.sourceStart + firstSourceDuration
-            right.sourceDuration = original.sourceDuration - firstSourceDuration
-            right.timelineStart = splitTime
-            right.timelineDuration = original.timelineDuration - localTime
-            right.transition = nil
-            if right.overlay != nil {
-                right.overlay?.startOffset = (original.overlay?.effectiveStartOffset ?? 0) + localTime
-            }
-            timeline.items[index] = left
-            timeline.items.insert(right, at: index + 1)
-            timeline.items = Self.retimed(timeline.items)
-            project.timelines[timelineIndex] = timeline
-            createdID = right.id
+            createdID = TimelineMutationEngine.splitItem(in: &project.timelines[timelineIndex], id: id, atTimelineTime: requestedTime)
         }
         return createdID
     }
@@ -638,40 +754,7 @@ public actor VeloEditPipeline {
         var createdID: UUID?
         try await store.update { project in
             guard let timelineIndex = project.timelines.indices.last else { return }
-            var timeline = project.timelines[timelineIndex]
-            timeline.items = Self.retimed(timeline.items)
-            guard let itemIndex = timeline.items.firstIndex(where: { $0.id == itemID }),
-                  timeline.items[itemIndex].kind == .video,
-                  let assetID = timeline.items[itemIndex].assetID,
-                  let asset = project.assets.first(where: { $0.id == assetID }),
-                  asset.metadata.hasAudio else { return }
-            if let existing = timeline.effectiveAudioClips.first(where: {
-                $0.assetID == assetID && $0.sourceStart == timeline.items[itemIndex].sourceStart && $0.role == .detached
-            }) {
-                createdID = existing.id
-                return
-            }
-            let item = timeline.items[itemIndex]
-            let id = UUID()
-            let clip = TimelineAudioClip(
-                id: id,
-                assetID: assetID,
-                title: "Звук — \(asset.displayName)",
-                role: .detached,
-                sourceStart: item.sourceStart,
-                sourceDuration: item.sourceDuration,
-                timelineStart: item.timelineStart,
-                timelineDuration: item.timelineDuration,
-                adjustments: item.effectiveAudioAdjustments
-            )
-            var embedded = item.effectiveAudioAdjustments
-            embedded.muted = true
-            timeline.items[itemIndex].audioAdjustments = embedded
-            var clips = timeline.effectiveAudioClips
-            clips.append(clip)
-            timeline.audioClips = clips
-            project.timelines[timelineIndex] = timeline
-            createdID = id
+            createdID = TimelineMutationEngine.detachAudio(in: &project.timelines[timelineIndex], from: itemID, assets: project.assets)
         }
         return createdID
     }
@@ -755,30 +838,23 @@ public actor VeloEditPipeline {
         var createdID: UUID?
         try await store.update { project in
             guard let timelineIndex = project.timelines.indices.last else { return }
-            var timeline = project.timelines[timelineIndex]
-            var clips = timeline.effectiveAudioClips
-            guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
-            let original = clips[index]
-            let frame = 1 / max(1, timeline.frameRate)
-            let split = TimelineTiming.quantized(requestedTime, frameRate: timeline.frameRate)
-            let local = split - original.timelineStart
-            guard local >= frame, original.timelineDuration - local >= frame else { return }
-            var left = original
-            left.sourceDuration = min(left.sourceDuration, local)
-            left.timelineDuration = local
-            var right = original
-            right.id = UUID()
-            right.sourceStart += local
-            right.sourceDuration = max(0.05, original.sourceDuration - local)
-            right.timelineStart = split
-            right.timelineDuration = original.timelineDuration - local
-            clips[index] = left
-            clips.insert(right, at: index + 1)
-            timeline.audioClips = clips
-            project.timelines[timelineIndex] = timeline
-            createdID = right.id
+            createdID = TimelineMutationEngine.splitAudioClip(in: &project.timelines[timelineIndex], id: id, atTimelineTime: requestedTime)
         }
         return createdID
+    }
+
+    /// Manual editing has no dependency on AI models or source analysis.
+    public func createManualTimeline() async throws {
+        try Task.checkCancellation()
+        try await store.update { project in
+            guard project.timelines.isEmpty else { return }
+            let plan = StoryPlan(prompt: "Ручной монтаж", preset: .story,
+                constraints: .init(targetDuration: 0), chapters: [])
+            project.storyPlans.append(plan)
+            var timeline = Timeline(storyPlanID: plan.id, items: [])
+            timeline.automaticallySelectFrameRate = true
+            project.timelines.append(timeline)
+        }
     }
 
     /// Restores a complete edit snapshot. Used by the editor's Undo/Redo stack.
@@ -794,23 +870,40 @@ public actor VeloEditPipeline {
     /// Applies deterministic editor commands only inside a brushed time range.
     /// Boundary clips are sliced first, which keeps the rest of the movie byte-for-
     /// byte equivalent at the Timeline model level.
+    public static func requestsLocalShotReplacement(_ prompt: String) -> Bool {
+        LocalShotReplacement.requestsReplacement(prompt)
+    }
+
     @discardableResult
     public func applyEditorCommands(
         _ prompt: String,
         timelineRange: ClosedRange<Double>,
-        preset: FilmPreset = .story
+        preset: FilmPreset = .story,
+        supplementalCommands: [EditorCommand] = [],
+        modelRequestsReplacement: Bool = false
     ) async throws -> EditorCommandReport {
         let parsed = EditorCommandParser().parse("выбранный фрагмент, \(prompt)", preset: preset)
-        return try await applyEditorCommands(parsed, timelineRange: timelineRange)
+        let replacement = LocalShotReplacement.requestsReplacement(prompt)
+            || (modelRequestsReplacement && LocalShotReplacement.allowsReplacement(prompt))
+        // A replacement request must not be approximated by unrelated model
+        // commands (the old brush changed EQ/fades and reported success).
+        let commands = parsed + (replacement ? [] : EditorCommand.supplemental(supplementalCommands, to: parsed))
+        return try await applyEditorCommands(commands, timelineRange: timelineRange, replacingShots: replacement)
     }
 
-    /// Executes a language model's typed plan inside the brushed range. Global
-    /// operations are rejected before slicing, so an AI-selected tool cannot
-    /// accidentally leak into the rest of the film.
+    /// Executes every supported editor action inside the brushed range.
     @discardableResult
     public func applyEditorCommands(
         _ commands: [EditorCommand],
         timelineRange: ClosedRange<Double>
+    ) async throws -> EditorCommandReport {
+        try await applyEditorCommands(commands, timelineRange: timelineRange, replacingShots: false)
+    }
+
+    private func applyEditorCommands(
+        _ commands: [EditorCommand],
+        timelineRange: ClosedRange<Double>,
+        replacingShots: Bool
     ) async throws -> EditorCommandReport {
         let snapshot = await store.snapshot()
         guard let source = snapshot.manifest.timelines.last else {
@@ -819,12 +912,47 @@ public actor VeloEditPipeline {
                 ignored: ["Для локальной AI-правки сначала нужен Timeline"]
             )
         }
-        let result = Self.applyingLocalizedEditorCommands(
-            commands,
-            to: source,
+        var resolvedCommands = commands
+        var resolvedTracks: [LocalMusicTrack] = []
+        for index in resolvedCommands.indices {
+            guard case .setMusic(let requested?) = resolvedCommands[index] else { continue }
+            let previous = source.effectiveAdaptiveSoundtrack?.segments.first(where: {
+                $0.timelineStart <= timelineRange.lowerBound && $0.timelineEnd > timelineRange.lowerBound
+            })?.directive.trackID ?? source.music?.trackID
+            var directive = Self.musicDirective(requested, replacing: previous) ?? requested
+            let tracks = try await tracksForResolving(directive)
+            let exact = directive.trackID.flatMap { id in tracks.first { $0.id == id && $0.isPlayable } }
+            guard let track = exact ?? LocalMusicSelector().select(for: directive, from: tracks,
+                excluding: directive.preferDifferentTrack == true ? previous : nil) else {
+                throw FreeToUseAPIError.providerFailure(lastMusicResolutionError ?? "Нет доступного аудиофайла для выделенного диапазона")
+            }
+            directive.trackID = track.id
+            directive.trackTitle = track.title
+            directive.bpm = track.bpm
+            directive.preferDifferentTrack = nil
+            resolvedCommands[index] = .setMusic(directive)
+            resolvedTracks.append(contentsOf: tracks)
+        }
+        var baseline = source
+        var replacementIDs: [UUID] = []
+        if replacingShots {
+            let slice = TimelineRangeSlicer.slice(source, for: timelineRange)
+            baseline = try LocalShotReplacement.apply(to: slice.timeline, itemIDs: Set(slice.itemIDs), original: source, project: snapshot.manifest)
+            replacementIDs = slice.itemIDs.filter { id in
+                baseline.items.first { $0.id == id } != slice.timeline.items.first { $0.id == id }
+            }
+        }
+        var result = Self.applyingLocalizedEditorCommands(
+            resolvedCommands,
+            to: baseline,
             timelineRange: timelineRange,
             assets: snapshot.manifest.assets
         )
+        if replacingShots {
+            result.report.recognizedCount += 1
+            result.report.applied.insert("заменено фрагментов: \(replacementIDs.count); длительность сохранена", at: 0)
+            result.report.affectedItemIDs = Array(Set(result.report.affectedItemIDs + replacementIDs)).sorted { $0.uuidString < $1.uuidString }
+        }
         guard result.timeline != source else { return result.report }
 
         try Task.checkCancellation()
@@ -836,6 +964,7 @@ public actor VeloEditPipeline {
                 to: &project
             )
             project.timelines[timelineIndex] = result.timeline
+            Self.recordMusicCredit(from: result.timeline, tracks: resolvedTracks, in: &project)
         }
         return result.report
     }
@@ -1026,13 +1155,14 @@ public actor VeloEditPipeline {
     ) async throws -> EditorCommandReport {
         guard !commands.isEmpty else { return EditorCommandReport(recognizedCount: 0) }
         let snapshot = await store.snapshot()
-        let current = snapshot.manifest
+        var current = snapshot.manifest
         guard let source = current.timelines.last else {
             return EditorCommandReport(
                 recognizedCount: commands.count,
                 ignored: ["Для применения монтажных команд сначала нужен Timeline"]
             )
         }
+        current = try await preparingDirectorBackgrounds(commands, in: current, timeline: source)
         let previousTrackID = source.music?.trackID
         let parsedMusic = commands.reversed().compactMap { command -> MusicDirective? in
             if case .setMusic(let directive?) = command { return directive }
@@ -1044,7 +1174,8 @@ public actor VeloEditPipeline {
             commands,
             to: source,
             selectedItemID: selectedItemID,
-            selectedCandidateID: selectedCandidateID
+            selectedCandidateID: selectedCandidateID,
+            assets: current.assets, analyses: current.analyses
         )
         var timeline = Self.clampedToAvailableMedia(result.timeline, assets: current.assets)
         if var directive = timeline.music, directive.trackID == nil {
@@ -1108,6 +1239,7 @@ public actor VeloEditPipeline {
                     to: &project
                 )
             }
+            project.assets = current.assets
             project.timelines[timelineIndex] = timeline
             Self.recordMusicCredit(from: timeline, tracks: tracks, in: &project)
         }
@@ -1127,7 +1259,7 @@ public actor VeloEditPipeline {
         recordHistory: Bool = true
     ) async throws -> NaturalLanguageEditResult {
         let snapshot = await store.snapshot()
-        let current = snapshot.manifest
+        var current = snapshot.manifest
         guard let timeline = current.timelines.last else {
             throw NaturalLanguageDirectorError.timelineUnavailable
         }
@@ -1142,7 +1274,7 @@ public actor VeloEditPipeline {
         let taste = deviceTaste.totalSignalCount > 0
             ? deviceTaste
             : (current.personalTasteProfile ?? deviceTaste)
-        let input = NaturalLanguageDirectorInput(
+        var input = NaturalLanguageDirectorInput(
             userRequest: request,
             currentProject: current,
             timeline: timeline,
@@ -1154,6 +1286,9 @@ public actor VeloEditPipeline {
         )
         let director = NaturalLanguageDirector()
         let plan = director.plan(input: input, supplementalCommands: supplementalCommands)
+        current = try await preparingDirectorBackgrounds(plan.commands, in: current, timeline: timeline)
+        input.currentProject = current
+        input.assets = current.assets
         var result = director.execute(plan: plan, input: input, recordHistory: recordHistory)
 
         let requestedMusic = plan.commands.reversed().compactMap { command -> MusicDirective? in
@@ -1195,6 +1330,7 @@ public actor VeloEditPipeline {
                     to: &project
                 )
             }
+            project.assets = current.assets
             project.timelines[index] = result.timeline
         }
         return result
@@ -1387,6 +1523,7 @@ public actor VeloEditPipeline {
             if let animation { item.animation = animation }
             if let words { item.words = words.sorted { $0.start < $1.start } }
             if let enabled { item.enabled = enabled }
+            SpeechSubtitleBuilder.preservingManualTiming(&item, previous: items[itemIndex], timeline: project.timelines[timelineIndex])
             if item != items[itemIndex] { item.userEdited = true }
             items[itemIndex] = item
             project.timelines[timelineIndex].titleItems = items
@@ -1396,6 +1533,9 @@ public actor VeloEditPipeline {
     public func deleteTitleTimelineItem(id: UUID) async throws {
         try await store.update { project in
             guard let timelineIndex = project.timelines.indices.last else { return }
+            if let title = project.timelines[timelineIndex].effectiveTitleItems.first(where: { $0.id == id }) {
+                SpeechSubtitleBuilder.suppress(title, in: &project.timelines[timelineIndex])
+            }
             project.timelines[timelineIndex].titleItems?.removeAll { $0.id == id }
         }
     }
@@ -1658,28 +1798,38 @@ public actor VeloEditPipeline {
     @discardableResult
     public func importMedia(_ urls: [URL], progress: (@Sendable (ImportProgress) -> Void)? = nil) async throws -> [String] {
         let current = await store.manifest
-        let visualURLs = importer.expand(urls)
-        let audioURLs = importer.expandAudio(urls)
-        let telemetryURLs = importer.expandTelemetry(urls)
-        guard !visualURLs.isEmpty || !audioURLs.isEmpty || !telemetryURLs.isEmpty else {
-            return ["Поддерживаются фото, видео, аудио и телеметрия GPX/FIT/SRT/CSV/VBO."]
+        let scan = importer.scanInputs(urls)
+        let visualURLs = importer.expand(scan.files)
+        let audioURLs = importer.expandAudio(scan.files)
+        let telemetryURLs = importer.expandTelemetry(scan.files)
+        let recognized = Set(visualURLs + audioURLs + telemetryURLs)
+        var report = MediaImportReport()
+        report.entries = scan.failures + scan.files.filter { !recognized.contains($0) }.map {
+            .init(url: $0, outcome: .failed, message: "Формат не поддерживается. Добавьте видео, фото, аудио или файл телеметрии.")
         }
-        let results = await importer.importAssets(from: visualURLs, existing: current.assets, progress: progress)
+        let results = await importer.importAssets(from: visualURLs, existing: current.assets, conversionDirectory: store.packageURL.appendingPathComponent("Media/Converted"), progress: progress)
         var imported: [MediaAsset] = []
-        var errors: [String] = []
-        for result in results {
+        var seenHashes = Set(current.assets.map(\.contentHash))
+        try Task.checkCancellation()
+        for (url, result) in zip(visualURLs, results) {
             switch result {
-            case .success(let asset): imported.append(asset)
-            case .failure(let error): errors.append(error.localizedDescription)
+            case .success(let asset):
+                imported.append(asset)
+                let duplicate = !seenHashes.insert(asset.contentHash).inserted
+                report.entries.append(.init(url: url, outcome: duplicate ? .duplicate : .added,
+                    message: duplicate ? "Уже в проекте — повторная копия не добавлена" : "Добавлено"))
+            case .failure(let error):
+                report.entries.append(.init(url: url, outcome: .failed, message: error.localizedDescription))
             }
         }
         for audioURL in audioURLs {
             do {
                 _ = try await musicLibrary.importUserTrack(audioURL)
+                report.entries.append(.init(url: audioURL, outcome: .added, message: "Добавлено в музыку"))
             } catch MusicLibraryError.duplicateSource {
-                // Reimporting a selected folder should be idempotent.
+                report.entries.append(.init(url: audioURL, outcome: .duplicate, message: "Уже в музыкальной библиотеке"))
             } catch {
-                errors.append("\(audioURL.lastPathComponent): \(error.localizedDescription)")
+                report.entries.append(.init(url: audioURL, outcome: .failed, message: error.localizedDescription))
             }
         }
         let unique = Dictionary(imported.map { ($0.contentHash, $0) }, uniquingKeysWith: { old, _ in old }).values
@@ -1701,8 +1851,11 @@ public actor VeloEditPipeline {
                     source.synchronization = TelemetryEngine().synchronize(source: source, with: closest.0)
                 }
                 telemetrySources.append(source)
+                let duplicate = current.effectiveTelemetrySources.contains { $0.originalURL?.standardizedFileURL == telemetryURL.standardizedFileURL }
+                report.entries.append(.init(url: telemetryURL, outcome: duplicate ? .duplicate : .added,
+                    message: duplicate ? "Телеметрия уже в проекте" : "Телеметрия добавлена"))
             } catch {
-                errors.append("\(telemetryURL.lastPathComponent): \(error.localizedDescription)")
+                report.entries.append(.init(url: telemetryURL, outcome: .failed, message: error.localizedDescription))
             }
         }
         let knownHashes = Set(current.assets.map(\.contentHash))
@@ -1727,7 +1880,12 @@ public actor VeloEditPipeline {
                 project.authorizedMediaFolders = (project.authorizedMediaFolders ?? []) + newFolders
             }
         }
-        return errors
+        try Task.checkCancellation()
+        // An import receipt is operational history, not a timeline edit.
+        // Reimporting duplicates must not invalidate analyses or an AI edit's
+        // optimistic revision merely because the receipt has a new timestamp.
+        try await store.persistOperationalState { $0.lastImportReport = report }
+        return report.failures.map { "\($0.url.lastPathComponent): \($0.message)" }
     }
 
     /// Re-runs only embedded telemetry discovery after extractor support is
@@ -1770,18 +1928,32 @@ public actor VeloEditPipeline {
         preferredAssetID: UUID? = nil,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> Int {
+        let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled], reason: "VeloEdit анализирует видео")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+        let snapshot = await store.snapshot()
+        return try await PerformanceTrace.measure(name: "analysis", projectID: snapshot.manifest.id, revision: String(snapshot.revision)) {
+            try await self.analyzeMissingImpl(preferredAssetID: preferredAssetID, progress: progress)
+        }
+    }
+
+    private func analyzeMissingImpl(preferredAssetID: UUID?, progress: (@Sendable (ImportProgress) -> Void)?) async throws -> Int {
         let current = await store.manifest
         let baseProfile = AIAnalysisProfile.resolve(
             mode: current.preferences.effectiveAIPowerMode,
             advanced: current.preferences.effectiveAdvancedAISettings,
             thermalState: .nominal
         )
+        let currentModelDigest = analyzer == nil && baseProfile.runtime != .mlx
+            ? await LocalAIModelManager.shared.installedModelDigest(model: baseProfile.ollamaModelID) : nil
         let pending = current.assets.filter { asset in
             !current.analyses.contains {
                 guard $0.assetID == asset.id,
                       $0.analyzedContentHash == asset.contentHash,
                       $0.schemaVersion == current.analysisSchemaVersion,
                       $0.deepMediaVersion == DeepAnalysisCache.version,
+                      $0.analysisProfileKey?.hasPrefix(AIAnalysisProfile.cacheVersion + ":") == true,
+                      $0.analyzedSourceIdentity == FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash),
+                      currentModelDigest == nil || $0.analysisModelDigest == currentModelDigest,
                       $0.satisfies(baseProfile) else { return false }
                 let hasUsableMoment = $0.directorCandidates.contains {
                     !$0.excluded && $0.sourceDuration > 0.05
@@ -1807,6 +1979,7 @@ public actor VeloEditPipeline {
 
         var analyzedCount = 0
         var failedCount = 0
+        var incompleteCount = 0
         let paths = CachePaths(root: await store.cacheURL)
         let frameCache = FrameCache(rootURL: paths.frameCacheDirectory)
         let deepCache = DeepAnalysisCache(rootURL: paths.deepMediaCacheDirectory)
@@ -1958,7 +2131,15 @@ public actor VeloEditPipeline {
                 activeAnalysisTask = nil
                 activeAnalysisAssetID = nil
                 result.analysisProfileKey = baseProfile.cacheKey
-                result.completedDepth = max(result.completedDepth ?? .quick, profile.targetDepth)
+                if result.analyzedSourceIdentity == nil {
+                    result.analyzedSourceIdentity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+                }
+                // An explicitly injected analyzer defines its own contract. The
+                // production analyzer must retain its measured completion state.
+                if customAnalyzer != nil, result.aiExecution == nil {
+                    result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true)
+                    result.completedDepth = max(result.completedDepth ?? .quick, profile.targetDepth)
+                }
                 if result.deepMediaVersion == nil {
                     result.deepMediaVersion = DeepAnalysisCache.version
                     result.deepMediaDiagnostics = DeepMediaDiagnostics(stages: [
@@ -1968,12 +2149,11 @@ public actor VeloEditPipeline {
                 result.telemetry = telemetry
                 if let proxyWarning { result.warnings.append(proxyWarning) }
                 if thermalThrottled { result.warnings.append("Нагрузка ограничена для охлаждения Mac; глубина анализа сохранена.") }
-                await metrics.start(.persistence)
-                await metrics.finish(.persistence, workUnits: 1)
                 result.metrics = await metrics.snapshot()
                 await analysisQueue.complete(assetID: asset.id)
                 let queueSnapshot = await analysisQueue.snapshot()
                 var resultWasCurrent = false
+                PerformanceTrace.current?.event("stage.begin", fields: ["stage": "persistence"])
                 try await store.updateAnalysisProgress { project in
                     project.analysisQueue = queueSnapshot
                     guard project.assets.contains(where: {
@@ -1990,10 +2170,15 @@ public actor VeloEditPipeline {
                     // refinement below. Re-running O(n²) event discovery after
                     // every asset would turn a 300-file import into O(n³) work.
                 }
-                if resultWasCurrent { analyzedCount += 1 }
+                PerformanceTrace.current?.event("stage.end", fields: ["stage": "persistence"])
+                if resultWasCurrent {
+                    analyzedCount += 1
+                    if result.aiExecution?.isComplete != true { incompleteCount += 1 }
+                }
                 await eta.finishFile()
                 await reporter.publish(
-                    AnalysisStageUpdate(stage: .persistence, label: "Анализ готов", fraction: 1),
+                    AnalysisStageUpdate(stage: .persistence, label: result.aiExecution?.isComplete == true
+                        ? "Анализ готов" : "Частичный анализ сохранён; нужен повтор", fraction: 1),
                     fileName: asset.displayName
                 )
             } catch is CancellationError {
@@ -2044,7 +2229,8 @@ public actor VeloEditPipeline {
                 project.events = eventDiscovery.events
             }
         }
-        let label = failedCount == 0 ? "Анализ готов" : "Анализ завершён, ошибок: \(failedCount)"
+        let label = failedCount + incompleteCount == 0 ? "Анализ готов"
+            : "Анализ завершён, ошибок: \(failedCount), требуют повтора: \(incompleteCount)"
         progress?(ImportProgress(completed: pending.count * 100, total: pending.count * 100, currentName: label))
         return analyzedCount
     }
@@ -2222,9 +2408,21 @@ public actor VeloEditPipeline {
             return try await activeFilmTask.value
         }
         activeFilmRequest = request
+        let observer = progress ?? FilmBuildReporting.handler
         let task = Task {
             try await AutonomousJobContext.$store.withValue(store) {
-                try await self.performFilmJob(request, progress: progress)
+                let snapshot = await self.store.snapshot()
+                return try await PerformanceTrace.measure(name: "film", projectID: snapshot.manifest.id, revision: String(snapshot.revision)) {
+                    let relay = FilmBuildProgressRelay(trace: PerformanceTrace.current, observer: observer)
+                    do {
+                        let result = try await self.performFilmJob(request, progress: { await relay.report($0) })
+                        await relay.finish(status: "success")
+                        return result
+                    } catch {
+                        await relay.finish(status: error is CancellationError ? "cancelled" : "failed")
+                        throw error
+                    }
+                }
             }
         }
         activeFilmTask = task
@@ -2242,7 +2440,8 @@ public actor VeloEditPipeline {
         _ = try await store.beginFilmBuildRecovery(request)
         try await store.updateAutonomousJob { $0.state = .running }
         do {
-            if await store.recoverableFilmBuild()?.draft == nil {
+            let existingPreset = await store.manifest.storyPlans.last?.preset
+            if (request.preset ?? existingPreset) != .vlog, await store.recoverableFilmBuild()?.draft == nil {
                 if analyzer == nil, !(await store.manifest.assets).isEmpty {
                     let preferences = await store.manifest.preferences
                     let profile = AIAnalysisProfile.resolve(mode: preferences.effectiveAIPowerMode, advanced: preferences.effectiveAdvancedAISettings, thermalState: .nominal)
@@ -2281,12 +2480,21 @@ public actor VeloEditPipeline {
             }
         } catch {
             let cancelled = error is CancellationError || Task.isCancelled
+            if !cancelled, AutonomousFailureCause.classify(error) != .revisionConflict {
+                await writeAutonomousDiagnostic(error)
+                // Never publish a different selection to conceal a failed
+                // verification. The exact draft remains available for resume;
+                // missing evidence is an error, not a new film from early media.
+            }
             try? await store.updateAutonomousJob { job in
                 job.state = job.explicitCancellation ? .cancelled : cancelled ? .queued : .failed
             }
             if !cancelled {
                 _ = await recordExternalDependencyIfNeeded(error)
                 await writeAutonomousDiagnostic(error)
+            }
+            if AutonomousFailureCause.classify(error) == .mediaDecode {
+                throw EditorialGenerationError.unsatisfiedIntent("Нет декодируемых исходников для фильма")
             }
             throw error
         }
@@ -2313,6 +2521,9 @@ public actor VeloEditPipeline {
                 let request = FilmBuildRequest(kind: .create, prompt: prompt, preset: preset, targetDuration: targetDuration, preferredMusicTrackID: preferredMusicTrackID, directorBrief: directorBrief, avoidingTimeline: avoidingTimeline)
                 let draft = try await store.beginFilmBuildRecovery(request)
                 return try await FilmBuildReporting.$handler.withValue(progress ?? FilmBuildReporting.handler) {
+                    if preset == .vlog {
+                        return try await self.createVlogFilm(prompt: prompt, brief: directorBrief, targetDuration: targetDuration, preferredMusicTrackID: preferredMusicTrackID, intentIDs: ids, progress: progress)
+                    }
                     if let draft {
                         return try await self.finishFilmBuild(draft, snapshot: await self.store.snapshot(), intentIDs: ids, progress: progress)
                     }
@@ -2337,6 +2548,84 @@ public actor VeloEditPipeline {
     }
 
     @discardableResult
+    private func createVlogFilm(prompt: String, brief: DirectorBrief?, targetDuration: Double?, preferredMusicTrackID: UUID?, intentIDs: [UUID], progress: FilmBuildProgressHandler?) async throws -> Timeline {
+        await cancelAllAnalysis()
+        if let activeAnalysisTask { _ = try? await activeAnalysisTask.value }
+        try Task.checkCancellation()
+        let snapshot = await store.snapshot()
+        let current = snapshot.manifest
+        var brief = (brief ?? .legacyDefault).applyingSubtitleCommand(prompt)
+        if let targetDuration { brief.requestedDuration = targetDuration; brief.durationMode = .exact }
+        let assets = current.assets.filter { !$0.excluded && !$0.missing }
+        guard !assets.isEmpty else { throw DirectorBriefFulfillmentError.noUsableSourceMaterial }
+        let speechCacheURL = await store.cacheURL
+        let recognizer: any LocalSpeechRecognizing = speechRecognizer ?? WhisperKitSpeechRecognizer(cacheURL: speechCacheURL)
+        var records: [SpeechSourceRecord] = []
+        let audible = assets.filter { $0.kind == .video && $0.metadata.hasAudio }
+        // Preflight before touching the previous edit. Fast AI has exactly the
+        // same source-wide speech pass as the other modes.
+        if !audible.isEmpty, speechRecognizer == nil {
+            let manifest = try SpeechPackageManifest.bundled()
+            guard await SpeechAssetStore.shared.installedURL(manifest: manifest) != nil else { throw SpeechComponentError.unavailable }
+        }
+        for (index, asset) in audible.enumerated() {
+            await progress?(FilmBuildProgress(.speech, completed: index, total: audible.count, detail: asset.displayName))
+            try Task.checkCancellation()
+            if let transcript = try await recognizer.transcribe(url: asset.originalURL, localeIdentifier: "ru") {
+                records.append(SpeechSourceRecord(assetID: asset.id, transcript: transcript))
+            }
+        }
+        await progress?(FilmBuildProgress(.narrative))
+        let analyses = VlogSpeechEvidence.enrich(current.analyses, assets: assets, records: records, schemaVersion: current.analysisSchemaVersion)
+        var plan = StoryPlan(prompt: prompt, preset: .vlog, constraints: StoryConstraints(targetDuration: brief.requestedDuration, allowSlowMotion: false, transitionFrequency: 0, pacing: brief.mood.pacing), chapters: [], directorBrief: brief)
+        var timeline = VlogAssembly.assemble(assets: assets, records: records, plan: plan)
+        timeline = DirectorEffectsPolicyEngine.decorate(timeline, plan: plan, candidates: [:])
+        if brief.durationMode == .automatic { plan.constraints.targetDuration = timeline.duration }
+        var warnings = records.flatMap(\.warnings)
+        if records.allSatisfy({ $0.status == .noSpeech }) { warnings.append("Распознанной речи нет; визуальный рассказ сохранён без речевых субтитров.") }
+        let tracks = try await musicSystem.tracks()
+        if brief.musicPolicy != .none {
+            let explicitID = preferredMusicTrackID ?? brief.musicTrackID
+            if let explicitID {
+                guard let track = tracks.first(where: { $0.id == explicitID && FileManager.default.fileExists(atPath: $0.localFileURL.path) }) else { throw DirectorBriefFulfillmentError.unavailableMusicTrack(explicitID) }
+                timeline = await Self.attachingExplicitMusic(track, to: timeline)
+            } else if brief.musicPolicy == .specificTrack { throw DirectorBriefFulfillmentError.specificMusicTrackNotSelected }
+            else if let track = tracks.filter({ FileManager.default.fileExists(atPath: $0.localFileURL.path) }).sorted(by: { $0.id.uuidString < $1.id.uuidString }).first {
+                timeline = await Self.attachingExplicitMusic(track, to: timeline)
+                timeline.music?.volume = brief.musicPolicy == .soft ? 0.12 : 0.20
+            } else { warnings.append("В локальной библиотеке нет музыки. Рассказ и голос сохранены; добавьте трек при необходимости.") }
+        }
+        timeline.originalAudioVolume = brief.sourceAudioPolicy.volume
+        timeline.audioDucking = AudioDuckingSettings(enabled: brief.sourceAudioPolicy != .mute)
+        await progress?(FilmBuildProgress(.subtitles))
+        timeline = SpeechSubtitleBuilder.applying(to: timeline, records: records, enabled: brief.subtitlesEnabled(preset: .vlog), allowMuted: brief.subtitlesWithoutAudio == true, previous: current.timelines.last, style: brief.subtitleStyle)
+        let durationRequirement = FilmDurationRequirement.parse(prompt: prompt, explicitSeconds: brief.explicitRequestedDuration, mode: brief.durationMode)
+        if !durationRequirement.accepts(duration: timeline.duration, frameRate: timeline.frameRate) {
+            warnings.append("Запрошенная длительность несовместима с полным рассказом: сохранено \(Int(timeline.duration.rounded())) с без ускорения и обрезания фраз.")
+        }
+        await progress?(FilmBuildProgress(.verifying))
+        let playback = try await PlaybackEngine().build(timeline: timeline, assets: current.assets, musicTracks: tracks, forceVideoComposition: true)
+        guard playback.skippedItemIDs.isEmpty, playback.renderedItemCount > 0 else { throw DirectorBriefFulfillmentError.noUsableSourceMaterial }
+        try Task.checkCancellation()
+        timeline.filmDeliveryReport = AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan, assets: current.assets, analyses: analyses, additionalWarnings: warnings)
+        let subtitleRequirement = VlogSubtitleCoverage.requirement(timeline: timeline, brief: brief, preset: .vlog)
+        timeline.filmDeliveryReport?.requirements?.append(subtitleRequirement)
+        timeline.filmDeliveryReport?.requirements?.append(.init(sourcePhrase: "Стиль: Влог", rule: "vlogSpeech", verificationMethod: "Локальное распознавание всех звуковых исходников", passed: records.count == audible.count && records.allSatisfy { $0.status == .ready || $0.status == .noSpeech }, evidence: "Источников: \(records.count); неполных: \(records.filter { $0.status == .partial }.count)"))
+        timeline.filmDeliveryReport?.requirements?.append(.init(sourcePhrase: "Сохранить законченные фразы", rule: "vlogChronology", verificationMethod: "Исходный порядок, скорость 1×", passed: timeline.items.allSatisfy { $0.speed == 1 && !$0.isReversed }, evidence: "Удалены только подтверждённые длинные паузы между фразами"))
+        await progress?(FilmBuildProgress(.saving))
+        try await store.update(ifRevision: snapshot.revision) { project in
+            timeline = try ProjectStore.verifyAndFulfillEditorialGeneration(in: &project, ids: intentIDs, timeline: timeline, analyses: analyses)
+            if let previous = project.timelines.last { Self.appendCheckpoint(timeline: previous, reason: "Перед сборкой влога", to: &project) }
+            timeline.versionName = Self.nextAIEditName(in: project)
+            project.analyses = analyses
+            project.storyPlans.append(plan); project.timelines.append(timeline)
+            project.filmBuildRecovery = nil
+            project.autonomousJob?.state = .completed; project.autonomousJob?.resultTimelineID = timeline.id
+            Self.recordMusicCredit(from: timeline, tracks: tracks, in: &project)
+        }
+        return timeline
+    }
+
     private func createFilmAttempt(
         prompt: String,
         preset: FilmPreset,
@@ -2455,11 +2744,8 @@ public actor VeloEditPipeline {
             lockedConstraints.remove([.targetDuration, .pacing])
         }
         var constraints = explicitlyInterpretedConstraints
-        // `duration.seconds` equals the requested value when real source
-        // capacity can cover it, and becomes the best feasible value when it
-        // cannot. Keeping the material-bounded target in the plan prevents an
-        // impossible opening-brief duration from failing only at persistence.
-        constraints.targetDuration = autonomous.duration.seconds
+        // Keep requested runtime separate from the estimated source capacity.
+        constraints.targetDuration = requestedDuration ?? autonomous.duration.seconds
         constraints.pacing = directorBrief?.mood.pacing ?? autonomous.finalStyle.pacing
         constraints.transitionFrequency = autonomous.grammar.transitionDensity
         constraints.allowSlowMotion = autonomous.grammar.slowMotionDensity > 0.025
@@ -2550,7 +2836,8 @@ public actor VeloEditPipeline {
             personalTasteProfile: personalTaste,
             tasteContext: tasteContext,
             avoidingTimeline: avoidingTimeline,
-            requireProductionEvidence: false
+            requireProductionEvidence: false,
+            allowsQualityWarnings: true
         )
         guard let winner else {
             if let candidate = directedTimelines.max(by: { $0.duration < $1.duration }),
@@ -2594,6 +2881,9 @@ public actor VeloEditPipeline {
                 let request = FilmBuildRequest(kind: .regenerate, prompt: feedback, preset: preset, targetDuration: targetDuration, preferredMusicTrackID: preferredMusicTrackID, directorBrief: directorBrief, selectedCandidateID: selectedCandidateID, ignoredFeedbackConstraints: ignoredFeedbackConstraints.rawValue)
                 let draft = try await store.beginFilmBuildRecovery(request)
                 return try await FilmBuildReporting.$handler.withValue(progress ?? FilmBuildReporting.handler) {
+                    if (preset ?? snapshot.manifest.storyPlans.last?.preset) == .vlog {
+                        return try await self.createVlogFilm(prompt: feedback, brief: directorBrief ?? snapshot.manifest.storyPlans.last?.directorBrief, targetDuration: targetDuration, preferredMusicTrackID: preferredMusicTrackID, intentIDs: ids, progress: progress)
+                    }
                     if let draft {
                         return try await self.finishFilmBuild(draft, snapshot: await self.store.snapshot(), intentIDs: ids, progress: progress)
                     }
@@ -2741,7 +3031,7 @@ public actor VeloEditPipeline {
         if effectiveBrief?.musicPolicy == .specificTrack, resolvedMusicTrackID == nil {
             throw DirectorBriefFulfillmentError.specificMusicTrackNotSelected
         }
-        updatedSeed.constraints.targetDuration = autonomous.duration.seconds
+        updatedSeed.constraints.targetDuration = requestedDuration ?? autonomous.duration.seconds
         updatedSeed.constraints.pacing = effectiveBrief?.mood.pacing ?? autonomous.finalStyle.pacing
         updatedSeed.constraints.transitionFrequency = autonomous.grammar.transitionDensity
         updatedSeed.constraints.allowSlowMotion = autonomous.grammar.slowMotionDensity > 0.025
@@ -2815,7 +3105,7 @@ public actor VeloEditPipeline {
         try Task.checkCancellation()
         await progress?(FilmBuildProgress(.finishing))
         let tasteContext = TasteContextResolver().resolve(projectStyle: autonomous.projectStyle, assets: current.assets, analyses: analyses)
-        let winner = MontageVariantSelector().select(stories: effectiveStories, timelines: directedTimelines, assets: current.assets, analyses: analyses, searchDiagnostics: variantSearch.diagnostics, personalTasteProfile: personalTaste, tasteContext: tasteContext, requireProductionEvidence: false)
+        let winner = MontageVariantSelector().select(stories: effectiveStories, timelines: directedTimelines, assets: current.assets, analyses: analyses, searchDiagnostics: variantSearch.diagnostics, personalTasteProfile: personalTaste, tasteContext: tasteContext, requireProductionEvidence: false, allowsQualityWarnings: true)
         guard let winner else {
             if let candidate = directedTimelines.max(by: { $0.duration < $1.duration }),
                let story = effectiveStories.first(where: { $0.plan.id == candidate.storyPlanID }) {
@@ -2861,6 +3151,7 @@ public actor VeloEditPipeline {
 
     private func finishFilmBuild(_ saved: FilmBuildDraft, snapshot: ProjectStoreSnapshot, intentIDs: [UUID], progress: FilmBuildProgressHandler?) async throws -> Timeline {
         var draft = saved
+        let preservingSelection = saved.phase == .readyForPlayback
         let current = snapshot.manifest
         var plan = draft.plan
         plan.constraints = PromptInterpreter.removingOverlayTopic(from: plan.constraints, prompt: plan.prompt)
@@ -2875,12 +3166,32 @@ public actor VeloEditPipeline {
                 plan.constraints.pacing = min(1, max(0, plan.constraints.pacing + max(-0.1, min(0.1, pacing - plan.constraints.pacing))))
             }
         }
-        let analyses = draft.analyses
+        var analyses = draft.analyses
         let tracks = draft.tracks
         let cacheURL = CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
         try Task.checkCancellation()
         try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
         var timeline = draft.timeline
+        timeline.filmDeliveryReport = nil
+        var deliveryWarnings: [String] = []
+        let requestedRuntime = FilmDurationRequirement.parse(prompt: plan.prompt,
+            explicitSeconds: draft.directorBrief?.explicitRequestedDuration ?? current.filmBuildRecovery?.request.targetDuration,
+            mode: draft.directorBrief?.durationMode)
+        if !preservingSelection, !requestedRuntime.accepts(duration: AutomaticFilmDurationPolicy.renderedDuration(of: timeline), frameRate: timeline.frameRate) {
+            await progress?(FilmBuildProgress(.moments, detail: "Добираю материал до запрошенной длительности"))
+            // One bounded source-wide expansion; cached, completed windows are
+            // not analyzed again. The draft persists new evidence on failure.
+            analyses = try await EditorialCandidateMiner().expandIfNeeded(analyses: analyses,
+                assets: current.assets.filter { !$0.excluded && !$0.missing }, requestedDuration: requestedRuntime.target,
+                force: true, analyzer: LocalEditorialEvidenceAnalyzer(cacheURL: await store.cacheURL))
+            let repaired = AutomaticEditorialAssembly.prepare(timeline: timeline, plan: plan, analyses: analyses, events: draft.events, assets: current.assets)
+            if EditorialRenderSignature.signature(repaired.timeline) != EditorialRenderSignature.signature(timeline) {
+                timeline = repaired.timeline
+                plan = repaired.plan
+                draft.phase = .finishing
+            }
+            draft.analyses = analyses
+        }
         if draft.phase == .finishing {
             await progress?(FilmBuildProgress(.finishing))
             timeline = await Self.finalizePerceptualRenderReview(timeline: timeline, plan: plan, assets: current.assets, analyses: analyses, tracks: tracks, telemetry: Self.telemetryLookup(in: current), derivedMediaCacheURL: cacheURL)
@@ -2906,8 +3217,13 @@ public actor VeloEditPipeline {
             try Task.checkCancellation()
             try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
         }
-        await progress?(FilmBuildProgress(.verifying))
-        if plan.narrativeBeatPlan != nil {
+        await progress?(FilmBuildProgress(.verifying, detail: "Проверяю названия частей по выбранному материалу"))
+        let titleModel = await LocalChapterTitleModel.configured(preferences: current.preferences, previousModelIdentity: timeline.chapterTitleDecisions?.first?.modelID)
+        if !preservingSelection {
+            timeline = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: current.assets,
+                analyses: analyses, mode: current.preferences.effectiveAIPowerMode, model: titleModel)
+        }
+        if !preservingSelection, plan.narrativeBeatPlan != nil {
             // Repair the complete preview before paying for delivery encoding.
             // Save that exact repaired edit so a restart resumes its export.
             if renderedProber is LocalEditorialRenderedProber {
@@ -2917,35 +3233,120 @@ public actor VeloEditPipeline {
                     plan = AutomaticEditorialAssembly.reconcile(timeline: timeline, plan: plan, analyses: analyses, events: draft.events)
                     plan.contentBudget = timeline.editorialReview?.duration ?? plan.contentBudget
                 }
-                timeline = try TimelineDeliveryContract().enforce(timeline: timeline, plan: plan, assets: current.assets, analyses: analyses)
+                let delivery = TimelineDeliveryContract().validateAndRepair(timeline: timeline, plan: plan, assets: current.assets, analyses: analyses)
+                timeline = delivery.timeline
+                deliveryWarnings += delivery.blockingIssues.map(\.message)
                 draft.timeline = timeline
                 draft.plan = plan
                 try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
             }
             timeline = await Self.editorialRenderReview(timeline: timeline, plan: plan, assets: current.assets, analyses: analyses, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cacheURL, prober: renderedProber, events: draft.events, analyzeChapterTransitions: true)
             try Task.checkCancellation()
-            guard timeline.editorialReview?.candidateEligible == true else { throw EditorialGenerationError.noPassingVariant(timeline.editorialReview?.findings ?? []) }
         }
-        try Self.validateDirectorMusic(timeline, brief: draft.directorBrief, tracks: tracks)
-        try AutomaticFilmDurationPolicy.validate(timeline)
+        let settled = TimelineDeliveryContract().validateAndRepair(timeline: timeline, plan: plan, assets: current.assets, analyses: analyses)
+        if !preservingSelection, plan.narrativeBeatPlan != nil,
+           EditorialRenderSignature.signature(settled.timeline) != EditorialRenderSignature.signature(timeline),
+           AutomaticFilmDelivery.preservesDelivery(settled.timeline, original: timeline, plan: plan) {
+            timeline = settled.timeline
+            // The last contract repair invalidates all earlier export evidence.
+            // Inspect the repaired artifact directly without another edit loop.
+            do {
+                let frames = try await renderedProber.frames(timeline: timeline, assets: current.assets, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cacheURL)
+                timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, renderedFrames: frames, requireRenderedEvidence: true)
+            } catch is CancellationError { throw CancellationError() }
+            catch { timeline.editorialReview = nil }
+        }
+        let beforeDurationRecovery = EditorialRenderSignature.signature(timeline)
+        if !preservingSelection {
+            timeline = try await FilmDurationRecovery.extend(timeline, requirement: requestedRuntime,
+                plan: plan, assets: current.assets, analyses: analyses)
+        }
+        let didRecoverDuration = EditorialRenderSignature.signature(timeline) != beforeDurationRecovery
+        if didRecoverDuration {
+            await progress?(FilmBuildProgress(.soundtrack, detail: "Подгоняю звук к полной длительности фильма"))
+            if let id = draft.resolvedMusicTrackID, let track = tracks.first(where: { $0.id == id }) {
+                timeline = await Self.attachingExplicitMusic(track, to: timeline)
+            } else {
+                timeline = await Self.applyingAdaptiveSoundtrack(to: timeline, plan: plan, tracks: tracks, analyses: analyses)
+            }
+        }
+        let beforeFinalTitles = EditorialRenderSignature.signature(timeline)
+        if !preservingSelection {
+            timeline = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: current.assets,
+                analyses: analyses, mode: current.preferences.effectiveAIPowerMode, model: titleModel)
+        }
+        if let brief = draft.directorBrief, brief.subtitlePolicy == .on || timeline.speechRecords != nil {
+            await progress?(FilmBuildProgress(.speech))
+            let cache = await store.cacheURL
+            let recognizer: any LocalSpeechRecognizing = speechRecognizer ?? WhisperKitSpeechRecognizer(cacheURL: cache)
+            var records = timeline.speechRecords ?? []
+            if brief.subtitlesEnabled(preset: plan.preset) {
+                let ids = Set(timeline.items.compactMap(\.assetID))
+                for asset in current.assets where ids.contains(asset.id) && asset.metadata.hasAudio && !records.contains(where: { $0.assetID == asset.id }) {
+                    if let transcript = try await recognizer.transcribe(url: asset.originalURL, localeIdentifier: "ru") { records.append(SpeechSourceRecord(assetID: asset.id, transcript: transcript)) }
+                }
+            }
+            timeline.speechRecords = records
+            timeline = SpeechSubtitleBuilder.applying(to: timeline, records: records, enabled: brief.subtitlesEnabled(preset: plan.preset), allowMuted: brief.subtitlesWithoutAudio == true, previous: current.timelines.last, style: brief.subtitleStyle)
+        }
+        let didRenameTitles = EditorialRenderSignature.signature(timeline) != beforeFinalTitles
+        var musicVerified = true
+        do {
+            try Self.validateDirectorMusic(timeline, brief: draft.directorBrief, tracks: tracks)
+        } catch {
+            musicVerified = false
+            deliveryWarnings.append("Запрошенная музыка недоступна. Ролик сохранён с доступным звуком; музыку можно добавить позже.")
+        }
+        guard AutomaticFilmDelivery.hasContent(timeline) else { throw DirectorBriefFulfillmentError.noUsableSourceMaterial }
+        if !AutomaticFilmDurationPolicy.meetsMinimum(timeline) {
+            deliveryWarnings.append("Сохранён короткий ролик из доступных фрагментов.")
+        }
         let requirement = FilmDurationRequirement.parse(prompt: plan.prompt,
             explicitSeconds: draft.directorBrief?.explicitRequestedDuration ?? current.filmBuildRecovery?.request.targetDuration,
             mode: draft.directorBrief?.durationMode)
-        try requirement.validate(timeline)
+        if !requirement.accepts(duration: AutomaticFilmDurationPolicy.renderedDuration(of: timeline), frameRate: timeline.frameRate) {
+            deliveryWarnings.append("Доступный монтаж сохранён; его длительность отличается от запрошенной.")
+        }
+        // Persist the last real selection after every repair, not the earlier
+        // preview draft. Resume this phase without reselection or soundtrack changes.
+        draft.timeline = timeline
+        draft.plan = plan
+        draft.analyses = analyses
+        draft.phase = .readyForPlayback
+        try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
         try await store.updateAutonomousJob { $0.stage = .playback }
         let playback = try await PlaybackEngine().build(timeline: timeline, assets: current.assets, musicTracks: tracks,
             telemetry: Self.telemetryLookup(in: current), forceVideoComposition: true)
         guard playback.skippedItemIDs.isEmpty, playback.renderedItemCount > 0,
               abs(playback.duration - AutomaticFilmDurationPolicy.renderedDuration(of: timeline)) <= 1 / timeline.frameRate + 0.001 else {
-            throw AutonomousOperationError.verificationFailed("Просмотр текущей композиции не прошёл проверку")
+            throw AutonomousOperationError.verificationFailed("Просмотр текущей композиции не прошёл проверку: показано \(playback.renderedItemCount), пропущено \(playback.skippedItemIDs.count) [\(playback.skippedItemIDs.map(\.uuidString).joined(separator: ","))]; длительность \(playback.duration) с, ожидается \(AutomaticFilmDurationPolicy.renderedDuration(of: timeline)) с. Выбранный монтаж сохранён для повторной проверки.")
         }
-        if timeline.editorialReview == nil {
+        if preservingSelection {
+            try await FilmBuildRecovery.validateSelectedAudio(timeline: timeline, assets: current.assets, tracks: tracks)
+        }
+        if timeline.editorialReview?.evidenceDomains?.first(where: { $0.domain == .renderDecode })?.isSufficient != true {
             let frames = await PerceptualRenderInspector().inspectAsync(playback: playback, timeline: timeline, maximumSamples: 8)
             guard !frames.isEmpty, frames.allSatisfy({ $0.decodeFailed != true }) else {
                 throw AutonomousOperationError.verificationFailed("Кадры текущего фильма не декодируются")
             }
         }
+        if preservingSelection || plan.narrativeBeatPlan == nil || didRecoverDuration || didRenameTitles {
+            do {
+                let frames = try await renderedProber.frames(timeline: timeline, assets: current.assets, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cacheURL)
+                timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, renderedFrames: frames, requireRenderedEvidence: true)
+            } catch is CancellationError { throw CancellationError() }
+            catch {
+                if preservingSelection {
+                    throw AutonomousOperationError.verificationFailed("Не удалось проверить сохранённый монтаж: \(error.localizedDescription). Черновик сохранён без замены событий, музыки и титров.")
+                }
+                deliveryWarnings.append("Фильм сохранён для просмотра; контрольный экспорт будет повторён при сохранении видео.")
+            }
+        }
         try Task.checkCancellation()
+        timeline.filmDeliveryReport = AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan, assets: current.assets, analyses: analyses, additionalWarnings: deliveryWarnings)
+        if !musicVerified {
+            timeline.filmDeliveryReport?.requirements?.append(.init(sourcePhrase: plan.prompt, rule: "musicAvailability", verificationMethod: "Resolved local soundtrack file", passed: false, evidence: "Запрошенная музыка недоступна; сохранён фильм с доступным звуком"))
+        }
         await progress?(FilmBuildProgress(.saving))
         try await store.update(ifRevision: snapshot.revision) { project in
             timeline = try ProjectStore.verifyAndFulfillEditorialGeneration(in: &project, ids: intentIDs, timeline: timeline, analyses: analyses)
@@ -3230,6 +3631,10 @@ public actor VeloEditPipeline {
             musicTracks: musicTracks,
             telemetry: telemetry,
             preferredVideoSources: playbackSources,
+            // Preview the current SDR delivery format, including its HDR-to-SDR
+            // conversion. Inferring HDR from any camera clip sends an HLG/PQ
+            // surface to AVPlayerView and makes the editor differ from export.
+            outputColorProfile: .rec709,
             derivedMediaCacheURL: paths.previewDerivedMediaDirectory,
             // All visual layers remain in the composition so paused frames,
             // live playback and export show the same edit.
@@ -3297,8 +3702,34 @@ public actor VeloEditPipeline {
     }
 
     public func defaultVideoDestination() async -> URL {
-        let name = await store.manifest.name.replacingOccurrences(of: "/", with: "-")
-        return await store.exportsURL.appendingPathComponent("\(name)-\(UUID().uuidString.prefix(8)).mp4")
+        ProjectVideoFiles.destination(nextTo: store.packageURL)
+    }
+
+    /// Expose an older export without encoding it again. Keep the embedded
+    /// original so a failed copy or manifest save cannot lose the user's film.
+    public func copyExportNextToProject(jobID: UUID) async throws -> URL {
+        let snapshot = await store.snapshot()
+        guard let job = snapshot.manifest.renderJobs.first(where: { $0.id == jobID }),
+              job.status == .completed else { throw CocoaError(.fileReadNoSuchFile) }
+        guard ProjectVideoFiles.isInsideProject(job.outputURL, package: store.packageURL) else { return job.outputURL }
+        let destination = ProjectVideoFiles.destination(nextTo: store.packageURL, fileExtension: job.outputURL.pathExtension)
+        let staging = destination.deletingLastPathComponent().appendingPathComponent(".veloedit-export-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try Task.checkCancellation()
+        try FileManager.default.copyItem(at: job.outputURL, to: staging)
+        let hash = try MediaImporter.sha256(url: staging)
+        guard hash == (try job.artifactHash ?? MediaImporter.sha256(url: job.outputURL)) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        try Task.checkCancellation()
+        // moveItem never replaces an existing file if another export won the
+        // destination between choosing the name and publishing the copy.
+        try FileManager.default.moveItem(at: staging, to: destination)
+        try await store.update { project in
+            guard let index = project.renderJobs.firstIndex(where: { $0.id == jobID && $0.outputURL == job.outputURL }) else { return }
+            project.renderJobs[index].outputURL = destination
+        }
+        return destination
     }
 
     public func resumeExport(progress: (@Sendable (ImportProgress) -> Void)? = nil) async throws -> RenderReport? {
@@ -3312,6 +3743,13 @@ public actor VeloEditPipeline {
     }
 
     public func render(to url: URL, quality: RenderQuality, frameRate: Double? = nil, replaceExisting: Bool = false, progress: (@Sendable (ImportProgress) -> Void)? = nil) async throws -> RenderReport {
+        let snapshot = await store.snapshot()
+        return try await PerformanceTrace.measure(name: "export", projectID: snapshot.manifest.id, revision: String(snapshot.revision)) {
+            try await self.renderImpl(to: url, quality: quality, frameRate: frameRate, replaceExisting: replaceExisting, progress: progress)
+        }
+    }
+
+    private func renderImpl(to url: URL, quality: RenderQuality, frameRate: Double?, replaceExisting: Bool, progress: (@Sendable (ImportProgress) -> Void)?) async throws -> RenderReport {
         let lease = try ProjectOperationLease(package: store.packageURL)
         defer { withExtendedLifetime(lease) {} }
         try await migrateLegacyTimelineAudioSettings()
@@ -3611,50 +4049,21 @@ public actor VeloEditPipeline {
         return constraints
     }
 
-    private struct LocalizedTimelineSlice {
-        var timeline: Timeline
-        var itemIDs: [UUID]
-        var audioClipIDs: [UUID]
-        var telemetryItemIDs: [UUID]
-        var effectItemIDs: [UUID]
-        var titleItemIDs: [UUID]
-    }
-
     private static func applyingLocalizedEditorCommands(
         _ commands: [EditorCommand],
         to source: Timeline,
         timelineRange: ClosedRange<Double>,
         assets: [MediaAsset]
     ) -> (timeline: Timeline, report: EditorCommandReport) {
-        let localCommands = commands.filter(\.canApplyInsideTimelineRange)
-        let rejected = commands.count - localCommands.count
         var applied: [String] = []
         var ignored: [String] = []
         var affected = Set<UUID>()
-
-        if rejected > 0 {
-            ignored.append(rejected == 1
-                ? "Одна команда небезопасна внутри диапазона и не применена"
-                : "Небезопасных для локального диапазона команд не применено: \(rejected)")
+        guard !commands.isEmpty else {
+            return (source, EditorCommandReport(recognizedCount: 0, ignored: ["Не удалось составить исполняемый план правки"]))
         }
-        guard !localCommands.isEmpty else {
-            return (source, EditorCommandReport(
-                recognizedCount: commands.count,
-                applied: applied,
-                ignored: ignored,
-                affectedItemIDs: []
-            ))
-        }
-
-        let localized = sliced(source, for: timelineRange)
+        var localized = TimelineRangeSlicer.slice(source, for: timelineRange)
         let slicedBaseline = localized.timeline
         var timeline = slicedBaseline
-        let localClipIDs = localized.itemIDs.filter { id in
-            timeline.items.first(where: { $0.id == id })?.kind != .title
-        }
-        let localLegacyTitleIDs = localized.itemIDs.filter { id in
-            timeline.items.first(where: { $0.id == id })?.kind == .title
-        }
 
         func targetIDs(for command: EditorCommand, candidates: [UUID]) -> [UUID] {
             guard !candidates.isEmpty else { return [] }
@@ -3681,13 +4090,143 @@ public actor VeloEditPipeline {
             return commandTargets.contains(targetID)
         }
 
-        // Preserve command order. Each command is retargeted to exactly the
-        // clip IDs resolved inside the brushed slice; an LLM-provided `.all`
-        // can therefore never escape to the rest of the Timeline.
-        for command in localCommands {
+        func finishCommand(from before: Timeline, align: Bool = true) {
+            if align { timeline = alignLocalizedTimelineObjects(timeline, from: before) }
+            // Subsequent clauses also target objects created by this clause.
+            localized.itemIDs += timeline.items.filter { item in !before.items.contains { $0.id == item.id } }.map(\.id)
+            localized.audioClipIDs += timeline.effectiveAudioClips.filter { item in !before.effectiveAudioClips.contains { $0.id == item.id } }.map(\.id)
+            localized.telemetryItemIDs += timeline.effectiveTelemetryItems.filter { item in !before.effectiveTelemetryItems.contains { $0.id == item.id } }.map(\.id)
+            localized.effectItemIDs += timeline.effectiveEffects.filter { item in !before.effectiveEffects.contains { $0.id == item.id } }.map(\.id)
+            localized.titleItemIDs += timeline.effectiveTitleItems.filter { item in !before.effectiveTitleItems.contains { $0.id == item.id } }.map(\.id)
+        }
+
+        // Resolve targets afresh after each operation, including structural edits.
+        for command in commands {
+            let beforeCommand = timeline
+            let localClipIDs = timeline.items.filter { localized.itemIDs.contains($0.id) && $0.kind != .title }.map(\.id)
+            let localLegacyTitleIDs = timeline.items.filter { localized.itemIDs.contains($0.id) && $0.kind == .title }.map(\.id)
             let clipTargets = targetIDs(for: command, candidates: localClipIDs)
             let clipTargetSet = Set(clipTargets)
             let legacyTitleTargets = targetIDs(for: command, candidates: localLegacyTitleIDs)
+            let localItems = timeline.items.filter { localClipIDs.contains($0.id) && $0.overlay == nil }
+            let lower = localItems.map(\.timelineStart).min() ?? timelineRange.lowerBound
+            let upper = localItems.map { $0.timelineStart + $0.timelineDuration }.max() ?? min(timeline.duration, timelineRange.upperBound)
+            let currentRange = lower...max(lower, upper)
+
+            switch command {
+            case .insertBackground, .insertSource:
+                ignored.append("Добавление материала доступно в помощнике монтажа вне выделенного диапазона")
+                continue
+            case .setMusic, .setMusicVolume, .setAudioDucking:
+                if let updated = LocalizedSoundtrackEditing.apply(command, to: timeline, range: currentRange) {
+                    timeline = updated
+                    applied.append("музыка изменена только внутри выделенного диапазона")
+                } else {
+                    ignored.append("в выделенном диапазоне нет музыки для этой правки")
+                }
+                continue
+            case .setOriginalAudioVolume(let requested):
+                // Rebase the master gain into per-clip gains, preserving the audible
+                // level outside the brush even when the master used to be muted.
+                let volume = min(1, max(0, requested))
+                let master = timeline.effectiveOriginalAudioVolume
+                timeline.audioDucking = SourceAudioMixPolicy.musicDucking(in: timeline)
+                timeline.originalAudioVolume = 1
+                for index in timeline.items.indices where timeline.items[index].kind == .video {
+                    var audio = timeline.items[index].effectiveAudioAdjustments
+                    audio.volume *= master
+                    if clipTargetSet.contains(timeline.items[index].id) {
+                        audio.volume = volume
+                        audio.muted = volume == 0
+                        audio.duckOthers = false
+                        affected.insert(timeline.items[index].id)
+                    }
+                    timeline.items[index].audioAdjustments = audio
+                }
+                timeline.audioClips = timeline.effectiveAudioClips.map { clip in
+                    guard localized.audioClipIDs.contains(clip.id), clip.assetID != nil,
+                          [.detached, .dialogue, .naturalSound].contains(clip.role) else { return clip }
+                    var copy = clip
+                    copy.adjustments.volume = volume
+                    copy.adjustments.muted = volume == 0
+                    copy.adjustments.duckOthers = false
+                    affected.insert(copy.id)
+                    return copy
+                }
+                if volume < 1, let updated = LocalizedSoundtrackEditing.apply(.setAudioDucking(false), to: timeline, range: currentRange) {
+                    timeline = updated
+                }
+                applied.append("громкость исходного звука изменена только внутри выделения")
+                continue
+            case .addTitle(let text, let position):
+                var local = timeline
+                local.items = TimelineTiming.retimed(localItems)
+                local.titleItems = timeline.effectiveTitleItems.filter { localized.titleItemIDs.contains($0.id) }.map { title in
+                    var copy = title; copy.startTime -= lower; return copy
+                }
+                let existing = Set(local.effectiveTitleItems.map(\.id))
+                let result = EditorCommandExecutor().apply([.addTitle(text, position)], to: local)
+                let added = result.timeline.effectiveTitleItems.filter { !existing.contains($0.id) }.map { title in
+                    var copy = title; copy.startTime += lower; copy.userEdited = true; return copy
+                }
+                timeline.titleItems = timeline.effectiveTitleItems + added
+                appendReport(result.report)
+                finishCommand(from: beforeCommand)
+                continue
+            case .split:
+                for id in clipTargets {
+                    guard let item = timeline.items.first(where: { $0.id == id }) else { continue }
+                    let cut = TimelineTiming.quantized(item.timelineStart + item.timelineDuration / 2, frameRate: timeline.frameRate)
+                    let frame = 1 / max(1, timeline.frameRate)
+                    guard cut - item.timelineStart >= frame, item.timelineStart + item.timelineDuration - cut >= frame else {
+                        ignored.append("фрагмент слишком короткий для разделения")
+                        continue
+                    }
+                    // The slicer preserves reverse/ramp source clocks and cuts every
+                    // attached layer at the same boundary, retaining valid owners.
+                    timeline = TimelineRangeSlicer.slice(timeline, for: cut...(item.timelineStart + item.timelineDuration)).timeline
+                    affected.insert(id)
+                    applied.append("фрагмент разделён вместе с привязанными слоями")
+                }
+                finishCommand(from: beforeCommand, align: false)
+                continue
+            case .move(_, let position):
+                let moving = timeline.items.filter { clipTargetSet.contains($0.id) }
+                timeline.items.removeAll { clipTargetSet.contains($0.id) }
+                let remaining = timeline.items.indices.filter { localClipIDs.contains(timeline.items[$0].id) }
+                let insertion = position == .beginning ? remaining.first : remaining.last.map { $0 + 1 }
+                if let insertion {
+                    timeline.items.insert(contentsOf: moving, at: insertion)
+                } else {
+                    timeline = beforeCommand
+                }
+                timeline.items = retimed(timeline.items)
+                if timeline != beforeCommand {
+                    affected.formUnion(moving.map(\.id))
+                    applied.append("фрагменты перемещены внутри выделения")
+                } else { ignored.append("фрагменты уже находятся в указанной позиции выделения") }
+                finishCommand(from: beforeCommand)
+                continue
+            case .setOverlay(let style, _, let backgroundTarget):
+                guard let foregroundID = clipTargets.last,
+                      let index = timeline.items.firstIndex(where: { $0.id == foregroundID }) else {
+                    ignored.append("в выделении нет клипа для наложения"); continue
+                }
+                if let style {
+                    let backgrounds = targetIDs(for: .setOpacity(1, backgroundTarget ?? .first), candidates: localClipIDs)
+                    guard let backgroundID = backgrounds.first(where: { $0 != foregroundID }),
+                          timeline.items.contains(where: { $0.id == backgroundID && $0.overlay == nil }) else {
+                        ignored.append("для наложения выделите основной клип и накладываемый фрагмент"); continue
+                    }
+                    timeline.items[index].overlay = OverlaySettings(style: style, baseItemID: backgroundID)
+                } else { timeline.items[index].overlay = nil }
+                timeline.items = retimed(timeline.items)
+                affected.insert(foregroundID)
+                applied.append("наложение изменено внутри выделения")
+                finishCommand(from: beforeCommand)
+                continue
+            default: break
+            }
 
             if case .removeTitles = command {
                 let beforeLegacy = timeline.items.count
@@ -3701,6 +4240,8 @@ public actor VeloEditPipeline {
                 } else {
                     ignored.append("в выделенном диапазоне нет титров")
                 }
+                timeline.items = retimed(timeline.items)
+                finishCommand(from: beforeCommand)
                 continue
             }
 
@@ -3775,15 +4316,31 @@ public actor VeloEditPipeline {
                     if copy != clip { affected.insert(copy.id) }
                     return copy
                 }
-            case .setTitleStyle(let size, let textColor, let backgroundColor, let alignment, _):
+            case .setTitleText(let text, _):
+                let targets = Set(targetIDs(for: command, candidates: localized.titleItemIDs.filter { id in timeline.effectiveTitleItems.contains { $0.id == id } }))
+                var renamed = 0
                 timeline.titleItems = timeline.effectiveTitleItems.map { title in
-                    guard localized.titleItemIDs.contains(title.id),
-                          appliesToAttachedTarget(title.targetClipID, commandTargets: clipTargetSet) else { return title }
+                    guard targets.contains(title.id) else { return title }
+                    var copy = title
+                    copy.text = text
+                    copy.userEdited = true
+                    if copy != title { affected.insert(copy.id); renamed += 1 }
+                    return copy
+                }
+                if renamed > 0 { applied.append("текст титра изменён на «\(text)» только внутри выделения") }
+                if targets.isEmpty && legacyTitleTargets.isEmpty {
+                    ignored.append("в выделенном диапазоне нет титра для переименования")
+                }
+            case .setTitleStyle(let size, let textColor, let backgroundColor, let alignment, _):
+                let targets = Set(targetIDs(for: command, candidates: localized.titleItemIDs.filter { id in timeline.effectiveTitleItems.contains { $0.id == id } }))
+                timeline.titleItems = timeline.effectiveTitleItems.map { title in
+                    guard targets.contains(title.id) else { return title }
                     var copy = title
                     if let size { copy.style.fontSize = min(max(18, size), 220) }
                     if let textColor { copy.style.textColorHex = textColor }
                     if let backgroundColor { copy.style.backgroundColorHex = backgroundColor }
                     if let alignment { copy.style.alignment = alignment }
+                    copy.userEdited = true
                     if copy != title { affected.insert(copy.id) }
                     return copy
                 }
@@ -3894,10 +4451,11 @@ public actor VeloEditPipeline {
             default:
                 break
             }
+            timeline = clampedToAvailableMedia(timeline, assets: assets)
+            finishCommand(from: beforeCommand)
         }
 
         timeline = clampedToAvailableMedia(timeline, assets: assets)
-        timeline = alignLocalizedTimelineObjects(timeline, from: slicedBaseline)
         guard timeline != slicedBaseline else {
             if applied.isEmpty, ignored.isEmpty { ignored.append("Правка уже соответствует выделенному диапазону") }
             return (source, EditorCommandReport(
@@ -3980,6 +4538,7 @@ public actor VeloEditPipeline {
             )
             copy.timelineStart = start
             copy.timelineDuration = max(0.05, end - start)
+            copy.speed = copy.sourceDuration / copy.timelineDuration
             return copy
         }
 
@@ -4055,256 +4614,24 @@ public actor VeloEditPipeline {
             copy.duration = min(copy.duration, max(0.08, incoming.timelineDuration * 0.5))
             return copy
         }
+        if var plan = timeline.adaptiveSoundtrack, plan.userEdited == true {
+            var cursor = 0.0
+            plan.segments = plan.segments.compactMap { region in
+                var copy = region
+                let end = min(timeline.duration, max(cursor, mappedTime(region.timelineEnd)))
+                guard end - cursor >= 0.0001 else { return nil }
+                copy.timelineStart = cursor
+                copy.timelineDuration = end - cursor
+                cursor = end
+                return copy
+            }
+            if let last = plan.segments.indices.last {
+                plan.segments[last].timelineDuration += max(0, timeline.duration - cursor)
+            }
+            plan.timelineDuration = timeline.duration
+            timeline.adaptiveSoundtrack = plan
+        }
         return timeline
-    }
-
-    private static func slicedSpeedRamp(_ ramp: SpeedRamp, from lower: Double, to upper: Double) -> SpeedRamp {
-        let low = min(max(0, lower), 1)
-        let high = min(max(low + 0.000_001, upper), 1)
-        let points = ramp.normalizedPoints
-
-        func rate(at position: Double) -> Double {
-            guard let rightIndex = points.firstIndex(where: { $0.position >= position }) else {
-                return points.last?.rate ?? 1
-            }
-            guard rightIndex > 0 else { return points[rightIndex].rate }
-            let left = points[rightIndex - 1]
-            let right = points[rightIndex]
-            let fraction = (position - left.position) / max(0.000_001, right.position - left.position)
-            return left.rate + (right.rate - left.rate) * fraction
-        }
-
-        var selected = [SpeedRampPoint(position: 0, rate: rate(at: low))]
-        selected.append(contentsOf: points.compactMap { point in
-            guard point.position > low, point.position < high else { return nil }
-            return SpeedRampPoint(position: (point.position - low) / (high - low), rate: point.rate)
-        })
-        selected.append(SpeedRampPoint(position: 1, rate: rate(at: high)))
-        return SpeedRamp(points: selected)
-    }
-
-    /// Cuts primary-storyline clips on both brush boundaries and returns only
-    /// the IDs fully contained by the brushed interval.
-    private static func sliced(_ source: Timeline, for requestedRange: ClosedRange<Double>) -> LocalizedTimelineSlice {
-        var timeline = source
-        let originalItems = retimed(source.items)
-        let lower = min(max(0, requestedRange.lowerBound), source.duration)
-        let upperCandidate = min(max(lower, requestedRange.upperBound), source.duration)
-        let upper = upperCandidate > lower ? upperCandidate : min(source.duration, lower + 1 / max(1, source.frameRate))
-        var items: [TimelineItem] = []
-        var selectedIDs: [UUID] = []
-        var primarySegments: [UUID: [(id: UUID, start: Double, end: Double, selected: Bool)]] = [:]
-        let epsilon = 0.0001
-
-        for original in originalItems {
-            let itemStart = original.timelineStart
-            let itemEnd = itemStart + original.timelineDuration
-            guard original.timelineDuration > epsilon,
-                  itemEnd > lower + epsilon,
-                  itemStart < upper - epsilon else {
-                items.append(original)
-                if original.overlay == nil {
-                    primarySegments[original.id] = [(original.id, itemStart, itemEnd, false)]
-                }
-                continue
-            }
-
-            var cuts = [itemStart, itemEnd]
-            if lower > itemStart + epsilon, lower < itemEnd - epsilon { cuts.append(lower) }
-            if upper > itemStart + epsilon, upper < itemEnd - epsilon { cuts.append(upper) }
-            cuts.sort()
-
-            for segmentIndex in 0..<(cuts.count - 1) {
-                let segmentStart = cuts[segmentIndex]
-                let segmentEnd = cuts[segmentIndex + 1]
-                var segment = original
-                if segmentIndex > 0 {
-                    segment.id = UUID()
-                    segment.transition = nil
-                }
-                if original.isFreezeFrame {
-                    segment.sourceStart = original.sourceStart
-                    segment.sourceDuration = original.sourceDuration
-                } else {
-                    let mappedStart = original.sourceTime(atTimelineTime: segmentStart)
-                    let mappedEnd = original.sourceTime(atTimelineTime: segmentEnd)
-                    segment.sourceStart = min(mappedStart, mappedEnd)
-                    segment.sourceDuration = max(epsilon, abs(mappedEnd - mappedStart))
-                    if let ramp = original.speedRamp {
-                        let actualStart = (mappedStart - original.sourceStart) / max(epsilon, original.sourceDuration)
-                        let actualEnd = (mappedEnd - original.sourceStart) / max(epsilon, original.sourceDuration)
-                        let progressStart = original.isReversed ? 1 - actualStart : actualStart
-                        let progressEnd = original.isReversed ? 1 - actualEnd : actualEnd
-                        segment.speedRamp = slicedSpeedRamp(
-                            ramp,
-                            from: min(progressStart, progressEnd),
-                            to: max(progressStart, progressEnd)
-                        )
-                    }
-                }
-                segment.timelineStart = segmentStart
-                segment.timelineDuration = max(epsilon, segmentEnd - segmentStart)
-                if segment.overlay != nil {
-                    segment.overlay?.startOffset = segmentStart - itemStart + original.overlay!.effectiveStartOffset
-                }
-                items.append(segment)
-                let selected = segmentStart >= lower - epsilon && segmentEnd <= upper + epsilon
-                if original.overlay == nil {
-                    primarySegments[original.id, default: []].append((segment.id, segmentStart, segmentEnd, selected))
-                }
-                if selected {
-                    selectedIDs.append(segment.id)
-                }
-            }
-        }
-
-        func mappedClipID(_ originalID: UUID?, at time: Double) -> UUID? {
-            guard let originalID, let segments = primarySegments[originalID], !segments.isEmpty else {
-                return originalID
-            }
-            if let containing = segments.first(where: { time >= $0.start - epsilon && time <= $0.end + epsilon }) {
-                return containing.id
-            }
-            return segments.min {
-                min(abs(time - $0.start), abs(time - $0.end))
-                    < min(abs(time - $1.start), abs(time - $1.end))
-            }?.id
-        }
-
-        // Connected media keep their absolute position while their base clip
-        // may now be one of several derived segments.
-        for index in items.indices where items[index].overlay != nil {
-            let itemStart = items[index].timelineStart
-            let time = itemStart + items[index].timelineDuration * 0.5
-            guard let oldBaseID = items[index].overlay?.baseItemID,
-                  let newBaseID = mappedClipID(oldBaseID, at: time),
-                  let base = items.first(where: { $0.id == newBaseID }) else { continue }
-            items[index].overlay?.baseItemID = newBaseID
-            items[index].overlay?.startOffset = itemStart - base.timelineStart
-        }
-        timeline.items = retimed(items)
-        let retimedByID = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
-        timeline.transitionItems = source.effectiveTransitionItems.compactMap { original in
-            guard let outgoing = primarySegments[original.outgoingClipID]?.last?.id
-                    ?? mappedClipID(original.outgoingClipID, at: original.startTime - epsilon),
-                  let incoming = primarySegments[original.incomingClipID]?.first?.id
-                    ?? mappedClipID(original.incomingClipID, at: original.startTime + epsilon),
-                  let incomingItem = retimedByID[incoming] else { return nil }
-            var copy = original
-            copy.outgoingClipID = outgoing
-            copy.incomingClipID = incoming
-            copy.startTime = incomingItem.timelineStart
-            return copy
-        }
-
-        func segmentBounds(start: Double, end: Double) -> [(start: Double, end: Double, selected: Bool)] {
-            guard end > lower + epsilon, start < upper - epsilon else {
-                return [(start, end, false)]
-            }
-            var cuts = [start, end]
-            if lower > start + epsilon, lower < end - epsilon { cuts.append(lower) }
-            if upper > start + epsilon, upper < end - epsilon { cuts.append(upper) }
-            cuts.sort()
-            return zip(cuts, cuts.dropFirst()).map { left, right in
-                (left, right, left >= lower - epsilon && right <= upper + epsilon)
-            }
-        }
-
-        var audioIDs: [UUID] = []
-        timeline.audioClips = source.effectiveAudioClips.flatMap { original in
-            segmentBounds(start: original.timelineStart, end: original.timelineEnd).enumerated().map { index, bounds in
-                var segment = original
-                if index > 0 { segment.id = UUID() }
-                let offset = bounds.start - original.timelineStart
-                segment.timelineStart = bounds.start
-                segment.timelineDuration = max(epsilon, bounds.end - bounds.start)
-                segment.sourceStart = original.sourceStart + offset
-                segment.sourceDuration = segment.timelineDuration
-                segment.attachedToItemID = mappedClipID(
-                    original.attachedToItemID,
-                    at: (bounds.start + bounds.end) * 0.5
-                )
-                if bounds.selected { audioIDs.append(segment.id) }
-                return segment
-            }
-        }
-
-        var telemetryIDs: [UUID] = []
-        timeline.telemetryItems = source.effectiveTelemetryItems.flatMap { original in
-            segmentBounds(start: original.timelineStart, end: original.timelineEnd).enumerated().map { index, bounds in
-                var segment = original
-                if index > 0 { segment.id = UUID() }
-                let offset = bounds.start - original.timelineStart
-                segment.timelineStart = bounds.start
-                segment.timelineDuration = max(epsilon, bounds.end - bounds.start)
-                segment.sourceStart = original.sourceStart + offset
-                segment.targetClipID = mappedClipID(
-                    original.targetClipID,
-                    at: (bounds.start + bounds.end) * 0.5
-                )
-                if bounds.selected { telemetryIDs.append(segment.id) }
-                return segment
-            }
-        }
-
-        var effectIDs: [UUID] = []
-        timeline.effects = source.effectiveEffects.flatMap { original in
-            segmentBounds(start: original.startTime, end: original.endTime).enumerated().map { index, bounds in
-                var segment = original
-                if index > 0 { segment.id = UUID() }
-                let offset = bounds.start - original.startTime
-                segment.startTime = bounds.start
-                segment.duration = max(epsilon, bounds.end - bounds.start)
-                segment.targetClipID = mappedClipID(
-                    original.targetClipID,
-                    at: (bounds.start + bounds.end) * 0.5
-                )
-                segment.keyframes = original.keyframes.compactMap { keyframe in
-                    let absolute = original.startTime + keyframe.time
-                    guard absolute >= bounds.start - epsilon, absolute <= bounds.end + epsilon else { return nil }
-                    var copy = keyframe
-                    copy.time = max(0, absolute - bounds.start)
-                    return copy
-                }
-                if offset > 0, segment.keyframes.isEmpty { segment.keyframes = [] }
-                if bounds.selected { effectIDs.append(segment.id) }
-                return segment
-            }
-        }
-
-        var titleIDs: [UUID] = []
-        timeline.titleItems = source.effectiveTitleItems.flatMap { original in
-            segmentBounds(start: original.startTime, end: original.endTime).enumerated().map { index, bounds in
-                var segment = original
-                if index > 0 { segment.id = UUID() }
-                segment.startTime = bounds.start
-                segment.duration = max(epsilon, bounds.end - bounds.start)
-                segment.targetClipID = mappedClipID(
-                    original.targetClipID,
-                    at: (bounds.start + bounds.end) * 0.5
-                )
-                segment.words = original.words.compactMap { word in
-                    let absoluteStart = original.startTime + word.start
-                    let absoluteEnd = original.startTime + word.end
-                    guard absoluteEnd > bounds.start, absoluteStart < bounds.end else { return nil }
-                    var copy = word
-                    copy.start = max(0, absoluteStart - bounds.start)
-                    copy.end = min(segment.duration, absoluteEnd - bounds.start)
-                    return copy
-                }
-                if bounds.selected { titleIDs.append(segment.id) }
-                return segment
-            }
-        }
-
-        return LocalizedTimelineSlice(
-            timeline: timeline,
-            itemIDs: selectedIDs,
-            audioClipIDs: audioIDs,
-            telemetryItemIDs: telemetryIDs,
-            effectItemIDs: effectIDs,
-            titleItemIDs: titleIDs
-        )
     }
 
     private func tracksForResolving(
@@ -4342,6 +4669,9 @@ public actor VeloEditPipeline {
         if let track = resolution.track {
             if directive.preferDifferentTrack == true { return [track] }
             return [track] + resolution.catalog.filter { $0.id != track.id }
+        }
+        if let exact = directive.searchRequests?.first, exact.exactTrack {
+            throw DirectorBriefFulfillmentError.requestedMusicUnavailable(exact.query)
         }
         return resolution.catalog.filter { AutomaticSoundtrackSuitability.accepts($0, directive: directive) }
     }
@@ -4495,7 +4825,9 @@ public actor VeloEditPipeline {
         result.adaptiveSoundtrack = nil
         guard var directive = result.music else { return result }
         let track: LocalMusicTrack?
-        if (directive.preferDifferentTrack == true || directive.searchRequests?.first?.exactTrack == true),
+        if let exact = directive.searchRequests?.first, exact.exactTrack {
+            track = tracks.first { $0.isPlayable && exact.matches(title: $0.title, artist: $0.author) }
+        } else if directive.preferDifferentTrack == true,
            directive.trackID == nil,
            let providerResolved = tracks.first(where: { $0.isPlayable && $0.id != excluding }) {
             // tracksForResolving places the provider's chosen fresh result at
@@ -5056,6 +5388,7 @@ private extension EditorCommand {
              .setTransition(_, let target),
              .setTransitionPattern(_, let target),
              .setEffect(_, let target),
+             .addLibraryEffect(_, let target),
              .setEffectPattern(_, let target),
              .setTelemetryOverlay(_, let target),
              .insertFreezeFrame(_, let target),
@@ -5070,9 +5403,9 @@ private extension EditorCommand {
             return target
         case .setOverlay(_, let target, _):
             return target
-        case .setTitleStyle(_, _, _, _, let target):
+        case .setTitleText(_, let target), .setTitleStyle(_, _, _, _, let target), .applyTitleTemplate(_, let target):
             return target
-        case .addTitle, .removeTitles, .setAudioDucking,
+        case .insertBackground, .insertSource, .addTitle, .removeTitles, .setAudioDucking,
              .setOriginalAudioVolume, .setMusic, .setMusicVolume:
             return nil
         }
@@ -5082,7 +5415,7 @@ private extension EditorCommand {
     /// title styling must resolve against those IDs instead of video clip IDs.
     var targetsLegacyTitles: Bool {
         switch self {
-        case .setTitleStyle:
+        case .setTitleText, .setTitleStyle, .applyTitleTemplate:
             return true
         default:
             return false
@@ -5095,6 +5428,9 @@ private extension EditorCommand {
     func retargetedForTimelineRange() -> EditorCommand? {
         let target: EditorCommandTarget = .selected
         switch self {
+        case .insertBackground, .insertSource: return nil
+        case .addLibraryEffect(let type, _): return .addLibraryEffect(type, target)
+        case .applyTitleTemplate(let id, _): return .applyTitleTemplate(id, target)
         case .setSpeed(let value, _): return .setSpeed(value, target)
         case .removeSlowMotion: return .removeSlowMotion(target)
         case .setSpeedRamp(let value, _): return .setSpeedRamp(value, target)
@@ -5133,6 +5469,7 @@ private extension EditorCommand {
         case .insertFreezeFrame(let value, _): return .insertFreezeFrame(value, target)
         case .insertInstantReplay(let value, _): return .insertInstantReplay(value, target)
         case .setReverse(let value, _): return .setReverse(value, target)
+        case .setTitleText(let value, _): return .setTitleText(value, target)
         case .setTitleStyle(let size, let textColor, let backgroundColor, let alignment, _):
             return .setTitleStyle(size, textColor, backgroundColor, alignment, target)
         case .delete: return .delete(target)
@@ -5144,15 +5481,5 @@ private extension EditorCommand {
         }
     }
 
-    /// Global music/story commands are deliberately rejected here: a brushed
-    /// edit must never leak outside the highlighted interval.
-    var canApplyInsideTimelineRange: Bool {
-        switch self {
-        case .addTitle, .setOriginalAudioVolume, .setMusic, .setMusicVolume,
-             .setAudioDucking, .setOverlay, .move, .split:
-            return false
-        default:
-            return true
-        }
-    }
+
 }

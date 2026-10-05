@@ -56,9 +56,9 @@ enum LocalProjectRecovery {
         let folder = directory(package: package, root: root)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let existing = try read(package: package, root: root)
-        let baseData = try existing?.1 ?? JSONEncoder.veloEdit.encode(base)
+        let baseData = try existing?.1 ?? ProjectManifestEncoding.encode(base)
         let baseObject = try dictionary(baseData)
-        let resultObject = try dictionary(JSONEncoder.veloEdit.encode(manifest))
+        let resultObject = try dictionary(ProjectManifestEncoding.encode(manifest))
         let resultData = try canonical(resultObject)
         var patch: [String: Any] = [:]
         for key in Set(baseObject.keys).union(resultObject.keys) where !equal(baseObject[key], resultObject[key]) {

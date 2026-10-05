@@ -12,6 +12,12 @@ struct FixtureEditorialProber: EditorialRenderedProbing {
             var frame = PerceptualRenderedFrameEvidence(timelineTime: time, meanLuma: 0.5, lumaDeviation: 0.2, isBlack: false, source: "Explicit synthetic orchestration fixture; not real media")
             frame.decodeFailed = false
             frame.titleReadability = 1
+            frame.titleEvidence = TitleReadabilityInspector.titles(at: time, timeline: timeline).map { title in
+                TitleReadabilityEvidence(titleID: title.id, renderSignature: EditorialRenderSignature.signature(timeline),
+                    algorithmVersion: TitleReadabilityInspector.version, timelineTime: time, actualPTS: time,
+                    source: "preview", expectedText: title.text, recognizedText: title.text, confidences: [1],
+                    pixelWidth: 1920, pixelHeight: 1080, score: 1)
+            }
             return frame
         }
         guard !frames.isEmpty else { return frames }
@@ -19,6 +25,10 @@ struct FixtureEditorialProber: EditorialRenderedProbing {
             EditorialSemanticClaim(domain: domain, status: .passed, itemIDs: items.map(\.id), probeTimes: times.filter { time in items.contains { time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration } }, confidence: 1, observation: "Synthetic independent semantic fixture for orchestration only", method: "FixtureEditorialProber", renderSignature: EditorialRenderSignature.signature(timeline), finding: nil)
         }
         frames[0].exportVerification = EditorialExportVerification(renderSignature: EditorialRenderSignature.signature(timeline), probes: times.map { .init(time: $0, decoded: true, hashDistance: 0, meanLumaDifference: 0, meanAbsolutePixelDifference: 0) }, durationDifference: 0, aspectRatioMatches: true, encodedAudio: .init(integratedLUFS: -16, truePeakDBTP: -2, appliedGainDB: 0, outputLUFS: -16, outputTruePeakDBTP: -2, peakLimited: false, measuredFrames: Int(timeline.duration * 48_000)), provenance: "Explicit synthetic export fixture; no claim about real encode")
+        let deliveryTitles = frames.flatMap { $0.titleEvidence ?? [] }.map {
+            var value = $0; value.source = "mp4"; return value
+        }
+        frames[0].exportVerification?.titleEvidence = deliveryTitles
         return frames
     }
 }

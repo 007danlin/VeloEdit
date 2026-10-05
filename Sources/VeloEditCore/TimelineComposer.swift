@@ -17,9 +17,11 @@ public struct TimelineComposer: Sendable {
         let grammar = plan.autonomousDecision?.grammar
         let explicitlyAsksTelemetry = TelemetryOverlayRequestPolicy.requestsOverlay(in: prompt)
         let asksPhotoLayout = ["фотоколлаж", "коллаж", "несколько фото", "фото рядом", "split screen фото"].contains(where: prompt.contains)
-        let explicitlyDisablesTransitions = ["без переход", "убери переход", "никаких переход", "no transition"].contains(where: prompt.contains)
+        let effectsPolicy = DirectorEffectsPolicyEngine.policy(for: plan)
+        let explicitlyDisablesTransitions = effectsPolicy == DirectorEffectsPolicy.none
+            || ["без переход", "убери переход", "никаких переход", "no transition"].contains(where: prompt.contains)
         let explicitlyRequestsTransitions = !explicitlyDisablesTransitions
-            && ["переход", "transition", "dissolve", "раствор", "через чёрн", "вспыш"].contains(where: prompt.contains)
+            && (effectsPolicy == .many || ["переход", "transition", "dissolve", "раствор", "через чёрн", "вспыш"].contains(where: prompt.contains))
         var cursor = 0.0
         var tagDurations: [String: Double] = [:]
         var eventDurations: [UUID: Double] = [:]
@@ -459,7 +461,7 @@ public struct TimelineComposer: Sendable {
         }
         let automaticCanvas = Self.automaticCanvasSize(items: items, assetsByID: assetsByID)
         let requestedCanvas = directorBrief.flatMap { $0.usesAutomaticCanvasFormat ? nil : $0.canvasFormat }
-        return EditorialIntentEnforcer.enforce(Timeline(
+        let composed = Timeline(
             storyPlanID: plan.id,
             width: requestedCanvas?.width ?? automaticCanvas.width,
             height: requestedCanvas?.height ?? automaticCanvas.height,
@@ -472,7 +474,11 @@ public struct TimelineComposer: Sendable {
             originalAudioVolume: originalAudioVolume,
             endingFadeDuration: endingFadeDuration,
             audioDucking: audioClips.isEmpty ? nil : AudioDuckingSettings()
-        ), plan: plan)
+        )
+        var result = EditorialIntentEnforcer.enforce(
+            DirectorEffectsPolicyEngine.decorate(composed, plan: plan, candidates: candidates), plan: plan)
+        result.automaticallySelectFrameRate = true
+        return TimelineFrameRatePolicy.applying(to: result, assets: assets)
     }
 
     /// Chooses the output canvas from real imported frame dimensions. The
@@ -548,17 +554,18 @@ public struct TimelineComposer: Sendable {
             return boundary
         }
 
-        if DirectorRequestContract.requestsEffects(plan.prompt), entersClimax, incomingEnergy >= 0.72, plan.constraints.pacing >= 0.72 {
+        if DirectorEffectsPolicyEngine.allowsEffects(in: plan), entersClimax, incomingEnergy >= 0.72, plan.constraints.pacing >= 0.72 {
             return EditorialBoundaryDecision(choice: .transition, motivation: "Один световой переход отмечает сюжетную кульминацию", confidence: 0.78, transitionStyle: .exposureFlash)
         }
         if bothPhotos, sceneChanged || explicitlyRequestsTransitions {
             return EditorialBoundaryDecision(choice: .transition, motivation: "Растворение связывает два неподвижных изображения", confidence: 0.76, transitionStyle: .crossDissolve)
         }
         if explicitlyRequestsTransitions {
-            let density = max(0.04, plan.autonomousDecision?.grammar.transitionDensity ?? plan.constraints.transitionFrequency)
+            let density = DirectorEffectsPolicyEngine.policy(for: plan) == .many ? 0.34
+                : max(0.04, plan.autonomousDecision?.grammar.transitionDensity ?? plan.constraints.transitionFrequency)
             let cadence = max(2, Int((1 / density).rounded()))
             if boundaryIndex.isMultiple(of: cadence) {
-                if !DirectorRequestContract.requestsEffects(plan.prompt) {
+                if !DirectorEffectsPolicyEngine.allowsEffects(in: plan) {
                     return EditorialBoundaryDecision(choice: .transition, motivation: "Переход по запросу пользователя следует настроению фильма", confidence: 0.8, transitionStyle: .crossDissolve)
                 }
                 if let decision = TransitionSemanticSelector().select(for: semanticContext) {

@@ -1,0 +1,1924 @@
+[
+  {
+    "project": "Build/AutoEditReliability-2026-10-03/regression/project-9.veloedit/project.json",
+    "interpretation": "contiguous existing event membership; internal scenes and title text do not define new sections",
+    "parts": [
+      {
+        "eventID": "B6858BC1-4E08-52E1-BF12-C52452AA962C",
+        "start": 0,
+        "items": [
+          {
+            "id": "67116A48-D1E2-5B0E-BC87-F2E49373795D",
+            "assetID": "3C13DBE5-CF91-453F-A4F2-4607FE3E1274",
+            "sourceStart": 394,
+            "sourceDuration": 3.4
+          }
+        ],
+        "oldTitles": [
+          "В дороге"
+        ],
+        "end": 3.4
+      },
+      {
+        "eventID": "DE33E9BD-302E-52FA-A76D-41E2CBF9D7B5",
+        "start": 3.4,
+        "items": [
+          {
+            "id": "C2724704-5332-4D50-8757-FC5279E804D1",
+            "assetID": "AA870F56-B40C-4AE3-B78C-EA78022FED6E",
+            "sourceStart": 0,
+            "sourceDuration": 5.1
+          }
+        ],
+        "oldTitles": [
+          "Моменты дня"
+        ],
+        "end": 8.5
+      },
+      {
+        "eventID": "00ECCD88-E32B-5768-BA09-11624453F79D",
+        "start": 8.5,
+        "items": [
+          {
+            "id": "56E0C440-B112-4DB0-A5BC-EA8EA5C3FF72",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 42,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "49A891C8-D55B-4D51-9D0D-6295FA16BFC5",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 56.06666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "72708E32-56F6-4954-84E2-6E071AD39B31",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 116.73333333333333,
+            "sourceDuration": 4.6
+          },
+          {
+            "id": "68261E4D-72F5-43E7-AD30-2D0A7B092BF3",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 124.13333333333334,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "DEAC073D-DE37-4D27-B5AC-47E2620029DE",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 132.86666666666667,
+            "sourceDuration": 4.333333333333333
+          },
+          {
+            "id": "0FFADB30-38D0-4993-BA97-CE08342395B3",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 198.16666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "82DED1B9-5463-424F-A0BD-2C8928A1A5E9",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 286.3,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "27431F4F-8EBC-4CAD-9E86-4D58A36A5DEF",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 604.6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "CD6A0F61-0E08-4543-9BF2-ADE1DD5C6699",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 646.6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "96E8B669-E2F6-4B69-AFEA-ABAB1DBBAA9E",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 696.6666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "6F374363-F92A-41E6-B167-842C052D9CAB",
+            "assetID": "C9752966-2753-4EAF-B678-F8A1EC0C4C11",
+            "sourceStart": 720.6666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "B2B34747-20F8-483C-B548-6BA1D6D30750",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "AC528C46-9DF5-4A5B-858F-3AD11F523CA3",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 70.33333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "6CEE25A3-04F6-48BE-8947-2B284788AC4A",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 219.6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "399742E7-2E6B-45C1-A6CB-E9D23AAF06F5",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 231.6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "5BE1D204-AAF7-4DB5-BF9F-0D5395496171",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 354.26666666666665,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "56267D72-ECE5-4F67-AA56-1DB7FF996457",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 394.56666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "E9E9A672-73EF-4301-A81E-7BDC3E177A6D",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 422.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "3F1630A3-3C04-4D2E-BBEE-8826FA7F39F5",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 487.2,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "71197F9D-0D37-4E21-A885-B13BB81D03F6",
+            "assetID": "E2E4E64C-BCFA-46CF-ADFF-559DEA9F8E4A",
+            "sourceStart": 521.5333333333333,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "D7772B7F-EBE6-40A2-BEFE-7CC016561E06",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 24,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "38E6E738-38F7-46BB-BC56-14531DC7CD71",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 84.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "89773E4C-BD9A-4B57-A5AA-58D1D514BDCA",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 103.8,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "22EA1E50-3C55-4CA8-81CA-EF106BA88A1C",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 158.66666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "439E8D5C-866F-4D2B-862C-276904F02B19",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 207.56666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "8D2F3912-ACE7-4618-AD5C-00A770B59E83",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 250.43333333333334,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "22BC3810-44EE-41F1-A24A-C6DB73841BE9",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 299.3333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "426C64B9-09EA-4D8D-AAAD-A03ED80C3B21",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 379.1,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "AD92D50F-CD52-413C-B8F0-A208F9B91CB9",
+            "assetID": "A28CE948-C2AF-42E5-BD86-E39DB6D46675",
+            "sourceStart": 397.1,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "6628E420-9F3B-4685-8AD1-E1CB1E1F97EF",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 9.333333333333334,
+            "sourceDuration": 1.6
+          },
+          {
+            "id": "8FB58FAF-DF06-4F2D-9037-D24AAC5F32E3",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 30,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "E41EFC23-1C57-414C-9A41-7C90D501A062",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 85.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "362621CF-5D89-44AF-B251-569C558ABD3C",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 97.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A750C2D2-2F1A-4784-BFBD-A9B4A28811B3",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 176.06666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "4A92A45B-F4CC-474D-9D7F-79E0220E5ABB",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 224.76666666666668,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "742900C4-402F-4B34-BF39-37A2601547F8",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 279.43333333333334,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "70E6BCB4-C24C-4DC4-860B-12C56989051F",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 310.1333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A7DE422D-E8A4-4F9F-9F86-83AB2E4A577C",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 346.8333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "CA1E7918-1562-48AE-9977-3DE98017914E",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 425.5,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "EDD496F0-40B3-4773-8CDB-6C8070F057FB",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 431.23333333333335,
+            "sourceDuration": 3.966666666666667
+          },
+          {
+            "id": "640BFC7E-C99B-4F8F-8432-17AA434197E6",
+            "assetID": "A8413647-6679-41BF-93FA-25F4BE2843BF",
+            "sourceStart": 439.6666666666667,
+            "sourceDuration": 4.1
+          },
+          {
+            "id": "EFB7BF5A-8F7B-4AB4-9A59-BD05183F88C9",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "4A685AEB-78F5-46F9-BE9A-48014195087C",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 18,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "F288DE8C-2F1F-4510-BE50-19CD749F5554",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 24,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "91291D89-35BC-441B-81CD-7B0D9FB640B1",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 43.03333333333333,
+            "sourceDuration": 3.433333333333333
+          },
+          {
+            "id": "315538A1-6CDD-4B6E-BCC5-4140293D7B75",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 58.63333333333333,
+            "sourceDuration": 4.333333333333333
+          },
+          {
+            "id": "B8FB1BB1-F018-4360-BAF7-05F6D042E55F",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 121,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "41E93803-4106-4BBD-8FF4-146DADA32565",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 185.8,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "C927F72E-88FC-45FA-8E09-A79D171F384C",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 208.26666666666668,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "2D537060-2374-4FBC-AFE4-CF9DFA387F43",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 214.76666666666668,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "7A9C5F06-B116-46D6-9E00-25BFC58DDFE6",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 263.23333333333335,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "83EFF0D8-EACB-436C-AF21-6B038BBA9613",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 292.43333333333334,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "C8E613F2-B9E3-4103-8C22-D0C62420A09D",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 305.23333333333335,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "1D87FB84-AE03-4349-9E93-9A93F8BC630D",
+            "assetID": "F1A59C93-65BE-43D1-9434-9A5A7F6865B8",
+            "sourceStart": 317.73333333333335,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "BE725B40-52FD-48D0-8962-94AED23589E2",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 335.5,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "C67E8479-561B-4E16-8BEA-1A9E59C68326",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 437.3666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "E414AE08-BCCC-41B1-9B20-2D9606D5ECDA",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 473.26666666666665,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A75353AA-31F6-4DFA-9F19-813119996C10",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 587.1666666666666,
+            "sourceDuration": 5.3
+          },
+          {
+            "id": "565CCE41-0950-480B-9898-6FE12E5917DD",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 624,
+            "sourceDuration": 4.233333333333333
+          },
+          {
+            "id": "464E107B-FF76-413F-B771-F0F579E164DE",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 676.9666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "8EB46DDD-71DD-422A-8162-4E1B35488E6A",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 1096.3333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "7722B607-AADA-4148-9388-AB38B5AE80FA",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 1174.1,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "7071FE42-86BE-443C-8DAB-19728D670E8E",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 1192.1,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "E28DB3E6-B8D1-498D-B706-4C102BAB84CA",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 1335.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "567B9BF6-E566-4D45-8301-3F1FE62D9F6C",
+            "assetID": "862447CA-A406-424B-882E-099C6183004D",
+            "sourceStart": 1383.8,
+            "sourceDuration": 5.566666666666666
+          }
+        ],
+        "oldTitles": [
+          "Велопрогулка"
+        ],
+        "end": 353.43333333333317
+      },
+      {
+        "eventID": "C604ECB2-6F9C-5A0E-84BC-F2E81FD06FF9",
+        "start": 353.43333333333317,
+        "items": [
+          {
+            "id": "41346424-E8C0-4357-B9DD-56A7D3F53F5F",
+            "assetID": "4EF2ED35-7A3F-4B32-B421-CEB3F822AD4D",
+            "sourceStart": 30,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "EB8256AA-3BE3-4ADB-8E9F-88D09C124F87",
+            "assetID": "4EF2ED35-7A3F-4B32-B421-CEB3F822AD4D",
+            "sourceStart": 79.43333333333334,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "B432A4C0-B595-44FD-BD36-929304DA5F3F",
+            "assetID": "4EF2ED35-7A3F-4B32-B421-CEB3F822AD4D",
+            "sourceStart": 296.6,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "EB5EA1D7-FFAF-4CFD-A5B4-1505CEC95A90",
+            "assetID": "4EF2ED35-7A3F-4B32-B421-CEB3F822AD4D",
+            "sourceStart": 425.46666666666664,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "6264628E-DDC4-4235-AD31-F66D9F80F43D",
+            "assetID": "4EF2ED35-7A3F-4B32-B421-CEB3F822AD4D",
+            "sourceStart": 494.3333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A990C947-4A89-40A4-A564-A30DA8C56B19",
+            "assetID": "4EF2ED35-7A3F-4B32-B421-CEB3F822AD4D",
+            "sourceStart": 549.7666666666667,
+            "sourceDuration": 5.266666666666667
+          },
+          {
+            "id": "C69BE5CC-1605-4903-BC3E-EBDB81463D1F",
+            "assetID": "0F8332E8-F27A-49B2-B795-398F01630D48",
+            "sourceStart": 36.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "D908914B-ACB3-4A38-965F-CA8E7F5CD2BE",
+            "assetID": "0F8332E8-F27A-49B2-B795-398F01630D48",
+            "sourceStart": 54.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "81635789-D33F-4A43-A33D-73A2F53EF51D",
+            "assetID": "0F8332E8-F27A-49B2-B795-398F01630D48",
+            "sourceStart": 64.93333333333334,
+            "sourceDuration": 3.033333333333333
+          },
+          {
+            "id": "1893FB0D-829B-44A7-9368-3F8CDE2F9E32",
+            "assetID": "0F8332E8-F27A-49B2-B795-398F01630D48",
+            "sourceStart": 183.6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "7E7C5239-7180-48BA-897B-BF684F303BE7",
+            "assetID": "0F8332E8-F27A-49B2-B795-398F01630D48",
+            "sourceStart": 256.5,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "C091027D-39FB-476E-B99D-E52A1A7A5544",
+            "assetID": "9028551F-691D-45A4-BC9E-9A6595B86754",
+            "sourceStart": 36.93333333333333,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "B5EEA813-9B70-4BB9-B75C-5C3A2AD7EBC0",
+            "assetID": "9028551F-691D-45A4-BC9E-9A6595B86754",
+            "sourceStart": 48.93333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "2BF2D98B-36C2-4C47-9375-AC90140C5B57",
+            "assetID": "9028551F-691D-45A4-BC9E-9A6595B86754",
+            "sourceStart": 115.83333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "CBA169D8-DAE0-42C9-89AE-5F0FDE948E46",
+            "assetID": "9028551F-691D-45A4-BC9E-9A6595B86754",
+            "sourceStart": 152.73333333333332,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "07691110-ED59-459C-A357-F660053DBED0",
+            "assetID": "4D5370E1-E4EB-4BE4-91E5-9C4F28609FD9",
+            "sourceStart": 149.3,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "02285F0A-F755-4C1E-AB3E-124B02A603C7",
+            "assetID": "92EA3CFA-51E5-4950-8EDB-858FA860273E",
+            "sourceStart": 24,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "7DFA09C2-9F81-46DC-8C37-E9B001AC0A28",
+            "assetID": "92EA3CFA-51E5-4950-8EDB-858FA860273E",
+            "sourceStart": 59.86666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "69DAB504-3EE8-4FCC-8954-7EAA870E522B",
+            "assetID": "92EA3CFA-51E5-4950-8EDB-858FA860273E",
+            "sourceStart": 167.56666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "46D9BC8B-3A18-4BD7-B18C-42E831D79312",
+            "assetID": "92EA3CFA-51E5-4950-8EDB-858FA860273E",
+            "sourceStart": 220.16666666666666,
+            "sourceDuration": 4.3
+          },
+          {
+            "id": "11706ED2-F880-4C55-A887-724368454078",
+            "assetID": "92EA3CFA-51E5-4950-8EDB-858FA860273E",
+            "sourceStart": 239.26666666666668,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "ADC1DEA9-8CB5-599C-8507-5880BCE2ED45",
+            "assetID": "3527EB8A-DAA0-427F-AAD9-907B9A3A96F3",
+            "sourceStart": 236.2,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "287C83A2-D975-4349-9765-552BDF3122E6",
+            "assetID": "7300DD34-9B1C-414B-9ABD-BBA8587ACEE2",
+            "sourceStart": 155.86666666666667,
+            "sourceDuration": 4.766666666666667
+          },
+          {
+            "id": "6975B35F-2A88-4E4B-BFF7-9CD31F7A5046",
+            "assetID": "D5115203-3F09-492E-BD40-B56640A7942D",
+            "sourceStart": 338.9,
+            "sourceDuration": 5.033333333333333
+          },
+          {
+            "id": "AF9A9911-D26B-48E7-86E6-0BDEDB3F0014",
+            "assetID": "D5115203-3F09-492E-BD40-B56640A7942D",
+            "sourceStart": 375.3333333333333,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "B6C048AE-C3A8-4F67-9F2F-093075706B80",
+            "assetID": "D5115203-3F09-492E-BD40-B56640A7942D",
+            "sourceStart": 387.3333333333333,
+            "sourceDuration": 4
+          },
+          {
+            "id": "4A90980E-1D4B-42EA-A49A-5152ACFD6737",
+            "assetID": "2D08CF87-2B3D-411D-9FEF-4720216D4C13",
+            "sourceStart": 0,
+            "sourceDuration": 5.3
+          },
+          {
+            "id": "AB28F0A7-FC44-4BF9-8EB3-0CD522F3ABCA",
+            "assetID": "2D08CF87-2B3D-411D-9FEF-4720216D4C13",
+            "sourceStart": 6,
+            "sourceDuration": 5.233333333333333
+          },
+          {
+            "id": "E3E97CBF-A358-45AE-8881-1A4EE0C6982D",
+            "assetID": "2D08CF87-2B3D-411D-9FEF-4720216D4C13",
+            "sourceStart": 36,
+            "sourceDuration": 5.233333333333333
+          },
+          {
+            "id": "C72B6754-A978-444A-ABEA-BB0098B84DA9",
+            "assetID": "2D08CF87-2B3D-411D-9FEF-4720216D4C13",
+            "sourceStart": 77.7,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "67CAFE46-9971-47EF-B6E6-5597E0BB343A",
+            "assetID": "42357D0D-6391-4424-AC80-F85DDA5979BD",
+            "sourceStart": 18,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "E303D0E0-31F5-4B10-85E9-28758C8DB341",
+            "assetID": "42357D0D-6391-4424-AC80-F85DDA5979BD",
+            "sourceStart": 48.63333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "5692D619-5DE3-4CE8-B2BF-3BE2FE76CAA8",
+            "assetID": "42357D0D-6391-4424-AC80-F85DDA5979BD",
+            "sourceStart": 121.26666666666667,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "A232CAE9-22DF-45CC-AD0C-8B6E87DA07EA",
+            "assetID": "42357D0D-6391-4424-AC80-F85DDA5979BD",
+            "sourceStart": 140.43333333333334,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "2F813055-AA6B-4C37-B634-DAECE79111B9",
+            "assetID": "42357D0D-6391-4424-AC80-F85DDA5979BD",
+            "sourceStart": 151.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A1B9F9EA-A18F-498B-A521-25E73BE29974",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 0,
+            "sourceDuration": 5.3
+          },
+          {
+            "id": "D2B9A9E0-E6F6-4340-9D78-0F69CF66FF81",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 82.53333333333333,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "5D615F94-3F39-4966-98A2-C02BFEB17956",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 174.13333333333333,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "154B9993-C278-438A-A6E3-472D67F59497",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 209.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "6A7498F4-4D9A-4805-A703-ACADE3D557C1",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 222.13333333333333,
+            "sourceDuration": 5.266666666666667
+          },
+          {
+            "id": "A66025C3-6372-459F-9658-A04152060A61",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 256.7,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "89D755DB-95FD-419C-BFA2-A8C8D5C6B198",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 331.73333333333335,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "DB89823D-F9D2-49AE-8412-B768D489D4A0",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 430.76666666666665,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "3E1DC37E-429D-4687-A240-F7862C0B700A",
+            "assetID": "039AA391-2382-4282-83B1-ED2052DC6654",
+            "sourceStart": 616.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "C5CB2ABF-8305-403E-A980-915A41E84800",
+            "assetID": "6E37F935-20AC-4AD3-B737-E71279034E09",
+            "sourceStart": 12,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "18965512-A78F-4ABB-AC15-81291BE2C465",
+            "assetID": "6E37F935-20AC-4AD3-B737-E71279034E09",
+            "sourceStart": 30,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "91DED07C-95EA-4F79-A8D8-E24E77DE7844",
+            "assetID": "6E37F935-20AC-4AD3-B737-E71279034E09",
+            "sourceStart": 63.9,
+            "sourceDuration": 4.2
+          },
+          {
+            "id": "0538B4AC-2A97-4073-A08F-363A4C6E8421",
+            "assetID": "6E37F935-20AC-4AD3-B737-E71279034E09",
+            "sourceStart": 84.56666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "F718670C-9954-44AE-9A26-0CFBFE306E49",
+            "assetID": "6E37F935-20AC-4AD3-B737-E71279034E09",
+            "sourceStart": 98.6,
+            "sourceDuration": 4.166666666666667
+          },
+          {
+            "id": "EDB0FD29-519C-4539-B293-98D8AE0018CA",
+            "assetID": "6E37F935-20AC-4AD3-B737-E71279034E09",
+            "sourceStart": 109.13333333333334,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "E9A3FB7B-E3B0-4A28-8438-E1CF8885905D",
+            "assetID": "6E37F935-20AC-4AD3-B737-E71279034E09",
+            "sourceStart": 145.66666666666666,
+            "sourceDuration": 5.333333333333333
+          },
+          {
+            "id": "DF2DA0D0-D39B-4103-A07E-522010015BF6",
+            "assetID": "49DCA343-EA37-435C-BE65-B26A2A5A8F89",
+            "sourceStart": 242.13333333333333,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "C48F1EAC-7752-4EA0-A22B-E790B19A9EC3",
+            "assetID": "198A08F9-4788-4CEC-88D0-87D9B516C27D",
+            "sourceStart": 281.6,
+            "sourceDuration": 5.266666666666667
+          }
+        ],
+        "oldTitles": [
+          "Багги",
+          "День 3 — Багги — 19 июля 2026"
+        ],
+        "end": 627.4000000000001
+      },
+      {
+        "eventID": "9B056E33-76DF-5388-B09D-962A45E90AA1",
+        "start": 627.4000000000001,
+        "items": [
+          {
+            "id": "7B6F5ADC-A90A-4573-9DB8-DD9E85E73CC9",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 0,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "D45F5943-EE01-43B4-ABAE-81040D078360",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 53.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "9F8556C3-1C4C-47BA-A96D-6A2200F4BCA4",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 67.43333333333334,
+            "sourceDuration": 4.133333333333334
+          },
+          {
+            "id": "8C155226-3F7A-47BB-9143-DF108DFE335B",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 136.76666666666668,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "3C807924-10BC-4D12-860B-4CB6E703CE9B",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 178.13333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "53C4370D-B4CD-4B3F-AC1D-5C98E027770E",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 255.53333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "8210C363-3A70-4072-AD6C-842519E45BB3",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 272.9,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A315B653-DFBF-4F56-8327-23429CC18B3C",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 350.26666666666665,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "0FE18231-A282-4A58-9274-46CB1C37E7B5",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 373.6333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "F1B6A6DD-5DB5-40D9-8868-D959935CCF20",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 453.7,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "7E0F369A-1FCA-4CC9-8E2C-1C734DE58C10",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 492.4,
+            "sourceDuration": 5.366666666666666
+          },
+          {
+            "id": "9BB7C347-A19E-48FC-8CD9-E140DE1BD093",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 507.1,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "3CBDEE9E-2948-45A5-B456-7CD7403A16B5",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 539.7666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "C9C3A6E4-CD23-48CF-8FF8-1A3AAD70BD7F",
+            "assetID": "F33D3F2C-4ED8-47DD-B6C6-846DF4B8BE88",
+            "sourceStart": 587.1666666666666,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "A70599C3-B182-4B53-8456-4EBD09B300AD",
+            "assetID": "957407CB-BCB9-4973-8E18-23B5344AFED8",
+            "sourceStart": 0,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "E62C452B-9374-4973-BCA1-CB333058E325",
+            "assetID": "957407CB-BCB9-4973-8E18-23B5344AFED8",
+            "sourceStart": 109.86666666666666,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "BA480F97-59CB-4102-8F31-34F5BB8FBBB9",
+            "assetID": "957407CB-BCB9-4973-8E18-23B5344AFED8",
+            "sourceStart": 115.86666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "8831BF1F-071B-4BB2-A49E-2D9C68447ECC",
+            "assetID": "957407CB-BCB9-4973-8E18-23B5344AFED8",
+            "sourceStart": 250.63333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "8FBBC9FB-BA44-4ECA-A892-70E7154F57AC",
+            "assetID": "957407CB-BCB9-4973-8E18-23B5344AFED8",
+            "sourceStart": 391.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "63CC732E-A5E8-42CC-9DC1-ECD11F083EDC",
+            "assetID": "957407CB-BCB9-4973-8E18-23B5344AFED8",
+            "sourceStart": 409.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "BEB9E167-C787-4F88-829C-36FE62583E40",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 0,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "D17838ED-CFC3-4734-9F81-3D5BB6282686",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 18.866666666666667,
+            "sourceDuration": 3.966666666666667
+          },
+          {
+            "id": "B618C2FF-115A-4C59-AA49-5BD68D7581C3",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 85.63333333333334,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "BC5C83FE-F538-4353-9D52-4E50F860F297",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 154.86666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "F679346A-1B1C-4D2D-905E-CC48D2453C71",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 166.86666666666667,
+            "sourceDuration": 5.333333333333333
+          },
+          {
+            "id": "B1503063-C2DA-4605-9F1D-0D52726257F8",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 202.86666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "3C3D543D-A779-42CF-BAB5-272BB69D5E5D",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 246.5,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A7F3DB05-28A9-4529-9049-73E35BC58C44",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 296.96666666666664,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "DF57362A-6BF3-406F-A8B9-A557C9B1B4F5",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 308.1,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "75A3B21B-830E-46B2-BEFD-C15EAA37572B",
+            "assetID": "0045369B-CF71-468F-82C1-FC984A67EBD8",
+            "sourceStart": 339.73333333333335,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "3346E781-592B-40F1-B90B-4CF00D422102",
+            "assetID": "3668FF22-8361-4CA4-8F9B-9755E8F53527",
+            "sourceStart": 0,
+            "sourceDuration": 5.366666666666666
+          },
+          {
+            "id": "AF857019-F404-4432-8A63-61004F1FCA38",
+            "assetID": "4E422123-06CF-46C0-AFEF-09758A5CFA6C",
+            "sourceStart": 51.56666666666667,
+            "sourceDuration": 5.266666666666667
+          },
+          {
+            "id": "0D860783-1342-4DCA-B185-C7C3CBA0DEBB",
+            "assetID": "34937E78-A6B7-42C0-8FDE-FAE0160B5395",
+            "sourceStart": 6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "0FF3AB72-A9A3-4547-A1A3-5F62A60F301D",
+            "assetID": "34937E78-A6B7-42C0-8FDE-FAE0160B5395",
+            "sourceStart": 76.86666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A0D31F9E-C64D-4876-854A-7A9A4F88560E",
+            "assetID": "34937E78-A6B7-42C0-8FDE-FAE0160B5395",
+            "sourceStart": 105.73333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "B440B33F-BA8B-4B62-8488-2FC12E5D87EB",
+            "assetID": "34937E78-A6B7-42C0-8FDE-FAE0160B5395",
+            "sourceStart": 116.13333333333334,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "CEE8F628-DDF7-4198-9535-48B1CEDB41F7",
+            "assetID": "34937E78-A6B7-42C0-8FDE-FAE0160B5395",
+            "sourceStart": 140.56666666666666,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "D8A37216-E4F4-4E00-90A6-270C69141DC0",
+            "assetID": "92D3BB35-A6EC-48A8-AD2D-443952A6D33F",
+            "sourceStart": 0,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "C68F485F-ED38-4DD9-83B2-D17485719B92",
+            "assetID": "92D3BB35-A6EC-48A8-AD2D-443952A6D33F",
+            "sourceStart": 46.7,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "0E25A037-DE85-4941-BFD0-CA0D268244F4",
+            "assetID": "92D3BB35-A6EC-48A8-AD2D-443952A6D33F",
+            "sourceStart": 121.36666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "63D5859D-FF88-4D25-95A7-8DF63BD3EDDE",
+            "assetID": "39A57064-04C4-4278-AFE7-4930BA1B587E",
+            "sourceStart": 12,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "8D31A6F8-7CCF-4189-9EED-A44CC3A635C0",
+            "assetID": "39A57064-04C4-4278-AFE7-4930BA1B587E",
+            "sourceStart": 30.3,
+            "sourceDuration": 2.1666666666666665
+          },
+          {
+            "id": "894CCE05-AD6A-4524-B0EB-0DAEEE676FDF",
+            "assetID": "39A57064-04C4-4278-AFE7-4930BA1B587E",
+            "sourceStart": 78.66666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "D211EDE6-0F1D-40D4-A3A6-45F79C6E7DCB",
+            "assetID": "39A57064-04C4-4278-AFE7-4930BA1B587E",
+            "sourceStart": 103.33333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "B3F7B16E-5ECF-49B5-A056-94CEB34E9CF3",
+            "assetID": "9F62E450-9B80-473E-9FD0-FDDC583A74B7",
+            "sourceStart": 0,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "E6EB10D1-AEC3-473E-92A3-270A17252CFB",
+            "assetID": "9F62E450-9B80-473E-9FD0-FDDC583A74B7",
+            "sourceStart": 6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "4FADCDD6-8A35-4298-9F63-9971197952C4",
+            "assetID": "9F62E450-9B80-473E-9FD0-FDDC583A74B7",
+            "sourceStart": 12,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "D2994BD1-C03C-5CFD-8867-DDCE759AB809",
+            "assetID": "754BCE04-8030-40F9-8C8A-A436C7965B23",
+            "sourceStart": 10.266666666666667,
+            "sourceDuration": 2.1666666666666665
+          },
+          {
+            "id": "8CF2386F-9BC3-4E34-AB07-BCBA6222A69D",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 18.766666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "6FA26B31-AB4D-4E03-B112-68CFE47D73E8",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 37.166666666666664,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "D9C8DA7C-3303-41FD-A8AE-407A21DE2480",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 71.8,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "AA420237-3BE3-423A-A0F6-FCD1C2DD8E9A",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 109.86666666666666,
+            "sourceDuration": 4.2
+          },
+          {
+            "id": "81E6669A-207F-41C9-A601-2DA573C7CD80",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 662.7666666666667,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "C281F738-3F2A-43FF-8AF7-EFC21F13C8D7",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 844.6666666666666,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "27B94875-06A3-4A0C-909D-675F922F288A",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 867.3,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "B7AE5DC9-12BA-4C8A-A665-46AFF87CCA6F",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 895.9333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "FD991226-8EEA-47CD-BC36-11619AB3867E",
+            "assetID": "6377FBAB-EDA1-4F3D-8E46-31DAECED7173",
+            "sourceStart": 913.5333333333333,
+            "sourceDuration": 4.633333333333334
+          },
+          {
+            "id": "3B278C5A-C0BE-46C2-847F-156388A40E78",
+            "assetID": "4E0A5F27-2BBA-4596-8BFB-405ED4679FE9",
+            "sourceStart": 328.3,
+            "sourceDuration": 3.433333333333333
+          },
+          {
+            "id": "E003255F-3520-5A9E-BAD6-487E27E09CA9",
+            "assetID": "46E01CDC-8128-4208-B381-8F1C8D63557B",
+            "sourceStart": 63.733333333333334,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "782DF63C-0702-41E1-90E2-D9EAD19A05FD",
+            "assetID": "829599B5-696A-4CF3-ADBB-6A0CA133AC20",
+            "sourceStart": 6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "BEB28AB7-6F12-4965-B864-D712955FE598",
+            "assetID": "829599B5-696A-4CF3-ADBB-6A0CA133AC20",
+            "sourceStart": 37.4,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "656D3A1A-7477-4431-B486-76B995E34C7E",
+            "assetID": "829599B5-696A-4CF3-ADBB-6A0CA133AC20",
+            "sourceStart": 54.86666666666667,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "8D64BC17-D454-438E-BD2C-71AFF162D689",
+            "assetID": "829599B5-696A-4CF3-ADBB-6A0CA133AC20",
+            "sourceStart": 109.7,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "E294B10A-AD40-4590-A7B3-B0B1AF1E559C",
+            "assetID": "829599B5-696A-4CF3-ADBB-6A0CA133AC20",
+            "sourceStart": 141.03333333333333,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "38A8D5FE-2F7B-43CC-888D-2C29B468E2A5",
+            "assetID": "829599B5-696A-4CF3-ADBB-6A0CA133AC20",
+            "sourceStart": 169.4,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "8BAA0F57-4F22-459E-9BB6-34DCD5FFBEB1",
+            "assetID": "28146F27-1E89-40BB-AD44-4D160D4D9863",
+            "sourceStart": 0,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "76B92EDF-1900-450B-9E48-3ABCED5DF32A",
+            "assetID": "28146F27-1E89-40BB-AD44-4D160D4D9863",
+            "sourceStart": 53.53333333333333,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "87AABF4A-27D9-4A88-B5B4-E7BB1E7C905C",
+            "assetID": "28146F27-1E89-40BB-AD44-4D160D4D9863",
+            "sourceStart": 125.03333333333333,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "6D98F8C0-F3C9-40BB-B2AE-6792D5D219C6",
+            "assetID": "28146F27-1E89-40BB-AD44-4D160D4D9863",
+            "sourceStart": 184.63333333333333,
+            "sourceDuration": 2.966666666666667
+          },
+          {
+            "id": "394A55E6-44D4-439B-9CD6-7D842597EEAD",
+            "assetID": "EF94F646-3234-43BE-8A7A-CFF62718AC1C",
+            "sourceStart": 6,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "3FAEA1AF-C383-4049-BBBA-503A7DD91876",
+            "assetID": "EF94F646-3234-43BE-8A7A-CFF62718AC1C",
+            "sourceStart": 36.03333333333333,
+            "sourceDuration": 5.2
+          },
+          {
+            "id": "EF2EC806-9BED-4367-B0D5-1B525892972A",
+            "assetID": "EF94F646-3234-43BE-8A7A-CFF62718AC1C",
+            "sourceStart": 90.03333333333333,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "D06A1798-B5EF-4851-AC9F-D73E3B62ABD3",
+            "assetID": "EF94F646-3234-43BE-8A7A-CFF62718AC1C",
+            "sourceStart": 96.06666666666666,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "40EA99C3-DA46-4E58-BB70-364D88092534",
+            "assetID": "EF94F646-3234-43BE-8A7A-CFF62718AC1C",
+            "sourceStart": 162.1,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "B1D64B33-ED73-4040-9D0E-81FE5CA3A086",
+            "assetID": "EF94F646-3234-43BE-8A7A-CFF62718AC1C",
+            "sourceStart": 216.13333333333333,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "38AD61B0-F3B9-55C1-AD1E-84F6897AF95A",
+            "assetID": "9A704C44-0376-4ED5-9411-32608CC5FF37",
+            "sourceStart": 14.733333333333333,
+            "sourceDuration": 1.7666666666666666
+          },
+          {
+            "id": "0EFB61B7-EC3B-5F23-A71D-26FEFC9F5F97",
+            "assetID": "9EA8335D-ACCE-4C33-A2D3-000524DA0BF6",
+            "sourceStart": 22.6,
+            "sourceDuration": 1.8
+          },
+          {
+            "id": "0E7E480F-606A-4D03-99A0-24938353E667",
+            "assetID": "334B6499-3B0F-4836-ADD4-E33CBFB17F51",
+            "sourceStart": 11.366666666666667,
+            "sourceDuration": 3.533333333333333
+          },
+          {
+            "id": "56A35D09-AB44-4AED-B684-508CC75D1262",
+            "assetID": "334B6499-3B0F-4836-ADD4-E33CBFB17F51",
+            "sourceStart": 29.333333333333332,
+            "sourceDuration": 1.9666666666666666
+          },
+          {
+            "id": "2EAAB142-D77B-4587-9108-B9A287EB6E2C",
+            "assetID": "334B6499-3B0F-4836-ADD4-E33CBFB17F51",
+            "sourceStart": 84.7,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "4DB2B181-3AAA-45D3-8FD6-DA5AACB91F5C",
+            "assetID": "334B6499-3B0F-4836-ADD4-E33CBFB17F51",
+            "sourceStart": 115.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "6DFC5769-2C61-43F8-8B4B-22A3AE7C2A39",
+            "assetID": "334B6499-3B0F-4836-ADD4-E33CBFB17F51",
+            "sourceStart": 121.4,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "AD3649DB-B7EC-4BE4-91D4-8D0BFDFB89F2",
+            "assetID": "334B6499-3B0F-4836-ADD4-E33CBFB17F51",
+            "sourceStart": 146.1,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "AE8237BC-11FF-4237-859E-EF8028F4753D",
+            "assetID": "CFDDABC3-27CC-430B-99C1-8BD00FAC017A",
+            "sourceStart": 36,
+            "sourceDuration": 3.6666666666666665
+          },
+          {
+            "id": "D7E50690-8720-440F-BF24-C978A98EA3F4",
+            "assetID": "CFDDABC3-27CC-430B-99C1-8BD00FAC017A",
+            "sourceStart": 57.3,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "137153CB-15DE-4FFD-97A6-F74A08AFC1EA",
+            "assetID": "CFDDABC3-27CC-430B-99C1-8BD00FAC017A",
+            "sourceStart": 214.43333333333334,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "9D753A9B-B01F-4463-B97A-C53D6FC811F9",
+            "assetID": "CFDDABC3-27CC-430B-99C1-8BD00FAC017A",
+            "sourceStart": 283.7,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "0E66909C-8B24-4287-8E11-505E713D8B5D",
+            "assetID": "CFDDABC3-27CC-430B-99C1-8BD00FAC017A",
+            "sourceStart": 350.26666666666665,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "301CCD12-4BDE-4C8E-821D-013F4FE340B7",
+            "assetID": "CFDDABC3-27CC-430B-99C1-8BD00FAC017A",
+            "sourceStart": 398.26666666666665,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "2DD35B17-FA04-5AC3-BD39-AA0A76FD8FCC",
+            "assetID": "0C647768-8892-4999-9739-6EDA3B117031",
+            "sourceStart": 130.36666666666667,
+            "sourceDuration": 2.7333333333333334
+          }
+        ],
+        "oldTitles": [
+          "День 4 — Велопрогулка",
+          "День 4 — Велопрогулка — 20 июля 2026"
+        ],
+        "end": 1077.3333333333353
+      },
+      {
+        "eventID": "4D242834-7419-5C06-9937-F2616C6BCBFA",
+        "start": 1077.3333333333353,
+        "items": [
+          {
+            "id": "A79A2576-5868-415F-A318-B251B1E18D0D",
+            "assetID": "3F936DF1-C26F-4D65-9D53-C09001856877",
+            "sourceStart": 6,
+            "sourceDuration": 5.033333333333333
+          },
+          {
+            "id": "1DA687CE-DA10-4EDE-B88C-9A5303820AC8",
+            "assetID": "3F936DF1-C26F-4D65-9D53-C09001856877",
+            "sourceStart": 83.63333333333334,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "19D89A54-6AB8-47C2-A730-28862392518D",
+            "assetID": "3F936DF1-C26F-4D65-9D53-C09001856877",
+            "sourceStart": 101.26666666666667,
+            "sourceDuration": 5.366666666666666
+          },
+          {
+            "id": "F728D26A-D375-48BC-A1CD-227EDB7E75D2",
+            "assetID": "3F936DF1-C26F-4D65-9D53-C09001856877",
+            "sourceStart": 172.86666666666667,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "02D62BB4-E09B-4266-AA5E-F389B3ECDBD8",
+            "assetID": "3F936DF1-C26F-4D65-9D53-C09001856877",
+            "sourceStart": 208.5,
+            "sourceDuration": 5.3
+          },
+          {
+            "id": "EA8FBC2C-30A6-465D-A4C3-EF581A4A1C30",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 42.63333333333333,
+            "sourceDuration": 5.266666666666667
+          },
+          {
+            "id": "FDCE63F6-B30F-4081-9ADD-1C804858E498",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 178.26666666666668,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "AA3B9192-36AD-4F05-AE37-1D12532AE4A7",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 237.83333333333334,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "A3676A63-E13D-4EE6-9314-0124FE666AB3",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 273.8333333333333,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "65E9311D-92DA-446E-9095-FD320252B092",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 309.4,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "083C23D2-3104-40FD-99C2-24B73C51C58E",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 368.53333333333336,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "E30139FE-519C-4D5A-81FD-ED6805E4E42C",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 386.53333333333336,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "276604E5-8AC8-49B8-8C54-0997CA3107F5",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 422.53333333333336,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "1C4C20AF-7E9B-4542-9A6C-F72566A7B820",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 446.1,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "CD305B0B-1039-405D-A61E-DA74739A0CE9",
+            "assetID": "91F1683A-DFCE-4DF9-A5C4-1E59A09F84EF",
+            "sourceStart": 475.6666666666667,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "B52EC898-306C-4822-B300-E89032A71BD0",
+            "assetID": "AAD48C30-17B5-43BB-AF9D-3DB0EBFCCFA2",
+            "sourceStart": 35.36666666666667,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "57C6E381-2585-49A0-8BB9-E69EFD6A8D7E",
+            "assetID": "AAD48C30-17B5-43BB-AF9D-3DB0EBFCCFA2",
+            "sourceStart": 77.36666666666666,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "49C8272D-7CE3-438C-84F2-6A05FFCBFEA9",
+            "assetID": "AAD48C30-17B5-43BB-AF9D-3DB0EBFCCFA2",
+            "sourceStart": 106.7,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "95BD633D-72FE-4E4D-92E0-69A2EB621440",
+            "assetID": "7E16251D-FD4C-4578-8490-B1C69F18A7AA",
+            "sourceStart": 36,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "FEAAE671-5112-40B6-98AB-656E5D0B21A5",
+            "assetID": "7E16251D-FD4C-4578-8490-B1C69F18A7AA",
+            "sourceStart": 95.13333333333334,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "47D48044-1DF5-4F04-B550-B8359AF44FE7",
+            "assetID": "7E16251D-FD4C-4578-8490-B1C69F18A7AA",
+            "sourceStart": 208.26666666666668,
+            "sourceDuration": 5.366666666666666
+          },
+          {
+            "id": "CB867E35-21A2-4399-9B62-894A1036486C",
+            "assetID": "7E16251D-FD4C-4578-8490-B1C69F18A7AA",
+            "sourceStart": 285.4,
+            "sourceDuration": 5.266666666666667
+          },
+          {
+            "id": "852FD86D-3136-4BAC-8EB7-B33638EADAD8",
+            "assetID": "7E16251D-FD4C-4578-8490-B1C69F18A7AA",
+            "sourceStart": 346.23333333333335,
+            "sourceDuration": 4.7
+          },
+          {
+            "id": "08EE61ED-CF79-45A8-BF31-265897057554",
+            "assetID": "FBCCA7B7-2328-4BBA-849E-E3D2FB091B88",
+            "sourceStart": 30,
+            "sourceDuration": 5.366666666666666
+          },
+          {
+            "id": "18E98A0A-8F00-47FB-AAC6-3079532E6EE9",
+            "assetID": "EDC23078-FBD9-4502-9385-0919875B94F3",
+            "sourceStart": 36,
+            "sourceDuration": 5.3
+          },
+          {
+            "id": "2B9731BF-FB55-4260-A8BE-896179F335CA",
+            "assetID": "EDC23078-FBD9-4502-9385-0919875B94F3",
+            "sourceStart": 72.5,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "A4087C7E-1A98-4180-9ED1-49FD115FC156",
+            "assetID": "EDC23078-FBD9-4502-9385-0919875B94F3",
+            "sourceStart": 96.96666666666667,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "7D45A607-9FCF-426D-84F3-1188AD0BA3E0",
+            "assetID": "EDC23078-FBD9-4502-9385-0919875B94F3",
+            "sourceStart": 157.46666666666667,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "EA03B930-2062-4F65-B09A-740A70F99624",
+            "assetID": "9C770C54-9B11-4F87-8D9B-769015C6789F",
+            "sourceStart": 18,
+            "sourceDuration": 5.4
+          },
+          {
+            "id": "D0E40F5B-69FA-4CC5-8522-332B807B810B",
+            "assetID": "9C770C54-9B11-4F87-8D9B-769015C6789F",
+            "sourceStart": 72.1,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "1B67B714-2C93-47B9-A51D-5934B0BF47E1",
+            "assetID": "9C770C54-9B11-4F87-8D9B-769015C6789F",
+            "sourceStart": 108.13333333333334,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "1948B09D-1419-4091-803F-FB40F439D0F0",
+            "assetID": "9C770C54-9B11-4F87-8D9B-769015C6789F",
+            "sourceStart": 150.16666666666666,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "2450F920-30FF-488D-964C-4CF242C5CD0F",
+            "assetID": "9C770C54-9B11-4F87-8D9B-769015C6789F",
+            "sourceStart": 198.23333333333332,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "2B8A60F4-5FE8-4BFD-9C2B-80B2E5CEF068",
+            "assetID": "7E3C2E4C-3DBD-45EF-9257-0596A5D1A4D1",
+            "sourceStart": 36,
+            "sourceDuration": 3.433333333333333
+          },
+          {
+            "id": "E30F3009-DE44-460B-9755-14DD53EEB6FB",
+            "assetID": "7E3C2E4C-3DBD-45EF-9257-0596A5D1A4D1",
+            "sourceStart": 132.36666666666667,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "0EFF4D8E-B955-46D1-A477-4C12BF25520B",
+            "assetID": "7E3C2E4C-3DBD-45EF-9257-0596A5D1A4D1",
+            "sourceStart": 150.33333333333334,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "D5D22F25-6902-4464-BB1E-D999DA6A4E70",
+            "assetID": "7E3C2E4C-3DBD-45EF-9257-0596A5D1A4D1",
+            "sourceStart": 180.43333333333334,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "527B3F08-352E-4461-9CFE-8721755DB580",
+            "assetID": "7E3C2E4C-3DBD-45EF-9257-0596A5D1A4D1",
+            "sourceStart": 264.56666666666666,
+            "sourceDuration": 5.366666666666666
+          },
+          {
+            "id": "5138A994-697B-4322-89AC-B638B1FA0AAF",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 18,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "9741A1FC-4B3C-4E0D-9DB7-ACA53B7859A4",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 62.8,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "E438F779-FF9E-4818-846A-D10D8B77864F",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 137.6,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "43C3154B-2AB7-43A8-991A-7F51CCDC496C",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 194.4,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "DE43C99B-8443-41B0-8A8C-61C63FCFFD0B",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 227.16666666666666,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "418CEF2D-5B50-4DFA-904C-E65E65857BB8",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 283.96666666666664,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "B5FC4702-3076-49BD-A4AB-35E4AFA2133F",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 367.56666666666666,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "2BC92526-02AE-4B3F-B0C5-B4FE5A08C771",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 415.23333333333335,
+            "sourceDuration": 3.966666666666667
+          },
+          {
+            "id": "7EA1EDF7-A511-4A13-902E-405835C728A3",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 430.3333333333333,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "4EDB2823-3688-4A1E-9AC9-71181EC14A36",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 466,
+            "sourceDuration": 3
+          },
+          {
+            "id": "CD4956D8-C0EE-4172-A4AE-22FBF4C511B8",
+            "assetID": "29577BA7-313B-4A1D-AD77-C0BB825EEBAB",
+            "sourceStart": 502.1333333333333,
+            "sourceDuration": 5.3
+          },
+          {
+            "id": "52B32429-945C-4294-8BCF-1155B9A18C47",
+            "assetID": "E70A94CC-9A6A-4B52-ADD7-72105810A6C2",
+            "sourceStart": 219.4,
+            "sourceDuration": 3.433333333333333
+          },
+          {
+            "id": "320384AC-A6E5-40AD-A86F-E415B1B230EF",
+            "assetID": "E70A94CC-9A6A-4B52-ADD7-72105810A6C2",
+            "sourceStart": 265.23333333333335,
+            "sourceDuration": 5.366666666666666
+          },
+          {
+            "id": "01DA1A38-2B23-4A64-89BF-0583FA0AEEFA",
+            "assetID": "E70A94CC-9A6A-4B52-ADD7-72105810A6C2",
+            "sourceStart": 309.3666666666667,
+            "sourceDuration": 3.3
+          },
+          {
+            "id": "D3B583FD-4308-41AA-93B0-CD133C906BC3",
+            "assetID": "E70A94CC-9A6A-4B52-ADD7-72105810A6C2",
+            "sourceStart": 515.0333333333333,
+            "sourceDuration": 3.4
+          },
+          {
+            "id": "23A380D4-C9A5-5D6A-A144-B25A05BCDDB6",
+            "assetID": "8260E68E-3B9A-4D92-9516-3A9973AB2676",
+            "sourceStart": 2,
+            "sourceDuration": 2.566666666666667
+          },
+          {
+            "id": "A929BC8D-E1CC-55F5-821F-93AF6BA57539",
+            "assetID": "50480390-6AC4-4AFF-95A2-364B200793B8",
+            "sourceStart": 0,
+            "sourceDuration": 2.466666666666667
+          },
+          {
+            "id": "52B311BD-A8F9-4FCE-B56F-8A089AA96417",
+            "assetID": "001A7204-4B69-49F9-A7EE-78CBB4080167",
+            "sourceStart": 29.166666666666668,
+            "sourceDuration": 3.2
+          },
+          {
+            "id": "46D8E589-31E6-5C2C-B710-0397CF65B04C",
+            "assetID": "1CE39DE7-0114-4F46-B6A4-FDE8A4B460BA",
+            "sourceStart": 58,
+            "sourceDuration": 2.2666666666666666
+          },
+          {
+            "id": "D3D055C7-E626-4626-80DD-4C7FAAAEB46D",
+            "assetID": "A4B13F9E-2A40-49CE-868C-927BD0B80EA0",
+            "sourceStart": 45.96666666666667,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "9D2319CC-69B2-44A4-B82F-EFE8EF2553C6",
+            "assetID": "A4B13F9E-2A40-49CE-868C-927BD0B80EA0",
+            "sourceStart": 68.93333333333334,
+            "sourceDuration": 2.033333333333333
+          },
+          {
+            "id": "38A2DD81-69C7-4613-BB5F-D6C94D78AD6D",
+            "assetID": "B80F3719-3999-4CB0-965C-CD4CD10AA9AE",
+            "sourceStart": 153.23333333333332,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "14F577A8-E9AC-4766-9BAC-92C2DC7A037C",
+            "assetID": "B80F3719-3999-4CB0-965C-CD4CD10AA9AE",
+            "sourceStart": 363.5,
+            "sourceDuration": 5.533333333333333
+          },
+          {
+            "id": "B6CCCF73-6742-4BA0-B180-4148EF6F248B",
+            "assetID": "B80F3719-3999-4CB0-965C-CD4CD10AA9AE",
+            "sourceStart": 459.6333333333333,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "8FA4A29D-22DA-44BE-AB2B-C07F6AD0971C",
+            "assetID": "B80F3719-3999-4CB0-965C-CD4CD10AA9AE",
+            "sourceStart": 886.2,
+            "sourceDuration": 5.6
+          }
+        ],
+        "oldTitles": [
+          "День 5 — Багги",
+          "День 5 — Багги — 21 июля 2026"
+        ],
+        "end": 1395.0333333333333
+      },
+      {
+        "eventID": "54AD2EF2-A02D-543C-871E-5BEA2FDF5590",
+        "start": 1395.0333333333333,
+        "items": [
+          {
+            "id": "59DAC504-C523-4DC5-BC50-04D3CB4A29DE",
+            "assetID": "A124D347-5B59-43D0-819A-ED30527EFC9D",
+            "sourceStart": 73.36666666666666,
+            "sourceDuration": 5.6
+          },
+          {
+            "id": "A543F69A-0555-4A92-84D3-774AB24725DD",
+            "assetID": "A124D347-5B59-43D0-819A-ED30527EFC9D",
+            "sourceStart": 188.2,
+            "sourceDuration": 5.433333333333334
+          },
+          {
+            "id": "8A1D66B6-B45C-4651-B6C7-EEA51DE2D1E4",
+            "assetID": "F9AF6915-F5D8-48BD-B2AB-A770558213D8",
+            "sourceStart": 159.6,
+            "sourceDuration": 5.5
+          },
+          {
+            "id": "474A16AC-4269-49BD-B2EF-A25EFB5DD8B1",
+            "assetID": "F9AF6915-F5D8-48BD-B2AB-A770558213D8",
+            "sourceStart": 171.6,
+            "sourceDuration": 3.3333333333333335
+          },
+          {
+            "id": "580417B2-ECB1-478F-9E4C-1EA0D38CA569",
+            "assetID": "8ED7240C-B68A-4BF0-A0EF-1259D4DC792D",
+            "sourceStart": 97.03333333333333,
+            "sourceDuration": 1.9
+          },
+          {
+            "id": "44109237-E2F5-4FD7-AC92-612FA0C0CC27",
+            "assetID": "F267397C-7C5F-4D07-B861-2B587032C84D",
+            "sourceStart": 36.333333333333336,
+            "sourceDuration": 5.566666666666666
+          },
+          {
+            "id": "61162217-3050-45D5-A335-9E03E5D0BEC5",
+            "assetID": "F267397C-7C5F-4D07-B861-2B587032C84D",
+            "sourceStart": 114.63333333333334,
+            "sourceDuration": 5.466666666666667
+          },
+          {
+            "id": "FB3C66B9-090D-4574-9375-728DCDBD34DC",
+            "assetID": "F267397C-7C5F-4D07-B861-2B587032C84D",
+            "sourceStart": 202.6,
+            "sourceDuration": 4.033333333333333
+          },
+          {
+            "id": "0E9D3942-8446-4837-8F3F-804CDC96A64D",
+            "assetID": "F267397C-7C5F-4D07-B861-2B587032C84D",
+            "sourceStart": 293.3,
+            "sourceDuration": 4.566666666666666
+          },
+          {
+            "id": "FDBB9D3E-2426-481B-A410-A5627401BCCC",
+            "assetID": "DC40F7F0-D989-437A-A2B7-A2D52CE17556",
+            "sourceStart": 0.2,
+            "sourceDuration": 1.8
+          },
+          {
+            "id": "F7920359-6622-4123-B456-E1753B20AD1D",
+            "assetID": "26057DEC-2997-4D5D-BBC0-144C2C464309",
+            "sourceStart": 2.3666666666666667,
+            "sourceDuration": 1.7666666666666666
+          },
+          {
+            "id": "A307A376-6A4D-4ADA-A647-E96CFCE4EE02",
+            "assetID": "26057DEC-2997-4D5D-BBC0-144C2C464309",
+            "sourceStart": 8.233333333333333,
+            "sourceDuration": 5.2
+          },
+          {
+            "id": "A28EC68E-698D-4C97-93B1-EDE9B4FF81C8",
+            "assetID": "1CF21231-1A9A-4DFE-8BFA-B2384583641B",
+            "sourceStart": 0,
+            "sourceDuration": 5.333333333333333
+          },
+          {
+            "id": "96EDCB4D-20ED-4331-B78D-BFEDC0D31238",
+            "assetID": "1CF21231-1A9A-4DFE-8BFA-B2384583641B",
+            "sourceStart": 234.26666666666668,
+            "sourceDuration": 5.166666666666667
+          },
+          {
+            "id": "678CAD8F-E34A-4028-BFE3-72CB5FEB592E",
+            "assetID": "1CF21231-1A9A-4DFE-8BFA-B2384583641B",
+            "sourceStart": 325.56666666666666,
+            "sourceDuration": 5.066666666666666
+          },
+          {
+            "id": "228B82D6-8AEA-4274-A990-BD3824418C68",
+            "assetID": "1CF21231-1A9A-4DFE-8BFA-B2384583641B",
+            "sourceStart": 526.8,
+            "sourceDuration": 4.3
+          },
+          {
+            "id": "54418444-D351-4C56-8A45-3FE973157B63",
+            "assetID": "FE4FC7F2-6F23-4DAE-8A39-40417E83DF48",
+            "sourceStart": 109.9,
+            "sourceDuration": 3.3
+          },
+          {
+            "id": "606644E4-281F-4752-A434-F099231A5CCA",
+            "assetID": "B7FF2341-5513-48E1-9209-82B6D36175EB",
+            "sourceStart": 0,
+            "sourceDuration": 3.3333333333333335
+          },
+          {
+            "id": "73A1BB36-4100-41A9-AB54-81F90E18A82A",
+            "assetID": "B7FF2341-5513-48E1-9209-82B6D36175EB",
+            "sourceStart": 12,
+            "sourceDuration": 5.1
+          },
+          {
+            "id": "D8DF4179-CF8A-44F7-8A1B-CE4BC28E705C",
+            "assetID": "B7FF2341-5513-48E1-9209-82B6D36175EB",
+            "sourceStart": 394.3333333333333,
+            "sourceDuration": 5.166666666666667
+          },
+          {
+            "id": "08E26DE6-8E3A-44E2-809A-E9F3047C38EF",
+            "assetID": "B7FF2341-5513-48E1-9209-82B6D36175EB",
+            "sourceStart": 442.8666666666667,
+            "sourceDuration": 5.1
+          },
+          {
+            "id": "CA02D8C8-B203-5F53-8B0C-BCDA985DFBFD",
+            "assetID": "8598BF3C-65B4-49F8-9430-D3078E4B398C",
+            "sourceStart": 6.366666666666666,
+            "sourceDuration": 1.8333333333333333
+          }
+        ],
+        "oldTitles": [
+          "Сплав",
+          "День 6 — Сплав — 22 июля 2026",
+          "У озера",
+          "Поход"
+        ],
+        "end": 1488.8999999999994
+      }
+    ]
+  },
+  {
+    "project": "Build/AutoEditStudy-2026-09-30/development-final-algorithm/project-1.veloedit/project.json",
+    "interpretation": "contiguous existing event membership; internal scenes and title text do not define new sections",
+    "parts": [
+      {
+        "eventID": "EB11A2D7-E34A-5FEA-A7BD-95030D3AED8B",
+        "start": 0,
+        "items": [
+          {
+            "id": "33078C41-0ED4-40BB-B28E-FD4F5BE8B5CC",
+            "assetID": "EE5AD841-97AC-4E59-9A5A-C0F91324C4F2",
+            "sourceStart": 541.7333333333333,
+            "sourceDuration": 7.7
+          },
+          {
+            "id": "6DE23BA7-D83A-4C03-A770-F909F5DCA41B",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "sourceStart": 46.56666666666667,
+            "sourceDuration": 7.166666666666667
+          },
+          {
+            "id": "405D8C4C-99E0-43FF-AF1E-710294EB5452",
+            "assetID": "F96C252C-209E-424F-8A76-7217B04923EB",
+            "sourceStart": 62.2,
+            "sourceDuration": 2.1666666666666665
+          },
+          {
+            "id": "F38B1A8A-5D14-484B-9D98-B2DD470E4889",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "sourceStart": 398.7,
+            "sourceDuration": 4.1
+          },
+          {
+            "id": "C9E6DEA8-BEE3-483C-A5D7-EEE52FB9A9CD",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "sourceStart": 560.0333333333333,
+            "sourceDuration": 4.4
+          },
+          {
+            "id": "3BB3B0F1-369D-4DEC-ADF9-DADEA7433101",
+            "assetID": "8C178005-2DCE-450E-8395-3F829C38AA45",
+            "sourceStart": 605.6666666666666,
+            "sourceDuration": 7.6
+          },
+          {
+            "id": "0B500947-E5F5-4F97-A8E3-B1A962F664CD",
+            "assetID": "4095AE0E-8FEC-4CDF-B83F-AF7CD9FB5625",
+            "sourceStart": 3.5,
+            "sourceDuration": 4.1
+          },
+          {
+            "id": "53B9C102-3600-43F9-B8C2-F6000148FA62",
+            "assetID": "4095AE0E-8FEC-4CDF-B83F-AF7CD9FB5625",
+            "sourceStart": 109.9,
+            "sourceDuration": 7.533333333333333
+          },
+          {
+            "id": "10EDD64E-0D7F-56D3-B077-27AEF19AA43D",
+            "assetID": "444D9769-E8AD-44CD-8AB9-03D1DD50CB30",
+            "sourceStart": 0,
+            "sourceDuration": 2.9
+          }
+        ],
+        "oldTitles": [
+          "Багги"
+        ],
+        "end": 47.666666666666664
+      }
+    ]
+  }
+]

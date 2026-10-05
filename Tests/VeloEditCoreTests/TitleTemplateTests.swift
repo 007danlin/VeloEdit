@@ -6,6 +6,31 @@ import Testing
 import UniformTypeIdentifiers
 @testable import VeloEditCore
 
+@Test func measuredCaptionHighlightFollowsRepeatedWordsAndPauses() throws {
+    var item = TitleTimelineItem(kind: .wordLevelCaptions, text: "мы здесь,\nмы снова здесь", startTime: 10, duration: 4)
+    item.words = [
+        .init(word: "мы", start: 0, end: 0.3),
+        .init(word: "здесь,", start: 0.4, end: 0.8),
+        .init(word: "мы", start: 1, end: 1.3),
+        .init(word: "снова", start: 1.4, end: 1.8),
+        .init(word: "здесь", start: 2, end: 2.4)
+    ]
+    #expect(item.activeWordRange(at: 10.2) == NSRange(location: 0, length: 2))
+    #expect(item.activeWordRange(at: 11.2) == NSRange(location: 10, length: 2))
+    #expect(item.activeWordRange(at: 12.2) == NSRange(location: 19, length: 5))
+    #expect(item.activeWordRange(at: 10.9) == nil)
+    item.text = "Текст был вручную переписан"
+    #expect(item.activeWordRange(at: 11.2) == nil)
+}
+
+@Test func cinematicCaptionCandidateDoesNotChangeOrdinaryCinematicTitleCommands() throws {
+    let title = TitleTimelineItem(kind: .title, text: "Поехали", startTime: 0, duration: 3)
+    let caption = TitleTimelineItem(kind: .automaticSubtitles, text: "Поехали", startTime: 0, duration: 3)
+    #expect(TitleEditInterpreter.applying("сделай киношный", to: title)?.item.templateID == "title.cinematic.v1")
+    #expect(TitleEditInterpreter.applying("сделай киношный", to: caption)?.item.templateID == "caption.cinematic.v1")
+    #expect(TitleEditInterpreter.applying("стиль Соцсети", to: caption)?.item.activeWordHighlighting == true)
+}
+
 @Test func professionalTitleTemplateCatalogIsDataDrivenAndDistinct() {
     let templates = TitleTemplateRegistry.all
     #expect(templates.count >= 14)

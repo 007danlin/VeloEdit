@@ -154,6 +154,8 @@ public struct TitleTemplateElement: Codable, Identifiable, Hashable, Sendable {
     public var fixedText: String?
     public var frame: TitleNormalizedRect
     public var portraitFrame: TitleNormalizedRect?
+    public var portraitFontSize: Double?
+    public var portraitMaxLines: Int?
     public var followsSafeArea: Bool
     public var fillColorHex: String
     public var strokeColorHex: String?
@@ -341,6 +343,24 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
             activeWordHighlighting: kind == .wordLevelCaptions
         )
     }
+
+    public func animationFitted(to duration: Double) -> TitleTemplateAnimation {
+        var result = animation
+        let staggerCount = Double(layout.elements.map(\.staggerIndex).max() ?? 0)
+        // Reserve a settled hold even for short timeline titles. Scaling the
+        // stagger along with the phase keeps late subtitles from disappearing.
+        func fitted(_ phase: TitleMotionPhase) -> TitleMotionPhase {
+            var phase = phase
+            let total = phase.duration + staggerCount * phase.stagger
+            let scale = min(1, max(0.05, duration) * 0.30 / max(0.001, total))
+            phase.duration *= scale
+            phase.stagger *= scale
+            return phase
+        }
+        result.animationIn = fitted(result.animationIn)
+        result.animationOut = fitted(result.animationOut)
+        return result
+    }
 }
 
 public enum TitleTemplateRegistry {
@@ -455,10 +475,11 @@ public enum TitleTemplateRegistry {
                 layout: TitleTemplateLayout(elements: [
                     shape("shadow", .rectangle, .init(x: 0.155, y: 0.365, width: 0.69, height: 0.27), "#111111", opacity: 0.88, stagger: 0, reveal: .horizontal),
                     shape("banner", .rectangle, .init(x: 0.13, y: 0.33, width: 0.69, height: 0.27), "#FFD60A", stagger: 1, reveal: .horizontal),
-                    text("primary", .primaryText, .init(x: 0.17, y: 0.355, width: 0.59, height: 0.20), type(sans, 126, 1, "#0B0B0D", -4, .left), uppercase: true, stagger: 2, reveal: .vertical),
+                    text("primary", .primaryText, .init(x: 0.17, y: 0.35, width: 0.61, height: 0.23), type(sans, 126, 1, "#0B0B0D", -4, .left), uppercase: true, stagger: 2, reveal: .vertical),
                     text("secondary", .secondaryText, .init(x: 0.55, y: 0.62, width: 0.27, height: 0.07), type(mono, 22, 0.76, "#FFFFFF", 2, .right), uppercase: true, stagger: 3)
                 ]), animation: kinetic,
-                textConstraints: TitleTextConstraints(maxCharacters: 24, maxLines: 1, maxWidth: 0.59, maxHeight: 0.20, minFontScale: 0.45)
+                textConstraints: TitleTextConstraints(maxCharacters: 24, maxLines: 2, maxWidth: 0.61, maxHeight: 0.23, minFontScale: 0.45),
+                styleAnchor: .init(x: 0.17, y: 0.355, width: 0.59, height: 0.20)
             ),
             TitleTemplateDefinition(
                 id: "title.elegant.v1", name: "Elegant", category: .mainTitles, kind: .title,
@@ -579,6 +600,6 @@ public enum TitleTemplateRegistry {
                 ]), animation: cleanCaption,
                 textConstraints: TitleTextConstraints(maxCharacters: 88, maxLines: 2, maxWidth: 0.74, maxHeight: 0.14, minFontScale: 0.48)
             )
-        ]
+        ].map(portraitLayout) + SpeechCaptionStyleCandidates.templates
     }
 }

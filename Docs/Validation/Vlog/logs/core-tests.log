@@ -1,0 +1,169 @@
+Building for debugging...
+[Using on-disk description]
+[1 / 1]
+[2 / 25] VeloEditCore
+[4 / 27] VeloEditCore
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:767:37: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 765 |     // Kernels use output coordinates, so portrait and offset render bounds
+ 766 |     // behave the same as landscape. All time variation is deterministic.
+ 767 |     private static let waveKernel = CIWarpKernel(source: """
+     |                                     `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 768 |         kernel vec2 waveWarp(vec4 bounds, float amplitude, float phase, float frequency, float radial) {
+ 769 |             vec2 p = destCoord();
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:778:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 776 |         """)
+ 777 | 
+ 778 |     private static let shapeMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 779 |         kernel vec4 reveal(vec4 bounds, float progress, float softness, float rotation, float mode) {
+ 780 |             vec2 p = destCoord() - bounds.xy - bounds.zw * 0.5;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:802:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 800 |         """)
+ 801 | 
+ 802 |     private static let shardMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 803 |         kernel vec4 shard(vec4 tile, float side) {
+ 804 |             vec2 uv = (destCoord() - tile.xy) / tile.zw;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:893:41: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 891 |     }
+ 892 | 
+ 893 |     private static let rgbSplitKernel = CIColorKernel(source: """
+     |                                         `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 894 |         kernel vec4 splitChannels(__sample red, __sample cyan, __sample original) {
+ 895 |             vec4 r = unpremultiply(red);
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[9 / 26] VeloEditCore
+[12 / 26] VeloEditCoreTests-product
+[13 / 26] VeloEditCore-product
+[14 / 26] veloedit-cli-product
+[16 / 28] VeloEdit-product
+[18 / 29] VeloEdit-product
+[19 / 26] VeloEditAppTests-product
+[21 / 27] VeloEditAppTests-product
+[21 / 27] VeloEditCoreTests-product/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ReliabilityStudyTests.swift:29:17: warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+ 27 |     }
+ 28 |     func save(_ image: CGImage, _ name: String) throws {
+ 29 |         let d = try #require(CGImageDestinationCreateWithURL(root.appendingPathComponent(name + ".png") as CFURL, UTType.png.identifier as CFString, 1, nil))
+    |                 `- warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+ 30 |         CGImageDestinationAddImage(d, image, nil); #expect(CGImageDestinationFinalize(d))
+ 31 |     }
+
+[#UnnecessaryEffectMarker]: <https://docs.swift.org/compiler/documentation/diagnostics/unnecessary-effect-marker>
+
+[27 / 29] VeloEditCoreTests-product
+[29 / 29] VeloEditCoreTests-product
+[32 / 32] VeloEditSpeechWorker-product
+Build complete! (12,91 с)
+Test Suite 'Selected tests' started at 2026-10-04 19:46:28.363.
+Test Suite 'VeloEditCoreTests.xctest' started at 2026-10-04 19:46:28.364.
+Test Suite 'VlogSpeechTests' started at 2026-10-04 19:46:28.364.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testCorruptModelAndTraversalAreRejected]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testCorruptModelAndTraversalAreRejected]' passed (0.002 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testIndependentSubtitlesAndMutedSourceException]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testIndependentSubtitlesAndMutedSourceException]' passed (0.000 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testLegacyBriefKeepsMissingPolicyAndVlogDoesNotChangeMood]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testLegacyBriefKeepsMissingPolicyAndVlogDoesNotChangeMood]' passed (0.001 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testManualCaptionTimingSurvivesReconciliationAndRegeneration]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testManualCaptionTimingSurvivesReconciliationAndRegeneration]' passed (0.003 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testOnlyConfirmedPauseBetweenCompleteSentencesIsShortened]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testOnlyConfirmedPauseBetweenCompleteSentencesIsShortened]' passed (0.000 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testPiecewiseSpeedMapAndTransitionExportClock]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testPiecewiseSpeedMapAndTransitionExportClock]' passed (0.002 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testQuarterTurnCameraTransformUsesCoreImageCoordinates]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testQuarterTurnCameraTransformUsesCoreImageCoordinates]' passed (0.000 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testRemovingChapterTitlesPreservesExplicitSpeechCaptionsInDeliveryContract]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testRemovingChapterTitlesPreservesExplicitSpeechCaptionsInDeliveryContract]' passed (0.017 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testSubtitlesIdempotentAndKeepManualTextStyleDisablingDeletion]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testSubtitlesIdempotentAndKeepManualTextStyleDisablingDeletion]' passed (0.000 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testTrimAndSplitPublishOnlyRetainedWholeWords]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testTrimAndSplitPublishOnlyRetainedWholeWords]' passed (0.000 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testVlogBuildRunsSpeechWithoutVisualCandidatesAndKeepsExactDurationUnmet]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testVlogBuildRunsSpeechWithoutVisualCandidatesAndKeepsExactDurationUnmet]' passed (0.187 seconds).
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testVlogUsesCaptureChronologyInsteadOfUnorderedImportedDictionary]' started.
+Test Case '-[VeloEditCoreTests.VlogSpeechTests testVlogUsesCaptureChronologyInsteadOfUnorderedImportedDictionary]' passed (0.001 seconds).
+Test Suite 'VlogSpeechTests' passed at 2026-10-04 19:46:28.578.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.214 (0.215) seconds
+Test Suite 'VeloEditCoreTests.xctest' passed at 2026-10-04 19:46:28.578.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.214 (0.215) seconds
+Test Suite 'Selected tests' passed at 2026-10-04 19:46:28.578.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.214 (0.215) seconds
+Test Suite 'Selected tests' started at 2026-10-04 19:46:28.711.
+Test Suite 'VeloEditAppTests.xctest' started at 2026-10-04 19:46:28.712.
+Test Suite 'VeloEditAppTests.xctest' passed at 2026-10-04 19:46:28.712.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-04 19:46:28.712.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test deliveryContractRejectsCroppingPreviewConfiguration() started.
+◇ Suite TitleTimelineAnchoringTests started.
+◇ Suite SpeechCancellationTests started.
+◇ Test deliveryContractRemovesPlaceholderAndCollidingAutomaticTitles() started.
+◇ Test workspaceAutosaveDoesNotInvalidateBackgroundCommit() started.
+◇ Test interactionLatencySummaryUsesP95BudgetsAndBoundedHistory() started.
+◇ Test deliveryContractReappliesEventSceneTitleContainmentAfterMusicSync() started.
+◇ Test frameQualityRejectsTrueBlackButKeepsDarkTexture() started.
+◇ Test deliveryContractRepairsExplicitMusicTitleAndSourceAudioRequirements() started.
+◇ Test directorBriefContractEnforcesSoftMusicDuckAndPreservesEveryKeyTitle() started.
+◇ Test deliveryContractValidatesCanonicalTagCoverageSharesAndRoleAnchors() started.
+◇ Test projectStoreRejectsStaleBackgroundCommit() started.
+◇ Test productionCacheIdentityIsStableAndInputSensitive() started.
+◇ Test previewGeometryContractKeepsTheWholeCameraFrame() started.
+◇ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() started.
+◇ Test deliveryContractBlocksConfirmedRenderedBlackFramesButNotMissingSamples() started.
+◇ Test deliveryContractRequiresStableRealtimePathForDecorated5KCameraMedia() started.
+◇ Test optimisticTimelineInsertionsAppearImmediatelyAndStayNormalized() started.
+◇ Test previewInvalidationDistinguishesOverlayOnlyAndStructuralEdits() started.
+◇ Test productionPlaybackActuallyReusesDerivedPhotoMedia() started.
+◇ Test directorBriefContractRepairsFormatSpecificMusicAudioAndTitlesButBlocksOriginalRequestedDuration() started.
+◇ Test pipelineDiscardsOutOfOrderOptimisticCommits() started.
+◇ Test productionCachesHaveHardMemoryBounds() started.
+◇ Test deliveryContractBlocksMismatchedExactDurationAndMomentCount() started.
+◇ Test optimisticTimelineMutationsAreSynchronousAndKeepMagneticTiming() started.
+◇ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() started.
+◇ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() started.
+◇ Test cancellationBeforeCallbackInstallationResumesExactlyOnce() started.
+◇ Test cancellationAfterCallbackInstallationDoesNotWaitForSpeechServer() started.
+✔ Test productionCacheIdentityIsStableAndInputSensitive() passed after 0.027 seconds.
+✔ Test interactionLatencySummaryUsesP95BudgetsAndBoundedHistory() passed after 0.027 seconds.
+✔ Test previewGeometryContractKeepsTheWholeCameraFrame() passed after 0.027 seconds.
+✔ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() passed after 0.027 seconds.
+✔ Test frameQualityRejectsTrueBlackButKeepsDarkTexture() passed after 0.027 seconds.
+✔ Test deliveryContractRejectsCroppingPreviewConfiguration() passed after 0.027 seconds.
+✔ Test optimisticTimelineInsertionsAppearImmediatelyAndStayNormalized() passed after 0.027 seconds.
+✔ Test projectStoreRejectsStaleBackgroundCommit() passed after 0.027 seconds.
+✔ Test previewInvalidationDistinguishesOverlayOnlyAndStructuralEdits() passed after 0.027 seconds.
+✔ Test deliveryContractReappliesEventSceneTitleContainmentAfterMusicSync() passed after 0.028 seconds.
+✔ Test deliveryContractRemovesPlaceholderAndCollidingAutomaticTitles() passed after 0.028 seconds.
+✔ Test workspaceAutosaveDoesNotInvalidateBackgroundCommit() passed after 0.028 seconds.
+✔ Test deliveryContractBlocksConfirmedRenderedBlackFramesButNotMissingSamples() passed after 0.028 seconds.
+✔ Test deliveryContractRepairsExplicitMusicTitleAndSourceAudioRequirements() passed after 0.028 seconds.
+✔ Test optimisticTimelineMutationsAreSynchronousAndKeepMagneticTiming() passed after 0.028 seconds.
+✔ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() passed after 0.015 seconds.
+✔ Test cancellationBeforeCallbackInstallationResumesExactlyOnce() passed after 0.015 seconds.
+✔ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() passed after 0.027 seconds.
+✔ Test cancellationAfterCallbackInstallationDoesNotWaitForSpeechServer() passed after 0.015 seconds.
+✔ Suite SpeechCancellationTests passed after 0.028 seconds.
+✔ Suite TitleTimelineAnchoringTests passed after 0.028 seconds.
+✔ Test directorBriefContractRepairsFormatSpecificMusicAudioAndTitlesButBlocksOriginalRequestedDuration() passed after 0.029 seconds.
+✔ Test productionCachesHaveHardMemoryBounds() passed after 0.030 seconds.
+✔ Test deliveryContractRequiresStableRealtimePathForDecorated5KCameraMedia() passed after 0.031 seconds.
+✔ Test deliveryContractBlocksMismatchedExactDurationAndMomentCount() passed after 0.041 seconds.
+✔ Test pipelineDiscardsOutOfOrderOptimisticCommits() passed after 0.051 seconds.
+✔ Test directorBriefContractEnforcesSoftMusicDuckAndPreservesEveryKeyTitle() passed after 0.060 seconds.
+✔ Test deliveryContractValidatesCanonicalTagCoverageSharesAndRoleAnchors() passed after 0.065 seconds.
+✔ Test productionPlaybackActuallyReusesDerivedPhotoMedia() passed after 0.202 seconds.
+✔ Test run with 27 tests in 2 suites passed after 0.202 seconds.
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ProjectInteractionTests started.
+◇ Test vlogStylePreservesExplicitPreferencesAndRestoresPreviousPresetAfterReopen() started.
+✔ Test vlogStylePreservesExplicitPreferencesAndRestoresPreviousPresetAfterReopen() passed after 0.040 seconds.
+✔ Suite ProjectInteractionTests passed after 0.040 seconds.
+✔ Test run with 1 test in 1 suite passed after 0.040 seconds.

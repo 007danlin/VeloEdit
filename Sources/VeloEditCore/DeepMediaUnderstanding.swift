@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 // MARK: - Visual embeddings and semantic index
 
@@ -53,7 +54,8 @@ public struct EmbeddingInput: Hashable, Sendable {
     }
 }
 
-/// Lightweight local descriptor built from already-decoded adaptive key frames.
+/// Deterministic descriptor, not a learned neural embedding network.
+/// Built from already-decoded adaptive key frames.
 /// It combines spatial luminance, histogram and hashed semantic channels, so it
 /// separates visually different events even when their high-level tags match.
 public struct LocalVisualEmbeddingModel: EmbeddingModelProtocol, Sendable {
@@ -987,6 +989,13 @@ public struct TranscriptSentence: Codable, Hashable, Sendable, Identifiable {
 }
 
 public struct SpeechTranscript: Codable, Hashable, Sendable {
+    public var provenance: SpeechProvenance?
+    public var status: SpeechRecognitionStatus?
+    public var warnings: [String]?
+    public var rawText: String?
+    public var speechRanges: [ClosedRange<Double>]?
+    public var segmentDiagnostics: [SpeechSegmentDiagnostic]?
+    public var runtimeMetrics: SpeechRuntimeMetrics?
     public var localeIdentifier: String
     public var words: [TranscriptWord]
     public var sentences: [TranscriptSentence]
@@ -1164,6 +1173,8 @@ public struct CachedCandidateDeepEvidence: Codable, Hashable, Sendable {
     public var sourceDuration: Double
     public var embedding: VisualEmbedding?
     public var subjectTracking: SubjectTrackingSummary?
+    public var embeddingInputSignature: String? = nil
+    public var trackingInputSignature: String? = nil
 
     public init(sourceStart: Double, sourceDuration: Double, embedding: VisualEmbedding? = nil, subjectTracking: SubjectTrackingSummary? = nil) {
         self.sourceStart = sourceStart
@@ -1172,11 +1183,13 @@ public struct CachedCandidateDeepEvidence: Codable, Hashable, Sendable {
         self.subjectTracking = subjectTracking
     }
 
-    public var stableKey: String { "\(Int((sourceStart * 100).rounded()))-\(Int((sourceDuration * 100).rounded()))" }
+    public var stableKey: String { "\(sourceStart.bitPattern)-\(sourceDuration.bitPattern)" }
 }
 
 public struct DeepMediaCacheRecord: Codable, Hashable, Sendable {
+    public var transcriptModelIdentity: String?
     public var contentHash: String
+    public var sourceIdentity: String? = nil
     public var version: Int
     public var candidates: [String: CachedCandidateDeepEvidence]
     public var transcript: SpeechTranscript?
@@ -1199,6 +1212,87 @@ public actor DeepAnalysisCache {
     private let maximumMemoryEntries: Int
     private var memory: [String: DeepMediaCacheRecord] = [:]
     private var memoryOrder: [String] = []
+
+    private struct VisionRecord: Codable {
+        var identity: String
+        var response: String
+        var checksum: Data
+    }
+    private struct VisionRequest {
+        var id: UUID
+        var task: Task<Void, Never>
+        var consumers: [UUID: CheckedContinuation<String, Error>]
+    }
+    private var visionRequests: [String: VisionRequest] = [:]
+
+    func visionConsumerCount(identity: String) -> Int {
+        visionRequests[identity]?.consumers.count ?? 0
+    }
+
+    func visionResponse(identity: String, indices: [Int], produce: @escaping @Sendable () async throws -> String) async throws -> (content: String, reused: Bool) {
+        try Task.checkCancellation()
+        let url = rootURL.appendingPathComponent("\(identity).vision-v1.json")
+        if let data = try? Data(contentsOf: url),
+           let record = try? JSONDecoder().decode(VisionRecord.self, from: data), record.identity == identity,
+           record.checksum == Data(SHA256.hash(data: Data(record.response.utf8))),
+           (try? OllamaVisionRuntime.parseBatch(record.response, indices: indices)) != nil {
+            return (record.response, true)
+        }
+        let requestID = visionRequests[identity]?.id ?? UUID()
+        let consumerID = UUID()
+        let reused = visionRequests[identity] != nil
+        let content: String = try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                if var existing = visionRequests[identity] {
+                    existing.consumers[consumerID] = continuation
+                    visionRequests[identity] = existing
+                } else {
+                    let task = Task {
+                        let result: Result<String, Error>
+                        do {
+                            let content = try await produce()
+                            try Task.checkCancellation()
+                            // Only complete, correctly indexed answers persist.
+                            _ = try OllamaVisionRuntime.parseBatch(content, indices: indices)
+                            result = .success(content)
+                        } catch { result = .failure(error) }
+                        finishVisionRequest(identity: identity, id: requestID, result: result)
+                    }
+                    visionRequests[identity] = VisionRequest(id: requestID, task: task,
+                        consumers: [consumerID: continuation])
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelVisionConsumer(identity: identity, requestID: requestID, consumerID: consumerID) }
+        }
+        try Task.checkCancellation()
+        return (content, reused)
+    }
+
+    private func cancelVisionConsumer(identity: String, requestID: UUID, consumerID: UUID) {
+        guard var work = visionRequests[identity], work.id == requestID,
+              let continuation = work.consumers.removeValue(forKey: consumerID) else { return }
+        if work.consumers.isEmpty {
+            visionRequests.removeValue(forKey: identity)
+            work.task.cancel()
+        } else { visionRequests[identity] = work }
+        // Release this caller immediately, even if the producer ignores cancellation.
+        continuation.resume(throwing: CancellationError())
+    }
+
+    private func finishVisionRequest(identity: String, id: UUID, result: Result<String, Error>) {
+        guard let work = visionRequests[identity], work.id == id else { return }
+        visionRequests.removeValue(forKey: identity)
+        if case .success(let content) = result {
+            try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+            if let data = try? JSONEncoder().encode(VisionRecord(identity: identity, response: content,
+                checksum: Data(SHA256.hash(data: Data(content.utf8))))) {
+                try? data.write(to: rootURL.appendingPathComponent("\(identity).vision-v1.json"), options: .atomic)
+            }
+        }
+        for continuation in work.consumers.values { continuation.resume(with: result) }
+    }
 
     public init(rootURL: URL, maximumMemoryEntries: Int = 48) {
         self.rootURL = rootURL

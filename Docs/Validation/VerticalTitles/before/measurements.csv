@@ -1,0 +1,156 @@
+template,scenario,element,font_at_360px,lines,truncated,outside_safe,glyph_collisions
+Minimal Clean,0,primary,30.159999999999997,1,false,false,0
+Minimal Clean,0,secondary,10.826666666666664,1,false,false,0
+Minimal Clean,1,primary,30.159999999999997,3,false,false,0
+Minimal Clean,1,secondary,10.826666666666664,1,false,false,0
+Minimal Clean,2,primary,30.159999999999997,1,false,false,0
+Minimal Clean,2,secondary,10.826666666666664,1,false,false,0
+Minimal Clean,3,primary,30.159999999999997,3,false,false,0
+Minimal Clean,3,secondary,10.826666666666664,1,false,false,0
+Minimal Clean,4,primary,30.159999999999997,1,false,false,0
+Minimal Clean,5,primary,39.208,1,false,false,0
+Minimal Clean,5,secondary,10.826666666666664,1,false,false,0
+Cinematic,0,primary,34.026666666666664,2,false,false,0
+Cinematic,0,secondary,8.893333333333333,1,false,false,0
+Cinematic,1,primary,34.026666666666664,4,false,false,1
+Cinematic,1,secondary,8.893333333333333,1,false,false,1
+Cinematic,2,primary,34.026666666666664,2,false,false,0
+Cinematic,2,secondary,8.893333333333333,1,false,false,0
+Cinematic,3,primary,34.026666666666664,4,false,false,1
+Cinematic,3,secondary,8.893333333333333,1,false,false,1
+Cinematic,4,primary,34.026666666666664,2,false,false,0
+Cinematic,5,primary,44.23466666666666,2,false,false,0
+Cinematic,5,secondary,8.893333333333333,1,false,false,0
+Modern,0,primary,36.346666666666664,2,false,false,0
+Modern,0,secondary,9.279999999999998,1,false,false,0
+Modern,1,primary,33.075466666666664,4,false,false,1
+Modern,1,secondary,9.279999999999998,1,false,false,1
+Modern,2,primary,36.346666666666664,2,false,false,0
+Modern,2,secondary,9.279999999999998,1,false,false,0
+Modern,3,primary,33.075466666666664,4,false,false,1
+Modern,3,secondary,9.279999999999998,1,false,false,1
+Modern,4,primary,36.346666666666664,2,false,false,0
+Modern,5,primary,47.25066666666666,2,false,false,0
+Modern,5,secondary,9.279999999999998,1,false,false,0
+Bold,0,primary,48.71999999999999,1,false,false,0
+Bold,0,secondary,8.506666666666666,1,false,false,0
+Bold,1,primary,36.71397912,3,false,false,0
+Bold,1,secondary,8.506666666666666,2,false,false,0
+Bold,2,primary,48.71999999999999,1,false,false,0
+Bold,2,secondary,8.506666666666666,1,false,false,0
+Bold,3,primary,36.71397912,3,false,false,0
+Bold,3,secondary,8.506666666666666,2,false,false,0
+Bold,4,primary,48.71999999999999,1,false,false,0
+Bold,5,primary,63.33599999999999,2,false,false,0
+Bold,5,secondary,8.506666666666666,1,false,false,0
+Elegant,0,primary,31.70666666666666,1,false,false,0
+Elegant,0,secondary,7.7333333333333325,1,false,false,0
+Elegant,1,primary,28.85306666666666,4,false,false,0
+Elegant,1,secondary,7.7333333333333325,1,false,false,0
+Elegant,2,primary,31.70666666666666,1,false,false,0
+Elegant,2,secondary,7.7333333333333325,1,false,false,0
+Elegant,3,primary,28.85306666666666,4,false,false,0
+Elegant,3,secondary,7.7333333333333325,1,false,false,0
+Elegant,4,primary,31.70666666666666,1,false,false,0
+Elegant,5,primary,41.218666666666664,2,false,false,0
+Elegant,5,secondary,7.7333333333333325,1,false,false,0
+Dynamic,0,primary,51.03999999999999,1,false,false,0
+Dynamic,0,secondary,12.373333333333331,1,false,false,0
+Dynamic,1,primary,35.000660094400004,2,false,false,0
+Dynamic,1,secondary,12.373333333333331,1,false,false,0
+Dynamic,2,primary,51.03999999999999,1,false,false,0
+Dynamic,2,secondary,12.373333333333331,1,false,false,0
+Dynamic,3,primary,35.000660094400004,2,false,false,0
+Dynamic,3,secondary,12.373333333333331,1,false,false,0
+Dynamic,4,primary,51.03999999999999,1,false,false,0
+Dynamic,5,primary,60.38031999999999,1,false,false,0
+Dynamic,5,secondary,12.373333333333331,1,false,false,0
+Travel,0,primary,37.11999999999999,1,false,false,0
+Travel,0,secondary,8.506666666666666,1,false,false,0
+Travel,1,primary,37.11999999999999,4,false,false,0
+Travel,1,secondary,8.506666666666666,1,false,false,0
+Travel,2,primary,37.11999999999999,1,false,false,0
+Travel,2,secondary,8.506666666666666,1,false,false,0
+Travel,3,primary,37.11999999999999,4,false,false,0
+Travel,3,secondary,8.506666666666666,1,false,false,0
+Travel,4,primary,37.11999999999999,1,false,false,0
+Travel,5,primary,48.25599999999999,2,false,false,0
+Travel,5,secondary,8.506666666666666,1,false,false,0
+Chapter,0,number,54.133333333333326,1,false,false,0
+Chapter,0,primary,26.896688,1,false,false,0
+Chapter,0,secondary,11.599999999999998,1,false,false,0
+Chapter,1,number,54.133333333333326,1,false,false,0
+Chapter,1,primary,26.896688,3,false,false,0
+Chapter,1,secondary,11.599999999999998,1,false,false,0
+Chapter,2,number,54.133333333333326,1,false,false,0
+Chapter,2,primary,26.896688,1,false,false,0
+Chapter,2,secondary,11.599999999999998,1,false,false,0
+Chapter,3,number,54.133333333333326,1,false,false,0
+Chapter,3,primary,26.896688,3,false,false,0
+Chapter,3,secondary,11.599999999999998,1,false,false,0
+Chapter,4,number,54.133333333333326,1,false,false,0
+Chapter,4,primary,26.896688,1,false,false,0
+Chapter,5,number,54.133333333333326,1,false,false,0
+Chapter,5,primary,26.349133294702398,1,false,false,0
+Chapter,5,secondary,11.599999999999998,1,false,false,0
+Location,0,primary,33.25333333333333,1,false,false,0
+Location,0,secondary,6.959999999999999,1,false,false,0
+Location,1,primary,15.961599999999997,1,true,false,0
+Location,1,secondary,6.959999999999999,1,false,false,0
+Location,2,primary,33.25333333333333,1,false,false,0
+Location,2,secondary,6.959999999999999,1,false,false,0
+Location,3,primary,15.961599999999997,1,true,false,0
+Location,3,secondary,6.959999999999999,1,false,false,0
+Location,4,primary,33.25333333333333,1,false,false,0
+Location,5,primary,43.22933333333332,1,false,false,0
+Location,5,secondary,6.959999999999999,1,false,false,0
+Lower Third,0,primary,21.65333333333333,2,false,false,1
+Lower Third,0,secondary,7.7333333333333325,1,false,false,1
+Lower Third,1,primary,17.93112533333333,3,false,false,1
+Lower Third,1,secondary,7.7333333333333325,1,false,false,1
+Lower Third,2,primary,21.65333333333333,2,false,false,1
+Lower Third,2,secondary,7.7333333333333325,1,false,false,1
+Lower Third,3,primary,17.93112533333333,3,false,false,1
+Lower Third,3,secondary,7.7333333333333325,1,false,false,1
+Lower Third,4,primary,21.65333333333333,2,false,false,0
+Lower Third,5,primary,28.149333333333328,2,false,false,1
+Lower Third,5,secondary,7.7333333333333325,1,false,false,1
+Date,0,primary,18.559999999999995,1,false,false,0
+Date,0,secondary,7.346666666666666,1,false,false,0
+Date,1,primary,18.559999999999995,2,false,false,0
+Date,1,secondary,7.346666666666666,1,false,false,0
+Date,2,primary,18.559999999999995,1,false,false,0
+Date,2,secondary,7.346666666666666,1,false,false,0
+Date,3,primary,18.559999999999995,2,false,false,0
+Date,3,secondary,7.346666666666666,1,false,false,0
+Date,4,primary,18.559999999999995,1,false,false,0
+Date,5,primary,24.127999999999997,1,false,false,0
+Date,5,secondary,7.346666666666666,1,false,false,0
+End Card,0,primary,35.57333333333333,1,false,false,0
+End Card,0,secondary,12.373333333333331,1,false,false,0
+End Card,0,cta,10.826666666666664,1,false,false,0
+End Card,1,primary,35.57333333333333,2,false,false,0
+End Card,1,secondary,12.373333333333331,1,false,false,0
+End Card,1,cta,10.826666666666664,1,false,false,0
+End Card,2,primary,35.57333333333333,1,false,false,0
+End Card,2,secondary,12.373333333333331,1,false,false,0
+End Card,2,cta,10.826666666666664,1,false,false,0
+End Card,3,primary,35.57333333333333,2,false,false,0
+End Card,3,secondary,12.373333333333331,1,false,false,0
+End Card,3,cta,10.826666666666664,1,false,false,0
+End Card,4,primary,35.57333333333333,1,false,false,0
+End Card,5,primary,46.24533333333333,1,false,false,0
+End Card,5,secondary,12.373333333333331,1,false,false,0
+End Card,5,cta,10.826666666666664,1,false,false,0
+Subtitles Clean,0,primary,19.33333333333333,1,false,false,0
+Subtitles Clean,1,primary,19.33333333333333,2,false,false,0
+Subtitles Clean,2,primary,19.33333333333333,1,false,false,0
+Subtitles Clean,3,primary,19.33333333333333,2,false,false,0
+Subtitles Clean,4,primary,19.33333333333333,1,false,false,0
+Subtitles Clean,5,primary,25.13333333333333,2,false,false,0
+Word Focus,0,primary,22.426666666666662,2,false,false,0
+Word Focus,1,primary,20.408266666666663,3,false,false,0
+Word Focus,2,primary,22.426666666666662,2,false,false,0
+Word Focus,3,primary,20.408266666666663,3,false,false,0
+Word Focus,4,primary,22.426666666666662,2,false,false,0
+Word Focus,5,primary,29.154666666666664,2,false,false,0

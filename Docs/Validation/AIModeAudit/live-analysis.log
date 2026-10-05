@@ -1,0 +1,5 @@
+/Users/daniellineckij/VeloEdit/Build/AIModeAudit/live-20260919/PerformanceRunner.app: replacing existing signature
+{"mode": "fast", "cache": "cold", "wallSeconds": 212.71907758400266, "exitCode": 0}
+{"mode": "fast", "cache": "warm", "wallSeconds": 1.5687614999988, "exitCode": 0}
+{"mode": "balanced", "cache": "cold", "wallSeconds": 536.0939360839984, "exitCode": 0}
+{"mode": "balanced", "cache": "warm", "wallSeconds": 0.9637113749995478, "exitCode": 0}

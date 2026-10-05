@@ -2,6 +2,7 @@ import Foundation
 
 public enum DirectorIntent: Codable, Hashable, Sendable {
     case createFilm
+    case vlogSpeech
     case addTitles
     case sourceAudio(DirectorSourceAudioPolicy)
     case evaluateNewAssets([UUID])
@@ -15,6 +16,8 @@ public struct IntentSatisfactionEvidence: Codable, Hashable, Sendable {
     public var timelineID: UUID?
     public var assetID: UUID?
     public var reason: String
+    public var candidateIDs: [UUID]? = nil
+    public var relatedCandidateIDs: [UUID]? = nil
 }
 public struct IntentLedgerEntry: Codable, Hashable, Sendable {
     public var id: UUID
@@ -24,6 +27,7 @@ public struct IntentLedgerEntry: Codable, Hashable, Sendable {
     public var status: IntentStatus
     public var evidence: [IntentSatisfactionEvidence]
     public var failureReason: String?
+    public var originalRequest: String? = nil
 }
 public struct IntentLedger: Codable, Hashable, Sendable {
     public static let schemaVersion = 1
@@ -55,8 +59,8 @@ public enum EditorialGenerationError: LocalizedError {
                 if !reasons.contains(reason) { reasons.append(reason) }
             }
             if reasons.isEmpty { reasons = ["не удалось подтвердить качество готового фильма"] }
-            return "Монтаж не сохранён: \(reasons.prefix(3).joined(separator: "; ")). Последняя рабочая версия сохранена."
-        case .unsatisfiedIntent(let reason): return "Запрос не выполнен: \(reason). Последняя рабочая версия сохранена."
+            return "Монтаж не сохранён: \(reasons.prefix(3).joined(separator: "; ")). Данные проекта сохранены."
+        case .unsatisfiedIntent(let reason): return "Запрос не выполнен: \(reason). Данные проекта сохранены."
         }
     }
 
@@ -89,18 +93,24 @@ public enum IntentLedgerEngine {
         }
         if EditorialIntentEnforcer.requestsAdditionalTitles(prompt)
             || (EditorialIntentEnforcer.titleRequest(prompt) != false && brief?.titlePolicy == .keyOnly) { intents.append(.addTitles) }
-        for text in pending.flatMap({ $0.components(separatedBy: CharacterSet(charactersIn: ".!?;\n")) }) {
+        for text in Array(Set(pending + [prompt])).flatMap({ $0.components(separatedBy: CharacterSet(charactersIn: ".!?;\n")) }) {
             let normalized = text.lowercased()
             let trimmed = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
+            if ["влог", "режим влог", "стиль: влог", "создай влог", "сделай влог"].contains(trimmed) {
+                intents.append(.vlogSpeech); continue
+            }
             // Questionnaire fields have independent delivery checks. Do not
             // reject the entire questionnaire, or skip a compound request just
             // because one of its clauses mentions titles.
-            if brief != nil, ["формат:", "точная длительность:", "настроение:", "музыка:", "звук:", "титры:"].contains(where: trimmed.hasPrefix) { continue }
-            if ["создай фильм", "создать фильм", "сделай фильм", "create film", "create a film"].contains(normalized.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            if brief != nil, ["формат:", "длительность:", "длительность —", "точная длительность:", "настроение:", "музыка:", "звук:", "титры:"].contains(where: trimmed.hasPrefix) { continue }
+            if ["фильм", "создай фильм", "создать фильм", "сделай фильм", "create film", "create a film"].contains(normalized.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 // This request is already represented by the generation entry.
                 continue
             }
+            if FilmDurationRequirement.parse(prompt: text).mode != .automatic { continue }
+            if !EditorCommandParser().parse(text, preset: .story).isEmpty { continue }
+            if ["динамично", "красиво", "кинематографично", "киношно"].contains(trimmed) { continue }
             if EditorialIntentEnforcer.titleRequest(text) != nil {
                 // Already resolved against the latest prompt above, including
                 // a later request to remove titles.
@@ -119,7 +129,14 @@ public enum IntentLedgerEngine {
         let evidence = IntentSatisfactionEvidence(timelineID: timeline.id, reason: "Проверено состояние сохраняемого Timeline")
         switch intent {
         case .createFilm:
-            return timeline.items.contains(where: { $0.overlay == nil && $0.kind != .title }) && timeline.editorialReview?.hardGatePassed != false ? (.fulfilled, [evidence], nil) : (.recoverableFailure, [], "Нет валидного Timeline")
+            let delivered = timeline.filmDeliveryReport?.isCurrent(for: timeline) == true
+            return timeline.items.contains(where: { $0.overlay == nil && $0.kind != .title }) && (delivered || timeline.editorialReview?.hardGatePassed != false) ? (.fulfilled, [evidence], nil) : (.recoverableFailure, [], "Нет валидного Timeline")
+        case .vlogSpeech:
+            let expected = Set(assets.filter { !$0.excluded && !$0.missing && $0.kind == .video && $0.metadata.hasAudio }.map(\.id))
+            let recognized = Set((timeline.speechRecords ?? []).map(\.assetID))
+            let valid = timeline.speechRecords != nil && expected.isSubset(of: recognized)
+                && timeline.items.allSatisfy { $0.overlay != nil || ($0.speed == 1 && !$0.isReversed) }
+            return valid ? (.fulfilled, [evidence], nil) : (.recoverableFailure, [], "Влог требует речевого анализа всех исходников и сохранения скорости голоса")
         case .sourceAudio(let policy):
             let valid = policy != .mute || timeline.effectiveOriginalAudioVolume == 0 && timeline.effectiveAudioClips.isEmpty && timeline.items.filter { $0.kind == .video }.allSatisfy { $0.effectiveAudioAdjustments.muted }
             return valid ? (.fulfilled, [evidence], nil) : (.recoverableFailure, [], "Нарушен source audio policy")
@@ -131,21 +148,18 @@ public enum IntentLedgerEngine {
             let present = analyses.flatMap(\.directorCandidates).filter { selected.contains($0.id) }.reduce(into: Set<String>()) { $0.formUnion($1.tags) }
             return tags.isSubset(of: present) ? (.fulfilled, [evidence], nil) : (.recoverableFailure, [], "Не сохранено обязательное содержание")
         case .evaluateNewAssets(let ids):
-            let selected = Set(timeline.items.compactMap(\.assetID))
+            let decisions = EditorialSourceCoverage.decisions(timeline: timeline, context: EditorialAnalysisContext(analyses: analyses), assets: assets)
             let values = ids.map { id -> IntentSatisfactionEvidence in
-                let asset = assets.first { $0.id == id }
-                let candidates = analyses.first { $0.assetID == id }?.directorCandidates ?? []
-                let reason: String
-                if selected.contains(id) { reason = "included" }
-                else if asset?.missing == true || candidates.isEmpty { reason = EditorialDiscardReason.unsupportedMedia.rawValue }
-                else if candidates.allSatisfy({ $0.excluded || $0.scores.quality < 0.38 }) { reason = EditorialDiscardReason.quality.rawValue }
-                else if candidates.contains(where: { $0.insights?.editorialEvidence?.hasHardOcclusion == true }) { reason = EditorialDiscardReason.unsafeCrop.rawValue }
-                else { reason = EditorialDiscardReason.noNarrativeFit.rawValue }
-                return .init(timelineID: timeline.id, assetID: id, reason: reason)
+                guard let decision = decisions.first(where: { $0.assetID == id }) else {
+                    return .init(timelineID: timeline.id, assetID: id, reason: "analysisUnavailable: исходник не найден")
+                }
+                return .init(timelineID: timeline.id, assetID: id,
+                    reason: decision.reason == .included ? "included" : "\(decision.reason.rawValue): \(decision.detail)",
+                    candidateIDs: decision.candidateIDs, relatedCandidateIDs: decision.relatedCandidateIDs)
             }
             return (.fulfilled, values, nil)
-        case .unverifiedInstruction:
-            return (.rejected, [], "Нет проверяемого редакционного контракта для этой инструкции; она не объявлена выполненной")
+        case .unverifiedInstruction(let text):
+            return (.rejected, [], "Не подтверждена инструкция «\(text.trimmingCharacters(in: .whitespacesAndNewlines))». Фильм сохранён; это указание требует уточнения.")
         }
     }
 }

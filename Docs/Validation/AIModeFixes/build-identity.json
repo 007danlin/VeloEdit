@@ -1,0 +1,12 @@
+{
+  "verifiedAt": "2026-09-19T10:01:15.865711+03:00",
+  "sourceSHA256": "6b10ba7adaaa234bbb2d611b7714b3e9508eb352648ac85b54ce5b946f568b18",
+  "app": {
+    "builtAt": "2026-09-19T07:00:49.972421+00:00",
+    "sourceSHA256": "6b10ba7adaaa234bbb2d611b7714b3e9508eb352648ac85b54ce5b946f568b18",
+    "build": "2026.262.070049",
+    "runtime": "Ollama 0.32.14"
+  },
+  "matches": true,
+  "cliSHA256": "e3c4a3345368be1a34d44fd18262fd83461373d432c8b16f05e0916faad7cee0"
+}

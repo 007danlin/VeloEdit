@@ -1,0 +1,32 @@
+    Blocking waiting for file lock on build directory
+    Finished `release` profile [optimized] target(s) in 44.38s
+Another instance of SwiftPM (PID: 53694) is already running using '/Users/daniellineckij/Library/Caches/VeloEditBuild/swift', waiting until that process has finished execution...[0/1] Planning build
+Building for production...
+[0/6] Write sources
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/7] Compiling VeloEditCore AIDirectorEngine.swift
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialAudioMastering.swift:316:49: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+314 |         let effectiveMix: AVAudioMix = mix ?? {
+315 |             let unity = AVMutableAudioMix()
+316 |             unity.inputParameters = composition.tracks(withMediaType: .audio).map { AVMutableAudioMixInputParameters(track: $0) }
+    |                                                 `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+317 |             return unity
+318 |         }()
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/WebMusicProvider.swift:29:25: warning: consider using asynchronous alternative function
+ 27 |             if !probe.pending {
+ 28 |                 probe.pending = true
+ 29 |                 browser.evaluateJavaScript("""
+    |                         `- warning: consider using asynchronous alternative function
+ 30 |                 JSON.stringify({
+ 31 |                   blocked: !!document.querySelector('form[action*="anomaly"], #challenge-form'),
+
+WebKit.WKWebView.evaluateJavaScript:2:11: note: 'evaluateJavaScript' declared here
+1 | class WKWebView {
+2 | open func evaluateJavaScript(_ javaScriptString: String) async throws -> Any?}
+  |           `- note: 'evaluateJavaScript' declared here
+3 | 
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+error: input file '/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialSourceCoverage.swift' was modified during the build
+error: input file '/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/EditorialSourceCoverage.swift' was modified during the build

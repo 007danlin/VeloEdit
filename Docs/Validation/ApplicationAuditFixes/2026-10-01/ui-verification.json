@@ -1,0 +1,83 @@
+{
+  "qa_app": "Build/VeloEditAuditFixes.app (isolated copy of first complete Release bundle)",
+  "project": "Manual-check.veloedit (copy)",
+  "window_points": [
+    [
+      980,
+      752
+    ],
+    [
+      1280,
+      802
+    ]
+  ],
+  "selection": {
+    "title_inspector_opened": true,
+    "video_inspector_asset": "03_Square.mp4",
+    "delete_target": "selected video clip",
+    "title_preserved": true,
+    "duration_after_delete": 12,
+    "duration_after_undo": 18
+  },
+  "compact_layout": {
+    "library_columns_visible": true,
+    "adaptive_tabs": true,
+    "preview_heading_visible": true,
+    "export_button_visible": true
+  },
+  "long_title_input": {
+    "cases": [
+      "200 Latin/digit characters without spaces",
+      "200 Cyrillic Я characters",
+      "Аудит 🎬\\nНовая строка"
+    ],
+    "input_remained_editable": true,
+    "navigation_to_director_succeeded": true,
+    "full_screen_retest": false
+  },
+  "ai_accessibility": [
+    {
+      "label": "Быстрый",
+      "value": "Выбрано",
+      "id": "ai-power-fast"
+    },
+    {
+      "label": "Баланс",
+      "value": "Не выбрано",
+      "id": "ai-power-balanced"
+    },
+    {
+      "label": "Качество",
+      "value": "Не выбрано",
+      "id": "ai-power-quality"
+    },
+    {
+      "label": "Максимально",
+      "value": "Не выбрано",
+      "id": "ai-power-maximum"
+    }
+  ],
+  "final_fcp_import": {
+    "file": "Audit-final.fcpxml",
+    "producer": "Build/AuditFixCache/debug/veloedit-cli, final source",
+    "library": "VeloEdit Audit Fixes.fcpbundle",
+    "editable_project": "VeloEdit Film — Editable 2",
+    "primary_clips": 4,
+    "duration_seconds": 18,
+    "title_start_seconds": 15,
+    "title_duration_seconds": 3,
+    "title_text_in_editable_text_inspector": "Аудит 🎬 — Русский и Latin",
+    "title_font": "Avenir Next",
+    "title_size": 94,
+    "reference_project": "VeloEdit Film — Rendered Reference 1",
+    "reference_duration_seconds": 18,
+    "dtd_error": false,
+    "missing_effect_warning": false
+  },
+  "limitations": [
+    "No full VoiceOver session",
+    "No subjective audio evaluation",
+    "No full COVERAGE.md audit",
+    "UI tool latency is not application latency"
+  ]
+}

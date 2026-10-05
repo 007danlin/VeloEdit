@@ -1,0 +1,593 @@
+Another instance of SwiftPM (PID: 54001) is already running using '/Users/daniellineckij/VeloEdit/Build/SmartChapterTitles/Swift', waiting until that process has finished execution...Building for debugging...
+[1 / 1]
+[2 / 10] VeloEdit-product
+[3 / 11] VeloEdit-product
+Build complete! (19,15 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite SmartChapterTitlesTests started.
+◇ Suite FilmSpeedAndTitlesTests started.
+◇ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() started.
+◇ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() started.
+◇ Suite TitleTimelineAnchoringTests started.
+◇ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() started.
+◇ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() started.
+◇ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() started.
+◇ Test wholePartsKeepMembershipAndEqualNamesAcrossScenesAndFiles() started.
+◇ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() started.
+◇ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() started.
+◇ Suite AutomaticEditorialAssemblyTests started.
+◇ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() started.
+◇ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() started.
+◇ Test staleAutomaticSceneNameCannotSupplyItsOwnEvidence() started.
+◇ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() started.
+◇ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() started.
+◇ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() started.
+◇ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test duplicateFastPathPreservesOverlapAndInformationThresholds() started.
+◇ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() started.
+◇ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() started.
+◇ Test impossibleRequestPreservesOriginalDurationContract() started.
+◇ Test case passing 1 argument seed → 0 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 1 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 2 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 3 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 4 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 5 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 6 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 7 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+✔ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() passed after 0.166 seconds.
+✔ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() passed after 0.166 seconds.
+✔ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() passed after 0.165 seconds.
+✔ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() passed after 0.166 seconds.
+✔ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() passed after 0.165 seconds.
+✔ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() passed after 0.166 seconds.
+✔ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() passed after 0.166 seconds.
+✔ Test staleAutomaticSceneNameCannotSupplyItsOwnEvidence() passed after 0.166 seconds.
+✔ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() passed after 0.166 seconds.
+✔ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() passed after 0.166 seconds.
+✔ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() passed after 0.166 seconds.
+✔ Test wholePartsKeepMembershipAndEqualNamesAcrossScenesAndFiles() passed after 0.166 seconds.
+✔ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() passed after 0.166 seconds.
+✔ Test duplicateFastPathPreservesOverlapAndInformationThresholds() passed after 0.166 seconds.
+✔ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() passed after 0.169 seconds.
+✔ Suite TitleTimelineAnchoringTests passed after 0.170 seconds.
+◇ Test persistedCacheDoesNotCallModelAndRenamingFilesDoesNotInvalidateIt() started.
+✔ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) with 8 test cases passed after 0.231 seconds.
+✔ Test impossibleRequestPreservesOriginalDurationContract() passed after 0.284 seconds.
+✔ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() passed after 0.346 seconds.
+✔ Suite AutomaticEditorialAssemblyTests passed after 0.347 seconds.
+✔ Test persistedCacheDoesNotCallModelAndRenamingFilesDoesNotInvalidateIt() passed after 0.182 seconds.
+◇ Test onlyAffectedPartRecomputesAndModelVersionInvalidatesCache() started.
+✔ Test onlyAffectedPartRecomputesAndModelVersionInvalidatesCache() passed after 0.043 seconds.
+◇ Test manualTextStyleAndReferenceHavePriority() started.
+✔ Test manualTextStyleAndReferenceHavePriority() passed after 0.017 seconds.
+◇ Test objectOnlyEvidenceCannotProveAnActionAndVerifierCanRejectIt() started.
+✔ Test objectOnlyEvidenceCannotProveAnActionAndVerifierCanRejectIt() passed after 0.012 seconds.
+◇ Test outOfCutEventAndSpeechAreNotVisualProof() started.
+✔ Test outOfCutEventAndSpeechAreNotVisualProof() passed after 0.012 seconds.
+◇ Test malformedResponsePreservesExistingTitleAndRepairsNoMontage() started.
+✔ Test malformedResponsePreservesExistingTitleAndRepairsNoMontage() passed after 0.016 seconds.
+◇ Test unknownTimezoneAndCopyDatesCannotAppearAsCaptureDates() started.
+✔ Test unknownTimezoneAndCopyDatesCannotAppearAsCaptureDates() passed after 0.063 seconds.
+◇ Test titlesForbiddenAndTooShortPartFollowExistingRules() started.
+✔ Test titlesForbiddenAndTooShortPartFollowExistingRules() passed after 0.022 seconds.
+◇ Test unknownLegacyFieldsDecodeAndNewDecisionsSurviveRoundTrip() started.
+✔ Test unknownLegacyFieldsDecodeAndNewDecisionsSurviveRoundTrip() passed after 0.001 seconds.
+◇ Test lateModelResultCannotOverwriteManualEditAndCancellationDoesNotCommit() started.
+✔ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() passed after 0.792 seconds.
+◇ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() started.
+✔ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() passed after 0.001 seconds.
+◇ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() started.
+✔ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() passed after 0.002 seconds.
+◇ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() started.
+✔ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() passed after 0.003 seconds.
+◇ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() started.
+✔ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() passed after 0.002 seconds.
+◇ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() started.
+✔ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() passed after 0.001 seconds.
+◇ Test telemetrySetInsertionOrderCannotChangeRenderSignature() started.
+✔ Test telemetrySetInsertionOrderCannotChangeRenderSignature() passed after 0.009 seconds.
+◇ Test progressRelayKeepsStageChangesAndCompletion() started.
+✔ Test progressRelayKeepsStageChangesAndCompletion() passed after 0.001 seconds.
+✔ Suite FilmSpeedAndTitlesTests passed after 0.812 seconds.
+✔ Test lateModelResultCannotOverwriteManualEditAndCancellationDoesNotCommit() passed after 0.284 seconds.
+◇ Test insertingShotInsideSavedPartDoesNotCreateAnActionTitle() started.
+✔ Test insertingShotInsideSavedPartDoesNotCreateAnActionTitle() passed after 0.015 seconds.
+◇ Test broadAndRareThemesAreNotLimitedToActivityDictionary() started.
+✔ Test broadAndRareThemesAreNotLimitedToActivityDictionary() passed after 0.146 seconds.
+◇ Test repeatedPerformanceScenariosRecordCallsAndLocalInvalidation() started.
+✔ Test repeatedPerformanceScenariosRecordCallsAndLocalInvalidation() passed after 0.312 seconds.
+◇ Test oneFileCanContainTwoPartsAndReanalysisDoesNotInvalidateUnchangedIntervals() started.
+✔ Test oneFileCanContainTwoPartsAndReanalysisDoesNotInvalidateUnchangedIntervals() passed after 0.032 seconds.
+◇ Test speechCaptionAtBeginningDoesNotReplacePartTitle() started.
+✔ Test speechCaptionAtBeginningDoesNotReplacePartTitle() passed after 0.012 seconds.
+➜ Test installedModelGeneratesAndIndependentlyVerifiesRussianTitle() skipped.
+➜ Test savedControlKeepsEveryCutAndExistingEventMembershipWithUnavailableModel() skipped.
+✔ Suite SmartChapterTitlesTests passed after 1.347 seconds.
+✔ Test run with 43 tests in 4 suites passed after 1.348 seconds.
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          [28 / 53] VeloEdit
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1101:71: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1096 |         isImporting = true
+1097 |         importWarnings = []
+1098 |         run("Импортирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+1099 |             defer { self.isImporting = false }
+1100 |             let previousAssetIDs = Set(self.project?.assets.map(\.id) ?? [])
+1101 |             let errors = try await pipeline.importMedia(urls) { [weak self] item in
+     |                                                                       |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                       `- note: explicitly assign the capture list item to silence
+1102 |                 Task { @MainActor in self?.setProgress(item, base: 0, span: 0.70, phase: "Импорт") }
+1103 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1107:77: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1096 |         isImporting = true
+1097 |         importWarnings = []
+1098 |         run("Импортирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+1099 |             defer { self.isImporting = false }
+1100 |             let previousAssetIDs = Set(self.project?.assets.map(\.id) ?? [])
+     :
+1105 |             self.activityTitle = "Создаю изображения предварительного просмотра исходников"
+1106 |             self.progress = 0.70
+1107 |             let thumbnailErrors = await pipeline.generateThumbnails { [weak self] item in
+     |                                                                             |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                             `- note: explicitly assign the capture list item to silence
+1108 |                 Task { @MainActor in self?.setProgress(item, base: 0.70, span: 0.30, phase: "Предпросмотр") }
+1109 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1141:107: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1137 |         guard let pipeline, !isWorking else { return }
+1138 |         isAnalyzing = true
+1139 |         run("Анализирую материалы") {
+     |                                     |- note: 'self' implicitly strongly captured here
+     |                                     `- note: add 'self' as a capture list item to silence
+1140 |             defer { self.isAnalyzing = false }
+1141 |             let count = try await pipeline.analyzeMissing(preferredAssetID: self.selectedAssetID) { [weak self] item in
+     |                                                                                                           |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                           `- note: explicitly assign the capture list item to silence
+1142 |                 Task { @MainActor in self?.setProgress(item, showsAnalysisFileProgress: true) }
+1143 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1254:83: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1250 |         aiModelDownloadProgress = 0
+1251 |         if mode == aiPowerMode { aiVisionModelStatus = "Подготавливаю загрузку…" }
+1252 |         Task {
+     |              |- note: 'self' implicitly strongly captured here
+     |              `- note: add 'self' as a capture list item to silence
+1253 |             do {
+1254 |                 try await LocalAIModelManager.shared.pull(model: modelID) { [weak self] update in
+     |                                                                                   |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                   `- note: explicitly assign the capture list item to silence
+1255 |                     Task { @MainActor in
+1256 |                         self?.aiModelDownloadProgress = update.fraction
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1504:41: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1454 |         directorGeneration &+= 1
+1455 |         let responseGeneration = directorGeneration
+1456 |         directorTask = Task {
+     |                             |- note: 'self' implicitly strongly captured here
+     |                             `- note: add 'self' as a capture list item to silence
+1457 |             let activity = WorkActivity(reason: "Ответ и монтаж VeloEdit")
+1458 |             defer { withExtendedLifetime(activity) {} }
+     :
+1502 |                 context: directorContext(selection: (submittedSelection, submittedPlayhead)),
+1503 |                 mode: requestMode,
+1504 |                 onPartialReply: { [weak self] text in
+     |                                         |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                         `- note: explicitly assign the capture list item to silence
+1505 |                     guard let self, self.directorGeneration == responseGeneration else { return }
+1506 |                     self.directorStatus = "\(text) · план ещё формируется"
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1726:71: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1672 |         progress = 0
+1673 |         isCreatingFilm = true
+1674 |         run("Запускаю создание фильма") {
+     |                                         |- note: 'self' implicitly strongly captured here
+     |                                         `- note: add 'self' as a capture list item to silence
+1675 |             defer { self.isCreatingFilm = false }
+1676 |             do {
+     :
+1724 |                 self.beginUnmeasuredActivity(at: 0.60, step: .preparing)
+1725 |                 let filmBuildGeneration = self.operationGeneration
+1726 |                 let buildProgress: FilmBuildProgressHandler = { [weak self] update in
+     |                                                                       |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                       `- note: explicitly assign the capture list item to silence
+1727 |                     await self?.setFilmBuildProgress(update, generation: filmBuildGeneration)
+1728 |                 }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1781:72: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1672 |         progress = 0
+1673 |         isCreatingFilm = true
+1674 |         run("Запускаю создание фильма") {
+     |                                         |- note: 'self' implicitly strongly captured here
+     |                                         `- note: add 'self' as a capture list item to silence
+1675 |             defer { self.isCreatingFilm = false }
+1676 |             do {
+     :
+1779 |                 self.status = "Соединяю \(timeline.items.count) фрагментов в одну композицию"
+1780 |                 self.beginUnmeasuredActivity(at: 0.84, step: .playback)
+1781 |                 let playback = try await pipeline.makePlayback { [weak self] item in
+     |                                                                        |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                        `- note: explicitly assign the capture list item to silence
+1782 |                     Task { @MainActor in
+1783 |                         guard let self, self.isWorking, self.isCreatingFilm,
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1860:62: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1854 |         projectRestoreTask = nil
+1855 |         isCreatingFilm = true
+1856 |         run("Продолжаю сохранённую сборку") {
+     |                                             |- note: 'self' implicitly strongly captured here
+     |                                             `- note: add 'self' as a capture list item to silence
+1857 |             defer { self.isCreatingFilm = false }
+1858 |             self.beginUnmeasuredActivity(at: 0, step: .finishing)
+1859 |             let generation = self.operationGeneration
+1860 |             let callback: FilmBuildProgressHandler = { [weak self] update in
+     |                                                              |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                              `- note: explicitly assign the capture list item to silence
+1861 |                 await self?.setFilmBuildProgress(update, generation: generation)
+1862 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:1868:68: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1854 |         projectRestoreTask = nil
+1855 |         isCreatingFilm = true
+1856 |         run("Продолжаю сохранённую сборку") {
+     |                                             |- note: 'self' implicitly strongly captured here
+     |                                             `- note: add 'self' as a capture list item to silence
+1857 |             defer { self.isCreatingFilm = false }
+1858 |             self.beginUnmeasuredActivity(at: 0, step: .finishing)
+     :
+1866 |             self.activityTitle = "Готовлю просмотр фильма"
+1867 |             self.beginUnmeasuredActivity(at: 0.84, step: .playback)
+1868 |             let playback = try await pipeline.makePlayback { [weak self] item in
+     |                                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                    `- note: explicitly assign the capture list item to silence
+1869 |                 Task { @MainActor in
+1870 |                     guard let self, self.isWorking, self.isCreatingFilm,
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2002:120: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+1999 |         }
+2000 |         guard let pipeline else { return }
+2001 |         run("Готовлю предварительный просмотр") {
+     |                                                 |- note: 'self' implicitly strongly captured here
+     |                                                 `- note: add 'self' as a capture list item to silence
+2002 |             let playback = try await pipeline.makePlayback(interactiveQuality: Self.interactivePreviewQuality) { [weak self] item in
+     |                                                                                                                        |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                        `- note: explicitly assign the capture list item to silence
+2003 |                 Task { @MainActor in self?.setProgress(item) }
+2004 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2024:76: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2021 |         panel.allowedContentTypes = [.quickTimeMovie]
+2022 |         guard panel.runModal() == .OK, let url = panel.url else { return }
+2023 |         run("Экспортирую прозрачную телеметрию", completionNotification: "Экспорт завершён") {
+     |                                                                                              |- note: 'self' implicitly strongly captured here
+     |                                                                                              `- note: add 'self' as a capture list item to silence
+2024 |             _ = try await pipeline.renderTelemetryOverlay(to: url) { [weak self] item in
+     |                                                                            |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                            `- note: explicitly assign the capture list item to silence
+2025 |                 Task { @MainActor in self?.setProgress(item) }
+2026 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2065:125: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2060 |     func saveVideo() {
+2061 |         guard let pipeline, timeline != nil, !isWorking else { return }
+2062 |         run("Сохраняю видео", completionNotification: "Видео сохранено") {
+     |                                                                          |- note: 'self' implicitly strongly captured here
+     |                                                                          `- note: add 'self' as a capture list item to silence
+2063 |             try await self.commitTimelineForExport(using: pipeline)
+2064 |             let url = await pipeline.defaultVideoDestination()
+2065 |             let report = try await pipeline.render(to: url, quality: .maximum, frameRate: self.timeline?.frameRate) { [weak self] item in
+     |                                                                                                                             |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                             `- note: explicitly assign the capture list item to silence
+2066 |                 Task { @MainActor in self?.setProgress(item) }
+2067 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2084:132: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2080 |         panel.allowedContentTypes = [.mpeg4Movie]
+2081 |         guard panel.runModal() == .OK, let url = panel.url else { return }
+2082 |         run("Сохраняю видео", completionNotification: "Видео сохранено") {
+     |                                                                          |- note: 'self' implicitly strongly captured here
+     |                                                                          `- note: add 'self' as a capture list item to silence
+2083 |             try await self.commitTimelineForExport(using: pipeline)
+2084 |             let report = try await pipeline.render(to: url, quality: quality, frameRate: frameRate, replaceExisting: true) { [weak self] item in
+     |                                                                                                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                                                                    `- note: explicitly assign the capture list item to silence
+2085 |                 Task { @MainActor in self?.setProgress(item) }
+2086 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:2308:80: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+2305 |         guard let pipeline, let projectURL, !isWorking else { return }
+2306 |         let destination = projectURL.deletingLastPathComponent().appendingPathComponent("\(project?.name ?? "Проект") — копия \(UUID().uuidString.prefix(6)).veloedit")
+2307 |         run("Собираю копию проекта") {
+     |                                      |- note: 'self' implicitly strongly captured here
+     |                                      `- note: add 'self' as a capture list item to silence
+2308 |             _ = try await pipeline.collectProjectCopy(to: destination) { [weak self] update in
+     |                                                                                |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                                                `- note: explicitly assign the capture list item to silence
+2309 |                 Task { @MainActor in self?.setProgress(update) }
+2310 |             }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:3965:41: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+3949 |         progress = 0
+3950 |         isCreatingFilm = true
+3951 |         run("ИИ применяет комментарий к монтажу", presentation: .editorAI) {
+     |                                                                            |- note: 'self' implicitly strongly captured here
+     |                                                                            `- note: add 'self' as a capture list item to silence
+3952 |             defer { self.isCreatingFilm = false }
+3953 |             self.activityTitle = "Понимаю монтажную правку"
+     :
+3963 |                 mode: .edit,
+3964 |                 recordInHistory: false,
+3965 |                 onPartialReply: { [weak self] text in self?.status = "\(text) · ожидаю полный план" }
+     |                                         |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                         `- note: explicitly assign the capture list item to silence
+3966 |             )
+3967 |             try Task.checkCancellation()
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:6557:52: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+6465 |             await self?.setFilmBuildProgress(update, generation: runGeneration)
+6466 |         }
+6467 |         activeTask = Task {
+     |                           |- note: 'self' implicitly strongly captured here
+     |                           `- note: add 'self' as a capture list item to silence
+6468 |             let activity = WorkActivity(reason: initialStatus)
+6469 |             defer { withExtendedLifetime(activity) {} }
+     :
+6555 |                 isActivityComplete = completedSuccessfully
+6556 |                 if completedSuccessfully { progress = 1 }
+6557 |                 activityDismissTask = Task { [weak self] in
+     |                                                    |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                                    `- note: explicitly assign the capture list item to silence
+6558 |                     try? await Task.sleep(for: .seconds(completedSuccessfully ? 3.2 : 1.5))
+6559 |                     guard !Task.isCancelled else { return }
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEdit/AppModel.swift:6570:37: warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+6465 |             await self?.setFilmBuildProgress(update, generation: runGeneration)
+6466 |         }
+6467 |         activeTask = Task {
+     |                           |- note: 'self' implicitly strongly captured here
+     |                           `- note: add 'self' as a capture list item to silence
+6468 |             let activity = WorkActivity(reason: initialStatus)
+6469 |             defer { withExtendedLifetime(activity) {} }
+     :
+6568 |                 }
+6569 |             }
+6570 |             Task { @MainActor [weak self] in
+     |                                     |- warning: 'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope [#ImplicitStrongCapture]
+     |                                     `- note: explicitly assign the capture list item to silence
+6571 |                 try? await Task.sleep(for: .milliseconds(retryAfterConflict ? 350 : 120))
+6572 |                 guard let self else { return }
+
+[#ImplicitStrongCapture]: <https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture>
+[30 / 53] VeloEdit
+[31 / 53] VeloEdit
+[32 / 53] VeloEdit
+[32 / 53] VeloEdit-product
+[33 / 53] VeloEdit
+[36 / 53] VeloEdit
+[38 / 54] VeloEditCoreTests-product
+[40 / 54] veloedit-cli-product
+[42 / 53] VeloEdit-product
+[46 / 64] VeloEditCoreTests-product
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ReliabilityStudyTests.swift:29:17: warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+ 27 |     }
+ 28 |     func save(_ image: CGImage, _ name: String) throws {
+ 29 |         let d = try #require(CGImageDestinationCreateWithURL(root.appendingPathComponent(name + ".png") as CFURL, UTType.png.identifier as CFString, 1, nil))
+    |                 `- warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+ 30 |         CGImageDestinationAddImage(d, image, nil); #expect(CGImageDestinationFinalize(d))
+ 31 |     }
+
+[#UnnecessaryEffectMarker]: <https://docs.swift.org/compiler/documentation/diagnostics/unnecessary-effect-marker>
+[47 / 75] VeloEditAppTests-product
+[49 / 75] VeloEditCoreTests-product
+[51 / 77] VeloEditCoreTests-product
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/FilmDurationRecoveryTests.swift:12:47: warning: '#require(_:_:)' is redundant because 'MediaCompatibility.converterURL' never equals 'nil' (from macro 'require')
+10 |         let source = root.appendingPathComponent("camera.mp4")
+11 |         let producer = Process()
+12 |         producer.executableURL = try #require(MediaCompatibility.converterURL)
+   |                                               `- warning: '#require(_:_:)' is redundant because 'MediaCompatibility.converterURL' never equals 'nil' (from macro 'require')
+13 |         producer.arguments = ["-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=96x64:rate=30", "-t", "10", "-c:v", "libx264", "-pix_fmt", "yuv420p", source.path]
+14 |         try producer.run(); producer.waitUntilExit()
+[54 / 77] VeloEditCoreTests-product
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[55 / 77] VeloEditCoreTests-product
+[56 / 79] VeloEditCoreTests-product
+[58 / 79] VeloEditCoreTests-product
+[60 / 79] VeloEditCoreTests-product
+[61 / 79] VeloEditCoreTests-product
+[62 / 79] VeloEditCoreTests-product
+[64 / 79] VeloEditAppTests-product
+[66 / 79] VeloEditAppTests-product
+[67 / 79] VeloEditAppTests-product
+[68 / 79] VeloEditAppTests-product
+[69 / 79] VeloEditAppTests-product
+[70 / 79] VeloEditAppTests-product
+[72 / 79] VeloEditAppTests-product
+[74 / 79] VeloEditAppTests-product
+[74 / 79] VeloEditCoreTests-product
+[76 / 81] VeloEditCoreTests-product
+[76 / 79] VeloEditAppTests-product
+[78 / 79] VeloEditAppTests-product
+[80 / 80] VeloEditAppTests-product
+[81 / 81] veloedit-cli-product
+Build complete! (146,64 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() started.
+◇ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() started.
+◇ Suite FilmSpeedAndTitlesTests started.
+◇ Suite AutomaticEditorialAssemblyTests started.
+◇ Suite TitleTimelineAnchoringTests started.
+◇ Suite SmartChapterTitlesTests started.
+◇ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() started.
+◇ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() started.
+◇ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() started.
+◇ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() started.
+◇ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() started.
+◇ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() started.
+◇ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() started.
+◇ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() started.
+◇ Test staleAutomaticSceneNameCannotSupplyItsOwnEvidence() started.
+◇ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() started.
+◇ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() started.
+◇ Test wholePartsKeepMembershipAndEqualNamesAcrossScenesAndFiles() started.
+◇ Test duplicateFastPathPreservesOverlapAndInformationThresholds() started.
+◇ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() started.
+◇ Test impossibleRequestPreservesOriginalDurationContract() started.
+◇ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() started.
+◇ Test case passing 1 argument seed → 0 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 1 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 2 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 3 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 4 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 5 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 6 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 7 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+✔ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() passed after 0.182 seconds.
+✔ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() passed after 0.182 seconds.
+✔ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() passed after 0.182 seconds.
+✔ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() passed after 0.182 seconds.
+✔ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() passed after 0.182 seconds.
+✔ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() passed after 0.182 seconds.
+✔ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() passed after 0.182 seconds.
+✔ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() passed after 0.183 seconds.
+✔ Test staleAutomaticSceneNameCannotSupplyItsOwnEvidence() passed after 0.182 seconds.
+✔ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() passed after 0.182 seconds.
+✔ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() passed after 0.182 seconds.
+✔ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() passed after 0.183 seconds.
+✔ Test wholePartsKeepMembershipAndEqualNamesAcrossScenesAndFiles() passed after 0.183 seconds.
+✔ Test duplicateFastPathPreservesOverlapAndInformationThresholds() passed after 0.183 seconds.
+✔ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() passed after 0.183 seconds.
+✔ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() passed after 0.183 seconds.
+✔ Suite TitleTimelineAnchoringTests passed after 0.183 seconds.
+◇ Test persistedCacheDoesNotCallModelAndRenamingFilesDoesNotInvalidateIt() started.
+✔ Test impossibleRequestPreservesOriginalDurationContract() passed after 0.220 seconds.
+✔ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) with 8 test cases passed after 0.221 seconds.
+✔ Suite AutomaticEditorialAssemblyTests passed after 0.222 seconds.
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:35:13: Expectation failed: read.passed
+↳ TitleReadabilityEvidence(titleID: 6C53D7A7-D576-402C-84C8-0B348D39288D, renderSignature: "536cdca0eaddcd4b2c3339a5f6520d5a52720247bb82fc14594e0da403f54557", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)), pixelWidth: 1920, pixelHeight: 1080, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳ read.passed → false
+↳   read → TitleReadabilityEvidence(titleID: 6C53D7A7-D576-402C-84C8-0B348D39288D, renderSignature: "536cdca0eaddcd4b2c3339a5f6520d5a52720247bb82fc14594e0da403f54557", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)), pixelWidth: 1920, pixelHeight: 1080, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳     titleID → 6C53D7A7-D576-402C-84C8-0B348D39288D
+↳     renderSignature → "536cdca0eaddcd4b2c3339a5f6520d5a52720247bb82fc14594e0da403f54557"
+↳     algorithmVersion → 1
+↳     timelineTime → 1.75
+↳     actualPTS → 1.75
+↳       some → 1.75
+↳     source → "preview"
+↳     expectedText → "В дороге"
+↳     recognizedText → ""
+↳     confidences → []
+↳     region → NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)
+↳       some → NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)
+↳         x → 0.04928749999999997
+↳         y → 0.11274074074074071
+↳         width → 0.4099343750000001
+↳         height → 0.18643703703703704
+↳     pixelWidth → 1920
+↳     pixelHeight → 1080
+↳     score → 0.0
+↳     failure → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳       some → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳   passed → false
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:36:13: Expectation failed: read.recognizedText.lowercased().contains("дороге")
+↳ read.recognizedText.lowercased().contains("дороге") → false
+↳   read.recognizedText.lowercased() → ""
+✔ Test persistedCacheDoesNotCallModelAndRenamingFilesDoesNotInvalidateIt() passed after 0.090 seconds.
+◇ Test onlyAffectedPartRecomputesAndModelVersionInvalidatesCache() started.
+✔ Test onlyAffectedPartRecomputesAndModelVersionInvalidatesCache() passed after 0.043 seconds.
+◇ Test manualTextStyleAndReferenceHavePriority() started.
+✔ Test manualTextStyleAndReferenceHavePriority() passed after 0.014 seconds.
+◇ Test objectOnlyEvidenceCannotProveAnActionAndVerifierCanRejectIt() started.
+✔ Test objectOnlyEvidenceCannotProveAnActionAndVerifierCanRejectIt() passed after 0.013 seconds.
+◇ Test outOfCutEventAndSpeechAreNotVisualProof() started.
+✔ Test outOfCutEventAndSpeechAreNotVisualProof() passed after 0.014 seconds.
+◇ Test malformedResponsePreservesExistingTitleAndRepairsNoMontage() started.
+✔ Test malformedResponsePreservesExistingTitleAndRepairsNoMontage() passed after 0.013 seconds.
+◇ Test unknownTimezoneAndCopyDatesCannotAppearAsCaptureDates() started.
+✔ Test unknownTimezoneAndCopyDatesCannotAppearAsCaptureDates() passed after 0.066 seconds.
+◇ Test titlesForbiddenAndTooShortPartFollowExistingRules() started.
+✔ Test titlesForbiddenAndTooShortPartFollowExistingRules() passed after 0.020 seconds.
+◇ Test unknownLegacyFieldsDecodeAndNewDecisionsSurviveRoundTrip() started.
+✔ Test unknownLegacyFieldsDecodeAndNewDecisionsSurviveRoundTrip() passed after 0.001 seconds.
+◇ Test lateModelResultCannotOverwriteManualEditAndCancellationDoesNotCommit() started.
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:35:13: Expectation failed: read.passed
+↳ TitleReadabilityEvidence(titleID: 6C53D7A7-D576-402C-84C8-0B348D39288D, renderSignature: "536cdca0eaddcd4b2c3339a5f6520d5a52720247bb82fc14594e0da403f54557", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)), pixelWidth: 1080, pixelHeight: 1920, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳ read.passed → false
+↳   read → TitleReadabilityEvidence(titleID: 6C53D7A7-D576-402C-84C8-0B348D39288D, renderSignature: "536cdca0eaddcd4b2c3339a5f6520d5a52720247bb82fc14594e0da403f54557", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)), pixelWidth: 1080, pixelHeight: 1920, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳     titleID → 6C53D7A7-D576-402C-84C8-0B348D39288D
+↳     renderSignature → "536cdca0eaddcd4b2c3339a5f6520d5a52720247bb82fc14594e0da403f54557"
+↳     algorithmVersion → 1
+↳     timelineTime → 1.75
+↳     actualPTS → 1.75
+↳       some → 1.75
+↳     source → "preview"
+↳     expectedText → "В дороге"
+↳     recognizedText → ""
+↳     confidences → []
+↳     region → NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)
+↳       some → NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)
+↳         x → 0.018934222222222227
+↳         y → 0.12511999999999998
+↳         width → 0.567314
+↳         height → 0.20316549999999986
+↳     pixelWidth → 1080
+↳     pixelHeight → 1920
+↳     score → 0.0
+↳     failure → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳       some → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳   passed → false
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:36:13: Expectation failed: read.recognizedText.lowercased().contains("дороге")
+↳ read.recognizedText.lowercased().contains("дороге") → false
+↳   read.recognizedText.lowercased() → ""
+✔ Test lateModelResultCannotOverwriteManualEditAndCancellationDoesNotCommit() passed after 0.272 seconds.
+◇ Test insertingShotInsideSavedPartDoesNotCreateAnActionTitle() started.
+✔ Test insertingShotInsideSavedPartDoesNotCreateAnActionTitle() passed after 0.014 seconds.
+◇ Test broadAndRareThemesAreNotLimitedToActivityDictionary() started.
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() failed after 0.879 seconds with 4 issues.
+◇ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() started.
+✔ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() passed after 0.001 seconds.
+◇ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() started.
+✔ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() passed after 0.001 seconds.
+◇ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() started.
+✔ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() passed after 0.004 seconds.
+◇ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() started.
+✔ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() passed after 0.005 seconds.
+◇ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() started.
+✔ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() passed after 0.003 seconds.
+◇ Test telemetrySetInsertionOrderCannotChangeRenderSignature() started.
+✔ Test broadAndRareThemesAreNotLimitedToActivityDictionary() passed after 0.149 seconds.
+◇ Test repeatedPerformanceScenariosRecordCallsAndLocalInvalidation() started.
+✔ Test telemetrySetInsertionOrderCannotChangeRenderSignature() passed after 0.013 seconds.
+◇ Test progressRelayKeepsStageChangesAndCompletion() started.
+✔ Test progressRelayKeepsStageChangesAndCompletion() passed after 0.001 seconds.
+✘ Suite FilmSpeedAndTitlesTests failed after 0.908 seconds with 4 issues.
+✔ Test repeatedPerformanceScenariosRecordCallsAndLocalInvalidation() passed after 0.209 seconds.
+◇ Test oneFileCanContainTwoPartsAndReanalysisDoesNotInvalidateUnchangedIntervals() started.
+✔ Test oneFileCanContainTwoPartsAndReanalysisDoesNotInvalidateUnchangedIntervals() passed after 0.028 seconds.
+◇ Test speechCaptionAtBeginningDoesNotReplacePartTitle() started.
+✔ Test speechCaptionAtBeginningDoesNotReplacePartTitle() passed after 0.013 seconds.
+➜ Test installedModelGeneratesAndIndependentlyVerifiesRussianTitle() skipped.
+➜ Test savedControlKeepsEveryCutAndExistingEventMembershipWithUnavailableModel() skipped.
+✔ Suite SmartChapterTitlesTests passed after 1.150 seconds.
+✘ Test run with 43 tests in 4 suites failed after 1.150 seconds with 4 issues.
+Note: Some test targets reported failures:
+  - VeloEditCoreTests (Swift Testing)

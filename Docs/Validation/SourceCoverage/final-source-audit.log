@@ -1,0 +1,83 @@
+[0/1] Planning build
+Building for debugging...
+[0/7] Write sources
+[1/7] Write swift-version--58304C5D6DBC2206.txt
+[3/9] Compiling VeloEditCore EditorialSourceCoverage.swift
+[4/9] Emitting module VeloEditCore
+[4/11] Write Objects.LinkFileList
+[6/11] Linking veloedit-cli
+[7/11] Applying veloedit-cli
+[8/11] Linking VeloEdit
+[9/11] Applying VeloEdit
+[11/12] Emitting module VeloEditAppTests
+[11/13] Write Objects.LinkFileList
+[12/13] Linking VeloEditPackageTests
+Build complete! (5.02s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite SourceCoverageTests started.
+◇ Test sourceCoverageRealProjectReadOnlyAudit() started.
+◇ Suite AutomaticEditorialAssemblyTests started.
+◇ Suite AutomaticFilmDurationTests started.
+◇ Test clipLimitReplacesExtraShotsWithoutLosingExistingSource() started.
+◇ Test coverageUsesTrimmedRangesWhenOriginalCandidatesOverlap() started.
+◇ Test chronologyCheckDetectsReversalAcrossFilesAndInsideFile() started.
+◇ Test duplicateFastPathPreservesOverlapAndInformationThresholds() started.
+◇ Test explicitContentExclusionSurvivesCoverageAndQualityReview() started.
+◇ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() started.
+◇ Test impossibleRequestPreservesOriginalDurationContract() started.
+◇ Test oneUnsafeShotDoesNotCondemnWholeRecording() started.
+◇ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() started.
+◇ Test duplicateAndExcludedSourcesAreNotInsertedForCoverage() started.
+◇ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() started.
+◇ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() started.
+◇ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() started.
+◇ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test saturatedDurationStillReservesDistinctSourcesAndPersistsEvidence() started.
+◇ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() started.
+◇ Test deliveryMeasuresTheRenderedRuntimeAfterTransitions() started.
+◇ Test oldConstraintValuesCannotBypassPromptNormalization() started.
+◇ Test requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test compromisedBudgetCannotAuthorizeASubTenSecondFilm() started.
+◇ Test selectorRejectsShortVariantsEvenWithoutEditorialReview() started.
+◇ Test case passing 1 argument seed → 0 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 1 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 2 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 3 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 4 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 5 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 6 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 7 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+✔ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() passed after 0.066 seconds.
+◇ Test case passing 1 argument requested → 0.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 2.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 5.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 9.5 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 10.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+◇ Test case passing 1 argument requested → 30.0 to requestedRuntimeHasTenSecondFloor(_:) started.
+✔ Test duplicateFastPathPreservesOverlapAndInformationThresholds() passed after 0.075 seconds.
+✔ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() passed after 0.075 seconds.
+✔ Test chronologyCheckDetectsReversalAcrossFilesAndInsideFile() passed after 0.075 seconds.
+✔ Test duplicateAndExcludedSourcesAreNotInsertedForCoverage() passed after 0.075 seconds.
+✔ Test oneUnsafeShotDoesNotCondemnWholeRecording() passed after 0.075 seconds.
+✔ Test coverageUsesTrimmedRangesWhenOriginalCandidatesOverlap() passed after 0.075 seconds.
+✔ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() passed after 0.075 seconds.
+✔ Test impossibleRequestPreservesOriginalDurationContract() passed after 0.075 seconds.
+✔ Test explicitContentExclusionSurvivesCoverageAndQualityReview() passed after 0.075 seconds.
+✔ Test clipLimitReplacesExtraShotsWithoutLosingExistingSource() passed after 0.075 seconds.
+✔ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() passed after 0.075 seconds.
+✔ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() passed after 0.075 seconds.
+✔ Test saturatedDurationStillReservesDistinctSourcesAndPersistsEvidence() passed after 0.075 seconds.
+✔ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() passed after 0.075 seconds.
+✔ Test oldConstraintValuesCannotBypassPromptNormalization() passed after 0.072 seconds.
+✔ Test deliveryMeasuresTheRenderedRuntimeAfterTransitions() passed after 0.075 seconds.
+✔ Suite SourceCoverageTests passed after 0.075 seconds.
+✔ Test selectorRejectsShortVariantsEvenWithoutEditorialReview() passed after 0.073 seconds.
+✔ Test compromisedBudgetCannotAuthorizeASubTenSecondFilm() passed after 0.074 seconds.
+✔ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) with 8 test cases passed after 0.077 seconds.
+✔ Suite AutomaticEditorialAssemblyTests passed after 0.077 seconds.
+✔ Test requestedRuntimeHasTenSecondFloor(_:) with 6 test cases passed after 0.076 seconds.
+✔ Suite AutomaticFilmDurationTests passed after 0.079 seconds.
+✔ Test sourceCoverageRealProjectReadOnlyAudit() passed after 9.145 seconds.
+✔ Test run with 22 tests in 3 suites passed after 9.145 seconds.

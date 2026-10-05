@@ -1,0 +1,66 @@
+Building for debugging...
+[1 / 19] VeloEdit
+[2 / 7] VeloEditCoreTests-product
+[4 / 9] VeloEditCoreTests-product
+[9 / 13] VeloEditCoreTests-product
+Build complete! (4,43 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test sequenceCacheInvalidatesInputsAndReturnsIndependentValues() started.
+◇ Test exactCommentRoutingRequiresTheWholeRequestAndSelection() started.
+◇ Test identicalDecoderTimesShareFramesWithoutRoundingDistinctRequestsTogether() started.
+◇ Test incrementalDuplicateEvaluationMatchesEveryFullPrefix() started.
+◇ Test thermalAndBatteryPressurePreserveEveryEvaluationTask() started.
+◇ Test sourceReplacementAtSamePathInvalidatesEvenWithSameSizeAndModificationDate() started.
+◇ Test persistentFrameCachePreservesPixelsAndPTSAndRejectsCorruption() started.
+◇ Test visionCacheCoalescesOnlyIdenticalRequestsAndSurvivesRestart() started.
+◇ Test incrementalSequenceSearchMatchesOriginalCompleteAlgorithm() started.
+◇ Test distinctFrameRequestsRespectDecodeMemoryReservations() started.
+◇ Test deeperAnalysisCanSatisfyALighterModeWithoutRerun() started.
+◇ Test chapterSearchReservesSpaceForLaterActivities(useScenes:) started.
+◇ Test temporalFeatureCacheDependsOnFramesOrderModelAndExactWindow() started.
+◇ Test simultaneousFrameConsumersShareWorkAndCancellationIsIsolated() started.
+◇ Test failedFrameProductionIsRetriedAndNeverCached() started.
+◇ Test partialAndFailedVisionResponsesCannotPopulateTheCache() started.
+◇ Test frameCacheReusesOneDecodeAcrossProcessingPurposes() started.
+◇ Test frameCacheUsesBytesAndExactDependencyKeys() started.
+◇ Test frameMotionIsRecomputedForEveryTemporalNeighbour() started.
+◇ Test independentAnalyzerCacheDoesNotDependOnInstalledOllamaModels() started.
+◇ Test case passing 1 argument useScenes → false to chapterSearchReservesSpaceForLaterActivities(useScenes:) started.
+◇ Test case passing 1 argument useScenes → true to chapterSearchReservesSpaceForLaterActivities(useScenes:) started.
+✔ Test identicalDecoderTimesShareFramesWithoutRoundingDistinctRequestsTogether() passed after 0.003 seconds.
+✔ Test deeperAnalysisCanSatisfyALighterModeWithoutRerun() passed after 0.003 seconds.
+✔ Test sourceReplacementAtSamePathInvalidatesEvenWithSameSizeAndModificationDate() passed after 0.004 seconds.
+✔ Test exactCommentRoutingRequiresTheWholeRequestAndSelection() passed after 0.004 seconds.
+✔ Test temporalFeatureCacheDependsOnFramesOrderModelAndExactWindow() passed after 0.004 seconds.
+✔ Test frameMotionIsRecomputedForEveryTemporalNeighbour() passed after 0.004 seconds.
+✔ Test frameCacheReusesOneDecodeAcrossProcessingPurposes() passed after 0.004 seconds.
+✔ Test frameCacheUsesBytesAndExactDependencyKeys() passed after 0.004 seconds.
+✔ Test persistentFrameCachePreservesPixelsAndPTSAndRejectsCorruption() passed after 0.004 seconds.
+✔ Test partialAndFailedVisionResponsesCannotPopulateTheCache() passed after 0.004 seconds.
+✔ Test failedFrameProductionIsRetriedAndNeverCached() passed after 0.005 seconds.
+✔ Test thermalAndBatteryPressurePreserveEveryEvaluationTask() passed after 0.005 seconds.
+✔ Test sequenceCacheInvalidatesInputsAndReturnsIndependentValues() passed after 0.010 seconds.
+✔ Test independentAnalyzerCacheDoesNotDependOnInstalledOllamaModels() passed after 0.023 seconds.
+✔ Test incrementalDuplicateEvaluationMatchesEveryFullPrefix() passed after 0.105 seconds.
+✔ Test simultaneousFrameConsumersShareWorkAndCancellationIsIsolated() passed after 0.106 seconds.
+✔ Test chapterSearchReservesSpaceForLaterActivities(useScenes:) with 2 test cases passed after 0.203 seconds.
+✔ Test distinctFrameRequestsRespectDecodeMemoryReservations() passed after 0.216 seconds.
+✔ Test visionCacheCoalescesOnlyIdenticalRequestsAndSurvivesRestart() passed after 0.317 seconds.
+✔ Test incrementalSequenceSearchMatchesOriginalCompleteAlgorithm() passed after 0.570 seconds.
+✔ Test run with 20 tests in 0 suites passed after 0.570 seconds.
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test streamedReplyNeverPublishesAnIncompletePlan() started.
+◇ Test invalidActionRejectsEntireCompoundPlan() started.
+◇ Suite BrushSemanticReplyTests started.
+◇ Test truncatedOrFailedModelStreamsCannotBecomeCommands() started.
+◇ Test onlyTypedReplacementInsideBrushChangesFootage() started.
+✔ Test truncatedOrFailedModelStreamsCannotBecomeCommands() passed after 0.001 seconds.
+✔ Test streamedReplyNeverPublishesAnIncompletePlan() passed after 0.001 seconds.
+✔ Test invalidActionRejectsEntireCompoundPlan() passed after 0.001 seconds.
+✔ Test onlyTypedReplacementInsideBrushChangesFootage() passed after 0.001 seconds.
+✔ Suite BrushSemanticReplyTests passed after 0.001 seconds.
+✔ Test run with 4 tests in 1 suite passed after 0.001 seconds.

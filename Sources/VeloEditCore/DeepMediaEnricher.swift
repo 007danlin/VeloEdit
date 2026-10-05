@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct DeepMediaEnrichmentResult: Sendable {
     var candidates: [Candidate]
@@ -33,9 +34,14 @@ struct DeepMediaCandidateEnricher: Sendable {
     ) async -> DeepMediaEnrichmentResult {
         let totalStarted = Date()
         var candidates = input
-        var cacheRecord = await cache?.load(contentHash: asset.contentHash)
-            ?? DeepMediaCacheRecord(contentHash: asset.contentHash)
-        if let audio { cacheRecord.audioAnalysis = audio }
+        let sourceIdentity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+        let stored = await cache?.load(contentHash: asset.contentHash)
+        var cacheRecord = stored?.sourceIdentity == sourceIdentity ? stored! : DeepMediaCacheRecord(contentHash: asset.contentHash)
+        cacheRecord.sourceIdentity = sourceIdentity
+        if let audio, cacheRecord.audioAnalysis != audio {
+            cacheRecord.audioEvents = []
+            cacheRecord.audioAnalysis = audio
+        }
         var reports: [DeepAnalysisStageReport] = []
 
         let audioStarted = Date()
@@ -56,7 +62,7 @@ struct DeepMediaCandidateEnricher: Sendable {
             itemCount: audioEvents.count,
             confidence: mean(audioEvents.map(\.confidence)),
             duration: Date().timeIntervalSince(audioStarted),
-            reason: audioEvents.isEmpty ? "Аудиособытия недоступны; сохранён fallback" : "DSP-классификация shortlist audio"
+            reason: audioEvents.isEmpty ? "Аудиособытия недоступны; сохранён fallback" : "DSP-анализ звука (правила обработки сигнала, без отдельной нейросети)"
         ))
 
         let embeddingStarted = Date()
@@ -64,16 +70,18 @@ struct DeepMediaCandidateEnricher: Sendable {
         for index in candidates.indices {
             let key = stableKey(for: candidates[index])
             let frames = nearbySamples(for: candidates[index], samples: samples, limit: max(3, min(8, profile.framesPerCandidate)))
+            let tokens = semanticTokens(candidates[index])
+            let inputSignature = Self.frameEvidenceSignature(frames, context: embeddingModel.modelIdentifier + "|" + tokens.sorted().joined(separator: "|"))
             let cached = cacheRecord.candidates[key]?.embedding
             let embedding: VisualEmbedding?
-            if let cached, cached.modelIdentifier == embeddingModel.modelIdentifier, !cached.values.isEmpty {
+            if let cached, cached.modelIdentifier == embeddingModel.modelIdentifier, !cached.values.isEmpty,
+               cacheRecord.candidates[key]?.embeddingInputSignature == inputSignature {
                 embedding = cached
                 embeddingCacheHits += 1
             } else {
                 let descriptors = frames.map {
                     EmbeddingFrameDescriptor(timestamp: $0.timestamp, histogram: $0.histogram, luminanceFingerprint: $0.luminanceFingerprint, labels: $0.labels)
                 }
-                let tokens = semanticTokens(candidates[index])
                 embedding = try? await embeddingModel.embedding(for: EmbeddingInput(frames: descriptors, semanticTokens: tokens))
             }
             var insights = ensuredInsights(for: candidates[index])
@@ -81,6 +89,7 @@ struct DeepMediaCandidateEnricher: Sendable {
             candidates[index].insights = insights
             var cachedEvidence = cacheRecord.candidates[key] ?? CachedCandidateDeepEvidence(sourceStart: candidates[index].sourceStart, sourceDuration: candidates[index].sourceDuration)
             cachedEvidence.embedding = embedding
+            cachedEvidence.embeddingInputSignature = inputSignature
             cacheRecord.candidates[key] = cachedEvidence
         }
         let embeddings = candidates.compactMap { $0.insights?.visualEmbedding }.filter { !$0.values.isEmpty }
@@ -91,7 +100,7 @@ struct DeepMediaCandidateEnricher: Sendable {
             itemCount: embeddings.count,
             confidence: mean(embeddings.map(\.confidence)),
             duration: Date().timeIntervalSince(embeddingStarted),
-            reason: "Embeddings построены по adaptive/key frames без дополнительного decode; cache hits \(embeddingCacheHits)"
+            reason: "Локальные дескрипторы изображения и меток (без отдельной нейросети); cache hits \(embeddingCacheHits)"
         ))
 
         let trackingStarted = Date()
@@ -106,12 +115,14 @@ struct DeepMediaCandidateEnricher: Sendable {
         var trackingCacheHits = 0
         for index in candidates.indices where trackingIndices.contains(index) {
             let key = stableKey(for: candidates[index])
+            let frames = nearbySamples(for: candidates[index], samples: samples, limit: max(3, min(10, profile.framesPerCandidate + 2)))
+            let inputSignature = Self.frameEvidenceSignature(frames, context: "subject-tracker-v1")
             let tracking: SubjectTrackingSummary?
-            if let cached = cacheRecord.candidates[key]?.subjectTracking, cached.analyzedFrameCount > 0 {
+            if let cached = cacheRecord.candidates[key]?.subjectTracking, cached.analyzedFrameCount > 0,
+               cacheRecord.candidates[key]?.trackingInputSignature == inputSignature {
                 tracking = cached
                 trackingCacheHits += 1
             } else {
-                let frames = nearbySamples(for: candidates[index], samples: samples, limit: max(3, min(10, profile.framesPerCandidate + 2)))
                 let descriptors = frames.map { SubjectFrameDescriptor(timestamp: $0.timestamp, observations: $0.subjects ?? []) }
                 let value = LocalSubjectTracker().track(frames: descriptors)
                 tracking = value.tracks.isEmpty ? nil : value
@@ -128,6 +139,7 @@ struct DeepMediaCandidateEnricher: Sendable {
             candidates[index].insights = insights
             var cachedEvidence = cacheRecord.candidates[key] ?? CachedCandidateDeepEvidence(sourceStart: candidates[index].sourceStart, sourceDuration: candidates[index].sourceDuration)
             cachedEvidence.subjectTracking = tracking
+            cachedEvidence.trackingInputSignature = inputSignature
             cacheRecord.candidates[key] = cachedEvidence
         }
         let tracked = candidates.compactMap { $0.insights?.subjectTracking }
@@ -142,7 +154,7 @@ struct DeepMediaCandidateEnricher: Sendable {
         ))
 
         let asrStarted = Date()
-        let cachedTranscript = cacheRecord.transcript
+        let cachedTranscript = cacheRecord.transcriptModelIdentity == speechRecognizer.modelIdentifier ? cacheRecord.transcript : nil
         var transcript = cachedTranscript
         let shouldRunASR = profile.audioAnalysisLevel == .deep
             && asset.metadata.hasAudio
@@ -151,6 +163,7 @@ struct DeepMediaCandidateEnricher: Sendable {
         if transcript == nil, shouldRunASR {
             transcript = try? await speechRecognizer.transcribe(url: asset.originalURL, localeIdentifier: nil)
             cacheRecord.transcript = transcript
+            cacheRecord.transcriptModelIdentity = speechRecognizer.modelIdentifier
         }
         var transcribedCandidates = 0
         for index in candidates.indices {
@@ -277,7 +290,7 @@ struct DeepMediaCandidateEnricher: Sendable {
                 refined.completionEnd = max(refined.completionEnd, speech.phraseEnd)
                 refined.evidence.append("ASR phrase boundaries preserved")
             }
-            if subjectTracking?.confidence ?? 0 >= 0.42 { refined.evidence.append("subject-tracking-confirmed action") }
+            if subjectTracking?.confidence ?? 0 >= 0.42 { refined.evidence.append("subject tracking observed; action semantics unverified") }
             if refined.confidence < 0.42 {
                 refined.anticipationStart = min(refined.anticipationStart, original.sourceStart)
                 refined.completionEnd = max(refined.completionEnd, original.sourceStart + original.sourceDuration)
@@ -313,6 +326,29 @@ struct DeepMediaCandidateEnricher: Sendable {
             totalDuration: Date().timeIntervalSince(totalStarted)
         )
         return DeepMediaEnrichmentResult(candidates: candidates, transcript: transcript, audioEvents: audioEvents, diagnostics: diagnostics)
+    }
+
+    static func frameEvidenceSignature(_ frames: [VisualFrameSample], context: String) -> String {
+        // Sorted labels make the digest stable across process launches. Include
+        // temporal neighbours, pixels, transform output, observations and model.
+        struct Evidence: Encodable {
+            var timestamp: Double
+            var actual: Double?
+            var labels: [String]
+            var histogram: [Double]
+            var fingerprint: [UInt8]
+            var subjects: [FrameSubjectObservation]?
+            var width: Int?
+            var height: Int?
+        }
+        let values = frames.map { Evidence(timestamp: $0.timestamp, actual: $0.actualTimestamp,
+            labels: $0.labels.sorted(), histogram: $0.histogram, fingerprint: $0.luminanceFingerprint,
+            subjects: $0.subjects, width: $0.pixelWidth, height: $0.pixelHeight) }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard var data = try? encoder.encode(values) else { return UUID().uuidString }
+        data.append(Data(context.utf8))
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private func stableKey(for candidate: Candidate) -> String {

@@ -1,4 +1,7 @@
 import Foundation
+import CryptoKit
+import Darwin
+import CoreMedia
 
 public enum FrameProcessingPurpose: String, Codable, CaseIterable, Sendable, Hashable {
     case sceneDetection
@@ -14,89 +17,198 @@ public struct FrameCacheKey: Codable, Hashable, Sendable {
     public var timestampMilliseconds: Int
     public var resolution: Int
     public var processingPurpose: FrameProcessingPurpose
+    public var requestedTimestamp: Double
+    public var representation: String
+    public var decodeTimeScale: Int32?
 
-    public init(sourceFile: String, timestamp: Double, resolution: Int, processingPurpose: FrameProcessingPurpose) {
+    public init(sourceFile: String, timestamp: Double, resolution: Int, processingPurpose: FrameProcessingPurpose,
+                representation: String = "preferred-transform|tol=150/600|jpeg=.68|vision-v2", decodeTimeScale: Int32? = nil) {
         self.sourceFile = sourceFile
-        timestampMilliseconds = Int((max(0, timestamp) * 1_000).rounded())
+        requestedTimestamp = max(0, timestamp)
+        timestampMilliseconds = Int((requestedTimestamp * 1_000).rounded())
         self.resolution = max(1, resolution)
         self.processingPurpose = processingPurpose
+        self.representation = representation
+        self.decodeTimeScale = decodeTimeScale
     }
 
-    fileprivate var canonicalIdentity: String {
-        // Purpose remains part of the public audit key, while storage is
-        // canonicalized so Vision, scoring and VLM reuse the same decode.
-        "\(sourceFile)|\(timestampMilliseconds)|\(resolution)"
+    var canonicalIdentity: String {
+        // A supplied timescale describes the actual decoder request, not an
+        // approximate temporal bucket. Preserve the caller's original time in
+        // its sample/trace while sharing identical AVFoundation CMTime inputs.
+        let time: String
+        if let scale = decodeTimeScale {
+            let value = CMTime(seconds: requestedTimestamp, preferredTimescale: scale)
+            time = "cm:\(value.value)/\(value.timescale):\(value.epoch)"
+        } else { time = "bits:\(requestedTimestamp.bitPattern)" }
+        return "v2|\(sourceFile.utf8.count):\(sourceFile)|\(time)|\(resolution)|\(representation)"
+    }
+
+    static func sourceIdentity(url: URL, contentHash: String) -> String {
+        var info = stat()
+        guard url.resolvingSymlinksInPath().withUnsafeFileSystemRepresentation({ path in path.map { lstat($0, &info) } ?? -1 }) == 0 else {
+            // Missing/unreadable input must not reuse an older file's frames.
+            return "unavailable:\(UUID().uuidString)"
+        }
+        return "\(contentHash)|\(url.standardizedFileURL.path)|\(info.st_dev):\(info.st_ino):\(info.st_size)|\(info.st_mtimespec.tv_sec):\(info.st_mtimespec.tv_nsec)|\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)"
     }
 }
 
 private struct PersistedFrameRecord: Codable, Sendable {
+    var identity: String
     var sample: VisualFrameSample
-    var purposes: Set<FrameProcessingPurpose>
+    var jpeg: Data?
+}
+
+struct CachedFrame: Sendable {
+    enum Origin: String, Sendable { case computed, memory, disk, shared }
+    var sample: VisualFrameSample
+    var origin: Origin
 }
 
 public actor FrameCache {
     private let rootURL: URL
     private let maximumMemoryEntries: Int
-    private var memory: [String: PersistedFrameRecord] = [:]
+    private let maximumMemoryBytes: Int
+    private var memory: [String: VisualFrameSample] = [:]
     private var memoryOrder: [String] = []
+    private var memoryBytes = 0
+    private var reservedProducerBytes = 0
+    private var producerReservations: [String: Int] = [:]
+    private var admissionWaiters: [CheckedContinuation<Void, Never>] = []
+    private var inFlight: [String: (id: UUID, task: Task<VisualFrameSample, Error>)] = [:]
 
-    public init(rootURL: URL, maximumMemoryEntries: Int = 384) {
+    public init(rootURL: URL, maximumMemoryEntries: Int = 384, maximumMemoryBytes: Int = 96 * 1_024 * 1_024) {
         self.rootURL = rootURL
         self.maximumMemoryEntries = max(1, maximumMemoryEntries)
+        self.maximumMemoryBytes = max(0, maximumMemoryBytes)
     }
 
-    func value(for key: FrameCacheKey) -> VisualFrameSample? {
+    func value(for key: FrameCacheKey) -> VisualFrameSample? { lookup(key)?.sample }
+
+    private func lookup(_ key: FrameCacheKey) -> CachedFrame? {
         let identity = key.canonicalIdentity
-        if var record = memory[identity] {
-            record.purposes.insert(key.processingPurpose)
-            memory[identity] = record
+        if let sample = memory[identity] {
             touch(identity)
-            return record.sample
+            return CachedFrame(sample: sample, origin: .memory)
         }
-        let url = recordURL(for: identity)
-        guard let data = try? Data(contentsOf: url),
-              var record = try? JSONDecoder().decode(PersistedFrameRecord.self, from: data) else { return nil }
-        record.purposes.insert(key.processingPurpose)
-        memory[identity] = record
-        touch(identity)
-        return record.sample
+        // v1 JSON deliberately misses: it lacks source representation and PTS.
+        guard let data = try? Data(contentsOf: recordURL(for: identity)), data.count > 32 else { return nil }
+        let payload = Data(data.dropFirst(32))
+        guard Data(SHA256.hash(data: payload)) == data.prefix(32),
+              let record = try? PropertyListDecoder().decode(PersistedFrameRecord.self, from: payload),
+              record.identity == identity else { return nil }
+        var sample = record.sample
+        if let jpeg = record.jpeg { sample.jpegBase64 = jpeg.base64EncodedString() }
+        insert(sample, identity: identity)
+        return CachedFrame(sample: sample, origin: .disk)
+    }
+
+    /// One producer per exact key. A cancelled waiter never cancels another
+    /// consumer's work. Only a completed, successful producer enters the cache.
+    func resolve(_ key: FrameCacheKey, produce: @escaping @Sendable () async throws -> VisualFrameSample) async throws -> CachedFrame {
+        try Task.checkCancellation()
+        let identity = key.canonicalIdentity
+        // Reserve decoded RGBA plus conversion workspace, not just retained
+        // JPEG entries. A single oversized frame may run alone; never fan out
+        // unbounded decode work when many consumers request different frames.
+        let reservation = min(max(1, maximumMemoryBytes), Int(min(Double(Int.max / 2), max(131_072, Double(key.resolution) * Double(key.resolution) * 8))))
+        while true {
+            try Task.checkCancellation()
+            if let hit = lookup(key) { return hit }
+            if inFlight[identity] != nil { break }
+            if inFlight.isEmpty || (inFlight.count < 2 && reservedProducerBytes + reservation <= maximumMemoryBytes) { break }
+            await withCheckedContinuation { admissionWaiters.append($0) }
+        }
+        let work: (id: UUID, task: Task<VisualFrameSample, Error>)
+        let origin: CachedFrame.Origin
+        if let existing = inFlight[identity] {
+            work = existing
+            origin = .shared
+        } else {
+            reservedProducerBytes += reservation
+            producerReservations[identity] = reservation
+            trimMemory()
+            work = (UUID(), Task { try await produce() })
+            inFlight[identity] = work
+            origin = .computed
+        }
+        do {
+            let sample = try await work.task.value
+            if inFlight[identity]?.id == work.id {
+                releaseProducer(identity)
+                try? store(sample, for: key)
+            }
+            try Task.checkCancellation()
+            return CachedFrame(sample: sample, origin: origin)
+        } catch {
+            if inFlight[identity]?.id == work.id { releaseProducer(identity) }
+            throw error
+        }
+    }
+
+    private func releaseProducer(_ identity: String) {
+        inFlight.removeValue(forKey: identity)
+        reservedProducerBytes -= producerReservations.removeValue(forKey: identity) ?? 0
+        let waiters = admissionWaiters
+        admissionWaiters.removeAll()
+        waiters.forEach { $0.resume() }
     }
 
     func store(_ sample: VisualFrameSample, for key: FrameCacheKey) throws {
         let identity = key.canonicalIdentity
-        var purposes = memory[identity]?.purposes ?? []
-        purposes.insert(key.processingPurpose)
-        let record = PersistedFrameRecord(sample: sample, purposes: purposes)
-        memory[identity] = record
-        touch(identity)
+        // Motion belongs to the caller's ordered sequence, never to this frame.
+        var features = sample.withMotion(0)
+        insert(features, identity: identity)
+        let jpeg = Data(base64Encoded: features.jpegBase64)
+        if jpeg != nil { features.jpegBase64 = "" }
+        let record = PersistedFrameRecord(identity: identity, sample: features, jpeg: jpeg)
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        try JSONEncoder().encode(record).write(to: recordURL(for: identity), options: .atomic)
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .binary
+        let payload = try encoder.encode(record)
+        var data = Data(SHA256.hash(data: payload))
+        data.append(payload)
+        try data.write(to: recordURL(for: identity), options: .atomic)
     }
 
     func removeMemoryEntries() {
         memory.removeAll(keepingCapacity: false)
         memoryOrder.removeAll(keepingCapacity: false)
+        memoryBytes = 0
     }
 
     public func memoryEntryCount() -> Int { memory.count }
+    public func memoryByteCount() -> Int { memoryBytes }
+
+    private func insert(_ sample: VisualFrameSample, identity: String) {
+        if let old = memory.removeValue(forKey: identity) { memoryBytes -= cost(old) }
+        memory[identity] = sample
+        memoryBytes += cost(sample)
+        touch(identity)
+    }
+
+    private func cost(_ sample: VisualFrameSample) -> Int {
+        sample.jpegBase64.utf8.count + sample.luminanceFingerprint.count + sample.histogram.count * 8
+            + sample.labels.reduce(0) { $0 + $1.utf8.count + 64 } + (sample.subjects?.count ?? 0) * 256 + 1_024
+    }
 
     private func touch(_ identity: String) {
         memoryOrder.removeAll { $0 == identity }
         memoryOrder.append(identity)
-        while memoryOrder.count > maximumMemoryEntries {
-            memory.removeValue(forKey: memoryOrder.removeFirst())
+        trimMemory()
+    }
+
+    private func trimMemory() {
+        while !memoryOrder.isEmpty && (memoryOrder.count > maximumMemoryEntries || memoryBytes > max(0, maximumMemoryBytes - reservedProducerBytes)) {
+            let evicted = memoryOrder.removeFirst()
+            if let old = memory.removeValue(forKey: evicted) { memoryBytes -= cost(old) }
         }
     }
 
     private func recordURL(for identity: String) -> URL {
-        rootURL.appendingPathComponent("\(Self.fnv1a(identity)).frame.json")
-    }
-
-    private static func fnv1a(_ value: String) -> String {
-        let hash = value.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { partial, byte in
-            (partial ^ UInt64(byte)) &* 1_099_511_628_211
-        }
-        return String(hash, radix: 16)
+        let hash = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+        return rootURL.appendingPathComponent("\(hash).frame-v2.bin")
     }
 }
 

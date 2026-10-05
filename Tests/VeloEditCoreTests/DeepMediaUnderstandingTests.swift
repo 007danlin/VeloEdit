@@ -652,7 +652,7 @@ private func writeP2PhotoFixture(to url: URL) throws {
     guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
 }
 
-@Test func productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() async throws {
+@Test func productionPhotoPathPreservesAShortFilmAndReportsUnmetDuration() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
     defer { try? FileManager.default.removeItem(at: root) }
     try FileManager.default.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -678,18 +678,16 @@ private func writeP2PhotoFixture(to url: URL) throws {
     #expect(result.directorCandidates.first?.insights?.visualEmbedding?.values.count == 64)
     #expect(result.deepMediaDiagnostics?.embeddedCandidateCount == 1)
 
-    // One photo supplies less than the minimum automatic film duration. Its
-    // semantic analysis must survive, but the undersized film must not commit.
-    do {
-        _ = try await pipeline.createFilm(prompt: "Без музыки. Один выразительный кадр. Добавь титры.", preset: .memories, targetDuration: 5)
-        Issue.record("A single short photo was committed as a complete automatic film")
-    } catch EditorialGenerationError.unsatisfiedIntent(let reason) {
-        #expect(reason.contains("Минимальная длительность фильма"))
-    }
+    // Delivery retains the available film; verification must still expose
+    // insufficient content rather than inventing padding or claiming success.
+    let film = try await pipeline.createFilm(prompt: "Фильм ровно 60 секунд. Без музыки. Один выразительный кадр. Добавь титры.", preset: .memories, targetDuration: 60)
+    #expect(film.duration > 0 && film.duration < 10)
+    #expect(film.items.filter { $0.kind == .photo && $0.overlay == nil }.count == 1)
+    #expect(film.filmDeliveryReport?.status == .savedWithUnmetRequirements)
+    #expect(film.filmDeliveryReport?.requirements?.contains { $0.rule == "duration" && !$0.passed } == true)
     let committed = await pipeline.snapshot()
-    #expect(committed.timelines.isEmpty)
+    #expect(committed.timelines.last?.id == film.id)
     let generation = committed.intentLedger?.entries.last { $0.normalizedIntent == .createFilm }
-    #expect(generation?.status == .recoverableFailure)
-    #expect(generation?.failureReason?.contains("Минимальная длительность фильма") == true)
+    #expect(generation?.status == .fulfilled)
     #expect(committed.analyses.first?.deepMediaVersion == DeepAnalysisCache.version)
 }

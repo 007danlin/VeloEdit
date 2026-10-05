@@ -7,14 +7,13 @@ public struct EditorialExportProbeComparison: Codable, Hashable, Sendable {
     public var hashDistance: Int?
     public var meanLumaDifference: Double?
     public var meanAbsolutePixelDifference: Double? = nil
+    public var previewPTS: Double? = nil
+    public var exportPTS: Double? = nil
     public var passed: Bool {
-        // The control file is a delivery H.264 encode while the preview probe
-        // is decoded from the render composition. Chroma subsampling and a
-        // neighbouring frame selected at a cut can move the normalized pixel
-        // MAE a little more than the global luma without representing a real
-        // preview/export divergence. Every scheduled probe still has to decode
-        // and pass; the wider MAE tolerance is only the codec normalization.
+        // Same declared quality tolerances, now applied to the same displayed
+        // instant. A different frame is not evidence of codec-only error.
         decoded && (meanLumaDifference ?? 1) <= 0.06 && (meanAbsolutePixelDifference ?? 1) <= 0.075
+            && (previewPTS.flatMap { p in exportPTS.map { abs(p - $0) <= 1 / 600.0 } } ?? true)
     }
 }
 
@@ -25,6 +24,23 @@ public struct EditorialExportVerification: Codable, Hashable, Sendable {
     public var aspectRatioMatches: Bool
     public var encodedAudio: EditorialAudioMasteringReport?
     public var provenance: String
+    public var videoDuration: Double? = nil
+    public var outputURL: URL? = nil
+    public var encodedWidth: Int? = nil
+    public var encodedHeight: Int? = nil
+    public var fileSize: Int64? = nil
+    public var fileModified: Date? = nil
+    public var fileModifiedTime: Double? = nil
+    public var artifactSHA256: String? = nil
+    public var artifactFileIdentity: String? = nil
+    public var titleEvidence: [TitleReadabilityEvidence]? = nil
+    public var artifactIsCurrent: Bool {
+        guard let outputURL, let fileSize, let fileModified,
+              let info = try? FileManager.default.attributesOfItem(atPath: outputURL.path) else { return false }
+        return (info[.size] as? NSNumber)?.int64Value == fileSize
+            && (info[.modificationDate] as? Date)?.timeIntervalSince1970 == (fileModifiedTime ?? fileModified.timeIntervalSince1970)
+            && (artifactFileIdentity.map { $0 == FrameCacheKey.sourceIdentity(url: outputURL, contentHash: "export") } ?? true)
+    }
 }
 
 /// Independently decodes a real control export. Sharing a compositor class or
@@ -34,16 +50,18 @@ public enum EditorialDeliveryVerifier {
         var signature: String
         var size: Int64
         var modified: Date
+        var sha256: String
 
         static func read(_ url: URL, signature: String) throws -> Self {
             let info = try FileManager.default.attributesOfItem(atPath: url.path)
             return Self(signature: signature, size: (info[.size] as? NSNumber)?.int64Value ?? 0,
-                        modified: info[.modificationDate] as? Date ?? .distantPast)
+                        modified: info[.modificationDate] as? Date ?? .distantPast,
+                        sha256: MusicStructureCache.contentIdentity(url))
         }
     }
     public static func verify(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preview: [PerceptualRenderedFrameEvidence], cacheURL: URL, preferredVideoSources: [UUID: URL] = [:], sourceWarnings: [String] = []) async throws -> EditorialExportVerification {
         try Task.checkCancellation()
-        let key = EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks)
+        let key = EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
         let directory = cacheURL.appendingPathComponent("EditorialControlExports")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let output = directory.appendingPathComponent(key + ".mp4")
@@ -56,12 +74,16 @@ public enum EditorialDeliveryVerifier {
         // maximum raster. Full HD keeps the verifier deterministic on systems
         // where 5K H.264 delivery is not a supported hardware encode profile.
         if let receipt, receipt.size > 0, receipt == (try? CompletedExport.read(output, signature: key)) {
+            PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "hit", "signature": key])
             await FilmBuildReporting.report(FilmBuildProgress(.controlExport, detail: "Контрольное видео сохранено — продолжаю проверку"))
         } else {
-            _ = try await FilmBuildReporting.forwarding { report in
+            PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "miss", "reason": receipt == nil ? "missing-or-incompatible-receipt" : "artifact-changed", "signature": key])
+            _ = try await PerformanceTrace.measure(name: "control.export", fields: ["signature": key, "contract": "final1080p"]) {
+              try await FilmBuildReporting.forwarding { report in
                 try await RenderEngine().render(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources, sourceWarnings: sourceWarnings, quality: .final1080p, destination: output) { update in
                     report(FilmBuildProgress(.controlExport, completed: update.completed, total: update.total, detail: update.currentName))
                 }
+            }
             }
             try Task.checkCancellation()
             try JSONEncoder().encode(CompletedExport.read(output, signature: key)).write(to: receiptURL, options: .atomic)
@@ -71,6 +93,7 @@ public enum EditorialDeliveryVerifier {
         let duration = try await asset.load(.duration).seconds
         let video = try await asset.loadTracks(withMediaType: .video).first
         let size = try await video?.load(.naturalSize)
+        let videoDuration = try await video?.load(.timeRange).duration.seconds
         let expectedRatio = Double(timeline.width) / Double(max(1, timeline.height))
         let actualRatio = size.map { Double($0.width) / Double(max(1, $0.height)) }
         func makeGenerator() -> AVAssetImageGenerator {
@@ -85,24 +108,17 @@ public enum EditorialDeliveryVerifier {
         // complete decoder history. Rotate it in small chunks so parity proof
         // remains bounded even for dozens of exact probes.
         let decodeChunkSize = 8
-        let deliveryFrameStep = 1 / max(15, timeline.frameRate)
         var generator = makeGenerator()
         var decodeRequests = 0
         var comparisons: [EditorialExportProbeComparison] = []
+        let trace = PerformanceTrace.current
+        let decodeSpan = trace?.begin("delivery.decode", fields: ["artifact": output.path, "signature": key])
         await FilmBuildReporting.report(FilmBuildProgress(.deliveryFrames, completed: 0, total: preview.count))
         for frame in preview {
             try Task.checkCancellation()
-            let time = TimelineTiming.playbackTime(forTimelineTime: frame.timelineTime, timeline: timeline)
-            // A delivery encoder may phase the first displayed H.264 frame by
-            // one declared frame because of its decode/presentation order.
-            // Compare the exact point and its two legal frame neighbours, then
-            // require the best one to pass the same pixel/luma thresholds.
-            // This tolerates codec phase only; it cannot hide a missing shot.
-            let sampleTimes = [time, time - deliveryFrameStep, time + deliveryFrameStep]
-                .map { min(max(0, $0), max(0, duration - deliveryFrameStep)) }
-                .reduce(into: [Double]()) { values, value in
-                    if !values.contains(where: { abs($0 - value) < 1 / 1200 }) { values.append(value) }
-                }
+            let requested = frame.actualPTS ?? TimelineTiming.playbackTime(forTimelineTime: frame.timelineTime, timeline: timeline)
+            let sample = VideoFrameTiming.sampleTime(for: requested, frameRate: timeline.frameRate, duration: videoDuration ?? duration)
+            let sampleTimes = [sample.seconds]
             var best: EditorialExportProbeComparison?
             for sampleTime in sampleTimes {
                 try Task.checkCancellation()
@@ -112,7 +128,9 @@ public enum EditorialDeliveryVerifier {
                 }
                 decodeRequests += 1
                 do {
-                    let image = try await generator.image(at: CMTime(seconds: sampleTime, preferredTimescale: 600)).image
+                    let decoded = try await generator.image(at: sample)
+                    let image = decoded.image
+                    trace?.event("frame.pts", fields: ["purpose": "independent-mp4-parity", "artifact": output.path, "maximumSize": "640", "tolerance": "0/600"], values: ["requested": sampleTime, "actual": decoded.actualTime.seconds])
                     let comparison: EditorialExportProbeComparison = autoreleasepool {
                         let quality = FrameQualityInspector.assess(image: image)
                         let hash = PerceptualRenderInspector.perceptualHash(image)
@@ -121,7 +139,7 @@ public enum EditorialDeliveryVerifier {
                             guard !previous.isEmpty, previous.count == pixels.count else { return nil }
                             return zip(previous, pixels).reduce(0) { $0 + abs(Double($1.0 - $1.1)) } / Double(pixels.count)
                         }
-                        return .init(time: frame.timelineTime, decoded: true, hashDistance: frame.perceptualHash.map { ($0 ^ hash).nonzeroBitCount }, meanLumaDifference: abs(quality.meanLuma - frame.meanLuma) / 255, meanAbsolutePixelDifference: delta)
+                        return .init(time: frame.timelineTime, decoded: true, hashDistance: frame.perceptualHash.map { ($0 ^ hash).nonzeroBitCount }, meanLumaDifference: abs(quality.meanLuma - frame.meanLuma) / 255, meanAbsolutePixelDifference: delta, previewPTS: frame.actualPTS, exportPTS: decoded.actualTime.seconds)
                     }
                     let metric = comparison.meanAbsolutePixelDifference ?? comparison.meanLumaDifference ?? 1
                     let bestMetric = best?.meanAbsolutePixelDifference ?? best?.meanLumaDifference ?? 1
@@ -134,9 +152,42 @@ public enum EditorialDeliveryVerifier {
             await FilmBuildReporting.report(FilmBuildProgress(.deliveryFrames, completed: comparisons.count, total: preview.count))
         }
         generator.cancelAllCGImageGeneration()
+        trace?.end(decodeSpan, stage: "delivery.decode")
+        let titleGenerator = makeGenerator()
+        titleGenerator.maximumSize = TitleReadabilityInspector.maximumSize
+        defer { titleGenerator.cancelAllCGImageGeneration() }
+        var titleEvidence: [TitleReadabilityEvidence] = []
+        let titleSpan = trace?.begin("delivery.titles", fields: ["artifact": output.path, "signature": key])
+        for title in timeline.effectiveTitleItems where title.enabled {
+            for time in TitleReadabilityInspector.times(title, frameRate: timeline.frameRate) {
+                try Task.checkCancellation()
+                let requested = TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline)
+                let decoded = try? await titleGenerator.image(at: VideoFrameTiming.sampleTime(for: requested, frameRate: timeline.frameRate, duration: videoDuration ?? duration))
+                let evidence = TitleReadabilityInspector.inspect(image: decoded?.image, title: title, timeline: timeline,
+                    time: time, actualPTS: decoded?.actualTime.seconds, source: "mp4")
+                titleEvidence.append(evidence)
+                trace?.event("title.ocr", fields: ["titleID": title.id.uuidString, "source": "mp4", "artifact": output.path,
+                    "signature": evidence.renderSignature, "recognized": evidence.recognizedText, "failure": evidence.failure ?? ""],
+                    values: ["requested": requested, "actualPTS": evidence.actualPTS ?? -1, "score": evidence.score])
+            }
+        }
+        trace?.end(titleSpan, stage: "delivery.titles", status: titleEvidence.allSatisfy(\.passed) ? "success" : "failed")
         await FilmBuildReporting.report(FilmBuildProgress(.audioCheck))
-        let audio = try await measureEncodedAudio(asset: asset)
-        let report = EditorialExportVerification(renderSignature: EditorialRenderSignature.signature(timeline), probes: comparisons, durationDifference: abs(duration - timeline.duration), aspectRatioMatches: actualRatio.map { abs($0 - expectedRatio) < 0.005 } ?? false, encodedAudio: audio, provenance: "RenderEngine control MP4; independent AVAssetImageGenerator decode and AAC PCM measurement")
+        let audio = try await PerformanceTrace.measure(name: "delivery.audio", fields: ["artifact": output.path]) {
+            try await measureEncodedAudio(asset: asset)
+        }
+        var report = EditorialExportVerification(renderSignature: EditorialRenderSignature.signature(timeline), probes: comparisons, durationDifference: abs((videoDuration ?? duration) - AutomaticFilmDurationPolicy.renderedDuration(of: timeline)), aspectRatioMatches: actualRatio.map { abs($0 - expectedRatio) < 0.005 } ?? false, encodedAudio: audio, provenance: "RenderEngine control MP4; independent AVAssetImageGenerator decode and AAC PCM measurement")
+        let file = try CompletedExport.read(output, signature: key)
+        report.titleEvidence = titleEvidence
+        report.artifactSHA256 = file.sha256
+        report.artifactFileIdentity = FrameCacheKey.sourceIdentity(url: output, contentHash: "export")
+        report.fileSize = file.size
+        report.fileModified = file.modified
+        report.fileModifiedTime = file.modified.timeIntervalSince1970
+        report.videoDuration = videoDuration
+        report.outputURL = output
+        report.encodedWidth = size.map { Int($0.width) }
+        report.encodedHeight = size.map { Int($0.height) }
         try JSONEncoder.veloEdit.encode(report).write(to: directory.appendingPathComponent(key + ".json"), options: .atomic)
         return report
     }

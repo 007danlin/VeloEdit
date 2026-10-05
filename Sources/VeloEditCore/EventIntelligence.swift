@@ -76,6 +76,11 @@ public struct EventIntelligenceEngine: Sendable {
         }
         observations.sort(by: chronologicalObservationOrder)
 
+        // Candidate features depend only on the candidate, not on the pair.
+        // Building this index for every pair repeats the same text analysis
+        // thousands of times for a moderately sized archive.
+        let sceneIndex = SemanticSceneIndex(candidates: observations.flatMap { $0.candidates.prefix(6) })
+
         var union = UnionFind(count: observations.count)
         var acceptedLinks: [PairLink] = []
         var splitBoundaries = 0
@@ -87,7 +92,7 @@ public struct EventIntelligenceEngine: Sendable {
                    right.timeIntervalSince(left) > maximumMultiDayGap {
                     break
                 }
-                let metrics = pairMetrics(observations[first], observations[second])
+                let metrics = pairMetrics(observations[first], observations[second], sceneIndex: sceneIndex)
                 if shouldMerge(metrics, first: observations[first], second: observations[second]) {
                     union.join(first, second)
                     acceptedLinks.append(PairLink(first: first, second: second, metrics: metrics))
@@ -146,37 +151,10 @@ public struct EventIntelligenceEngine: Sendable {
     }
 
     private func estimateDeviceTimeOffsets(_ observations: [Observation]) -> [String: Double] {
-        let counts = Dictionary(grouping: observations, by: \.device).mapValues(\.count)
-        guard let reference = counts.sorted(by: { lhs, rhs in
-            if lhs.value != rhs.value { return lhs.value > rhs.value }
-            return lhs.key < rhs.key
-        }).first?.key else { return [:] }
-        var samples: [String: [Double]] = [:]
-        let referenceValues = observations.filter { $0.device == reference && $0.rawDate != nil && $0.dateConfidence >= 0.55 }
-        for other in observations where other.device != reference && other.dateConfidence >= 0.55 {
-            guard let otherDate = other.rawDate else { continue }
-            let matches = referenceValues.compactMap { candidate -> (Double, Double)? in
-                guard let referenceDate = candidate.rawDate else { return nil }
-                let delta = otherDate.timeIntervalSince(referenceDate)
-                guard abs(delta) <= 10 * 60 else { return nil }
-                let semantic = jaccard(candidate.semanticTokens, other.semanticTokens)
-                let spatial = gpsSimilarity(candidate.coordinate, other.coordinate) ?? 0
-                let visual = visualSimilarity(candidate, other) ?? 0
-                let confidence = max(semantic, spatial, visual)
-                guard confidence >= 0.48 else { return nil }
-                return (delta, confidence)
-            }.sorted { abs($0.0) < abs($1.0) }
-            if let best = matches.first, abs(best.0) >= 0.25 {
-                samples[other.device, default: []].append(best.0)
-            }
-        }
-        var result = [reference: 0.0]
-        for (device, values) in samples where !values.isEmpty {
-            let sorted = values.sorted()
-            let median = sorted[sorted.count / 2]
-            result[device] = min(300, max(-300, median))
-        }
-        return result
+        // Similar scenery/GPS or a single nearby timestamp cannot distinguish
+        // clock skew from two different moments at the same place. Preserve
+        // camera clocks until calibrated synchronization evidence is available.
+        [:]
     }
 
     private func shouldMerge(_ metrics: PairMetrics, first: Observation, second: Observation) -> Bool {
@@ -241,12 +219,12 @@ public struct EventIntelligenceEngine: Sendable {
         return metrics.score >= mergeThreshold && metrics.temporal >= 0.16
     }
 
-    private func pairMetrics(_ first: Observation, _ second: Observation) -> PairMetrics {
+    private func pairMetrics(_ first: Observation, _ second: Observation, sceneIndex: SemanticSceneIndex) -> PairMetrics {
         let gap = dateGap(first.normalizedDate, second.normalizedDate)
         let rawTemporal = temporalSimilarity(gap: gap, datesAvailable: first.normalizedDate != nil && second.normalizedDate != nil)
         let temporal = rawTemporal * (0.35 + min(first.dateConfidence, second.dateConfidence) * 0.65)
         let gps = gpsSimilarity(first.coordinate, second.coordinate)
-        let visual = visualSimilarity(first, second)
+        let visual = visualSimilarity(first, second, index: sceneIndex)
         let filename = filenameSimilarity(first.filenameIdentity, second.filenameIdentity)
         let activityCompatibility = first.activityEvidence.compatibility(with: second.activityEvidence)
         let activity: Double? = switch activityCompatibility {
@@ -501,7 +479,10 @@ public struct EventIntelligenceEngine: Sendable {
         }
 
         func unsplitSlice(for group: SourceActivityGroup, groupMembers: [Observation], candidates: [Candidate]) -> SceneSlice {
-            let tags = groupMembers.reduce(into: Set<String>()) { $0.formUnion($1.semanticTokens) }
+            var tags = groupMembers.reduce(into: Set<String>()) { $0.formUnion($1.semanticTokens) }
+            if group.title == "Багги", group.evidence.contains(where: { $0.kind == "activity" && $0.score >= 0.84 }) {
+                tags.insert("buggy")
+            }
             let dates = groupMembers.compactMap(\.normalizedDate)
             return SceneSlice(
                 stableComponents: [group.id.uuidString],
@@ -732,9 +713,8 @@ public struct EventIntelligenceEngine: Sendable {
         return EventLocation(latitude: latitude, longitude: longitude, semanticLabel: commonLabel, confidence: confidence)
     }
 
-    private func visualSimilarity(_ first: Observation, _ second: Observation) -> Double? {
+    private func visualSimilarity(_ first: Observation, _ second: Observation, index: SemanticSceneIndex) -> Double? {
         guard !first.candidates.isEmpty, !second.candidates.isEmpty else { return nil }
-        let index = SemanticSceneIndex(candidates: first.candidates + second.candidates)
         return first.candidates.prefix(6).flatMap { lhs in
             second.candidates.prefix(6).map { index.similarity(between: lhs, and: $0) }
         }.max()
@@ -982,7 +962,7 @@ fileprivate struct Observation: Sendable {
         } else if filenameIdentity.captureDate != nil {
             self.dateConfidence = 0.58
         } else {
-            self.dateConfidence = asset.metadata.dateConfidence ?? 0.12
+            self.dateConfidence = 0.12
         }
         self.coordinate = Self.coordinate(asset: asset, analysis: analysis)
         self.device = EventDeviceIdentity.key(for: asset)

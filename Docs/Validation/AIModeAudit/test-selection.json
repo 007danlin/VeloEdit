@@ -1,0 +1,33 @@
+{
+  "names": [
+    "fastInstructModeIsTheEffectiveDefault",
+    "maximumDoesNotSelectThirtyBillionParametersOnBaseMemory",
+    "friendlyModesUseExplicitInstructVisionModels",
+    "thermalPressurePreservesSamplingAndLimitsConcurrency",
+    "adaptivePlanIsSparseThenAddsDenseCandidateFrames",
+    "manualModelAndQuantizationOverrideTheFriendlyMode",
+    "powerModesChangeTheAnalysisAlgorithm",
+    "audioReaderUsesAVFoundationSupportedSampleRates",
+    "proxyPlannerAvoidsFastFullEncodeAndLimitsBalanceToExpensiveSources",
+    "frameCacheReusesOneDecodeAcrossProcessingPurposes",
+    "sceneDetectorUsesVisualBoundariesAndAlwaysCoversTheClip",
+    "analysisQueuePrioritizesSelectedAssetAndPersistsCancellation",
+    "etaDoesNotPretendToKnowTheAnswerFromMetadataMilliseconds",
+    "etaForThreeVideosDoesNotExplodeOrCountUpDuringSparseStages",
+    "thermalSchedulerUsesHysteresisBeforeRestoringLoad",
+    "deeperAnalysisCanSatisfyALighterModeWithoutRerun",
+    "maximumCrossVideoPassPenalizesDuplicateMoments",
+    "aiDirectorProjectsCanonicalSceneEvidenceOntoCandidates",
+    "momentBoundaryIncludesAnticipationPeakAndCompletion",
+    "actualDirectorModelAndExactCommandHaveDistinctExecutionPaths"
+  ],
+  "command": [
+    "caffeinate",
+    "-is",
+    "./Scripts/dev-test.sh",
+    "--jobs",
+    "2",
+    "--filter",
+    "fastInstructModeIsTheEffectiveDefault|maximumDoesNotSelectThirtyBillionParametersOnBaseMemory|friendlyModesUseExplicitInstructVisionModels|thermalPressurePreservesSamplingAndLimitsConcurrency|adaptivePlanIsSparseThenAddsDenseCandidateFrames|manualModelAndQuantizationOverrideTheFriendlyMode|powerModesChangeTheAnalysisAlgorithm|audioReaderUsesAVFoundationSupportedSampleRates|proxyPlannerAvoidsFastFullEncodeAndLimitsBalanceToExpensiveSources|frameCacheReusesOneDecodeAcrossProcessingPurposes|sceneDetectorUsesVisualBoundariesAndAlwaysCoversTheClip|analysisQueuePrioritizesSelectedAssetAndPersistsCancellation|etaDoesNotPretendToKnowTheAnswerFromMetadataMilliseconds|etaForThreeVideosDoesNotExplodeOrCountUpDuringSparseStages|thermalSchedulerUsesHysteresisBeforeRestoringLoad|deeperAnalysisCanSatisfyALighterModeWithoutRerun|maximumCrossVideoPassPenalizesDuplicateMoments|aiDirectorProjectsCanonicalSceneEvidenceOntoCandidates|momentBoundaryIncludesAnticipationPeakAndCompletion|actualDirectorModelAndExactCommandHaveDistinctExecutionPaths"
+  ]
+}

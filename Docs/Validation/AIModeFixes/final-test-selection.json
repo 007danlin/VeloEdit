@@ -1,0 +1,5 @@
+{
+  "filter": "AIModeReliabilityTests|AICompletionStatusTests|fastInstructModeIsTheEffectiveDefault|maximumDoesNotSelectThirtyBillionParametersOnBaseMemory|friendlyModesUseExplicitInstructVisionModels|thermalPressurePreservesSamplingAndLimitsConcurrency|adaptivePlanIsSparseThenAddsDenseCandidateFrames|manualModelUsesItsInstalledQuantization|productionEnricherUsesASRAudioTelemetryAndVisualEvidenceForBoundaries",
+  "expectedTests": 16,
+  "note": "16 tests before the additional director advisory repair; follow-up app regressions are recorded separately."
+}

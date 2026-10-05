@@ -1,0 +1,10 @@
+{
+  "computed": "b942dc91fb433ce818bff9c9db5897399aa1f3eaa2a4df89f3c73e0e2e408369",
+  "bundle": {
+    "builtAt": "2026-09-18T20:26:40.639471+00:00",
+    "sourceSHA256": "b942dc91fb433ce818bff9c9db5897399aa1f3eaa2a4df89f3c73e0e2e408369",
+    "build": "2026.261.202640",
+    "runtime": "Ollama 0.32.14"
+  },
+  "matches": true
+}

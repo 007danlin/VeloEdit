@@ -7,6 +7,38 @@ import Testing
 @testable import VeloEditCore
 
 @Suite(.serialized) struct EditorPreviewParityTests {
+    @Test func speechCaptionUsesAudioClockAfterTwoTransitionsInPreviewAndMP4() async throws {
+        let fixture = try await Fixture.make(duration: 6); defer { fixture.remove() }
+        var timeline = fixture.timeline
+        timeline.items = TimelineTiming.retimed((0..<3).map { index in
+            TimelineItem(assetID: fixture.asset.id, kind: .video, sourceStart: Double(index * 2), sourceDuration: 2, timelineStart: 0, timelineDuration: 2)
+        })
+        timeline.transitionItems = (1..<3).map { index in
+            TimelineTransitionItem(style: .crossDissolve, outgoingClipID: timeline.items[index - 1].id,
+                incomingClipID: timeline.items[index].id, startTime: Double(index * 2), duration: 0.8)
+        }
+        let phrase = TranscriptSentence(text: "Проверка речи", startTime: 4.2, endTime: 4.8, confidence: 1)
+        let speech = SpeechTranscript(localeIdentifier: "ru", words: [], sentences: [phrase], confidence: 1)
+        timeline = SpeechSubtitleBuilder.applying(to: timeline, records: [.init(assetID: fixture.asset.id, transcript: speech)], enabled: true, allowMuted: true)
+        let title = try #require(timeline.effectiveTitleItems.first)
+        let clip = timeline.items[2]
+        let range = try #require(SpeechTimeMap.playbackRange(anchor: title.speechAnchor!, item: clip, timeline: timeline))
+        let time = (range.lowerBound + range.upperBound) / 2
+        let playback = try await PlaybackEngine().build(timeline: timeline, assets: [fixture.asset], forceVideoComposition: true)
+        let preview = try Self.pixels(Self.generator(playback), at: time)
+        var clean = timeline; clean.titleItems = []
+        let baseline = try Self.pixels(Self.generator(try await PlaybackEngine().build(timeline: clean, assets: [fixture.asset], forceVideoComposition: true)), at: time)
+        #expect(Self.difference(preview, baseline) > 0.0002)
+        let destination = fixture.root.appendingPathComponent("speech-clock.mp4")
+        _ = try await RenderEngine().render(timeline: timeline, assets: [fixture.asset], quality: .maximum, destination: destination)
+        let exported = try Self.pixels(Self.generator(asset: AVURLAsset(url: destination)), at: time)
+        #expect(Self.difference(preview, exported) < 0.04)
+        let before = max(0, range.lowerBound - 0.1)
+        let beforeCaption = try Self.pixels(Self.generator(playback), at: before)
+        let beforeClean = try Self.pixels(Self.generator(try await PlaybackEngine().build(timeline: clean, assets: [fixture.asset], forceVideoComposition: true)), at: before)
+        #expect(Self.difference(beforeCaption, beforeClean) < 0.002)
+    }
+
     @Test func everyTitleTemplateAndInspectorEditMatchesEncodedFilm() async throws {
         var samples = TitleTemplateRegistry.all.map { template -> TitleTimelineItem in
             var item = template.previewItem()
@@ -15,7 +47,7 @@ import Testing
             return item
         }
         let base = try #require(samples.first { $0.templateID == "title.modern.v1" })
-        for variant in 0..<5 {
+        for variant in 0..<6 {
             var title = base
             title.id = UUID()
             switch variant {
@@ -23,7 +55,8 @@ import Testing
             case 1: title.style.textColorHex = "#FF00CC"
             case 2: title.style.opacity = 0.4
             case 3: title.style.opacity = 0
-            default: title.text = "ЗИМА"; title.additionalText = "НОВЫЙ ТЕКСТ"
+            case 4: title.text = "ЗИМА"; title.additionalText = "НОВЫЙ ТЕКСТ"
+            default: title.text = "ЛЕТО\nУ МОРЯ"; title.style.fontSize = 84
             }
             samples.append(title)
         }

@@ -108,7 +108,10 @@ public enum EditorialProbeSchedule {
             requested += [start + min(step, duration / 4), start + duration / 2, start + duration - min(step, duration / 4)]
         }
         for effect in timeline.effectiveEffects where effect.enabled { interval(effect.startTime, effect.duration) }
-        for title in timeline.effectiveTitleItems where title.enabled { interval(title.startTime, title.duration) }
+        for title in timeline.effectiveTitleItems where title.enabled {
+            interval(title.startTime, title.duration)
+            requested += TitleReadabilityInspector.times(title, frameRate: timeline.frameRate)
+        }
         for telemetry in timeline.effectiveTelemetryItems { interval(telemetry.timelineStart, telemetry.timelineDuration) }
         return Array(Set(requested.filter { $0.isFinite && $0 >= 0 && $0 < timeline.duration }.map { Int(($0 * 600).rounded()) }))
             .map { min(last, Double($0) / 600) }.sorted()
@@ -121,12 +124,16 @@ public enum EditorialProbeSchedule {
 }
 
 public enum EditorialEvidenceVerifier {
-    /// Version 3 activates locally-produced, render-bound semantic evidence.
+    /// Version 4 requires current per-title preview and encoded-file evidence.
     /// Older reviews remain readable but cannot silently cross this production
     /// boundary without being rendered and verified again.
-    public static let version = 3
+    public static let version = 4
 
     static func verify(timeline: Timeline, plan: StoryPlan, analyses: [AnalysisResult], frames: [PerceptualRenderedFrameEvidence], findings: [EditorialFinding], units suppliedUnits: [UUID: EditorialUnit]? = nil) -> [EditorialDomainEvidence] {
+        // All records belong to this immutable snapshot. Encode it once, before
+        // entering nested setters/filters, instead of copying the large value
+        // and JSON-encoding it again for every domain and semantic claim.
+        let renderSignature = EditorialRenderSignature.signature(timeline)
         let items = timeline.items.filter { $0.overlay == nil && $0.kind != .title }.sorted { $0.timelineStart < $1.timelineStart }
         let ids = items.map(\.id)
         let schedule = EditorialProbeSchedule.times(timeline: timeline)
@@ -159,7 +166,7 @@ public enum EditorialEvidenceVerifier {
             records[i].status = passed ? .passed : .failed
             records[i].confidence = 1
             records[i].coverage = coverage
-            records[i].provenance = ["deterministic-verifier-v\(EditorialEvidenceVerifier.version)", EditorialRenderSignature.signature(timeline)]
+            records[i].provenance = ["deterministic-verifier-v\(EditorialEvidenceVerifier.version)", renderSignature]
             records[i].reason = reason
             records[i].finding = findings.first { kinds.contains($0.kind) }
             if !passed, records[i].finding == nil, let kind = kinds.first {
@@ -179,7 +186,7 @@ public enum EditorialEvidenceVerifier {
             set(.contentBudgetUpperBound, passed: valid && timeline.duration <= upper + tolerance, reason: "Фактически \(timeline.duration) с; безопасный максимум \(upper) с", kinds: [.durationPadding])
         }
         set(.sourceAudioPolicy, passed: !findings.contains { $0.kind == .audioPolicyViolation }, reason: "Проверены embedded и detached дорожки против явного intent", kinds: [.audioPolicyViolation])
-        let export = frames.compactMap(\.exportVerification).first { $0.renderSignature == EditorialRenderSignature.signature(timeline) }
+        let export = frames.compactMap(\.exportVerification).first { $0.renderSignature == renderSignature }
         if let export {
             set(.previewExportParity, passed: export.aspectRatioMatches && export.durationDifference <= 2 / max(1, timeline.frameRate) && export.probes.allSatisfy(\.passed), coverage: EditorialProbeSchedule.coverage(required: schedule, observed: export.probes.filter(\.passed).map(\.time)), reason: export.provenance, kinds: [.previewExportMismatch])
         }
@@ -194,21 +201,33 @@ public enum EditorialEvidenceVerifier {
             }
         }
         if hasTitles {
-            let titles = timeline.effectiveTitleItems.filter(\.enabled)
-            let observed = titles.filter { title in decoded.contains { $0.timelineTime >= title.startTime && $0.timelineTime <= title.endTime && $0.titleReadability != nil } }
-            if !observed.isEmpty {
-                set(.titleReadability, passed: !frames.contains { $0.expectedVisibleContent && ($0.titleReadability ?? 1) < 0.5 }, coverage: Double(observed.count) / Double(titles.count), reason: "OCR читаемой части каждого титра", kinds: [.unreadableTitle])
+            let previewTitles = frames.flatMap { $0.titleEvidence ?? [] }
+            let previewStatus = TitleReadabilityInspector.coverage(timeline: timeline, evidence: previewTitles, source: "preview")
+            let deliveryStatus = TitleReadabilityInspector.coverage(timeline: timeline, evidence: export?.titleEvidence ?? [], source: "mp4")
+            if !previewTitles.isEmpty && (export != nil || !previewStatus.passed) {
+                set(.titleReadability, passed: previewStatus.passed && deliveryStatus.passed,
+                    coverage: previewStatus.complete && deliveryStatus.complete ? 1 : 0,
+                    reason: "OCR каждого титра: начало/середина/конец читаемого показа, отдельно композиция и MP4; порог 0.5",
+                    kinds: [.unreadableTitle])
             }
         }
+
         // Localized independent semantic claims can fill only semantic domains.
         // They cannot override duration, audio, decode, CAS or parity checks.
         let semantic: Set<EditorialEvidenceDomain> = [.subjectCoverage, .faceSafety, .bodySafety, .foregroundOcclusion, .dominantForegroundObject, .shotFamilyIdentity, .visualNovelty, .actionProgression, .momentCompletion, .hookFulfillment, .closureFulfillment, .eventBridge, .titleGrounding, .telemetryMeaningfulness, .musicNarrativeFit]
         let claims = frames.flatMap { $0.editorialClaims ?? [] }
+        // Visibility is independent of the evidence domain. Mapping a timeline
+        // time through every transition is expensive on long montages; retain
+        // the same points once and apply only the domain's item scope below.
+        let visibleSchedule = claims.isEmpty ? [] : schedule.filter { time in
+            FilmEndingFade.expectsVisibleContent(atTimelineTime: time, timeline: timeline)
+                && !NaturalChapterTransitionPlanner.expectsCoveredSource(at: time, timeline: timeline)
+        }
         for domain in semantic {
             let index = records.firstIndex { $0.domain == domain }!
             let relevant: [UUID] = domain == .hookFulfillment ? Array(ids.prefix(1)) : domain == .closureFulfillment ? Array(ids.suffix(1)) : ids
             let valid = claims.filter { claim in
-                claim.domain == domain && claim.renderSignature == EditorialRenderSignature.signature(timeline)
+                claim.domain == domain && claim.renderSignature == renderSignature
                     && claim.confidence.isFinite && (0.7...1).contains(claim.confidence)
                     && !claim.observation.isEmpty && !claim.method.isEmpty && !claim.itemIDs.isEmpty
                     && Set(claim.itemIDs).isSubset(of: Set(ids)) && Set(claim.probeTimes).count >= 2
@@ -219,10 +238,8 @@ public enum EditorialEvidenceVerifier {
             }
             guard !valid.isEmpty else { continue }
             let times = valid.flatMap(\.probeTimes)
-            let requiredTimes = schedule.filter { time in
-                FilmEndingFade.expectsVisibleContent(atTimelineTime: time, timeline: timeline) &&
-                    !NaturalChapterTransitionPlanner.expectsCoveredSource(at: time, timeline: timeline) &&
-                    items.contains { relevant.contains($0.id) && time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration }
+            let requiredTimes = visibleSchedule.filter { time in
+                items.contains { relevant.contains($0.id) && time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration }
             }
             records[index].coverage = EditorialProbeSchedule.coverage(required: requiredTimes, observed: times)
             records[index].confidence = valid.map(\.confidence).min() ?? 0

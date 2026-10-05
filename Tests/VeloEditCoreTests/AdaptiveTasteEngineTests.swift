@@ -198,7 +198,7 @@ private func p7Timeline(planID: UUID, candidates: [Candidate], actionFirst: Bool
 @Test func learnedDurationAndMusicInfluenceRealAutonomousDecisionGradually() {
     let (assets, analyses, _) = p7Fixture()
     let signals = Array(repeating: [
-        PreferenceSignal(feature: "duration.film", value: -0.45, confidence: 0.9, source: .trim),
+        PreferenceSignal(feature: "duration.film", value: -0.95, confidence: 0.9, source: .trim),
         PreferenceSignal(feature: "clipDurationPreference", value: 0.75, confidence: 0.9, source: .trim),
         PreferenceSignal(feature: "musicBPM", value: 0.6, confidence: 0.9, source: .music)
     ], count: 24).flatMap { $0 }

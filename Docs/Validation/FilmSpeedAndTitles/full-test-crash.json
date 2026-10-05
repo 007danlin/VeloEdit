@@ -1,0 +1,176 @@
+{
+  "file": "/Users/daniellineckij/Library/Logs/DiagnosticReports/swiftpm-testing-helper-2026-09-18-225831.ips",
+  "exception": {
+    "codes": "0x0000000000000002, 0x000000016e03bfe0",
+    "message": "Could not determine thread index for stack guard region",
+    "rawCodes": [
+      2,
+      6140706784
+    ],
+    "type": "EXC_BAD_ACCESS",
+    "signal": "SIGBUS",
+    "subtype": "KERN_PROTECTION_FAILURE at 0x000000016e03bfe0"
+  },
+  "termination": {
+    "flags": 0,
+    "code": 10,
+    "namespace": "SIGNAL",
+    "indicator": "Bus error: 10",
+    "byProc": "exc handler",
+    "byPid": 90032
+  },
+  "frames": [
+    {
+      "imageOffset": 218280,
+      "symbol": "_xzm_xzone_malloc_from_freelist_chunk",
+      "symbolLocation": 8,
+      "imageIndex": 41
+    },
+    {
+      "imageOffset": 217260,
+      "symbol": "_xzm_xzone_malloc_freelist_outlined",
+      "symbolLocation": 248,
+      "imageIndex": 41
+    },
+    {
+      "imageOffset": 455276,
+      "symbol": "swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)",
+      "symbolLocation": 64,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 20180,
+      "symbol": "swift_allocObject",
+      "symbolLocation": 136,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 3385264,
+      "symbol": "_allocateStringStorage(codeUnitCapacity:precalculatedUTF16Count:)",
+      "symbolLocation": 116,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 4480208,
+      "symbol": "specialized static String._uncheckedFromUTF8(_:asciiPreScanResult:)",
+      "symbolLocation": 124,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 9804468,
+      "symbol": "UUID.encode(to:)",
+      "symbolLocation": 104,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 9804612,
+      "symbol": "protocol witness for Encodable.encode(to:) in conformance UUID",
+      "symbolLocation": 16,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 4631740,
+      "symbol": "dispatch thunk of Encodable.encode(to:)",
+      "symbolLocation": 32,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 6506940,
+      "symbol": "__JSONEncoder.wrapGeneric<A, B>(_:for:)",
+      "symbolLocation": 4296,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 6535980,
+      "symbol": "_JSONKeyedEncodingContainer.encode<A>(_:forKey:)",
+      "symbolLocation": 332,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 6543196,
+      "symbol": "protocol witness for KeyedEncodingContainerProtocol.encode<A>(_:forKey:) in conformance _JSONKeyedEncodingContainer<A>",
+      "symbolLocation": 32,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 1537824,
+      "symbol": "KeyedEncodingContainerProtocol.encodeIfPresent<A>(_:forKey:)",
+      "symbolLocation": 160,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 6543688,
+      "symbol": "protocol witness for KeyedEncodingContainerProtocol.encodeIfPresent<A>(_:forKey:) in conformance _JSONKeyedEncodingContainer<A>",
+      "symbolLocation": 36,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 1616476,
+      "symbol": "_KeyedEncodingContainerBox.encodeIfPresent<A, B>(_:forKey:)",
+      "symbolLocation": 376,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 1540444,
+      "symbol": "KeyedEncodingContainer.encodeIfPresent<A>(_:forKey:)",
+      "symbolLocation": 68,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 24505604,
+      "sourceFile": "/<compiler-generated>",
+      "symbol": "TimelineItem.encode(to:)",
+      "symbolLocation": 348,
+      "imageIndex": 1
+    },
+    {
+      "imageOffset": 24517592,
+      "sourceFile": "/<compiler-generated>",
+      "symbol": "protocol witness for Encodable.encode(to:) in conformance TimelineItem",
+      "symbolLocation": 16,
+      "imageIndex": 1
+    },
+    {
+      "imageOffset": 4631740,
+      "symbol": "dispatch thunk of Encodable.encode(to:)",
+      "symbolLocation": 32,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 6502336,
+      "symbol": "specialized __JSONEncoder.wrapGeneric<A, B>(_:for:)",
+      "symbolLocation": 4460,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 6545844,
+      "symbol": "_JSONUnkeyedEncodingContainer.encode<A>(_:)",
+      "symbolLocation": 68,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 6548328,
+      "symbol": "protocol witness for UnkeyedEncodingContainer.encode<A>(_:) in conformance _JSONUnkeyedEncodingContainer",
+      "symbolLocation": 16,
+      "imageIndex": 42
+    },
+    {
+      "imageOffset": 200904,
+      "symbol": "Array<A>.encode(to:)",
+      "symbolLocation": 600,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 1706824,
+      "symbol": "protocol witness for Encodable.encode(to:) in conformance <A> [A]",
+      "symbolLocation": 32,
+      "imageIndex": 39
+    },
+    {
+      "imageOffset": 4631740,
+      "symbol": "dispatch thunk of Encodable.encode(to:)",
+      "symbolLocation": 32,
+      "imageIndex": 39
+    }
+  ]
+}

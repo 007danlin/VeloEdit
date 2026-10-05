@@ -422,7 +422,8 @@ public struct NaturalLanguageDirector: Sendable {
             preset: storyPreset,
             base: baseStoryConstraints
         )
-        if deterministicCommands.contains(where: { $0.semanticCategory == "duration" }) {
+        let hasLibraryInsertion = commands.contains { ["insert-background", "insert-source"].contains($0.semanticCategory) }
+        if deterministicCommands.contains(where: { $0.semanticCategory == "duration" }) || hasLibraryInsertion {
             // An explicit “selected/first/all clips are N seconds” command is
             // a local editor operation, not a request to resize the film.
             interpretedStoryConstraints.targetDuration = baseStoryConstraints.targetDuration
@@ -692,7 +693,7 @@ public struct NaturalLanguageDirector: Sendable {
             if NLText.containsAny(text, ["лёгкую тряску", "легкую тряску", "light shake", "лёгкое дрожание", "легкое дрожание"]) { return .shake }
             return nil
         }()
-        if let requestedEffect, !asksEffectRemoval {
+        if let requestedEffect, !asksEffectRemoval, !commands.contains(where: { $0.semanticCategory == "effect" }) {
             calls.append(.addEffect(
                 type: requestedEffect,
                 startTime: effectStart,
@@ -754,7 +755,7 @@ public struct NaturalLanguageDirector: Sendable {
                 reason: "P8: существующий переход скорректирован без замены"
             ))
             intents.append(EditIntent(scope: .section, target: generalTarget, operation: .transition, desiredResult: asksShorterTransition ? "Сделать переход короче" : "Сделать переход мягче", confidence: 0.94, executionTier: .instant))
-        } else if NLText.containsAny(text, ["добавь переход", "add transition"]) {
+        } else if !commands.contains(where: { $0.semanticCategory == "transition" }), NLText.containsAny(text, ["добавь переход", "add transition"]) {
             let primary = input.timeline.items.filter { $0.overlay == nil && $0.kind != .title }.sorted { $0.timelineStart < $1.timelineStart }
             let incomingIndex = primary.indices.dropFirst().min { abs(primary[$0].timelineStart - referenceTime) < abs(primary[$1].timelineStart - referenceTime) }
             if let incomingIndex {
@@ -768,21 +769,24 @@ public struct NaturalLanguageDirector: Sendable {
         }
 
         let commandCategories = Set(commands.map(\.semanticCategory))
-        if commandCategories.contains(where: { $0 == "add-title" || $0 == "title-style" || $0 == "remove-titles" }) {
+        if commandCategories.contains(where: { $0 == "add-title" || $0.hasPrefix("title-") || $0 == "remove-titles" }) {
             intents.append(EditIntent(scope: .overlay, operation: .title, desiredResult: "Изменить титры", confidence: 0.94, executionTier: .instant))
         }
         if commandCategories.contains(where: { $0 == "music" || $0 == "music-volume" }) {
             intents.append(EditIntent(scope: .audio, operation: .music, desiredResult: "Изменить музыку", confidence: 0.94, executionTier: .fast))
         }
+        if hasLibraryInsertion {
+            intents.append(EditIntent(scope: .shot, operation: .restoreMoment, desiredResult: "Добавить материал в монтаж", confidence: 0.95, executionTier: .fast))
+        }
         if commandCategories.contains("telemetry") {
             intents.append(EditIntent(scope: .overlay, target: generalTarget, operation: .telemetry, desiredResult: "Изменить телеметрию", confidence: 0.90, executionTier: .instant))
         }
         if !commands.isEmpty {
-            intents.append(EditIntent(scope: .shot, target: generalTarget, operation: .genericEdit, desiredResult: "Применить типизированные editing tools", confidence: 0.93, executionTier: .instant))
+            intents.append(EditIntent(scope: .shot, target: generalTarget, operation: .genericEdit, desiredResult: "Применить монтажные команды", confidence: 0.93, executionTier: .instant))
         }
 
         if Self.requiresAutonomousEdit(text) || requiresStoryConstraintRebuild {
-            let tasteConfidence = min(1, Double(input.tasteProfile.totalSignalCount) / 20)
+            let tasteConfidence = BundledEditorialTaste.resolving(input.tasteProfile).adaptiveConfidence
             intents.append(EditIntent(
                 scope: .global,
                 operation: .autonomousEdit,
@@ -795,7 +799,7 @@ public struct NaturalLanguageDirector: Sendable {
                 confidence: max(0.62, input.styleProfile.confidence * 0.65 + tasteConfidence * 0.35),
                 executionTier: .deep
             ))
-        } else if Self.requiresStyleRebuild(text) {
+        } else if !hasLibraryInsertion && Self.requiresStyleRebuild(text) {
             intents.append(EditIntent(
                 scope: .global,
                 operation: .style,
@@ -854,21 +858,25 @@ public struct NaturalLanguageDirector: Sendable {
             plan.commands,
             to: tools.timeline,
             selectedItemID: input.selectedItemID ?? plan.intents.flatMap(\.target.itemIDs).first,
-            selectedCandidateID: selectedCandidateID
+            selectedCandidateID: selectedCandidateID,
+            assets: input.assets, analyses: input.currentProject.analyses
         )
         var candidate = Self.clampedToSources(edited.timeline, assets: input.assets)
         let safety = NaturalLanguageTimelineSafetyValidator().violations(candidate: candidate, comparedTo: input.timeline, plan: plan, assets: input.assets)
         let changed = candidate != input.timeline
-        let committed = safety.isEmpty && changed
+        // Normalization (for example nil -> [] for transitions) is not an
+        // executed user request and must never produce a success receipt.
+        let committed = safety.isEmpty && changed && (!tools.report.applied.isEmpty || edited.report.hasChanges)
         if !committed { candidate = input.timeline }
 
         let toolRejected = tools.report.rejected
         let allRejected = plan.rejectedReasons + toolRejected + edited.report.ignored + safety
-        let appliedCount = tools.report.applied.count + edited.report.applied.count
         let summary: String
         if committed {
-            let desired = plan.intents.map(\.desiredResult).uniqued().prefix(3).joined(separator: "; ")
-            summary = "Готово: \(desired). Изменений: \(appliedCount)."
+            let actual = edited.report.applied + tools.report.applied.map(\.reason)
+            let details = actual.uniqued().joined(separator: "; ")
+            summary = (allRejected.isEmpty ? "Выполнено: " : "Выполнено частично: ") + details + "."
+                + (allRejected.isEmpty ? "" : " Не выполнено: \(allRejected.joined(separator: "; ")).")
         } else if !allRejected.isEmpty {
             summary = "Правка не применена: \(allRejected.prefix(2).joined(separator: "; "))."
         } else {
@@ -948,7 +956,7 @@ public struct NaturalLanguageDirector: Sendable {
     }
 
     private static func subtitleDirective(from text: String, input: NaturalLanguageDirectorInput) -> DirectorSubtitleDirective? {
-        guard NLText.containsAny(text, ["субтитр", "caption", "captions"]) else { return nil }
+        guard NLText.containsAny(text, ["субтитр", "caption", "captions"]), !NLText.containsAny(text, ["без субтитров", "убери субтитры", "remove subtitles", "no subtitles"]) else { return nil }
         let language: DirectorSubtitleLanguage = NLText.containsAny(text, ["английск", "english"]) ? .english : .russian
         let style: DirectorSubtitleStyle
         if NLText.containsAny(text, ["минимал", "кинематограф", "cinematic"]) { style = .cinematic }
@@ -1009,8 +1017,7 @@ public struct NaturalLanguageDirector: Sendable {
 
     private func mergedCommands(deterministic: [EditorCommand], supplemental: [EditorCommand]) -> [EditorCommand] {
         guard !supplemental.isEmpty else { return deterministic }
-        let categories = Set(deterministic.map(\.semanticCategory))
-        return deterministic + supplemental.filter { !categories.contains($0.semanticCategory) }
+        return deterministic + EditorCommand.supplemental(supplemental, to: deterministic)
     }
 
     private func isVaguePacing(_ text: String) -> Bool {
@@ -1387,106 +1394,6 @@ public struct OfflineBilingualSubtitleTranslator: SubtitleTranslationProviding, 
     }
 }
 
-private struct SubtitleTimelineBuilder: Sendable {
-    let translator: any SubtitleTranslationProviding
-
-    func build(directive: DirectorSubtitleDirective, input: NaturalLanguageDirectorInput) -> [TitleTimelineItem] {
-        let candidates = Dictionary(uniqueKeysWithValues: input.currentProject.analyses.flatMap(\.directorCandidates).map { ($0.id, $0) })
-        return input.timeline.items.compactMap { item -> TitleTimelineItem? in
-            guard item.kind == .video, !item.isReversed,
-                  let candidate = item.candidateID.flatMap({ candidates[$0] }),
-                  let speech = candidate.insights?.speech,
-                  speech.confidence >= 0.32 else { return nil }
-            let sourceStart = max(item.sourceStart, speech.phraseStart)
-            let sourceEnd = min(item.sourceStart + item.sourceDuration, speech.phraseEnd)
-            guard sourceEnd - sourceStart >= 0.08 else { return nil }
-            let scale = item.timelineDuration / max(0.001, item.sourceDuration)
-            let startTime = item.timelineStart + (sourceStart - item.sourceStart) * scale
-            let duration = max(0.08, (sourceEnd - sourceStart) * scale)
-            let translated = translator.translate(speech.text, from: speech.localeIdentifier, to: directive.language)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !translated.isEmpty else { return nil }
-            let style = subtitleStyle(directive.style, tracking: candidate.insights?.subjectTracking, vertical: input.timeline.height > input.timeline.width)
-            let words = captionWords(
-                translatedText: translated,
-                sourceWords: speech.words ?? [],
-                sourceStart: sourceStart,
-                sourceEnd: sourceEnd,
-                outputDuration: duration
-            )
-            return TitleTimelineItem(
-                kind: words.isEmpty ? .automaticSubtitles : .wordLevelCaptions,
-                templateID: words.isEmpty ? "caption.clean.v1" : "caption.word-focus.v1",
-                text: translated,
-                startTime: startTime,
-                duration: duration,
-                track: 2,
-                style: style,
-                animation: subtitleAnimation(directive.style),
-                words: words,
-                activeWordHighlighting: directive.wordHighlighting,
-                targetClipID: item.id,
-                explanation: [
-                    "P8 NaturalLanguageDirector subtitles",
-                    "language=\(directive.language.rawValue)",
-                    "style=\(directive.style.rawValue)",
-                    speech.speakerID.map { "speaker=\($0)" } ?? "speaker=unknown",
-                    "safe-area + face avoidance"
-                ]
-            )
-        }
-    }
-
-    private func captionWords(
-        translatedText: String,
-        sourceWords: [TranscriptWord],
-        sourceStart: Double,
-        sourceEnd: Double,
-        outputDuration: Double
-    ) -> [CaptionWord] {
-        let translatedTokens = translatedText.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        guard !translatedTokens.isEmpty else { return [] }
-        let usable = sourceWords.filter { $0.startTime <= sourceEnd && $0.endTime >= sourceStart }
-        if usable.count == translatedTokens.count {
-            let sourceSpan = max(0.001, sourceEnd - sourceStart)
-            return zip(translatedTokens, usable).map { token, word in
-                CaptionWord(
-                    word: token,
-                    start: min(outputDuration, max(0, (word.startTime - sourceStart) / sourceSpan * outputDuration)),
-                    end: min(outputDuration, max(0, (word.endTime - sourceStart) / sourceSpan * outputDuration))
-                )
-            }
-        }
-        let interval = outputDuration / Double(translatedTokens.count)
-        return translatedTokens.enumerated().map { index, token in
-            CaptionWord(word: token, start: Double(index) * interval, end: Double(index + 1) * interval)
-        }
-    }
-
-    private func subtitleStyle(_ preset: DirectorSubtitleStyle, tracking: SubjectTrackingSummary?, vertical: Bool) -> TitleStyle {
-        let subjectY = tracking?.mainSubject?.observations.map { $0.region.centerY }.average
-        let y = (subjectY ?? 0.4) > 0.58 ? 0.17 : (vertical ? 0.76 : 0.84)
-        switch preset {
-        case .cinematic:
-            return TitleStyle(fontSize: 54, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", fontWeight: 0.62, yPosition: y, shadow: 0.72, strokeWidth: 1.2, backgroundOpacity: 0.10)
-        case .vlog:
-            return TitleStyle(fontSize: 70, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", fontWeight: 0.82, yPosition: y, shadow: 0.55, strokeWidth: 1.8, backgroundOpacity: 0.32, activeWordColorHex: "#FFD60A")
-        case .travel:
-            return TitleStyle(fontSize: 60, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", fontWeight: 0.70, yPosition: y, shadow: 0.62, strokeWidth: 1.2, backgroundOpacity: 0.22, activeWordColorHex: "#5AC8FA")
-        case .social:
-            return TitleStyle(fontSize: 76, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", fontWeight: 0.90, yPosition: y, shadow: 0.45, strokeWidth: 2.0, backgroundOpacity: 0.38, activeWordColorHex: "#FFCC00")
-        }
-    }
-
-    private func subtitleAnimation(_ style: DirectorSubtitleStyle) -> TitleAnimation {
-        switch style {
-        case .cinematic, .travel: return TitleAnimation(entrance: .fade, exit: .fade, duration: 0.22)
-        case .vlog: return TitleAnimation(entrance: .scale, exit: .fade, duration: 0.16)
-        case .social: return TitleAnimation(entrance: .kinetic, exit: .scale, duration: 0.12)
-        }
-    }
-}
-
 // MARK: - Transaction safety
 
 private struct NaturalLanguageTimelineSafetyValidator: Sendable {
@@ -1525,7 +1432,7 @@ private struct NaturalLanguageTimelineSafetyValidator: Sendable {
 
 // MARK: - Text helpers
 
-private enum NLText {
+enum NLText {
     static func normalized(_ value: String) -> String {
         value.lowercased()
             .replacingOccurrences(of: "ё", with: "е")
@@ -1565,7 +1472,10 @@ private enum NLText {
             "сделай", "добавь", "убери", "удали", "верни", "продли", "оставь", "поставь", "перемести",
             "момент", "сцена", "кадр", "клип", "видео", "фильм", "там", "где", "этот", "тот", "мне",
             "чуть", "больше", "меньше", "подольше", "после", "перед", "the", "a", "an", "this", "that",
-            "make", "add", "remove", "shot", "scene", "video"
+            "make", "add", "remove", "shot", "scene", "video",
+            "была", "был", "были", "есть", "было", "кусок", "кусочек", "фрагмент", "фрагменты",
+            "исходник", "исходников", "исходниках", "материалов", "начало", "начале", "конец", "конце",
+            "из", "со", "на", "не", "но", "если", "его", "еще", "вставь", "найди", "добавить", "вставить", "фильма", "фильме"
         ]
         var tokens = Set(normalized(value)
             .split { !$0.isLetter && !$0.isNumber }
@@ -1590,6 +1500,14 @@ private enum NLText {
             "road": ["дорога", "road", "drive", "driving"],
             "сплав": ["сплав", "rafting", "raft", "river"]
         ]
+        let groups: [[String]] = [
+            ["собака", "собакой", "собаку", "собаки", "собак", "собачка", "пес", "пса", "псом", "щенок", "щенка", "dog", "dogs", "puppy", "canine"],
+            ["кошка", "кошкой", "кошку", "кот", "кота", "котом", "котенок", "cat", "cats", "kitten"]
+        ]
+        for group in groups where !tokens.isDisjoint(with: group) {
+            tokens.subtract(group)
+            tokens.insert(group[0])
+        }
         for token in Array(tokens) { tokens.formUnion(synonyms[token] ?? []) }
         return tokens
     }

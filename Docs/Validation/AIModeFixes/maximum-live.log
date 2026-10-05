@@ -1,0 +1,3 @@
+/Users/daniellineckij/VeloEdit/Build/AIModeFixes/maximum/PerformanceRunner.app: replacing existing signature
+{"mode": "maximum", "cache": "cold", "wallSeconds": 114.27310625000246, "exitCode": 0}
+{"mode": "maximum", "cache": "warm", "wallSeconds": 11.733678917000361, "exitCode": 0}

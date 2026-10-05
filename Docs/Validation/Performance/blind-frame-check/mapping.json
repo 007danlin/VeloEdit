@@ -1,0 +1,38 @@
+[
+  {
+    "pair": 1,
+    "timestamp": 10.0,
+    "A": {
+      "version": "before",
+      "file": "pair-1-A.jpg"
+    },
+    "B": {
+      "version": "after",
+      "file": "pair-1-B.jpg"
+    }
+  },
+  {
+    "pair": 2,
+    "timestamp": 30.0,
+    "A": {
+      "version": "before",
+      "file": "pair-2-A.jpg"
+    },
+    "B": {
+      "version": "after",
+      "file": "pair-2-B.jpg"
+    }
+  },
+  {
+    "pair": 3,
+    "timestamp": 60.0,
+    "A": {
+      "version": "after",
+      "file": "pair-3-A.jpg"
+    },
+    "B": {
+      "version": "before",
+      "file": "pair-3-B.jpg"
+    }
+  }
+]

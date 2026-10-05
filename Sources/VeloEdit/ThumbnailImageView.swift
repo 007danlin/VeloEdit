@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ImageIO
 import VeloEditCore
 
 /// Keeps thumbnail disk I/O and image decoding out of SwiftUI's body pass.
@@ -8,7 +9,8 @@ import VeloEditCore
 final class ThumbnailImageCache: @unchecked Sendable {
     static let shared = ThumbnailImageCache()
 
-    private let cache = NSCache<NSURL, NSImage>()
+    fileprivate let cache = NSCache<NSURL, NSImage>()
+    private let loader = ThumbnailImageLoader()
 
     private init() {
         cache.countLimit = 512
@@ -21,12 +23,30 @@ final class ThumbnailImageCache: @unchecked Sendable {
 
     func image(for url: URL) async -> NSImage? {
         if let cached = cachedImage(for: url) { return cached }
-        let data = await Task.detached(priority: .utility) {
-            try? Data(contentsOf: url, options: [.mappedIfSafe])
-        }.value
-        guard !Task.isCancelled, let data, let image = NSImage(data: data) else { return nil }
-        let pixels = max(1, Int(image.size.width * image.size.height))
-        cache.setObject(image, forKey: url as NSURL, cost: pixels * 4)
+        return await loader.image(for: url, cache: self)
+    }
+
+}
+
+/// Serial background decoding bounds CPU/memory demand when hundreds of clips
+/// become visible. Re-checking the shared cache also coalesces duplicate loads.
+private actor ThumbnailImageLoader {
+    func image(for url: URL, cache: ThumbnailImageCache) -> NSImage? {
+        guard !Task.isCancelled else { return nil }
+        if let image = cache.cachedImage(for: url) { return image }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int,
+              let decoded = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: max(width, height),
+                  kCGImageSourceShouldCacheImmediately: true
+              ] as CFDictionary),
+              !Task.isCancelled else { return nil }
+        let image = NSImage(cgImage: decoded, size: .zero)
+        cache.cache.setObject(image, forKey: url as NSURL, cost: decoded.bytesPerRow * decoded.height)
         return image
     }
 }
@@ -41,19 +61,23 @@ struct CachedAdaptiveFilmstripImage: View {
     var targetTileWidth: CGFloat = 104
 
     @State private var image: NSImage?
+    @Environment(\.timelineRenderRange) private var renderRange
 
     var body: some View {
         GeometryReader { proxy in
             if let image {
-                Canvas(opaque: true, rendersAsynchronously: false) { context, size in
-                    let visibleCount = max(1, Int(ceil(size.width / targetTileWidth)))
-                    let tileWidth = size.width / CGFloat(visibleCount)
+                let fullWidth = proxy.size.width
+                let slice = TimelineDrawingSlice(width: fullWidth,
+                    origin: proxy.frame(in: .named("timelineCanvas")).minX, range: renderRange)
+                Canvas(opaque: true, rendersAsynchronously: true) { context, size in
+                    let visibleCount = max(1, Int(ceil(fullWidth / targetTileWidth)))
+                    let tileWidth = fullWidth / CGFloat(visibleCount)
                     let sourceCount = max(1, sourceFrameCount)
                     let swiftUIImage = Image(nsImage: image)
-                    for visibleIndex in 0..<visibleCount {
+                    for visibleIndex in slice.indices(count: visibleCount, fullWidth: fullWidth) {
                         let fraction = visibleCount == 1 ? 0.5 : Double(visibleIndex) / Double(visibleCount - 1)
                         let sourceIndex = min(sourceCount - 1, Int((fraction * Double(sourceCount - 1)).rounded()))
-                        let tileRect = CGRect(x: CGFloat(visibleIndex) * tileWidth, y: 0, width: tileWidth, height: size.height)
+                        let tileRect = CGRect(x: CGFloat(visibleIndex) * tileWidth - slice.lower, y: 0, width: tileWidth, height: size.height)
                         context.drawLayer { layer in
                             layer.clip(to: Path(tileRect))
                             layer.draw(
@@ -68,6 +92,8 @@ struct CachedAdaptiveFilmstripImage: View {
                         }
                     }
                 }
+                .frame(width: slice.width, height: proxy.size.height)
+                .offset(x: slice.lower)
             } else {
                 ZStack {
                     Color.secondary.opacity(0.13)
@@ -82,7 +108,9 @@ struct CachedAdaptiveFilmstripImage: View {
             if let cached = ThumbnailImageCache.shared.cachedImage(for: url) {
                 image = cached
             } else {
-                image = await ThumbnailImageCache.shared.image(for: url)
+                let loaded = await ThumbnailImageCache.shared.image(for: url)
+                guard !Task.isCancelled else { return }
+                image = loaded
             }
         }
     }
@@ -121,7 +149,9 @@ struct CachedThumbnailImage: View {
                 image = cached
                 return
             }
-            image = await ThumbnailImageCache.shared.image(for: url)
+            let loaded = await ThumbnailImageCache.shared.image(for: url)
+            guard !Task.isCancelled else { return }
+            image = loaded
         }
     }
 }

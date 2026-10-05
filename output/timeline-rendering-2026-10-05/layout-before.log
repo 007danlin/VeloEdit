@@ -1,0 +1,55 @@
+Building for debugging...
+[Pre-planning 1 / 331]
+[Planning deferred tasks]
+[1 / 3]
+[2 / 4] VeloEdit-product
+[5 / 7] VeloEdit-product
+[6 / 8] VeloEdit-product
+[8 / 8] VeloEdit-product
+[16 / 35] VeloEdit-product
+[17 / 35] VeloEdit
+[20 / 38] VeloEdit
+[24 / 39] VeloEdit
+[25 / 40] VeloEdit
+[29 / 40] VeloEditAppTests-product
+[33 / 52] VeloEditAppTests-product
+[35 / 52] VeloEditAppTests-product
+[41 / 52] VeloEditAppTests-product
+[42 / 52] VeloEditAppTests-product
+[43 / 52] VeloEditAppTests-product
+macro expansion @Test:16:26: warning: main actor-isolated static property 'samples' cannot be accessed from outside of the actor; this is an error in the Swift 6 language mode
+`- /Users/daniellineckij/VeloEdit/Tests/VeloEditAppTests/DirectorCommandBridgeTests.swift:73:6: note: expanded code originates here
+64 |     ]
+65 | 
+66 |     @Test(arguments: samples) func everyEditorActionHasAnExecutableBridge(_ sample: Sample) throws {
+   |     `- note: in expansion of macro 'Test' on instance method 'everyEditorActionHasAnExecutableBridge' here
+67 |         let data = try JSONSerialization.data(withJSONObject: ["reply": "Применю", "normalizedBrief": "", "commands": [[
+68 |             "action": sample.action, "target": "all", "value": sample.value, "secondaryTarget": "first"
+   :
+71 |             userMessage: "Добавь титр «Новая Глава» и примени монтажные правки", runtimeLabel: "test", allowsFootageReplacement: true)
+72 |         #expect(result.commands == [sample.expected])
+73 |     }
+   +--- macro expansion @Test ------------------------------------------
+   |14 |   in: DirectorCommandBridgeTests.self,
+   |15 |   xcTestCompatibleSelector: nil,
+   |16 |   traits: [],arguments: {samples},sourceBounds: Testing.__SourceBounds(__uncheckedLowerBound: Testing.SourceLocation(__uncheckedFileID: "VeloEditAppTests/DirectorCommandBridgeTests.swift", filePath: "/Users/daniellineckij/VeloEdit/Tests/VeloEditAppTests/DirectorCommandBridgeTests.swift", line: 66, column: 6), upperBound: (73, 6)),
+   |   |                          `- warning: main actor-isolated static property 'samples' cannot be accessed from outside of the actor; this is an error in the Swift 6 language mode
+   |17 |   parameters: [(firstName: "_",secondName: "sample",type: (Sample).self)],
+   |18 |   testFunction: $s16VeloEditAppTests021DirectorCommandBridgeD0V032everyEditorActionHasAnExecutableG04TestfMp_16b765dd01e8f7b85cfMu_
+   +--------------------------------------------------------------------
+74 | 
+75 |     @Test func malformedStyleDoesNotTurnCompoundRequestIntoPartialEdit() {
+[45 / 52] VeloEditAppTests-product
+[46 / 52] VeloEditAppTests-product
+[48 / 52] VeloEditAppTests-product
+[50 / 52] VeloEditAppTests-product
+Build complete! (33,45 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite TimelineViewportTests started.
+◇ Test largeTimelineLayoutStudy() started.
+PERF actual-swiftui-layout clips=300 subtitles=900 median_ms=129.12287500148523 p95_ms=169.02399999889894
+✔ Test largeTimelineLayoutStudy() passed after 2.491 seconds.
+✔ Suite TimelineViewportTests passed after 2.491 seconds.
+✔ Test run with 1 test in 1 suite passed after 2.491 seconds.

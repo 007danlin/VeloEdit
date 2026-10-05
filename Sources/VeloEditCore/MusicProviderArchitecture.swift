@@ -392,6 +392,10 @@ public actor MusicLibrary {
         // source still has the requested recording.
         if intent.request?.exactTrack == true { onlineExclusions = [] }
         var online = await firstOnlineTrack(for: intent, excludingIdentities: onlineExclusions)
+        if online.track == nil, intent.request?.exactTrack == true {
+            online.failures.append(MusicProviderFailure(provider: "music-search", reason: "Запрошенная песня «\(intent.searchQuery)» недоступна. Другая композиция не назначена."))
+            return MusicResolution(track: nil, catalog: localTracks, failures: online.failures)
+        }
         if online.track == nil, intent.request != nil, !Task.isCancelled {
             // Exhaust exact sources first, then ask every provider for an
             // alternative. Preserve the failed request in diagnostics.

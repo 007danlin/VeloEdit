@@ -1,0 +1,4 @@
+{'stage': 'baseline-film', 'seconds': 316.7619596249988, 'exitCode': 0}
+{'stage': 'isolated-timing-regressions', 'seconds': 5.597060832998977, 'exitCode': 0}
+{'stage': 'apply-save-semantic-before', 'seconds': 25.917336624999734, 'exitCode': 0}
+{'stage': 'apply-save-semantic-after', 'seconds': 25.785103124999296, 'exitCode': 0}

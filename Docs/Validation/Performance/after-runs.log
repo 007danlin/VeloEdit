@@ -1,0 +1,25 @@
+/Users/daniellineckij/VeloEdit/Build/Performance/after-final/PerformanceRunner.app: replacing existing signature
+{"mode": "fast", "cache": "cold", "wallSeconds": 62.821342791999996, "exitCode": 0}
+{"mode": "fast", "cache": "warm", "wallSeconds": 0.714645584000209, "exitCode": 0}
+Traceback (most recent call last):
+  File "/Users/daniellineckij/VeloEdit/Scripts/performance-study.py", line 83, in <module>
+    main()
+    ~~~~^^
+  File "/Users/daniellineckij/VeloEdit/Scripts/performance-study.py", line 71, in main
+    run = subprocess.run([str(executable), 'analyze', str(package)], stdout=log, stderr=subprocess.STDOUT, env=env)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 557, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 1213, in communicate
+    self.wait()
+    ~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 2084, in _wait
+    (pid, sts) = self._try_wait(0)
+                 ~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.7/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py", line 2042, in _try_wait
+    (pid, sts) = os.waitpid(self.pid, wait_flags)
+                 ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

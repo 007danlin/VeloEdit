@@ -8,3 +8,5 @@ Build/
 *.dmg
 *.app/
 *.veloedit/Cache/
+__pycache__/
+*.py[cod]

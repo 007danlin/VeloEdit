@@ -62,6 +62,40 @@ public enum TitleOverlayRenderer {
         return cgImage(item: item, timelineTime: min(max(0, time), item.duration), renderSize: renderSize)
     }
 
+    /// Uses the very same Core Text fitting and transformed glyph bounds as
+    /// playback/export, allowing visual QA to detect lost text and collisions.
+    static func textLayout(item: TitleTimelineItem, timelineTime: Double, renderSize: CGSize) -> [TitleReadabilityRegion] {
+        renderedFrame(item: item, timelineTime: timelineTime, renderSize: renderSize, collectReadability: true)?.regions ?? []
+    }
+
+    public struct TextSizing: Sendable {
+        /// Font size in the same reference units as the inspector.
+        public let fontSize: Double
+        public let lineCount: Int
+        public let isReduced: Bool
+        public let isTruncated: Bool
+    }
+
+    /// Measure with the same fitter as playback, without rendering a bitmap
+    /// on each inspector update. Fitting limits must be visible to the editor.
+    public static func textSizing(item: TitleTimelineItem, renderSize: CGSize) -> TextSizing? {
+        guard let template = TitleTemplateRegistry.template(for: item),
+              let element = template.layout.elements.first(where: { $0.content == .primaryText || $0.content == .activeCaption }),
+              case .text(let value) = resolvedContent(for: element, item: item) else { return nil }
+        let layout = AdaptiveTitleLayout.resolve(template: template, renderSize: renderSize, item: item)
+        guard let geometry = layout.element(id: element.id),
+              let fitted = fittedText(value, element: element, rect: geometry.frame, item: item,
+                                      template: template, timelineTime: item.startTime,
+                                      typographyScale: layout.typographyScale,
+                                      portraitInfluence: layout.geometry.portraitInfluence,
+                                      maximumLines: geometry.maximumLines) else { return nil }
+        let ratio = fitted.fontSize / max(0.001, fitted.requestedFontSize)
+        return TextSizing(fontSize: item.style.fontSize * Double(ratio),
+                          lineCount: numberOfLines(text: fitted.text, width: geometry.frame.width),
+                          isReduced: ratio < 0.99,
+                          isTruncated: fitted.text.string.contains("…") && !value.contains("…"))
+    }
+
     private struct RenderedFrame {
         var image: CGImage
         var bounds: CGRect
@@ -98,9 +132,10 @@ public enum TitleOverlayRenderer {
         ) else { return nil }
 
         let bounds = CGRect(origin: .zero, size: renderSize)
-        let adaptiveLayout = AdaptiveTitleLayout.resolve(template: template, renderSize: renderSize)
+        let adaptiveLayout = AdaptiveTitleLayout.resolve(template: template, renderSize: renderSize, item: item)
         let safeRect = adaptiveLayout.safeRect
         let localTime = timelineTime - item.startTime
+        let templateMotion = template.animationFitted(to: item.duration)
         let defaultStyle = template.defaultStyle
         let groupDX = safeRect.width * CGFloat(item.style.effectiveXPosition - defaultStyle.effectiveXPosition)
         let groupDY = -safeRect.height * CGFloat(item.style.effectiveYPosition - defaultStyle.effectiveYPosition)
@@ -127,7 +162,7 @@ public enum TitleOverlayRenderer {
             var rect = layoutElement.frame.offsetBy(dx: groupDX, dy: groupDY)
             guard rect.width > 0.5, rect.height > 0.5 else { continue }
             let motion = motionState(
-                animation: template.animation,
+                animation: templateMotion,
                 elementIndex: element.staggerIndex,
                 localTime: localTime,
                 itemDuration: item.duration,
@@ -182,6 +217,7 @@ public enum TitleOverlayRenderer {
                 context: context,
                 renderSize: renderSize,
                 typographyScale: adaptiveLayout.typographyScale,
+                portraitInfluence: adaptiveLayout.geometry.portraitInfluence,
                 maximumLines: layoutElement.maximumLines,
                 collectReadability: collectReadability,
                 treatment: treatments[element.id]
@@ -229,6 +265,7 @@ public enum TitleOverlayRenderer {
         context: CGContext,
         renderSize: CGSize,
         typographyScale: CGFloat,
+        portraitInfluence: Double,
         maximumLines: Int,
         collectReadability: Bool,
         treatment: TitleBackgroundTreatment?
@@ -247,6 +284,7 @@ public enum TitleOverlayRenderer {
                 timelineTime: timelineTime,
                 context: context,
                 typographyScale: typographyScale,
+                portraitInfluence: portraitInfluence,
                 maximumLines: maximumLines,
                 collectReadability: collectReadability,
                 treatment: treatment
@@ -300,42 +338,16 @@ public enum TitleOverlayRenderer {
         timelineTime: Double,
         context: CGContext,
         typographyScale: CGFloat,
+        portraitInfluence: Double,
         maximumLines: Int,
         collectReadability: Bool,
         treatment: TitleBackgroundTreatment?
     ) -> TitleReadabilityRegion? {
         let isPrimary = element.content == .primaryText || element.content == .activeCaption
-        let base = element.typography ?? template.typography
-        let family = isPrimary ? item.style.effectiveFontFamily : base.fontFamily
-        let weight = isPrimary ? item.style.effectiveFontWeight : base.fontWeight
-        let referenceFontSize = isPrimary ? item.style.fontSize : base.fontSize
-        let tracking = isPrimary ? (item.style.tracking ?? base.tracking) : base.tracking
-        let lineSpacing = isPrimary ? (item.style.lineSpacing ?? base.lineSpacing) : base.lineSpacing
-        let alignment = isPrimary ? item.style.alignment : base.alignment
-        let textColor = isPrimary ? item.style.textColorHex : element.fillColorHex
-        // Keep typography tied to the actual short side and give narrow/tall
-        // formats a small readability lift. Text is reflowed before this size
-        // is reduced; character count never directly shrinks the font.
-        let desiredSize = CGFloat(referenceFontSize) * typographyScale
-        let minimumSize = max(9 * typographyScale, desiredSize * CGFloat(template.textConstraints.minFontScale))
-        let maximumSize = desiredSize * CGFloat(template.textConstraints.maxFontScale)
-        let fitted = fittedText(
-            value,
-            family: family,
-            weight: weight,
-            color: color(textColor, alpha: 1),
-            tracking: CGFloat(tracking) * typographyScale,
-            lineSpacing: lineSpacing,
-            alignment: alignment,
-            maximumSize: maximumSize,
-            minimumSize: minimumSize,
-            rect: rect,
-            maxLines: maximumLines,
-            strokeWidth: isPrimary ? CGFloat(item.style.strokeWidth ?? 0) : 0,
-            activeWord: element.content == .activeCaption && item.activeWordHighlighting ? item.activeWord(at: timelineTime)?.word : nil,
-            activeWordColor: color(item.style.activeWordColorHex ?? "#34C759", alpha: 1)
-        )
-        guard let fitted else { return nil }
+        guard let fitted = fittedText(value, element: element, rect: rect, item: item,
+                                      template: template, timelineTime: timelineTime,
+                                      typographyScale: typographyScale, portraitInfluence: portraitInfluence,
+                                      maximumLines: maximumLines) else { return nil }
         if isPrimary, (item.style.shadow ?? 0) > 0.001 {
             context.setShadow(
                 offset: CGSize(width: 0, height: -fitted.fontSize * 0.045),
@@ -345,27 +357,44 @@ public enum TitleOverlayRenderer {
         }
         var edgeText: NSMutableAttributedString?
         if let treatment, treatment.edgeOpacity > 0.001 {
+            let supportStrokeWidth = max(8, treatment.strokeWidth)
             let edgeColor = CGColor(gray: treatment.lightSupport ? 1 : 0, alpha: treatment.edgeOpacity)
             context.setShadow(offset: CGSize(width: 0, height: -fitted.fontSize * 0.025),
                               blur: fitted.fontSize * 0.035, color: edgeColor)
             // Core Text specifies stroke as a percentage of the actual font size.
             // Preserve a deliberately stronger user stroke.
-            if !isPrimary || (item.style.strokeWidth ?? 0) < treatment.strokeWidth {
+            if !isPrimary || (item.style.strokeWidth ?? 0) < supportStrokeWidth {
                 let outlined = NSMutableAttributedString(attributedString: fitted.text)
                 outlined.addAttributes([
                     // A monochrome support silhouette gives the shadow a solid
                     // source. It contains no duplicate of the text's own fill.
                     NSAttributedString.Key(kCTForegroundColorAttributeName as String): edgeColor,
-                    NSAttributedString.Key(kCTStrokeWidthAttributeName as String): -treatment.strokeWidth,
+                    // Core Text strokes straddle the glyph edge; the final
+                    // fill covers their inner half. Keep the surviving edge
+                    // visible at phone size, including white text on white sky.
+                    NSAttributedString.Key(kCTStrokeWidthAttributeName as String): -supportStrokeWidth,
                     NSAttributedString.Key(kCTStrokeColorAttributeName as String): edgeColor
                 ], range: NSRange(location: 0, length: fitted.text.length))
                 edgeText = outlined
             }
         }
         let path = CGMutablePath()
-        path.addRect(rect)
+        path.addRect(textFlowRect(rect, glyphFitting: isPrimary))
         let framesetter = CTFramesetterCreateWithAttributedString(fitted.text)
         let textFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: fitted.text.length), path, nil)
+        let lines = CTFrameGetLines(textFrame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(textFrame, CFRange(location: 0, length: 0), &origins)
+        let glyphRects = zip(lines, origins).map { line, origin in
+            CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
+                .offsetBy(dx: path.boundingBox.minX + origin.x, dy: path.boundingBox.minY + origin.y)
+        }
+        // Center headings in their reserved text area in every format, so a
+        // short line does not sit against the top of an otherwise empty panel.
+        let glyphBounds = glyphRects.reduce(CGRect.null) { $0.union($1) }
+        if !glyphBounds.isNull {
+            context.translateBy(x: 0, y: (rect.midY - glyphBounds.midY) * (isPrimary ? 1 : CGFloat(portraitInfluence)))
+        }
         if let edgeText {
             context.saveGState()
             let edgeSetter = CTFramesetterCreateWithAttributedString(edgeText)
@@ -378,13 +407,8 @@ public enum TitleOverlayRenderer {
         context.setTextDrawingMode(.fill)
         CTFrameDraw(textFrame, context)
         guard collectReadability else { return nil }
-        let lines = CTFrameGetLines(textFrame) as! [CTLine]
-        var origins = [CGPoint](repeating: .zero, count: lines.count)
-        CTFrameGetLineOrigins(textFrame, CFRange(location: 0, length: 0), &origins)
-        let lineRects = zip(lines, origins).map { line, origin in
-            CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
-                .offsetBy(dx: rect.minX + origin.x, dy: rect.minY + origin.y)
-                .applying(context.ctm).standardized
+        let lineRects = glyphRects.map {
+            $0.applying(context.ctm).standardized
         }.filter { $0.width > 0 && $0.height > 0 }
         let transformScale = hypot(context.ctm.a, context.ctm.b)
         var luminances: [Double] = []
@@ -396,12 +420,79 @@ public enum TitleOverlayRenderer {
                                       fontSize: Double(fitted.fontSize * transformScale),
                                       textLuminances: Array(Set(luminances)),
                                       textOpacity: 1,
-                                      visibility: 1)
+                                      visibility: 1, requestedText: value, renderedText: fitted.text.string)
     }
 
     private struct FittedText {
-        var text: NSMutableAttributedString
+        var text: NSAttributedString
         var fontSize: CGFloat
+        var requestedFontSize: CGFloat
+    }
+
+    private struct FitParameters: Hashable {
+        let text: String
+        let element: TitleTemplateElement
+        let style: TitleStyle
+        let template: TitleTemplateDefinition
+        let geometry: [Double]
+        let maximumLines: Int
+        let activeWord: NSRange?
+    }
+
+    private final class FitKey: NSObject {
+        let parameters: FitParameters
+        init(_ parameters: FitParameters) { self.parameters = parameters }
+        override var hash: Int { parameters.hashValue }
+        override func isEqual(_ object: Any?) -> Bool {
+            (object as? FitKey)?.parameters == parameters
+        }
+    }
+
+    private final class CachedFit {
+        let result: FittedText?
+        init(_ result: FittedText?) { self.result = result }
+    }
+
+    // Layout is independent of animation time except for the active caption
+    // word. NSCache is bounded and thread-safe for preview and export workers.
+    private static let fittedTextCache: NSCache<FitKey, CachedFit> = {
+        let cache = NSCache<FitKey, CachedFit>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 8 * 1_024 * 1_024
+        return cache
+    }()
+
+    private static func fittedText(
+        _ value: String, element: TitleTemplateElement, rect: CGRect,
+        item: TitleTimelineItem, template: TitleTemplateDefinition, timelineTime: Double,
+        typographyScale: CGFloat, portraitInfluence: Double, maximumLines: Int
+    ) -> FittedText? {
+        let isPrimary = element.content == .primaryText || element.content == .activeCaption
+        let base = element.typography ?? template.typography
+        let baseSize = isPrimary ? item.style.fontSize : base.fontSize
+        let portraitSize = element.portraitFontSize ?? base.fontSize
+        let referenceSize = baseSize * (1 + (portraitSize / max(1, base.fontSize) - 1) * portraitInfluence)
+        let desiredSize = CGFloat(referenceSize) * typographyScale
+        let activeWord = element.content == .activeCaption && item.activeWordHighlighting ? item.activeWordRange(at: timelineTime) : nil
+        let key = FitKey(FitParameters(text: value, element: element, style: item.style, template: template,
+            geometry: [Double(rect.origin.x), Double(rect.origin.y), Double(rect.width), Double(rect.height), Double(typographyScale), portraitInfluence],
+            maximumLines: maximumLines, activeWord: activeWord))
+        if let cached = fittedTextCache.object(forKey: key) { return cached.result }
+        let result = fittedText(value,
+            family: isPrimary ? item.style.effectiveFontFamily : base.fontFamily,
+            weight: isPrimary ? item.style.effectiveFontWeight : base.fontWeight,
+            color: color(isPrimary ? item.style.textColorHex : element.fillColorHex, alpha: 1),
+            tracking: CGFloat(isPrimary ? (item.style.tracking ?? base.tracking) : base.tracking) * typographyScale,
+            lineSpacing: isPrimary ? (item.style.lineSpacing ?? base.lineSpacing) : base.lineSpacing,
+            alignment: isPrimary ? item.style.alignment : base.alignment,
+            maximumSize: desiredSize * CGFloat(template.textConstraints.maxFontScale),
+            minimumSize: max(9 * typographyScale, desiredSize * CGFloat(template.textConstraints.minFontScale)),
+            rect: rect, maxLines: maximumLines, glyphFitting: isPrimary,
+            strokeWidth: isPrimary ? CGFloat(item.style.strokeWidth ?? 0) : 0,
+            activeWord: activeWord,
+            activeWordColor: color(item.style.activeWordColorHex ?? "#34C759", alpha: 1))
+        fittedTextCache.setObject(CachedFit(result), forKey: key, cost: max(1, value.utf8.count) * 16 + 1_024)
+        return result
     }
 
     private static func fittedText(
@@ -416,18 +507,21 @@ public enum TitleOverlayRenderer {
         minimumSize: CGFloat,
         rect: CGRect,
         maxLines: Int,
+        glyphFitting: Bool,
         strokeWidth: CGFloat,
-        activeWord: String?,
+        activeWord: NSRange?,
         activeWordColor: CGColor
     ) -> FittedText? {
         guard rect.width > 1, rect.height > 1 else { return nil }
         // Never split a single title word at an arbitrary glyph boundary.
         // Phrases can reflow between words; a long place/name is fitted as one
         // readable line before the bounded truncation fallback is considered.
-        let effectiveMaxLines = value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil ? 1 : maxLines
+        let hasBreak = value.rangeOfCharacter(from: .whitespacesAndNewlines) != nil || value.contains("-") || value.contains("–")
+        let manualLines = value.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n").count
+        let effectiveMaxLines = hasBreak ? max(maxLines, manualLines) : 1
         let candidates = lineBreakCandidates(value, maximumLines: effectiveMaxLines)
-        var size = max(minimumSize, maximumSize)
-        while true {
+        func fit(at size: CGFloat) -> FittedText? {
             for candidate in candidates {
                 let text = attributedText(
                     candidate,
@@ -442,24 +536,32 @@ public enum TitleOverlayRenderer {
                     activeWord: activeWord,
                     activeWordColor: activeWordColor
                 )
-                if textFits(text, rect: rect, maxLines: effectiveMaxLines) {
-                    return FittedText(text: text, fontSize: size)
+                if textFits(text, rect: rect, maxLines: effectiveMaxLines, glyphFitting: glyphFitting) {
+                    return FittedText(text: text, fontSize: size, requestedFontSize: maximumSize)
                 }
             }
-            if size <= minimumSize + 0.1 { break }
-            size = max(minimumSize, size * 0.91)
+            return nil
+        }
+        if let exact = fit(at: maximumSize) { return exact }
+        if var best = fit(at: minimumSize) {
+            // Coarse 9% decrements could make an increased inspector value
+            // render *smaller*. Find the largest fitting size continuously.
+            var lower = minimumSize
+            var upper = maximumSize
+            for _ in 0..<14 {
+                let middle = (lower + upper) / 2
+                if let candidate = fit(at: middle) { best = candidate; lower = middle }
+                else { upper = middle }
+            }
+            return best
         }
 
         // Extremely long manually entered text is shortened only after all
         // legal reflow and font-size options have been exhausted. This keeps
         // the visible result inside its frame instead of silently clipping it.
-        var shortened = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        while shortened.count > 1 {
-            if let boundary = shortened.lastIndex(where: { $0.isWhitespace }), shortened.distance(from: shortened.startIndex, to: boundary) > shortened.count / 2 {
-                shortened = String(shortened[..<boundary]).trimmingCharacters(in: .whitespacesAndNewlines)
-            } else {
-                shortened.removeLast()
-            }
+        let characters = Array(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        func truncatedFit(length: Int) -> FittedText? {
+            let shortened = String(characters.prefix(length)).trimmingCharacters(in: .whitespacesAndNewlines)
             for candidate in lineBreakCandidates(shortened + "…", maximumLines: effectiveMaxLines) {
                 let text = attributedText(
                     candidate,
@@ -474,12 +576,29 @@ public enum TitleOverlayRenderer {
                     activeWord: activeWord,
                     activeWordColor: activeWordColor
                 )
-                if textFits(text, rect: rect, maxLines: effectiveMaxLines) {
-                    return FittedText(text: text, fontSize: minimumSize)
+                if textFits(text, rect: rect, maxLines: effectiveMaxLines, glyphFitting: glyphFitting) {
+                    return FittedText(text: text, fontSize: minimumSize, requestedFontSize: maximumSize)
                 }
             }
+            return nil
         }
-        return nil
+        // Binary search bounds expensive Core Text measurements for pasted
+        // words. Prefer complete words; only shorten a word when none fits.
+        func longestFit(_ lengths: [Int]) -> FittedText? {
+            var lower = 0, upper = lengths.count - 1
+            var best: FittedText?
+            while lower <= upper {
+                let middle = (lower + upper) / 2
+                if let fit = truncatedFit(length: lengths[middle]) {
+                    best = fit
+                    lower = middle + 1
+                } else { upper = middle - 1 }
+            }
+            return best
+        }
+        guard characters.count > 1 else { return nil }
+        let boundaries = (1..<characters.count).filter { characters[$0].isWhitespace }
+        return longestFit(boundaries) ?? longestFit(Array(1..<characters.count))
     }
 
     private static func attributedText(
@@ -492,7 +611,7 @@ public enum TitleOverlayRenderer {
         lineSpacing: Double,
         alignment: TitleAlignment,
         strokeWidth: CGFloat,
-        activeWord: String?,
+        activeWord: NSRange?,
         activeWordColor: CGColor
     ) -> NSMutableAttributedString {
             let font = resolvedFont(family: family, size: size, weight: weight, text: value)
@@ -515,8 +634,47 @@ public enum TitleOverlayRenderer {
             return text
     }
 
-    private static func textFits(_ text: NSAttributedString, rect: CGRect, maxLines: Int) -> Bool {
+    private static func textFlowRect(_ rect: CGRect, glyphFitting: Bool) -> CGRect {
+        // Headings are centered by their visible glyphs. Leave room for the
+        // font's invisible ascender/descender padding while laying out lines;
+        // otherwise those metrics shrink letters that would actually fit.
+        guard glyphFitting else { return rect }
+        let height = rect.height * 4
+        return CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height)
+    }
+
+    private static func textFits(_ text: NSAttributedString, rect: CGRect, maxLines: Int, glyphFitting: Bool) -> Bool {
+        // Core Text can otherwise split an overwide surname into a separate
+        // last letter even when the overall suggested frame size "fits".
+        let wordRanges = (try? NSRegularExpression(pattern: #"[^\s\-–]+[\-–]?"#))?
+            .matches(in: text.string, range: NSRange(location: 0, length: text.length)).map(\.range) ?? []
+        for range in wordRanges {
+            let word = text.attributedSubstring(from: range)
+            if CTLineGetTypographicBounds(CTLineCreateWithAttributedString(word), nil, nil, nil) > rect.width + 0.5 { return false }
+        }
         let framesetter = CTFramesetterCreateWithAttributedString(text)
+        let flowRect = textFlowRect(rect, glyphFitting: glyphFitting)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: text.length), CGPath(rect: flowRect, transform: nil), nil)
+        let visible = CTFrameGetVisibleStringRange(frame)
+        let lines = CTFrameGetLines(frame) as! [CTLine]
+        guard visible.length == text.length, lines.count <= maxLines else { return false }
+        // At a fractional-width boundary, especially with negative tracking,
+        // Core Text may still wrap the last letter despite the width check.
+        // Validate the actual breaks, including the hyphen attached to a word.
+        for line in lines.dropLast() {
+            let range = CTLineGetStringRange(line)
+            let end = range.location + range.length
+            if wordRanges.contains(where: { end > $0.location && end < NSMaxRange($0) }) { return false }
+        }
+        if glyphFitting {
+            var origins = [CGPoint](repeating: .zero, count: lines.count)
+            CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+            let glyphs = zip(lines, origins).map { line, origin in
+                CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds]).offsetBy(dx: origin.x, dy: origin.y)
+            }
+            let bounds = glyphs.reduce(CGRect.null) { $0.union($1) }
+            return !bounds.isNull && bounds.height <= rect.height && bounds.width <= rect.width + 0.5
+        }
         let suggested = CTFramesetterSuggestFrameSizeWithConstraints(
             framesetter,
             CFRange(location: 0, length: text.length),
@@ -526,14 +684,17 @@ public enum TitleOverlayRenderer {
         )
         return suggested.width <= rect.width + 0.5
             && suggested.height <= rect.height + 0.5
-            && numberOfLines(text: text, width: rect.width) <= maxLines
     }
 
     private static func lineBreakCandidates(_ value: String, maximumLines: Int) -> [String] {
-        let normalized = value
-            .split(whereSeparator: \Character.isWhitespace)
-            .map(String.init)
-            .joined(separator: " ")
+        let normalized = value.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .map { $0.split(whereSeparator: \Character.isWhitespace).map(String.init).joined(separator: " ") }
+            .joined(separator: "\n")
+        // Explicit paragraphs are authoritative, even in a one-line template.
+        // Core Text may still wrap within each paragraph to fit its width.
+        if normalized.contains("\n") { return [normalized] }
         guard maximumLines > 1 else { return [normalized] }
         let words = normalized.split(separator: " ").map(String.init)
         guard words.count > 1 else { return [normalized] }
@@ -594,7 +755,9 @@ public enum TitleOverlayRenderer {
     }
 
     private static func fontSupports(_ font: CTFont, text: String) -> Bool {
-        var characters = Array(text.utf16)
+        // Line separators have no printable glyph and must not trigger a
+        // fallback font when the user inserts a newline.
+        var characters = Array(text.filter { !$0.isNewline && $0 != "\t" }.utf16)
         guard !characters.isEmpty else { return true }
         var glyphs = Array(repeating: CGGlyph(), count: characters.count)
         return CTFontGetGlyphsForCharacters(font, &characters, &glyphs, characters.count)
@@ -677,10 +840,8 @@ public enum TitleOverlayRenderer {
         from + (to - from) * min(max(0, progress), 1)
     }
 
-    private static func highlight(_ word: String, in text: NSMutableAttributedString, color: CGColor) {
-        let value = text.string as NSString
-        let range = value.range(of: word, options: [.caseInsensitive])
-        guard range.location != NSNotFound else { return }
+    private static func highlight(_ range: NSRange, in text: NSMutableAttributedString, color: CGColor) {
+        guard range.location != NSNotFound, NSMaxRange(range) <= text.length else { return }
         text.addAttribute(NSAttributedString.Key(kCTForegroundColorAttributeName as String), value: color, range: range)
     }
 

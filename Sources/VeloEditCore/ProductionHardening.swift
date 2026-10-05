@@ -9,6 +9,119 @@ import CoreGraphics
 /// not execute two subtly different edit algorithms.
 public enum TimelineMutationEngine {
     @discardableResult
+    public static func setTransition(in timeline: inout Timeline, incomingClipID: UUID, style: TransitionStyle?) -> Bool {
+        guard let index = timeline.items.firstIndex(where: { $0.id == incomingClipID }) else { return false }
+        guard let style, style != .cut,
+              let outgoing = timeline.items[..<index].last(where: { $0.overlay == nil }) else {
+            return replaceTransition(in: &timeline, incomingClipID: incomingClipID, with: nil)
+        }
+        let preset = TransitionPresetRegistry.preset(for: style)
+        return replaceTransition(in: &timeline, incomingClipID: incomingClipID, with: TimelineTransitionItem(
+            style: style, outgoingClipID: outgoing.id, incomingClipID: incomingClipID,
+            startTime: timeline.items[index].timelineStart, duration: preset.defaultDuration,
+            intensity: preset.defaultIntensity, parameters: preset.defaultParameters,
+            explanation: ["Пользователь выбрал редактируемый переход VeloEdit"]
+        ))
+    }
+
+    @discardableResult
+    public static func splitItem(in timeline: inout Timeline, id: UUID, atTimelineTime requestedTime: Double) -> UUID? {
+        timeline.items = TimelineTiming.retimed(timeline.items)
+        guard let index = timeline.items.firstIndex(where: { $0.id == id }),
+              timeline.items[index].kind != .title else { return nil }
+        let original = timeline.items[index]
+        let frame = 1 / max(1, timeline.frameRate)
+        let splitTime = TimelineTiming.quantized(requestedTime, frameRate: timeline.frameRate)
+        let localTime = splitTime - original.timelineStart
+        guard localTime >= frame, original.timelineDuration - localTime >= frame else { return nil }
+        if original.overlay == nil {
+            let sliced = TimelineRangeSlicer.slice(timeline, for: splitTime...(original.timelineStart + original.timelineDuration), onlyAttachedTo: original.id).timeline
+            guard sliced.items.indices.contains(index + 1), sliced.items[index + 1].id != original.id else { return nil }
+            timeline = sliced
+            return sliced.items[index + 1].id
+        }
+        let fraction = localTime / original.timelineDuration
+        let firstSourceDuration = original.sourceDuration * fraction
+        var left = original
+        left.sourceDuration = firstSourceDuration
+        left.timelineDuration = localTime
+        var right = original
+        right.id = UUID()
+        right.sourceStart = original.sourceStart + firstSourceDuration
+        right.sourceDuration = original.sourceDuration - firstSourceDuration
+        right.timelineStart = splitTime
+        right.timelineDuration = original.timelineDuration - localTime
+        right.transition = nil
+        if right.overlay != nil {
+            right.overlay?.startOffset = (original.overlay?.effectiveStartOffset ?? 0) + localTime
+        }
+        timeline.items[index] = left
+        timeline.items.insert(right, at: index + 1)
+        timeline.items = TimelineTiming.retimed(timeline.items)
+        return right.id
+    }
+
+    @discardableResult
+    public static func splitAudioClip(in timeline: inout Timeline, id: UUID, atTimelineTime requestedTime: Double) -> UUID? {
+        var clips = timeline.effectiveAudioClips
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return nil }
+        let original = clips[index]
+        let frame = 1 / max(1, timeline.frameRate)
+        let split = TimelineTiming.quantized(requestedTime, frameRate: timeline.frameRate)
+        let local = split - original.timelineStart
+        guard local >= frame, original.timelineDuration - local >= frame else { return nil }
+        let sourceOffset = original.sourceDuration * local / original.timelineDuration
+        var left = original
+        left.sourceDuration = sourceOffset
+        left.timelineDuration = local
+        var right = original
+        right.id = UUID()
+        right.sourceStart += sourceOffset
+        right.sourceDuration = original.sourceDuration - sourceOffset
+        right.timelineStart = split
+        right.timelineDuration = original.timelineDuration - local
+        clips[index] = left
+        clips.insert(right, at: index + 1)
+        timeline.audioClips = clips
+        return right.id
+    }
+
+    @discardableResult
+    public static func detachAudio(in timeline: inout Timeline, from itemID: UUID, assets: [MediaAsset]) -> UUID? {
+        timeline.items = TimelineTiming.retimed(timeline.items)
+        guard let itemIndex = timeline.items.firstIndex(where: { $0.id == itemID }),
+              timeline.items[itemIndex].kind == .video,
+              let assetID = timeline.items[itemIndex].assetID,
+              let asset = assets.first(where: { $0.id == assetID }),
+              asset.metadata.hasAudio else { return nil }
+        if let existing = timeline.effectiveAudioClips.first(where: {
+            $0.assetID == assetID && $0.sourceStart == timeline.items[itemIndex].sourceStart && $0.role == .detached
+        }) {
+            return existing.id
+        }
+        let item = timeline.items[itemIndex]
+        let id = UUID()
+        let clip = TimelineAudioClip(
+            id: id,
+            assetID: assetID,
+            title: "Звук — \(asset.displayName)",
+            role: .detached,
+            sourceStart: item.sourceStart,
+            sourceDuration: item.sourceDuration,
+            timelineStart: item.timelineStart,
+            timelineDuration: item.timelineDuration,
+            adjustments: item.effectiveAudioAdjustments
+        )
+        var embedded = item.effectiveAudioAdjustments
+        embedded.muted = true
+        timeline.items[itemIndex].audioAdjustments = embedded
+        var clips = timeline.effectiveAudioClips
+        clips.append(clip)
+        timeline.audioClips = clips
+        return id
+    }
+
+    @discardableResult
     public static func insertPrimaryItem(
         in timeline: inout Timeline,
         item proposedItem: TimelineItem,
@@ -349,6 +462,7 @@ public enum TimelineMutationEngine {
         )
         items[index].duration = min(items[index].duration, max(0.05, timeline.duration - items[index].startTime))
         guard items[index] != before else { return false }
+        SpeechSubtitleBuilder.preservingManualTiming(&items[index], previous: before, timeline: timeline)
         items[index].userEdited = true
         timeline.titleItems = items
         return true
@@ -430,6 +544,7 @@ public enum TimelineMutationEngine {
     }
 
     private static func alignTelemetry(in timeline: inout Timeline, previousItems: [UUID: TimelineItem]) {
+        timeline = TitleTimelineAnchoring.reconcile(timeline, previousItems: previousItems)
         let currentItems = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
         timeline.telemetryItems = timeline.effectiveTelemetryItems.compactMap { source in
             guard let targetID = source.targetClipID else { return source }
@@ -941,8 +1056,12 @@ public struct TimelineDeliveryContract: Sendable {
         previewProfile: PreviewDeliveryProfile = .production
     ) -> TimelineDeliveryValidation {
         let requirements = ExplicitDeliveryRequirements(plan: plan)
-        var timeline = source
+        var timeline = TitleTimelineAnchoring.reconcile(source)
         var issues: [TimelineDeliveryIssue] = []
+        if timeline.effectiveTitleItems != source.effectiveTitleItems {
+            issues.append(.init(kind: .generatedTitleQuality, resolution: .repaired,
+                message: "Привязка титров согласована с текущими планами и границами событий; время чтения сохранено там, где позволяет эпизод."))
+        }
 
         if let format = requirements.canvasFormat,
            timeline.width != format.width || timeline.height != format.height {
@@ -1058,8 +1177,10 @@ public struct TimelineDeliveryContract: Sendable {
         }
 
         if requirements.forbidsTitles {
-            let hadTitles = !timeline.effectiveTitleItems.isEmpty || timeline.items.contains { $0.kind == .title }
-            timeline.titleItems = []
+            let keepCaptions = plan.directorBrief?.subtitlesEnabled(preset: plan.preset) == true
+            let captions = keepCaptions ? timeline.effectiveTitleItems.filter { [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains($0.kind) } : []
+            let hadTitles = timeline.effectiveTitleItems.count != captions.count || timeline.items.contains { $0.kind == .title }
+            timeline.titleItems = captions
             if timeline.items.contains(where: { $0.kind == .title }) {
                 timeline.items.removeAll { $0.kind == .title }
                 timeline.items = TimelineTiming.retimed(timeline.items)
@@ -1127,7 +1248,7 @@ public struct TimelineDeliveryContract: Sendable {
 
         if EditorialPresentationPolicy.requiresChapterTitles(plan) {
             let before = timeline.effectiveTitleItems
-            timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan)
+            timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true)
             if before != timeline.effectiveTitleItems {
                 issues.append(.init(kind: .titlePolicy, resolution: .repaired,
                     message: "Титры восстановлены в начале каждой части, включая начало фильма."))

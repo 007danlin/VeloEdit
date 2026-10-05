@@ -174,7 +174,7 @@ private func framingPlan(
     #expect(adjustments.subjectReframe != nil)
 }
 
-@Test func canvasChangeClearsStaleReframeAndUsesCenterFillWithoutTracking() throws {
+@Test func subjectAwareCanvasChangeClearsStaleReframeAndPreservesUntrackedFrame() throws {
     let asset = MediaAsset(
         originalURL: URL(fileURLWithPath: "/tmp/untracked.mov"),
         kind: .video,
@@ -206,7 +206,9 @@ private func framingPlan(
         analyses: [AnalysisResult(assetID: asset.id, analyzedContentHash: "a", candidates: [candidate])]
     ).timeline
 
-    #expect(result.items[0].effectiveVideoAdjustments.crop == .fill)
+    // Without tracking, a narrow subject-aware crop cannot prove that it
+    // retains the subject. Preserve the whole image and clear stale tracking.
+    #expect(result.items[0].effectiveVideoAdjustments.crop == .fit)
     #expect(result.items[0].effectiveVideoAdjustments.subjectReframe == nil)
 }
 

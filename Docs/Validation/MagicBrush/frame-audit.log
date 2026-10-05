@@ -1,0 +1,10 @@
+/tmp/veloedit-brush-frame-audit.swift:6:19: warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+ 4 | let asset = AVURLAsset(url: URL(fileURLWithPath: CommandLine.arguments[1]))
+ 5 | let reader = try AVAssetReader(asset: asset)
+ 6 | let track = asset.tracks(withMediaType: .video)[0]
+   |                   `- warning: 'tracks(withMediaType:)' was deprecated in macOS 13.0: Use loadTracks(withMediaType:) instead [#DeprecatedDeclaration]
+ 7 | let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+ 8 | output.alwaysCopiesSampleData = false
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+Decoded every frame: 209; decoder completed: true; large human detections: 0; largest confident human area: 0.0

@@ -29,12 +29,14 @@ public struct FCPXMLExporter: Sendable {
     public init(capabilities: FCPXMLCapabilities = FCPXMLCapabilities()) { self.capabilities = capabilities }
 
     public func xml(timeline: Timeline, assets: [MediaAsset], mode: FCPXMLExportMode = .edit, renderedFallbackURL: URL? = nil) throws -> String {
-        guard timeline.frameRate > 0, timeline.width > 0, timeline.height > 0 else { throw FCPXMLExportError.invalidTimeline("неверное разрешение или количество кадров в секунду") }
+        let timeline = TimelineFrameRatePolicy.applying(to: timeline, assets: assets)
+        guard timeline.frameRate.isFinite, timeline.frameRate > 0, timeline.frameRate <= 240, timeline.width > 0, timeline.height > 0 else { throw FCPXMLExportError.invalidTimeline("неверное разрешение или количество кадров в секунду") }
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
         let usedIDs = Array(Set(timeline.items.compactMap(\.assetID))).sorted { $0.uuidString < $1.uuidString }
         for id in usedIDs where assetByID[id] == nil { throw FCPXMLExportError.missingAsset(id) }
-        let fps = Int32(timeline.frameRate.rounded())
-        let frameDuration = "1/\(fps)s"
+        let fps = timeline.frameRate
+        let frameStep = VideoFrameTiming.duration(for: fps)
+        let frameDuration = "\(frameStep.value)/\(frameStep.timescale)s"
         let formatID = "r_format"
         var resources = "<format id=\"\(formatID)\" name=\"FFVideoFormat\(timeline.height)p\(fps)\" frameDuration=\"\(frameDuration)\" width=\"\(timeline.width)\" height=\"\(timeline.height)\" colorSpace=\"1-1-1 (Rec. 709)\"/>"
         var resourceID: [UUID: String] = [:]
@@ -42,9 +44,13 @@ public struct FCPXMLExporter: Sendable {
             guard let asset = assetByID[id] else { continue }
             let rid = "r_asset_\(index + 1)"
             resourceID[id] = rid
-            let duration = rational(asset.metadata.duration ?? 86_400, fps: fps)
+            let sourceFPS = sourceFrameRate(asset, fallback: fps)
+            let duration = rational(asset.metadata.duration ?? 86_400, fps: sourceFPS)
+            let sourceFormat = "r_source_format_\(index + 1)"
+            let sourceStep = VideoFrameTiming.duration(for: sourceFPS)
+            resources += "<format id=\"\(sourceFormat)\" frameDuration=\"\(sourceStep.value)/\(sourceStep.timescale)s\" width=\"\(asset.metadata.width ?? timeline.width)\" height=\"\(asset.metadata.height ?? timeline.height)\"/>"
             let audio = asset.metadata.hasAudio ? " hasAudio=\"1\" audioSources=\"1\" audioChannels=\"2\"" : ""
-            resources += "<asset id=\"\(rid)\" name=\"\(escape(asset.displayName))\" start=\"0s\" duration=\"\(duration)\" hasVideo=\"1\"\(audio) format=\"\(formatID)\"><media-rep kind=\"original-media\" src=\"\(escape(asset.originalURL.absoluteString))\"/></asset>"
+            resources += "<asset id=\"\(rid)\" name=\"\(escape(asset.displayName))\" start=\"0s\" duration=\"\(duration)\" hasVideo=\"1\"\(audio) format=\"\(sourceFormat)\"><media-rep kind=\"original-media\" src=\"\(escape(asset.originalURL.absoluteString))\"/></asset>"
         }
         if let renderedFallbackURL {
             let renderedHasAudio = timeline.music != nil || !timeline.effectiveAudioClips.isEmpty || timeline.items.contains { item in
@@ -56,17 +62,12 @@ public struct FCPXMLExporter: Sendable {
             let audio = renderedHasAudio ? " hasAudio=\"1\" audioSources=\"1\" audioChannels=\"2\"" : ""
             resources += "<asset id=\"r_rendered\" name=\"VeloEdit Rendered Reference\" start=\"0s\" duration=\"\(rational(timeline.duration, fps: fps))\" hasVideo=\"1\"\(audio) format=\"\(formatID)\"><media-rep kind=\"original-media\" src=\"\(escape(renderedFallbackURL.absoluteString))\"/></asset>"
         }
-        var modernTitleStyleResources = ""
-        var modernTitleStyleID: [UUID: String] = [:]
-        for (index, title) in timeline.effectiveTitleItems.enumerated() {
-            let styleID = "ts_modern_\(index + 1)"
-            modernTitleStyleID[title.id] = styleID
-            modernTitleStyleResources += "<text-style-def id=\"\(styleID)\"><text-style font=\"\(escape(title.style.effectiveFontFamily))\" fontSize=\"\(decimal(title.style.fontSize))\" fontFace=\"\(title.style.effectiveFontWeight >= 0.72 ? "Bold" : "Regular")\" fontColor=\"\(fcpxColor(title.style.textColorHex, alpha: title.style.effectiveOpacity))\" alignment=\"\(title.style.alignment.rawValue)\"/></text-style-def>"
-        }
         var spine = ""
         for item in timeline.items {
             if item.kind == .title {
-                spine += "<title name=\"\(escape(item.title ?? "Title"))\" ref=\"r_title\" offset=\"\(rational(item.timelineStart, fps: fps))\" start=\"0s\" duration=\"\(rational(item.timelineDuration, fps: fps))\"><text><text-style ref=\"ts1\">\(escape(item.title ?? ""))</text-style></text>"
+                let styleID = "ts_legacy_\(item.id.uuidString)"
+                spine += "<title name=\"\(escape(item.title ?? "Title"))\" ref=\"r_title\" offset=\"\(rational(item.timelineStart, fps: fps))\" start=\"0s\" duration=\"\(rational(item.timelineDuration, fps: fps))\"><text><text-style ref=\"\(styleID)\">\(escape(item.title ?? ""))</text-style></text>"
+                spine += textStyleDefinition(item.effectiveTitleStyle, id: styleID)
                 if capabilities.supportsMetadata {
                     spine += "<metadata><md key=\"com.veloedit.kind\" value=\"title-card\"/><md key=\"com.veloedit.title.background\" value=\"\(escape(item.effectiveTitleStyle.backgroundColorHex))\"/></metadata>"
                 }
@@ -75,11 +76,12 @@ public struct FCPXMLExporter: Sendable {
             }
             guard let assetID = item.assetID, let ref = resourceID[assetID] else { continue }
             let name = assetByID[assetID]?.displayName ?? "Clip"
+            let sourceFPS = assetByID[assetID].map { sourceFrameRate($0, fallback: fps) } ?? fps
             let lane = item.overlay == nil ? "" : " lane=\"1\""
-            spine += "<asset-clip name=\"\(escape(name))\" ref=\"\(ref)\"\(lane) offset=\"\(rational(item.timelineStart, fps: fps))\" start=\"\(rational(item.sourceStart, fps: fps))\" duration=\"\(rational(item.timelineDuration, fps: fps))\">"
+            spine += "<asset-clip name=\"\(escape(name))\" ref=\"\(ref)\"\(lane) offset=\"\(rational(item.timelineStart, fps: fps))\" start=\"\(rational(item.sourceStart, fps: sourceFPS))\" duration=\"\(rational(item.timelineDuration, fps: fps))\">"
             if capabilities.supportsConstantSpeed,
                abs(item.sourceDuration - item.timelineDuration) > 0.001 || item.isReversed || item.isFreezeFrame || item.speedRamp != nil {
-                spine += timeMap(for: item, fps: fps)
+                spine += timeMap(for: item, fps: fps, sourceFPS: sourceFPS)
             }
             let video = item.effectiveVideoAdjustments
             if capabilities.supportsTransform {
@@ -108,6 +110,10 @@ public struct FCPXMLExporter: Sendable {
             let volume = timeline.effectiveOriginalAudioVolume * audio.effectiveVolume
             if abs(volume - 1) > 0.001 {
                 spine += "<adjust-volume amount=\"\(decibels(volume))dB\"/>"
+            }
+            // FCP's DTD requires markers before the optional metadata block.
+            if mode == .edit, item.transition == "cross-dissolve", capabilities.supportedTransitions.contains("cross-dissolve") {
+                spine += "<marker start=\"\(rational(item.sourceStart, fps: sourceFPS))\" value=\"VeloEdit: cross-dissolve\"/>"
             }
             if capabilities.supportsMetadata {
                 let reason = item.explanation.joined(separator: "; ")
@@ -149,22 +155,21 @@ public struct FCPXMLExporter: Sendable {
                 }
                 spine += "</metadata>"
             }
-            if mode == .edit, item.transition == "cross-dissolve", capabilities.supportedTransitions.contains("cross-dissolve") {
-                spine += "<marker start=\"0s\" value=\"VeloEdit: cross-dissolve\"/>"
-            }
             spine += "</asset-clip>"
         }
         for telemetry in timeline.effectiveTelemetryItems {
             let widgets = telemetry.settings.resolvedWidgets.map { $0.kind.rawValue }.joined(separator: ",")
             let source = telemetry.sourceID?.uuidString ?? ""
             let asset = telemetry.linkedAssetID?.uuidString ?? ""
-            spine += "<gap name=\"VeloEdit Telemetry: \(escape(widgets))\" lane=\"3\" offset=\"\(rational(telemetry.timelineStart, fps: fps))\" start=\"0s\" duration=\"\(rational(telemetry.timelineDuration, fps: fps))\">"
+            spine += "<clip name=\"VeloEdit Telemetry: \(escape(widgets))\" lane=\"3\" offset=\"\(rational(telemetry.timelineStart, fps: fps))\" start=\"0s\" duration=\"\(rational(telemetry.timelineDuration, fps: fps))\">"
+            spine += "<gap start=\"0s\" duration=\"\(rational(telemetry.timelineDuration, fps: fps))\"/>"
             spine += "<marker start=\"0s\" value=\"Telemetry sync \(decimal(telemetry.syncOffset))s · \(escape(widgets))\"/>"
-            spine += "<metadata><md key=\"com.veloedit.telemetry.sourceID\" value=\"\(source)\"/><md key=\"com.veloedit.telemetry.assetID\" value=\"\(asset)\"/><md key=\"com.veloedit.telemetry.widgets\" value=\"\(escape(widgets))\"/><md key=\"com.veloedit.telemetry.style\" value=\"\(telemetry.settings.effectiveStyle.rawValue)\"/><md key=\"com.veloedit.telemetry.syncOffset\" value=\"\(decimal(telemetry.syncOffset))\"/></metadata></gap>"
+            spine += "<metadata><md key=\"com.veloedit.telemetry.sourceID\" value=\"\(source)\"/><md key=\"com.veloedit.telemetry.assetID\" value=\"\(asset)\"/><md key=\"com.veloedit.telemetry.widgets\" value=\"\(escape(widgets))\"/><md key=\"com.veloedit.telemetry.style\" value=\"\(telemetry.settings.effectiveStyle.rawValue)\"/><md key=\"com.veloedit.telemetry.syncOffset\" value=\"\(decimal(telemetry.syncOffset))\"/></metadata></clip>"
         }
         for title in timeline.effectiveTitleItems where title.enabled {
-            let styleID = modernTitleStyleID[title.id] ?? "ts1"
+            let styleID = "ts_modern_\(title.id.uuidString)"
             spine += "<title name=\"\(escape(title.kind.localizedTitle))\" ref=\"r_title\" lane=\"\(2 + title.track)\" offset=\"\(rational(title.startTime, fps: fps))\" start=\"0s\" duration=\"\(rational(title.duration, fps: fps))\"><text><text-style ref=\"\(styleID)\">\(escape(title.text))</text-style></text>"
+            spine += textStyleDefinition(title.style, id: styleID)
             if capabilities.supportsMetadata {
                 spine += "<metadata>"
                 spine += "<md key=\"com.veloedit.titleObject.id\" value=\"\(title.id.uuidString)\"/>"
@@ -183,23 +188,26 @@ public struct FCPXMLExporter: Sendable {
         }
         for effect in timeline.effectiveEffects {
             let definition = EffectPresetRegistry.preset(for: effect.effectType)
-            spine += "<gap name=\"VeloEdit Effect: \(escape(effect.effectType.localizedTitle))\" lane=\"\(10 + effect.track)\" offset=\"\(rational(effect.startTime, fps: fps))\" start=\"0s\" duration=\"\(rational(effect.duration, fps: fps))\">"
+            spine += "<clip name=\"VeloEdit Effect: \(escape(effect.effectType.localizedTitle))\" lane=\"\(10 + effect.track)\" offset=\"\(rational(effect.startTime, fps: fps))\" start=\"0s\" duration=\"\(rational(effect.duration, fps: fps))\">"
+            spine += "<gap start=\"0s\" duration=\"\(rational(effect.duration, fps: fps))\"/>"
             spine += "<marker start=\"0s\" value=\"Editable effect · \(escape(effect.effectType.rawValue))\"/>"
-            spine += "<metadata><md key=\"com.veloedit.effectObject\" value=\"\(encodedMetadata(effect))\"/><md key=\"com.veloedit.effectCapability\" value=\"\(definition.fcpxmlCapability.rawValue)\"/><md key=\"com.veloedit.effectRegistryVersion\" value=\"\(definition.version)\"/></metadata></gap>"
+            spine += "<metadata><md key=\"com.veloedit.effectObject\" value=\"\(encodedMetadata(effect))\"/><md key=\"com.veloedit.effectCapability\" value=\"\(definition.fcpxmlCapability.rawValue)\"/><md key=\"com.veloedit.effectRegistryVersion\" value=\"\(definition.version)\"/></metadata></clip>"
         }
         for transition in timeline.effectiveTransitionItems where transition.enabled {
-            spine += "<gap name=\"VeloEdit Transition: \(escape(transition.style.localizedTitle))\" lane=\"6\" offset=\"\(rational(transition.startTime, fps: fps))\" start=\"0s\" duration=\"\(rational(transition.duration, fps: fps))\">"
-            spine += "<metadata><md key=\"com.veloedit.transitionObject\" value=\"\(encodedMetadata(transition))\"/></metadata></gap>"
+            spine += "<clip name=\"VeloEdit Transition: \(escape(transition.style.localizedTitle))\" lane=\"6\" offset=\"\(rational(transition.startTime, fps: fps))\" start=\"0s\" duration=\"\(rational(transition.duration, fps: fps))\">"
+            spine += "<gap start=\"0s\" duration=\"\(rational(transition.duration, fps: fps))\"/>"
+            spine += "<metadata><md key=\"com.veloedit.transitionObject\" value=\"\(encodedMetadata(transition))\"/></metadata></clip>"
         }
-        let titleStyle = "<effect id=\"r_title\" name=\"Basic Title\" uid=\".../Titles.localized/Bumper\\/Opener.localized/Basic Title.localized/Basic Title.moti\"/><text-style-def id=\"ts1\"><text-style font=\"Helvetica Neue\" fontSize=\"64\" fontFace=\"Regular\" fontColor=\"1 1 1 1\" alignment=\"center\"/></text-style-def>\(modernTitleStyleResources)"
+        let titleStyle = "<effect id=\"r_title\" name=\"Basic Title\" uid=\".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti\"/>"
         let projectName = mode == .edit ? "VeloEdit Film" : "VeloEdit Selects"
         let editableProject = "<project name=\"\(projectName) — Editable\"><sequence format=\"\(formatID)\" duration=\"\(rational(timeline.duration, fps: fps))\" tcStart=\"0s\" tcFormat=\"NDF\" audioLayout=\"stereo\" audioRate=\"48k\"><spine>\(spine)</spine></sequence></project>"
         let renderedProject = renderedFallbackURL.map { _ in
             "<project name=\"\(projectName) — Rendered Reference\"><sequence format=\"\(formatID)\" duration=\"\(rational(timeline.duration, fps: fps))\" tcStart=\"0s\" tcFormat=\"NDF\" audioLayout=\"stereo\" audioRate=\"48k\"><spine><asset-clip name=\"VeloEdit Rendered Reference\" ref=\"r_rendered\" offset=\"0s\" start=\"0s\" duration=\"\(rational(timeline.duration, fps: fps))\"/></spine></sequence></project>"
         } ?? ""
         let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE fcpxml><fcpxml version=\"1.11\"><resources>\(resources)\(titleStyle)</resources><library><event name=\"VeloEdit\">\(editableProject)\(renderedProject)</event></library></fcpxml>"
-        guard (try? XMLDocument(xmlString: xml)) != nil else { throw FCPXMLExportError.malformedXML }
-        return xml
+        guard let document = try? XMLDocument(xmlString: xml) else { throw FCPXMLExportError.malformedXML }
+        try attachConnectedItems(in: document, fps: fps)
+        return document.xmlString
     }
 
     public func export(timeline: Timeline, assets: [MediaAsset], mode: FCPXMLExportMode = .edit, renderedFallbackURL: URL? = nil, to destination: URL) throws {
@@ -237,12 +245,55 @@ public struct FCPXMLExporter: Sendable {
         }
     }
 
-    private func rational(_ seconds: Double, fps: Int32) -> String {
-        let frames = max(0, Int64((seconds * Double(fps)).rounded()))
-        return "\(frames)/\(fps)s"
+    private func sourceFrameRate(_ asset: MediaAsset, fallback: Double) -> Double {
+        guard let rate = asset.metadata.frameRate, rate.isFinite, rate > 0, rate <= 1_000 else { return fallback }
+        return rate
     }
 
-    private func timeMap(for item: TimelineItem, fps: Int32) -> String {
+    private func rational(_ seconds: Double, fps: Double) -> String {
+        let step = VideoFrameTiming.duration(for: fps)
+        let frames = max(0, Int64((seconds / step.seconds).rounded()))
+        return "\(frames * step.value)/\(step.timescale)s"
+    }
+
+    private func attachConnectedItems(in document: XMLDocument, fps: Double) throws {
+        for node in try document.nodes(forXPath: "/fcpxml/library/event/project/sequence/spine") {
+            guard let spine = node as? XMLElement else { continue }
+            let children = (spine.children ?? []).compactMap { $0 as? XMLElement }
+            let connected = children.filter { $0.attribute(forName: "lane") != nil }
+            guard !connected.isEmpty else { continue }
+            var primary = children.filter { $0.attribute(forName: "lane") == nil }
+            if primary.isEmpty {
+                let duration = (spine.parent as? XMLElement)?.attribute(forName: "duration")?.stringValue ?? "0s"
+                let gap = try XMLElement(xmlString: "<gap offset=\"0s\" start=\"0s\" duration=\"\(duration)\"/>")
+                spine.insertChild(gap, at: 0)
+                primary = [gap]
+            }
+            for item in connected {
+                let time = seconds(item.attribute(forName: "offset")?.stringValue)
+                let anchor = primary.last { seconds($0.attribute(forName: "offset")?.stringValue) <= time } ?? primary[0]
+                // Connected objects must be children of a storyline item.
+                // Siblings with lane attributes validate but FCP drops them.
+                // Their offset uses the parent's local source-time origin.
+                let offset = seconds(anchor.attribute(forName: "start")?.stringValue)
+                    + time - seconds(anchor.attribute(forName: "offset")?.stringValue)
+                item.attribute(forName: "offset")?.stringValue = rational(offset, fps: fps)
+                item.detach()
+                let following: Set<String> = ["marker", "chapter-marker", "rating", "keyword", "analysis-marker",
+                    "audio-channel-source", "filter-video", "filter-video-mask", "filter-audio", "metadata"]
+                let index = (anchor.children ?? []).firstIndex { following.contains($0.name ?? "") } ?? anchor.childCount
+                anchor.insertChild(item, at: index)
+            }
+        }
+    }
+
+    private func seconds(_ time: String?) -> Double {
+        let parts = (time ?? "0s").dropLast().split(separator: "/")
+        guard let numerator = parts.first.flatMap({ Double($0) }) else { return 0 }
+        return parts.count == 2 ? numerator / max(1, Double(parts[1]) ?? 1) : numerator
+    }
+
+    private func timeMap(for item: TimelineItem, fps: Double, sourceFPS: Double) -> String {
         if let ramp = item.speedRamp, !item.isReversed, !item.isFreezeFrame {
             let points = ramp.normalizedPoints
             var rawTimes = [0.0]
@@ -255,15 +306,15 @@ public struct FCPXMLExporter: Sendable {
             let scale = item.timelineDuration / rawDuration
             let entries = zip(points, rawTimes).map { point, rawTime in
                 let sourceValue = item.sourceStart + item.sourceDuration * point.position
-                return "<timept time=\"\(rational(rawTime * scale, fps: fps))\" value=\"\(rational(sourceValue, fps: fps))\" interp=\"smooth2\"/>"
+                return "<timept time=\"\(rational(rawTime * scale, fps: fps))\" value=\"\(rational(sourceValue, fps: sourceFPS))\" interp=\"smooth2\"/>"
             }.joined()
             let preservesPitch = item.effectiveAudioAdjustments.preservePitch ?? true
-            return "<timeMap frameSampling=\"frame-blending\" preservesPitch=\"\(preservesPitch ? 1 : 0)\">\(entries)</timeMap>"
+            return "<timeMap frameSampling=\"floor\" preservesPitch=\"\(preservesPitch ? 1 : 0)\">\(entries)</timeMap>"
         }
         let firstValue = item.isReversed ? item.sourceStart + item.sourceDuration : item.sourceStart
         let lastValue = item.isReversed ? item.sourceStart : item.sourceStart + item.sourceDuration
         let preservesPitch = item.effectiveAudioAdjustments.preservePitch ?? true
-        return "<timeMap frameSampling=\"frame-blending\" preservesPitch=\"\(preservesPitch ? 1 : 0)\"><timept time=\"0s\" value=\"\(rational(firstValue, fps: fps))\" interp=\"linear\"/><timept time=\"\(rational(item.timelineDuration, fps: fps))\" value=\"\(rational(lastValue, fps: fps))\" interp=\"linear\"/></timeMap>"
+        return "<timeMap frameSampling=\"floor\" preservesPitch=\"\(preservesPitch ? 1 : 0)\"><timept time=\"0s\" value=\"\(rational(firstValue, fps: sourceFPS))\" interp=\"linear\"/><timept time=\"\(rational(item.timelineDuration, fps: fps))\" value=\"\(rational(lastValue, fps: sourceFPS))\" interp=\"linear\"/></timeMap>"
     }
 
     private func decimal(_ value: Double) -> String {
@@ -293,6 +344,12 @@ public struct FCPXMLExporter: Sendable {
         let green = Double((number >> 8) & 0xFF) / 255
         let blue = Double(number & 0xFF) / 255
         return "\(decimal(red)) \(decimal(green)) \(decimal(blue)) \(decimal(alpha))"
+    }
+
+    // Text styles are local children of each title, never resources. IDs are
+    // document-wide so multiple legacy and object titles can coexist in FCP.
+    private func textStyleDefinition(_ style: TitleStyle, id: String) -> String {
+        "<text-style-def id=\"\(id)\"><text-style font=\"\(escape(style.effectiveFontFamily))\" fontSize=\"\(decimal(style.fontSize))\" fontFace=\"\(style.effectiveFontWeight >= 0.72 ? "Bold" : "Regular")\" fontColor=\"\(fcpxColor(style.textColorHex, alpha: style.effectiveOpacity))\" alignment=\"\(style.alignment.rawValue)\"/></text-style-def>"
     }
 }
 

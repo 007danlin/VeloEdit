@@ -224,7 +224,7 @@ public struct AdaptiveSoundtrackPlanner: Sendable {
                 explanation.append("Короткий переход \(String(format: "%.2f", transitionDuration)) с; совместимость звучания требует прослушивания")
             }
             if sourceStart > 0.01 {
-                explanation.append("Фрагмент трека начинается с музыкальной фразы/такта")
+                explanation.append("Выбрано начало музыкального участка: \(String(format: "%.2f", sourceStart)) с; основание — карта энергии, пауз и доступных границ")
             }
             segments.append(AdaptiveMusicSegment(
                 timelineStart: decision.part.start,

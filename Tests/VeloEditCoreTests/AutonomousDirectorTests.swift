@@ -792,7 +792,8 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     let snapshot = await pipeline.snapshot()
 
     #expect(autonomous.projectStyle.usableMomentCount >= 10)
-    #expect(autonomous.duration.seconds < 120)
+    let measuredBudget = try #require(autonomous.duration.contentBudgetDecision)
+    #expect(autonomous.duration.seconds <= measuredBudget.supportedDuration + 0.05)
     #expect(timeline.duration <= autonomous.duration.safeRange.upperBound + 2)
     #expect(diagnostics.evaluatedVariantCount >= 2)
     #expect(diagnostics.variantEvaluations?.allSatisfy { $0.score.projectStyleFit > 0 && $0.score.pacingQuality > 0 } == true)

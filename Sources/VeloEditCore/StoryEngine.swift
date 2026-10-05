@@ -153,7 +153,7 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
         switch preset {
         case .highlight: return StoryConstraints(targetDuration: 120, transitionFrequency: 0.12, pacing: 0.88)
         case .adventure: return StoryConstraints(targetDuration: 8 * 60, transitionFrequency: 0.16, pacing: 0.78)
-        case .story: return StoryConstraints(targetDuration: 10 * 60, transitionFrequency: 0.12, pacing: 0.62)
+        case .story, .vlog: return StoryConstraints(targetDuration: 10 * 60, transitionFrequency: 0.12, pacing: 0.62)
         case .summerFilm: return StoryConstraints(targetDuration: 30 * 60, preferPhotos: true, transitionFrequency: 0.10, pacing: 0.55)
         case .memories: return StoryConstraints(targetDuration: 12 * 60, preferPhotos: true, transitionFrequency: 0.08, pacing: 0.35)
         case .cinematic: return StoryConstraints(targetDuration: 8 * 60, transitionFrequency: 0.05, pacing: 0.25)
@@ -170,18 +170,9 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
     }
 
     private static func duration(from text: String) -> Double? {
-        let patterns: [(String, Double)] = [(#"(\d+(?:[\.,]\d+)?)\s*(?:минут|мин\b|min\b)"#, 60), (#"(\d+(?:[\.,]\d+)?)\s*(?:секунд|сек\b|sec\b)"#, 1)]
-        var latest: (location: Int, seconds: Double)?
-        for (pattern, multiplier) in patterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern),
-                  let match = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
-                  let range = Range(match.range(at: 1), in: text),
-                  let value = Double(text[range].replacingOccurrences(of: ",", with: ".")) else { continue }
-            if latest.map({ match.range.location > $0.location }) ?? true {
-                latest = (match.range.location, value * multiplier)
-            }
-        }
-        return latest?.seconds
+        if let target = FilmDurationRequirement.parse(prompt: text).target { return target }
+        if text.range(of: #"\b0(?:[.,]0+)?\s*(?:сек|мин|sec|min)"#, options: .regularExpression) != nil { return 0 }
+        return nil
     }
 
     private static func lastPosition(of needles: [String], in text: String) -> Int? {
@@ -275,7 +266,7 @@ public struct ContextualHighlightRanker: HighlightRanking, Sendable {
             base = interest * 0.27 + action * 0.27 + quality * 0.16 + story * 0.14 + uniqueness * 0.10 + stability * 0.06
         case .adventure:
             base = action * 0.25 + story * 0.22 + interest * 0.20 + quality * 0.12 + uniqueness * 0.11 + stability * 0.10
-        case .story:
+        case .story, .vlog:
             base = story * 0.30 + interest * 0.19 + emotion * 0.15 + audio * 0.12 + quality * 0.10 + uniqueness * 0.09 + stability * 0.05
         case .summerFilm:
             base = story * 0.22 + emotion * 0.20 + composition * 0.18 + interest * 0.15 + quality * 0.10 + uniqueness * 0.10 + stability * 0.05
@@ -595,8 +586,9 @@ public struct StoryEngine: Sendable {
         }
         var fallbackConstraints = constraints
         if let directorBrief {
-            fallbackConstraints.targetDuration = autonomousDecision?.duration.seconds
-                ?? directorBrief.requestedDuration
+            fallbackConstraints.targetDuration = FilmDurationRequirement.parse(prompt: prompt,
+                explicitSeconds: directorBrief.explicitRequestedDuration, mode: directorBrief.durationMode).target
+                ?? autonomousDecision?.duration.seconds ?? constraints.targetDuration
             fallbackConstraints.pacing = directorBrief.mood.pacing
         }
         return StoryPlan(
@@ -698,13 +690,17 @@ public struct StoryEngine: Sendable {
             // autonomous duration equals the requested value when source
             // capacity covers it and is material-bounded otherwise.
             if let directorBrief {
-                variantConstraints.targetDuration = variantDecision?.duration.seconds
-                    ?? autonomousDecision?.duration.seconds
-                    ?? directorBrief.requestedDuration
+                variantConstraints.targetDuration = FilmDurationRequirement.parse(prompt: prompt,
+                    explicitSeconds: directorBrief.explicitRequestedDuration, mode: directorBrief.durationMode).target
+                    ?? variantDecision?.duration.seconds ?? constraints.targetDuration
                 variantConstraints.pacing = directorBrief.mood.pacing
             }
             if lockedConstraints.contains(.targetDuration) {
                 variantConstraints.targetDuration = constraints.targetDuration
+            }
+            if let requested = FilmDurationRequirement.parse(prompt: prompt, explicitSeconds: directorBrief?.explicitRequestedDuration, mode: directorBrief?.durationMode).target {
+                variantConstraints.targetDuration = requested
+                if !DirectorRequestContract.requestsSlowMotion(prompt) { variantConstraints.allowSlowMotion = false }
             }
             if lockedConstraints.contains(.pacing) {
                 variantConstraints.pacing = constraints.pacing
@@ -964,14 +960,9 @@ public struct StoryEngine: Sendable {
             )
         }
 
-        let mayUseColdOpen = selectedEvents.count > 1
-            && (autonomousDecision?.story.pattern == .coldOpen || autonomousDecision?.story.pattern == .rapidPeakReaction)
-            && strategy != "chronology" && strategy != "documentary"
-        let firstChronologicalID = selectedEvents.first?.id
-        let coldOpen = mayUseColdOpen ? selectedEvents
-            .filter { $0.id != firstChronologicalID }
-            .flatMap { selectedByEvent[$0.id] ?? [] }
-            .max { coldOpenScore($0) < coldOpenScore($1) } : nil
+        // Automatic dramatic patterns do not authorize a flash-forward.
+        // A strong opening is selected within the early chronological material.
+        let coldOpen: Candidate? = nil
         if let coldOpen {
             for event in selectedEvents {
                 selectedByEvent[event.id]?.removeAll { $0.id == coldOpen.id }
@@ -1466,42 +1457,8 @@ public struct StoryEngine: Sendable {
             usedDuration += duration
             if let asset = assets[best.assetID] { usedDevices.insert(EventDeviceIdentity.key(for: asset)) }
         }
-        let sourceOrder = Dictionary(uniqueKeysWithValues: event.assetIDs.enumerated().map { ($0.element, $0.offset) })
-        return selected.sorted {
-            let leftScene = sceneByCandidate[$0.id].flatMap { scene in event.effectiveScenes.firstIndex(where: { $0.id == scene.id }) } ?? Int.max
-            let rightScene = sceneByCandidate[$1.id].flatMap { scene in event.effectiveScenes.firstIndex(where: { $0.id == scene.id }) } ?? Int.max
-            if leftScene != rightScene { return leftScene < rightScene }
-            let leftSource = sourceOrder[$0.assetID] ?? Int.max
-            let rightSource = sourceOrder[$1.assetID] ?? Int.max
-            if leftSource != rightSource { return leftSource < rightSource }
-            // Event and scene blocks remain stable, while candidates inside a
-            // broad scene can express genuinely different editorial arcs.
-            // This matters for long single-camera scenes where every strong
-            // moment fits the duration and candidate selection alone cannot
-            // create a distinct variant.
-            let lower = strategy.lowercased()
-            if ["action", "telemetry", "balanced-energy"].contains(where: lower.contains) {
-                let lhs = $0.insights?.dynamics ?? $0.scores.action
-                let rhs = $1.insights?.dynamics ?? $1.scores.action
-                if abs(lhs - rhs) > 0.025 { return lhs < rhs }
-            } else if ["opening-first", "contrast", "novelty"].contains(where: lower.contains) {
-                let lhs = $0.scores.action * 0.58 + $0.scores.uniqueness * 0.42
-                let rhs = $1.scores.action * 0.58 + $1.scores.uniqueness * 0.42
-                if abs(lhs - rhs) > 0.025 { return lhs > rhs }
-            } else if ["emotional", "people", "original-audio", "closure"].contains(where: lower.contains) {
-                let lhs = ($0.insights?.storyValue ?? $0.scores.interest) * 0.62 + ($0.insights?.originalAudioUsefulness ?? 0) * 0.38
-                let rhs = ($1.insights?.storyValue ?? $1.scores.interest) * 0.62 + ($1.insights?.originalAudioUsefulness ?? 0) * 0.38
-                if abs(lhs - rhs) > 0.025 { return lhs < rhs }
-            } else if ["scenic", "cinematic", "quiet"].contains(where: lower.contains) {
-                let lhs = ($0.insights?.composition ?? $0.scores.quality) * 0.62 + $0.scores.stability * 0.38
-                let rhs = ($1.insights?.composition ?? $1.scores.quality) * 0.62 + $1.scores.stability * 0.38
-                if abs(lhs - rhs) > 0.025 { return lhs > rhs }
-            }
-            let leftDate = assets[$0.assetID]?.metadata.effectiveCaptureDate ?? .distantFuture
-            let rightDate = assets[$1.assetID]?.metadata.effectiveCaptureDate ?? .distantFuture
-            if leftDate != rightDate { return leftDate < rightDate }
-            return $0.sourceStart < $1.sourceStart
-        }
+        // Strategy controls which moments survive, never their event time.
+        return chronological(selected, assets: assets)
     }
 
     private func coldOpenScore(_ candidate: Candidate) -> Double {
@@ -1691,66 +1648,9 @@ public struct StoryEngine: Sendable {
     }
 
     private func narrativeOrder(_ candidates: [Candidate], constraints: StoryConstraints, assets: [UUID: MediaAsset], story: AutonomousStoryDecision? = nil) -> [Candidate] {
-        guard candidates.count >= 3 else { return chronological(candidates, assets: assets) }
-        var remaining = candidates
-
-        func takeBest(_ role: StoryRole) -> Candidate? {
-            guard let candidate = remaining.max(by: {
-                roleScore($0, role: role, constraints: constraints) < roleScore($1, role: role, constraints: constraints)
-            }), let index = remaining.firstIndex(where: { $0.id == candidate.id }) else { return nil }
-            return remaining.remove(at: index)
-        }
-
-        if story?.pattern == .minimalMontage {
-            return chronological(candidates, assets: assets)
-        }
-        if story?.pattern == .atmosphericObservation {
-            let intro = takeBest(.intro)
-            let outro = takeBest(.outro)
-            let middle = remaining.sorted {
-                let lhs = (1 - $0.scores.action) * 0.34 + ($0.insights?.composition ?? $0.scores.quality) * 0.40 + $0.scores.stability * 0.26
-                let rhs = (1 - $1.scores.action) * 0.34 + ($1.insights?.composition ?? $1.scores.quality) * 0.40 + $1.scores.stability * 0.26
-                return lhs > rhs
-            }
-            return [intro].compactMap { $0 } + middle + [outro].compactMap { $0 }
-        }
-        if story?.pattern == .coldOpen || story?.pattern == .rapidPeakReaction {
-            let opening = takeBest(.action)
-            let climax = takeBest(.climax)
-            let reaction = takeBest(.reaction)
-            let middle = chronological(remaining, assets: assets).sorted {
-                ($0.insights?.dynamics ?? $0.scores.action) < ($1.insights?.dynamics ?? $1.scores.action)
-            }
-            let climaxPosition = min(middle.count, max(0, Int((Double(middle.count) * 0.72).rounded())))
-            return [opening].compactMap { $0 }
-                + Array(middle.prefix(climaxPosition))
-                + [climax].compactMap { $0 }
-                + Array(middle.dropFirst(climaxPosition))
-                + [reaction].compactMap { $0 }
-        }
-
-        let intro = takeBest(.intro)
-        let climax = takeBest(.climax)
-        let outro = takeBest(.outro)
-        let middle = chronological(remaining, assets: assets).sorted {
-            let left = $0.scores.action * 0.58 + $0.scores.interest * 0.42
-            let right = $1.scores.action * 0.58 + $1.scores.interest * 0.42
-            if abs(left - right) > 0.20 { return left < right }
-            return (assets[$0.assetID]?.metadata.creationDate ?? .distantPast) < (assets[$1.assetID]?.metadata.creationDate ?? .distantPast)
-        }
-        // Put the deliberately selected peak into the first slot that will
-        // actually receive the semantic `.climax` role below. Using a share of
-        // only the remaining middle clips could leave the strongest moment in
-        // the preceding `.action` chapter on shorter edits.
-        let firstClimaxIndex = Int((Double(max(1, candidates.count - 1)) * 0.76).rounded(.up))
-        let climaxPosition = min(middle.count, max(0, firstClimaxIndex - 1))
-        var result: [Candidate] = []
-        if let intro { result.append(intro) }
-        result.append(contentsOf: middle.prefix(climaxPosition))
-        if let climax { result.append(climax) }
-        result.append(contentsOf: middle.dropFirst(climaxPosition))
-        if let outro { result.append(outro) }
-        return result
+        // Energy and role scores choose moments and shot lengths; they do not
+        // move later events or reactions before their causes.
+        chronological(candidates, assets: assets)
     }
 
     private func chronological(_ candidates: [Candidate], assets: [UUID: MediaAsset]) -> [Candidate] {

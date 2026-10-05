@@ -12,6 +12,8 @@ struct TitleReadabilityRegion {
     var textLuminances: [Double]
     var textOpacity: Double
     var visibility: Double
+    var requestedText: String = ""
+    var renderedText: String = ""
 
     var bounds: CGRect { lineRects.reduce(CGRect.null) { $0.union($1) } }
 }

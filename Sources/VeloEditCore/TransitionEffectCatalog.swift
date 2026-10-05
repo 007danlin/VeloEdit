@@ -103,7 +103,7 @@ public enum TransitionPresetRegistry {
         let duration: Double
         let range: ClosedRange<Double>
         let intensity: Double
-        let parameters: [RenderParameterDescriptor]
+        var parameters: [RenderParameterDescriptor]
         let heavy: Bool
         let direction: TransitionDirection
         let easing: KeyframeEasing
@@ -122,7 +122,9 @@ public enum TransitionPresetRegistry {
              .wipeLeft, .wipeRight, .wipeUp, .wipeDown:
             category = .directional; subtitle = "Продолжает направление движения"; tags = ["movement", "directional", "travel", "action"]
             duration = 0.38; range = 0.14...1.5; intensity = 0.78
-            parameters = [RenderParameterDescriptor(key: "softness", title: "Мягкость края", range: 0...1, defaultValue: 0.08)]; heavy = false
+            parameters = style.rawValue.hasPrefix("wipe")
+                ? [RenderParameterDescriptor(key: "softness", title: "Мягкость края", range: 0...1, defaultValue: 0.08)] : []
+            heavy = false
         case .zoom, .zoomIn, .zoomOut, .whipLeft, .whipRight, .whipUp, .whipDown, .spin, .cameraPush, .cameraPull:
             category = .motion; subtitle = "Мотивированный акцент движения"; tags = ["fast", "camera-motion", "action", "beat"]
             duration = style.rawValue.hasPrefix("whip") ? 0.24 : 0.42; range = 0.12...1.2; intensity = 0.72
@@ -130,10 +132,13 @@ public enum TransitionPresetRegistry {
                 RenderParameterDescriptor(key: "motionBlur", title: "Motion Blur", range: 0...1, defaultValue: 0.55),
                 RenderParameterDescriptor(key: "scale", title: "Масштаб", range: 0...1, defaultValue: 0.5)
             ]; heavy = style.rawValue.hasPrefix("whip") || style == .spin
+            if style.rawValue.hasPrefix("whip") { parameters.removeAll { $0.key == "scale" } }
         case .filmDissolve, .filmBurn, .lightLeak, .blurDissolve, .lensBlur, .exposureFlash, .lightFlash:
             category = .cinematic; subtitle = "Сдержанный киноакцент"; tags = ["cinematic", "emotion", "climax", "memory"]
             duration = 0.52; range = 0.18...1.8; intensity = style == .filmDissolve ? 0.42 : 0.58
-            parameters = [RenderParameterDescriptor(key: "blur", title: "Размытие", range: 0...1, defaultValue: style == .blurDissolve || style == .lensBlur ? 0.72 : 0.18)]; heavy = true
+            parameters = style == .blurDissolve || style == .lensBlur
+                ? [RenderParameterDescriptor(key: "blur", title: "Размытие", range: 0...1, defaultValue: 0.72)] : []
+            heavy = true
         case .glitch, .rgbSplit, .digitalDistortion, .pixelate, .shatter, .ripple, .wave:
             category = .creative; subtitle = "Редкий стилизованный акцент"; tags = ["digital", "stylized", "drop", "high-energy"]
             duration = 0.32; range = 0.10...1.0; intensity = 0.52
@@ -141,6 +146,7 @@ public enum TransitionPresetRegistry {
                 RenderParameterDescriptor(key: "amount", title: "Сила искажения", range: 0...1, defaultValue: 0.52),
                 RenderParameterDescriptor(key: "frequency", title: "Частота", range: 1...32, defaultValue: 12)
             ]; heavy = true
+            if [.rgbSplit, .pixelate, .shatter].contains(style) { parameters.removeAll { $0.key == "frequency" } }
         case .circle, .iris, .radial, .geometricWipe, .maskReveal:
             category = .shapeMask; subtitle = "Проявление через форму"; tags = ["graphic", "reveal", "chapter", "location"]
             duration = 0.48; range = 0.16...1.6; intensity = 0.75
@@ -148,6 +154,7 @@ public enum TransitionPresetRegistry {
                 RenderParameterDescriptor(key: "softness", title: "Растушёвка", range: 0...1, defaultValue: 0.12),
                 RenderParameterDescriptor(key: "rotation", title: "Поворот", range: -180...180, defaultValue: 0, unit: "°")
             ]; heavy = true
+            if style == .circle { parameters.removeAll { $0.key == "rotation" } }
         }
         switch style {
         case .pushRight, .slideRight, .wipeRight, .whipRight: direction = .right
@@ -175,7 +182,7 @@ public enum TransitionPresetRegistry {
             isHeavy: heavy,
             defaultDirection: direction,
             defaultEasing: easing,
-            version: 1
+            version: 2
         )
     }
 }
@@ -253,6 +260,8 @@ public enum EffectPresetRegistry {
             defaultValue: type.defaultIntensity, valueType: .float
         )]
         switch type {
+        case .glitch:
+            parameters.append(RenderParameterDescriptor(key: "frequency", title: "Частота сбоев", range: 1...30, defaultValue: 12))
         case .directionalBlur, .motionBlur, .cinematicMotionBlur:
             parameters.append(RenderParameterDescriptor(
                 key: "angle", title: "Угол", range: -.pi...(.pi), defaultValue: 0,

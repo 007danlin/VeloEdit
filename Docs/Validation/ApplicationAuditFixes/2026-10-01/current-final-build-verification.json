@@ -1,0 +1,10 @@
+{
+  "bundle": "/Users/daniellineckij/VeloEdit/Build/VeloEdit.app",
+  "build": "2026.274.193122",
+  "sourceSHA256": "31e5bd338b876826ef9214d0763795ecf98d6b9d17cc7a18071916281b8f1262",
+  "executableSHA256": "bfb0785ab54ca54d3cc191197321a24cf0454ecf5142c2d623285199689aa5cc",
+  "signature": "codesign --verify --deep --strict passed",
+  "buildCommand": "./Scripts/build-app.sh",
+  "sourceMatchesWorkingFolder": true,
+  "supersedesSnapshotBuild": "2026.274.192256"
+}

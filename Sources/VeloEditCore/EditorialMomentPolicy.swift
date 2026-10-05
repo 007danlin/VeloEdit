@@ -15,14 +15,17 @@ enum EditorialMomentPolicy {
         if let speech = unit.candidate.insights?.speech, speech.confidence >= 0.65 {
             starts.append(speech.phraseStart); ends.append(speech.phraseEnd)
         }
-        if let boundary = unit.candidate.momentBoundary, boundary.confidence >= 0.65 {
+        if let boundary = unit.candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65 {
             starts.append(boundary.anticipationStart); ends.append(boundary.completionEnd)
         }
         if unit.evidence.hasProgression && unit.evidence.completion >= 0.65 {
             starts.append(unit.evidence.usableRange.start); ends.append(unit.evidence.usableRange.end)
         }
         guard let start = starts.min(), let end = ends.max(), end > start else { return nil }
-        return .init(start: max(unit.sourceRange.start, start), end: min(unit.sourceRange.end, end))
+        // Keep the actual evidence contract. Clamping to a short candidate
+        // used to silently redefine an interrupted action/phrase as complete.
+        // Assembly must find a candidate that contains the entire range.
+        return .init(start: max(0, start), end: end)
     }
 
     static func openingValue(_ unit: EditorialUnit) -> Double {

@@ -1,0 +1,3 @@
+{'stage': 'film', 'seconds': 190.11942020800052, 'exitCode': 0}
+{'stage': 'save-video', 'seconds': 124.20710083400081, 'exitCode': 0}
+{'stage': 'verify', 'seconds': 1.5907252919987513, 'exitCode': 0}

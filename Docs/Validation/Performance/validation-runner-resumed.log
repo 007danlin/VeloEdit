@@ -1,0 +1,8 @@
+{"stage": "paired-fast", "seconds": 408.16105029199935, "exitCode": 0}
+{"stage": "paired-balanced", "seconds": 749.5471100410014, "exitCode": 0}
+{"stage": "director-before", "seconds": 133.63709895799911, "exitCode": 0}
+{"stage": "apply-save-before", "seconds": 24.54482045899931, "exitCode": 0}
+{"stage": "director-after", "seconds": 0.06438075000005483, "exitCode": 0}
+{"stage": "apply-save-after", "seconds": 24.04091958400022, "exitCode": 0}
+{"stage": "sequence-pairs", "seconds": 3.7572193750002043, "exitCode": 0}
+{"stage": "real-film", "seconds": 352.1899610419987, "exitCode": 0}

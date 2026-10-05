@@ -1,0 +1,14 @@
+[
+  {
+    "stage": "verify-film",
+    "exitCode": 0,
+    "seconds": 3.198928249999881,
+    "purpose": "functional validation of final bundle; no comparative timing claim"
+  },
+  {
+    "stage": "save-video",
+    "exitCode": 0,
+    "seconds": 135.74636333300077,
+    "purpose": "functional validation of final bundle; no comparative timing claim"
+  }
+]

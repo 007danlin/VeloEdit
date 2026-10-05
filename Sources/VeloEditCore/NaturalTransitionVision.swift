@@ -94,14 +94,25 @@ enum NaturalTransitionVision {
         var speed: Double { hypot(x, y) }
     }
 
-    static func match(tail: [NaturalTransitionFrame], head: [NaturalTransitionFrame]) -> NaturalTransitionMatch? {
+    static func match(tail: [NaturalTransitionFrame], head: [NaturalTransitionFrame], outgoingContext: [NaturalTransitionFrame] = []) -> NaturalTransitionMatch? {
         guard tail.count == 4, head.count == 4, (tail + head).allSatisfy(\.valid),
-              increasing(tail), increasing(head), let a = tail.last, let b = head.first,
+              increasing(tail, maximumStep: 0.21), increasing(head, maximumStep: 0.21), let a = tail.last, let b = head.first,
               abs(a.aspectRatio / b.aspectRatio - 1) < 0.03 else { return nil }
         let colourDistance = distance(a.meanColor, b.meanColor)
-        if colourDistance < 0.075, coveredReveal(tail: tail, head: head) {
-            return .init(kind: .occlusion, confidence: 0.94,
-                reason: "Склейка скрыта настоящим перекрытием: кадр закрывается перед границей и открывается после неё")
+        if colourDistance < 0.075, coveredReveal(tail: tail, head: head),
+           hasSpatialCover(tail, background: outgoingContext.last) {
+            // A lens cover after lowering/repositioning the camera is not a
+            // composed transition. The short cover itself cannot establish
+            // that: inspect the visible context before the reaching hand.
+            // Missing/featureless context abstains; this is not a general
+            // motion penalty for rides or an exemption for incidental hands.
+            guard composedBeforeCover(outgoingContext),
+                  let last = outgoingContext.last,
+                  tail[0].time - last.time >= 0.04,
+                  tail[0].time - last.time <= 0.16 else { return nil }
+            let coverage = min(darkCoverage(a), darkCoverage(b))
+            return .init(kind: .occlusion, confidence: min(0.99, 0.85 + coverage * 0.14),
+                reason: "Устойчивый кадр закрывается непосредственно перед склейкой и открывается в следующем плане; предварительная перестановка камеры не обнаружена")
         }
         let shape = shapeSimilarity(a.luma, b.luma)
         let left = motion(tail), right = motion(head)
@@ -128,8 +139,39 @@ enum NaturalTransitionVision {
         return nil
     }
 
-    private static func increasing(_ frames: [NaturalTransitionFrame]) -> Bool {
-        zip(frames, frames.dropFirst()).allSatisfy { $1.time - $0.time >= 0.04 && $1.time - $0.time <= 0.16 }
+    /// Require persistent background structure, allowing local subject/hand
+    /// motion. Correlation is measured in separate image cells, so a person
+    /// moving near the lens need not freeze the whole picture. These are
+    /// conservative evidence gates, not an artistic ranking score.
+    static func composedBeforeCover(_ frames: [NaturalTransitionFrame]) -> Bool {
+        guard frames.count == 8, frames.allSatisfy(\.valid), increasing(frames),
+              let first = frames.first else { return false }
+        let reference = first.luma
+        let cells = (0..<3).flatMap { row in
+            (0..<4).map { column in
+                (0..<12).flatMap { y in (0..<16).map { x in
+                    (row * 12 + y) * NaturalTransitionFrame.width + column * 16 + x
+                } }
+            }
+        }
+        let informative = cells.filter { indices in
+            let values = indices.map { reference[$0] }
+            return shapeSimilarity(values, values) > 0.9
+        }
+        guard informative.count >= 6 else { return false }
+        return frames.dropFirst().allSatisfy { frame in
+            guard abs(frame.aspectRatio / first.aspectRatio - 1) < 0.03 else { return false }
+            let pixels = frame.luma
+            let stable = informative.filter { indices in
+                let a = indices.map { reference[$0] }, b = indices.map { pixels[$0] }
+                return shapeSimilarity(a, b) >= 0.82 && distance(a, b) < 0.15
+            }.count
+            return Double(stable) / Double(informative.count) >= 0.60
+        }
+    }
+
+    private static func increasing(_ frames: [NaturalTransitionFrame], maximumStep: Double = 0.16) -> Bool {
+        zip(frames, frames.dropFirst()).allSatisfy { $1.time - $0.time >= 0.04 && $1.time - $0.time <= maximumStep }
     }
     static func distance(_ a: [Double], _ b: [Double]) -> Double {
         guard a.count == b.count, !a.isEmpty else { return 1 }
@@ -141,7 +183,7 @@ enum NaturalTransitionVision {
         let covered = stride(from: 0, to: frame.rgb.count, by: 3).filter { i in
             distance(Array(frame.rgb[i..<(i + 3)]), color) < 0.10
         }.count
-        return Double(covered) / Double(frame.rgb.count / 3) >= 0.95
+        return Double(covered) / Double(frame.rgb.count / 3) >= 0.95 || darkCoverage(frame) >= 0.85
     }
     static func detail(_ pixels: [Double]) -> Double {
         let w = NaturalTransitionFrame.width
@@ -161,7 +203,7 @@ enum NaturalTransitionVision {
         return max(0, dot / max(0.00001, sqrt(aa * bb)))
     }
 
-    private static func coveredReveal(tail: [NaturalTransitionFrame], head: [NaturalTransitionFrame]) -> Bool {
+    static func coveredReveal(tail: [NaturalTransitionFrame], head: [NaturalTransitionFrame]) -> Bool {
         let a = tail[3], b = head[0]
         // Overexposure/flash is not evidence of a physical lens cover.
         guard a.luma.reduce(0, +) / Double(a.luma.count) < 0.82,
@@ -182,14 +224,43 @@ enum NaturalTransitionVision {
             }
             return Double(count) / 144
         }
-        let left = tail.map(coverage), right = head.map(coverage)
-        guard min(left[3], right[0]) >= 0.95, left[3] - left[0] >= 0.30, right[0] - right[3] >= 0.30 else { return false }
-        // Expansion then reveal across multiple samples; a one-frame flash or
-        // an internal hard cut cannot masquerade as an occlusion transition.
-        let growth = zip(left, left.dropFirst()).map { $1 - $0 }
-        let reveal = zip(right, right.dropFirst()).map { $0 - $1 }
-        return growth.allSatisfy { $0 >= -0.04 } && reveal.allSatisfy { $0 >= -0.04 }
-            && growth.filter { $0 > 0.06 }.count >= 2 && reveal.filter { $0 > 0.06 }.count >= 2
+        func trajectory(_ left: [Double], _ right: [Double], minimum: Double) -> Bool {
+            guard min(left[3], right[0]) >= minimum, left[3] - left[0] >= 0.30, right[0] - right[3] >= 0.30 else { return false }
+            let growth = zip(left, left.dropFirst()).map { $1 - $0 }
+            let reveal = zip(right, right.dropFirst()).map { $0 - $1 }
+            return growth.allSatisfy { $0 >= -0.04 } && reveal.allSatisfy { $0 >= -0.04 }
+                && growth.filter { $0 > 0.06 }.count >= 2 && reveal.filter { $0 > 0.06 }.count >= 2
+        }
+        // A patterned dark glove need not be a uniform black card. Its
+        // expansion still requires independently stable visible background,
+        // spatial replacement (not an exposure fade), and a matching reveal.
+        return trajectory(tail.map(coverage), head.map(coverage), minimum: 0.95)
+            || trajectory(tail.map(darkCoverage), head.map(darkCoverage), minimum: 0.85)
+    }
+
+    static func darkCoverage(_ frame: NaturalTransitionFrame) -> Double {
+        guard frame.valid else { return 0 }
+        // Dark fabric includes the lit weave and stitching. This is only a
+        // coverage cue: spatial replacement and stable context must also pass.
+        return Double(frame.luma.filter { $0 < 0.30 }.count) / Double(frame.luma.count)
+    }
+
+    static func hasSpatialCover(_ frames: [NaturalTransitionFrame], background: NaturalTransitionFrame?) -> Bool {
+        guard let background, background.valid else { return false }
+        let reference = background.luma
+        return frames.dropLast().contains { frame in
+            let pixels = frame.luma
+            var stable = 0, replaced = 0
+            for row in 0..<3 { for column in 0..<4 {
+                let indices = (0..<12).flatMap { y in (0..<16).map { x in (row * 12 + y) * 64 + column * 16 + x } }
+                let before = indices.map { reference[$0] }, after = indices.map { pixels[$0] }
+                guard shapeSimilarity(before, before) > 0.9 else { continue }
+                let correlation = shapeSimilarity(before, after)
+                if correlation >= 0.82 { stable += 1 }
+                if correlation < 0.5 && after.reduce(0, +) / Double(after.count) < 0.25 { replaced += 1 }
+            } }
+            return stable >= 2 && replaced >= 3
+        }
     }
 
     static func motion(_ frames: [NaturalTransitionFrame]) -> Motion {

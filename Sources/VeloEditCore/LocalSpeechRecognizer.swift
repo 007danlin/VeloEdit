@@ -10,7 +10,7 @@ public struct AppleOnDeviceSpeechRecognizer: LocalSpeechRecognizing, Sendable {
 
     public func transcribe(url: URL, localeIdentifier: String? = nil) async throws -> SpeechTranscript? {
         guard await speechAuthorizationGranted() else { return nil }
-        let locales = [localeIdentifier, Locale.current.identifier, "ru-RU", "en-US"].compactMap { $0 }
+        let locales = localeIdentifier.map { [$0] } ?? [Locale.current.identifier]
         guard let recognizer = locales.lazy.compactMap({ SFSpeechRecognizer(locale: Locale(identifier: $0)) }).first(where: { $0.isAvailable && $0.supportsOnDeviceRecognition }) else {
             return nil
         }
@@ -46,6 +46,12 @@ public struct AppleOnDeviceSpeechRecognizer: LocalSpeechRecognizing, Sendable {
         case .authorized:
             return true
         case .notDetermined:
+            // Consent belongs to the interactive app. Headless CLI/test runs
+            // must report the optional ASR stage unavailable, not trigger TCC
+            // against an unsigned runner or wait for an invisible prompt.
+            guard Bundle.main.bundleURL.pathExtension == "app",
+                  Bundle.main.executableURL?.lastPathComponent == "VeloEdit",
+                  Bundle.main.object(forInfoDictionaryKey: "NSSpeechRecognitionUsageDescription") is String else { return false }
             return await withCheckedContinuation { continuation in
                 SFSpeechRecognizer.requestAuthorization { status in
                     continuation.resume(returning: status == .authorized)
@@ -59,16 +65,25 @@ public struct AppleOnDeviceSpeechRecognizer: LocalSpeechRecognizing, Sendable {
     }
 
     private func recognize(request: SFSpeechRecognitionRequest, recognizer: SFSpeechRecognizer) async throws -> SFSpeechRecognitionResult {
-        try await withCheckedThrowingContinuation { continuation in
-            let state = SpeechContinuationState()
-            let task = recognizer.recognitionTask(with: request) { result, error in
-                if let result, result.isFinal, state.finish() {
-                    continuation.resume(returning: result)
-                } else if let error, state.finish() {
-                    continuation.resume(throwing: error)
+        let state = SpeechContinuationState()
+        let deadline = Task {
+            do { try await Task.sleep(for: .seconds(60)) }
+            catch { return }
+            state.complete(.failure(URLError(.timedOut)))
+        }
+        defer { deadline.cancel() }
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                guard state.install(continuation) else { return }
+                let task = recognizer.recognitionTask(with: request) { result, error in
+                    if let result, result.isFinal { state.complete(.success(result)) }
+                    else if let error { state.complete(.failure(error)) }
                 }
+                state.retain(task)
             }
-            state.retain(task)
+        } onCancel: {
+            state.complete(.failure(CancellationError()))
         }
     }
 
@@ -105,23 +120,43 @@ public struct AppleOnDeviceSpeechRecognizer: LocalSpeechRecognizing, Sendable {
     }
 }
 
-private final class SpeechContinuationState: @unchecked Sendable {
+/// Resolves once, including cancellation before the Apple callback is installed.
+final class SpeechContinuationState: @unchecked Sendable {
     private let lock = NSLock()
-    private var finished = false
+    private var result: Result<SFSpeechRecognitionResult, Error>?
+    private var continuation: CheckedContinuation<SFSpeechRecognitionResult, Error>?
     private var task: SFSpeechRecognitionTask?
 
-    func finish() -> Bool {
+    func install(_ continuation: CheckedContinuation<SFSpeechRecognitionResult, Error>) -> Bool {
         lock.lock()
-        defer { lock.unlock() }
-        guard !finished else { return false }
-        finished = true
-        task = nil
+        if let result {
+            lock.unlock()
+            continuation.resume(with: result)
+            return false
+        }
+        self.continuation = continuation
+        lock.unlock()
         return true
+    }
+
+    func complete(_ result: Result<SFSpeechRecognitionResult, Error>) {
+        lock.lock()
+        guard self.result == nil else { lock.unlock(); return }
+        self.result = result
+        let continuation = self.continuation
+        self.continuation = nil
+        let task = self.task
+        self.task = nil
+        lock.unlock()
+        if case .failure = result { task?.cancel() }
+        continuation?.resume(with: result)
     }
 
     func retain(_ value: SFSpeechRecognitionTask) {
         lock.lock()
-        task = finished ? nil : value
+        let completed = result != nil
+        task = completed ? nil : value
         lock.unlock()
+        if completed { value.cancel() }
     }
 }

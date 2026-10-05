@@ -386,7 +386,12 @@ import Testing
         TimelineItem(kind: .video, sourceDuration: 3.8, timelineStart: 0, timelineDuration: 3.8),
         TimelineItem(kind: .video, sourceDuration: 4.2, timelineStart: 3.8, timelineDuration: 4.2)
     ])
-    let result = MusicBeatSynchronizer().synchronize(timeline, to: track)
+    let unmeasured = MusicBeatSynchronizer().synchronize(timeline, to: track)
+    #expect(unmeasured.items == timeline.items)
+    var measured = MusicSyncEngine().analyze(bpm: 120, duration: 60, energy: 0.9)
+    measured.analysisIsMeasured = true
+    measured.tempoConfidence = 0.9
+    let result = MusicBeatSynchronizer().synchronize(timeline, to: track, analyzedStructure: measured)
     #expect(result.items[0].timelineDuration == 3.5)
     #expect(result.items[1].timelineDuration == 4.0)
     #expect(result.items[1].timelineStart == 3.5)

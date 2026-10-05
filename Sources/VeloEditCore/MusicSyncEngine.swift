@@ -90,7 +90,7 @@ public actor MusicStructureCache {
     }
 
     /// Hash every byte; size and mtime alone miss an in-place replacement.
-    private static func contentIdentity(_ url: URL) -> String {
+    static func contentIdentity(_ url: URL) -> String {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return "unavailable" }
         defer { try? handle.close() }
         var hash = SHA256()

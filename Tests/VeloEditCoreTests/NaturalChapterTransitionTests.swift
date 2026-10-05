@@ -24,7 +24,13 @@ import Testing
     @Test func detectsRealCoverAndRevealButNotDarknessOrFlash() {
         let tail = [0.2, 0.45, 0.7, 1].enumerated().map { Self.frame(time: Double($0.offset) * 0.1, cover: $0.element) }
         let head = [1.0, 0.7, 0.45, 0.2].enumerated().map { Self.frame(time: 1 + Double($0.offset) * 0.1, cover: $0.element, alternate: true) }
-        #expect(NaturalTransitionVision.match(tail: tail, head: head)?.kind == .occlusion)
+        let context = (0..<8).map { Self.frame(time: Double($0 - 8) * 0.1) }
+        #expect(NaturalTransitionVision.match(tail: tail, head: head, outgoingContext: context)?.kind == .occlusion)
+        // A pretty cover cannot rescue the camera adjustment before it.
+        let repositioned = (0..<8).map { Self.frame(time: Double($0 - 8) * 0.1, shift: $0) }
+        #expect(NaturalTransitionVision.match(tail: tail, head: head, outgoingContext: repositioned) == nil)
+        #expect(NaturalTransitionVision.match(tail: tail, head: head) == nil)
+        #expect(NaturalTransitionVision.match(tail: tail, head: head, outgoingContext: Array(context.dropFirst())) == nil)
         for level in [0.02, 0.5, 0.99] {
             let flat = (0..<4).map { NaturalTransitionFrame(time: Double($0) * 0.1, rgb: Array(repeating: level, count: 6912), aspectRatio: 16.0 / 9) }
             #expect(NaturalTransitionVision.match(tail: flat, head: flat) == nil)
@@ -149,16 +155,24 @@ import Testing
         #expect(planner.starts(for: repeated.items[0], candidate: f.analyses[0].candidates[0], asset: f.assets[0], in: repeated, fps: 30).allSatisfy { $0 <= 1 })
     }
 
-    @Test func semanticChapterNamesWorkWithoutSceneIDsAndStaleChapterClaimsDisappear() async {
+    @Test func chapterWordingCannotCreateOrRemoveAnEventBoundary() async {
         var f = fixture()
         for i in f.plan.chapters.indices { f.plan.chapters[i].eventID = f.plan.chapters[0].eventID; f.plan.chapters[i].eventSceneID = nil }
         for i in f.timeline.items.indices { f.timeline.items[i].eventID = f.plan.chapters[0].eventID; f.timeline.items[i].eventSceneID = nil }
         let planner = NaturalChapterTransitionPlanner(prober: Stub())
         let result = await planner.applying(to: f.timeline, plan: f.plan, assets: f.assets, analyses: f.analyses)
-        #expect(result.items[1].incomingEditDecision?.naturalTransition?.kind == .composition)
+        // Different wording in the same confirmed scene does not create a
+        // new episode or authorize searching for a natural transition.
+        #expect(result.items[1].incomingEditDecision?.naturalTransition == nil)
         f.plan.chapters[1].title = f.plan.chapters[0].title
         let merged = await planner.applying(to: result, plan: f.plan, assets: f.assets, analyses: f.analyses)
         #expect(merged.items[1].incomingEditDecision?.naturalTransition == nil)
+        let distinct = fixture()
+        let matched = await planner.applying(to: distinct.timeline, plan: distinct.plan, assets: distinct.assets, analyses: distinct.analyses)
+        var renamed = distinct.plan
+        renamed.chapters[1].title = renamed.chapters[0].title
+        let retained = await planner.applying(to: matched, plan: renamed, assets: distinct.assets, analyses: distinct.analyses)
+        #expect(retained.items[1].incomingEditDecision?.naturalTransition?.kind == .composition)
     }
 
     @Test func ordinaryDissolveAndDisabledTransitionRemainIntactWithoutAMatch() async {
@@ -188,6 +202,10 @@ import Testing
         let result = await NaturalChapterTransitionPlanner().applying(to: timeline, plan: plan, assets: project.assets, analyses: project.analyses)
         let decisions = result.items.compactMap { $0.incomingEditDecision?.naturalTransition }
         #expect(!decisions.isEmpty)
+        if let expected = ProcessInfo.processInfo.environment["VELOEDIT_NATURAL_TRANSITION_EXPECTED_KIND"] {
+            #expect(decisions.count == 1)
+            #expect(decisions.first?.kind.rawValue == expected, "Real-source acceptance must assert the chosen transition kind, not merely that a boundary was inspected")
+        }
         #expect(result.duration == timeline.duration)
         #expect(result.items.map(\.assetID) == timeline.items.map(\.assetID))
         #expect(result.items.map(\.timelineDuration) == timeline.items.map(\.timelineDuration))
@@ -227,7 +245,7 @@ import Testing
         #expect(abs(playback.duration - 8) < 0.001)
         let probes = await PerceptualRenderInspector().inspectAsync(playback: playback, timeline: result, maximumSamples: 24)
         #expect(probes.contains { $0.isBlack && !$0.expectedVisibleContent })
-        #expect(!probes.contains { $0.isBlack && $0.expectedVisibleContent })
+        #expect(!probes.contains { $0.isBlack && $0.expectedVisibleContent }, "Unexpected black times: \(probes.filter { $0.isBlack && $0.expectedVisibleContent }.map(\.timelineTime)); evidence: \(String(describing: result.items[1].incomingEditDecision?.naturalTransition))")
         #expect(!probes.contains { $0.decodeFailed == true })
         #expect(!NaturalChapterTransitionPlanner.expectsCoveredSource(at: 3.3, timeline: result, darkOnly: true))
         #expect(!NaturalChapterTransitionPlanner.expectsCoveredSource(at: 4.6, timeline: result, darkOnly: true))

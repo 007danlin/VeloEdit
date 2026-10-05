@@ -1,0 +1,10 @@
+[
+  {
+    "label": "before",
+    "finalAnalysisSemanticallyEqual": true
+  },
+  {
+    "label": "after",
+    "finalAnalysisSemanticallyEqual": true
+  }
+]

@@ -1,0 +1,231 @@
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: /Users/daniellineckij/Library/Caches/org.swift.swiftpm is not accessible or not writable, disabling user-level cache features.
+warning: 'veloedit': failed storing manifest for 'veloedit' in cache: attempt to write a readonly database
+Building for debugging...
+[Using on-disk description]
+[2 / 6] VeloEditCore
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:767:37: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 765 |     // Kernels use output coordinates, so portrait and offset render bounds
+ 766 |     // behave the same as landscape. All time variation is deterministic.
+ 767 |     private static let waveKernel = CIWarpKernel(source: """
+     |                                     `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 768 |         kernel vec2 waveWarp(vec4 bounds, float amplitude, float phase, float frequency, float radial) {
+ 769 |             vec2 p = destCoord();
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:778:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 776 |         """)
+ 777 | 
+ 778 |     private static let shapeMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 779 |         kernel vec4 reveal(vec4 bounds, float progress, float softness, float rotation, float mode) {
+ 780 |             vec2 p = destCoord() - bounds.xy - bounds.zw * 0.5;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:802:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 800 |         """)
+ 801 | 
+ 802 |     private static let shardMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 803 |         kernel vec4 shard(vec4 tile, float side) {
+ 804 |             vec2 uv = (destCoord() - tile.xy) / tile.zw;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:893:41: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 891 |     }
+ 892 | 
+ 893 |     private static let rgbSplitKernel = CIColorKernel(source: """
+     |                                         `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 894 |         kernel vec4 splitChannels(__sample red, __sample cyan, __sample original) {
+ 895 |             vec4 r = unpremultiply(red);
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[3 / 7] VeloEditCore
+[9 / 12] VeloEditCore
+[10 / 13]
+[11 / 13] VeloEditCore
+[12 / 15] VeloEdit-product
+[13 / 15] VeloEdit-product
+[15 / 16] VeloEditAppTests-product
+[17 / 17] VeloEditAppTests-product
+[18 / 21] VeloEditCoreTests-product
+[20 / 23] VeloEditCoreTests-product
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ReliabilityStudyTests.swift:29:17: warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+27 |     }
+28 |     func save(_ image: CGImage, _ name: String) throws {
+29 |         let d = try #require(CGImageDestinationCreateWithURL(root.appendingPathComponent(name + ".png") as CFURL, UTType.png.identifier as CFString, 1, nil))
+   |                 `- warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+30 |         CGImageDestinationAddImage(d, image, nil); #expect(CGImageDestinationFinalize(d))
+31 |     }
+
+[#UnnecessaryEffectMarker]: <https://docs.swift.org/compiler/documentation/diagnostics/unnecessary-effect-marker>
+[25 / 27] VeloEditCoreTests-product
+[27 / 27] VeloEditCoreTests-product
+[29 / 30] veloedit-cli-product
+Build complete! (35,19 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite FilmSpeedAndTitlesTests started.
+◇ Test automaticTitlesRequireSpecificWordsAndSupportedActivity() started.
+◇ Test timelineComposerProducesTemplateTitlesInsteadOfLegacyTitleCards() started.
+◇ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() started.
+◇ Test contentConfirmedActivityTitleIgnoresStructuralOrInventedSceneNames() started.
+◇ Suite SmartChapterTitlesTests started.
+◇ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() started.
+◇ Suite TitleTimelineAnchoringTests started.
+◇ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() started.
+◇ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() started.
+◇ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() started.
+◇ Test semanticTemplateSelectionUsesExistingCategoryAndSubjectAvoidance() started.
+◇ Suite AutomaticEditorialAssemblyTests started.
+◇ Test automatedTitleQualityGateEnforcesProvenanceContainmentAndOneTrack() started.
+◇ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() started.
+◇ Test wholePartsKeepMembershipAndEqualNamesAcrossScenesAndFiles() started.
+◇ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() started.
+◇ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() started.
+✔ Test paritySamplesStayOnTheDeliveryCadenceIncludingFractionalRates() passed after 0.004 seconds.
+✔ Test semanticTemplateSelectionUsesExistingCategoryAndSubjectAvoidance() passed after 0.004 seconds.
+✔ Test contentConfirmedActivityTitleIgnoresStructuralOrInventedSceneNames() passed after 0.004 seconds.
+◇ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() started.
+◇ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() started.
+◇ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+✔ Test generatedHeadingDoesNotCrossIntoDifferentSceneAndManualTextIsNotRewritten() passed after 0.004 seconds.
+◇ Test staleAutomaticSceneNameCannotSupplyItsOwnEvidence() started.
+◇ Test impossibleRequestPreservesOriginalDurationContract() started.
+◇ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() started.
+◇ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() started.
+◇ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() started.
+◇ Test duplicateFastPathPreservesOverlapAndInformationThresholds() started.
+✔ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() passed after 0.005 seconds.
+✔ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() passed after 0.005 seconds.
+◇ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() started.
+◇ Test case passing 1 argument seed → 0 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 1 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 2 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 3 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 4 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 5 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 6 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 7 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+✔ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() passed after 0.156 seconds.
+✔ Test generatedHeadingFollowsItsClipAndKeepsReadingDurationAcrossSceneCuts() passed after 0.155 seconds.
+✔ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() passed after 0.151 seconds.
+✔ Test staleAutomaticSceneNameCannotSupplyItsOwnEvidence() passed after 0.151 seconds.
+✔ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() passed after 0.156 seconds.
+✔ Test automatedTitleQualityGateEnforcesProvenanceContainmentAndOneTrack() passed after 0.156 seconds.
+✔ Test automaticTitlesRequireSpecificWordsAndSupportedActivity() passed after 0.156 seconds.
+✔ Test timelineComposerProducesTemplateTitlesInsteadOfLegacyTitleCards() passed after 0.156 seconds.
+✔ Test wholePartsKeepMembershipAndEqualNamesAcrossScenesAndFiles() passed after 0.156 seconds.
+✔ Test impossibleRequestPreservesOriginalDurationContract() passed after 0.151 seconds.
+✔ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() passed after 0.151 seconds.
+✔ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() passed after 0.151 seconds.
+✔ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() passed after 0.151 seconds.
+✔ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() passed after 0.151 seconds.
+✔ Suite TitleTimelineAnchoringTests passed after 0.156 seconds.
+◇ Test persistedCacheDoesNotCallModelAndRenamingFilesDoesNotInvalidateIt() started.
+✔ Test duplicateFastPathPreservesOverlapAndInformationThresholds() passed after 0.152 seconds.
+✘ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() recorded an issue at AutomaticEditorialAssemblyTests.swift:41:9: Expectation failed: result.plan.chapters.count == 1
+↳ result.plan.chapters.count == 1 → false
+↳   result.plan.chapters.count → 2
+✘ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() recorded an issue at AutomaticEditorialAssemblyTests.swift:43:9: Expectation failed: result.timeline.effectiveTitleItems.map(\.text) == ["Поход"]
+↳ result.timeline.effectiveTitleItems.map(\.text) == ["Поход"] → false
+↳   result.timeline.effectiveTitleItems.map(\.text) → ["Поход", "Поход"]
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:35:13: Expectation failed: read.passed
+↳ TitleReadabilityEvidence(titleID: 9EB350D7-04B1-4DDC-ABF0-C8C5ED1BDEA1, renderSignature: "15a0aa84f7dd183bdb5e20f01bb7309dbccda1f7b42b87dbefaeeff457fcd919", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)), pixelWidth: 1920, pixelHeight: 1080, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳ read.passed → false
+↳   read → TitleReadabilityEvidence(titleID: 9EB350D7-04B1-4DDC-ABF0-C8C5ED1BDEA1, renderSignature: "15a0aa84f7dd183bdb5e20f01bb7309dbccda1f7b42b87dbefaeeff457fcd919", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)), pixelWidth: 1920, pixelHeight: 1080, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳     titleID → 9EB350D7-04B1-4DDC-ABF0-C8C5ED1BDEA1
+↳     renderSignature → "15a0aa84f7dd183bdb5e20f01bb7309dbccda1f7b42b87dbefaeeff457fcd919"
+↳     algorithmVersion → 1
+↳     timelineTime → 1.75
+↳     actualPTS → 1.75
+↳       some → 1.75
+↳     source → "preview"
+↳     expectedText → "В дороге"
+↳     recognizedText → ""
+↳     confidences → []
+↳     region → NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)
+↳       some → NormalizedRegion(x: 0.04928749999999997, y: 0.11274074074074071, width: 0.4099343750000001, height: 0.18643703703703704)
+↳         x → 0.04928749999999997
+↳         y → 0.11274074074074071
+↳         width → 0.4099343750000001
+↳         height → 0.18643703703703704
+↳     pixelWidth → 1920
+↳     pixelHeight → 1080
+↳     score → 0.0
+↳     failure → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳       some → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳   passed → false
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:36:13: Expectation failed: read.recognizedText.lowercased().contains("дороге")
+↳ read.recognizedText.lowercased().contains("дороге") → false
+↳   read.recognizedText.lowercased() → ""
+✘ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() failed after 0.195 seconds with 2 issues.
+✔ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) with 8 test cases passed after 0.233 seconds.
+✘ Suite AutomaticEditorialAssemblyTests failed after 0.238 seconds with 2 issues.
+✔ Test persistedCacheDoesNotCallModelAndRenamingFilesDoesNotInvalidateIt() passed after 0.114 seconds.
+◇ Test onlyAffectedPartRecomputesAndModelVersionInvalidatesCache() started.
+✔ Test onlyAffectedPartRecomputesAndModelVersionInvalidatesCache() passed after 0.045 seconds.
+◇ Test manualTextStyleAndReferenceHavePriority() started.
+✔ Test manualTextStyleAndReferenceHavePriority() passed after 0.023 seconds.
+◇ Test objectOnlyEvidenceCannotProveAnActionAndVerifierCanRejectIt() started.
+✔ Test objectOnlyEvidenceCannotProveAnActionAndVerifierCanRejectIt() passed after 0.023 seconds.
+◇ Test outOfCutEventAndSpeechAreNotVisualProof() started.
+✔ Test outOfCutEventAndSpeechAreNotVisualProof() passed after 0.026 seconds.
+◇ Test malformedResponsePreservesExistingTitleAndRepairsNoMontage() started.
+✔ Test malformedResponsePreservesExistingTitleAndRepairsNoMontage() passed after 0.025 seconds.
+◇ Test unknownTimezoneAndCopyDatesCannotAppearAsCaptureDates() started.
+✔ Test unknownTimezoneAndCopyDatesCannotAppearAsCaptureDates() passed after 0.121 seconds.
+◇ Test titlesForbiddenAndTooShortPartFollowExistingRules() started.
+✔ Test titlesForbiddenAndTooShortPartFollowExistingRules() passed after 0.017 seconds.
+◇ Test unknownLegacyFieldsDecodeAndNewDecisionsSurviveRoundTrip() started.
+✔ Test unknownLegacyFieldsDecodeAndNewDecisionsSurviveRoundTrip() passed after 0.001 seconds.
+◇ Test lateModelResultCannotOverwriteManualEditAndCancellationDoesNotCommit() started.
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:35:13: Expectation failed: read.passed
+↳ TitleReadabilityEvidence(titleID: 9EB350D7-04B1-4DDC-ABF0-C8C5ED1BDEA1, renderSignature: "15a0aa84f7dd183bdb5e20f01bb7309dbccda1f7b42b87dbefaeeff457fcd919", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)), pixelWidth: 1080, pixelHeight: 1920, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳ read.passed → false
+↳   read → TitleReadabilityEvidence(titleID: 9EB350D7-04B1-4DDC-ABF0-C8C5ED1BDEA1, renderSignature: "15a0aa84f7dd183bdb5e20f01bb7309dbccda1f7b42b87dbefaeeff457fcd919", algorithmVersion: 1, timelineTime: 1.75, actualPTS: Optional(1.75), source: "preview", expectedText: "В дороге", recognizedText: "", confidences: [], region: Optional(VeloEditCore.NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)), pixelWidth: 1080, pixelHeight: 1920, score: 0.0, failure: Optional("ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"))
+↳     titleID → 9EB350D7-04B1-4DDC-ABF0-C8C5ED1BDEA1
+↳     renderSignature → "15a0aa84f7dd183bdb5e20f01bb7309dbccda1f7b42b87dbefaeeff457fcd919"
+↳     algorithmVersion → 1
+↳     timelineTime → 1.75
+↳     actualPTS → 1.75
+↳       some → 1.75
+↳     source → "preview"
+↳     expectedText → "В дороге"
+↳     recognizedText → ""
+↳     confidences → []
+↳     region → NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)
+↳       some → NormalizedRegion(x: 0.018934222222222227, y: 0.12511999999999998, width: 0.567314, height: 0.20316549999999986)
+↳         x → 0.018934222222222227
+↳         y → 0.12511999999999998
+↳         width → 0.567314
+↳         height → 0.20316549999999986
+↳     pixelWidth → 1080
+↳     pixelHeight → 1920
+↳     score → 0.0
+↳     failure → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳       some → "ocr-error: The operation couldn’t be completed. (Foundation._GenericObjCError error 0.)"
+↳   passed → false
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() recorded an issue at FilmSpeedAndTitlesTests.swift:36:13: Expectation failed: read.recognizedText.lowercased().contains("дороге")
+↳ read.recognizedText.lowercased().contains("дороге") → false
+↳   read.recognizedText.lowercased() → ""
+✔ Test lateModelResultCannotOverwriteManualEditAndCancellationDoesNotCommit() passed after 0.276 seconds.
+✔ Suite SmartChapterTitlesTests passed after 0.832 seconds.
+✘ Test titleOCRUsesRealPixelsAndRejectsNegativeExamples() failed after 0.893 seconds with 4 issues.
+◇ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() started.
+✔ Test tokenNormalizationDoesNotAcceptSubstringsOrInventRepeatedWords() passed after 0.001 seconds.
+◇ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() started.
+✔ Test everyTitleNeedsAllPointsAndIndependentCurrentMP4Evidence() passed after 0.001 seconds.
+◇ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() started.
+✔ Test previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() passed after 0.006 seconds.
+◇ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() started.
+✔ Test renderDependenciesIncludeCurrentSourceAndProxyBytes() passed after 0.007 seconds.
+◇ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() started.
+✔ Test receiptRejectsSameSizeReplacementWithRestoredModificationDate() passed after 0.005 seconds.
+◇ Test telemetrySetInsertionOrderCannotChangeRenderSignature() started.
+✔ Test telemetrySetInsertionOrderCannotChangeRenderSignature() passed after 0.015 seconds.
+◇ Test progressRelayKeepsStageChangesAndCompletion() started.
+✔ Test progressRelayKeepsStageChangesAndCompletion() passed after 0.001 seconds.
+✘ Suite FilmSpeedAndTitlesTests failed after 0.931 seconds with 4 issues.
+✘ Test run with 41 tests in 4 suites failed after 0.931 seconds with 6 issues.
+Note: Some test targets reported failures:
+  - VeloEditCoreTests (Swift Testing)

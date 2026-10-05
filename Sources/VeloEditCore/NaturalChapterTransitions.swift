@@ -16,6 +16,7 @@ public struct NaturalChapterTransitionEvidence: Codable, Hashable, Sendable {
     public var editSignature: String? = nil
     public var coveredFrameTimes: [Double]? = nil
     public var darkFrameTimes: [Double]? = nil
+    public var composedOutgoingFrameCount: Int? = nil
 }
 
 /// Final AI Director pass. A natural transition is a precisely placed cut
@@ -23,7 +24,7 @@ public struct NaturalChapterTransitionEvidence: Codable, Hashable, Sendable {
 /// Clip durations and the film's clock remain unchanged.
 struct NaturalChapterTransitionPlanner: Sendable {
     var prober: any NaturalTransitionFrameProbing = LocalNaturalTransitionFrameProber()
-    static let version = "Natural chapter transitions v1"
+    static let version = "Natural chapter transitions v4 stable-cover-delivery"
 
     func applying(to source: Timeline, plan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult]) async -> Timeline {
         let prompt = plan.prompt.lowercased()
@@ -71,13 +72,15 @@ struct NaturalChapterTransitionPlanner: Sendable {
             if timeline.effectiveTransitionItems.contains(where: { $0.incomingClipID == right.id && !$0.enabled }) { continue }
             let fps = min(120, max(10, timeline.frameRate))
             let hasMatchedEntry = left.incomingEditDecision?.naturalTransition.map { $0.kind != .ordinary } == true
-            let leftStarts = hasMatchedEntry ? [left.sourceStart] : starts(for: left, candidate: lc, asset: la, in: timeline, fps: fps)
-            let rightStarts = starts(for: right, candidate: rc, asset: ra, in: timeline, fps: fps)
+            let regularLeft = hasMatchedEntry ? [left.sourceStart] : starts(for: left, candidate: lc, asset: la, in: timeline, fps: fps)
+            let regularRight = starts(for: right, candidate: rc, asset: ra, in: timeline, fps: fps)
+            let leftStarts = Array(Set(regularLeft + (hasMatchedEntry ? [] : handHandleStarts(for: left, candidate: lc, asset: la, in: timeline, outgoing: true, fps: fps)))).sorted()
+            let rightStarts = Array(Set(regularRight + handHandleStarts(for: right, candidate: rc, asset: ra, in: timeline, outgoing: false, fps: fps))).sorted()
             let leftTimes = times(starts: leftStarts, duration: left.sourceDuration, outgoing: true, fps: fps)
             let rightTimes = times(starts: rightStarts, duration: right.sourceDuration, outgoing: false, fps: fps)
             var count = 0
             var sampledTail: [NaturalTransitionFrame] = [], sampledHead: [NaturalTransitionFrame] = []
-            var best: (match: NaturalTransitionMatch, left: Double, right: Double, score: Double)?
+            var best: (match: NaturalTransitionMatch, left: Double, right: Double, leftStep: Double, rightStep: Double, score: Double)?
             var fallbackReason = "На границе частей нет убедительного совпадения изображения и движения; сохранена аккуратная склейка"
             do {
                 // Decode sequentially: AVFoundation shares its media services.
@@ -86,16 +89,24 @@ struct NaturalChapterTransitionPlanner: Sendable {
                 sampledTail = tailFrames; sampledHead = headFrames
                 count = tailFrames.count + headFrames.count
                 try Task.checkCancellation()
-                for ls in leftStarts { for rs in rightStarts {
-                    let tail = window(tailFrames, start: ls, duration: left.sourceDuration, outgoing: true, fps: fps)
-                    let head = window(headFrames, start: rs, duration: right.sourceDuration, outgoing: false, fps: fps)
+                for ls in leftStarts { for rs in rightStarts { for step in [0.1, 0.2] { for headStep in [0.1, 0.2] {
+                    let tail = window(tailFrames, start: ls, duration: left.sourceDuration, outgoing: true, fps: fps, step: step)
+                    let head = window(headFrames, start: rs, duration: right.sourceDuration, outgoing: false, fps: fps, step: headStep)
+                    let context = composedContext(tailFrames, start: ls, duration: left.sourceDuration, fps: fps, step: step)
                     guard let a = tail.last, let b = head.first,
                           abs(a.aspectRatio / (Double(timeline.width) / Double(max(1, timeline.height))) - 1) < 0.03,
                           abs(a.aspectRatio / b.aspectRatio - 1) < 0.03,
-                          let match = NaturalTransitionVision.match(tail: tail, head: head) else { continue }
-                    let score = match.confidence - (abs(ls - left.sourceStart) + abs(rs - right.sourceStart)) * 0.06
-                    if best == nil || score > best!.score { best = (match, ls, rs, score) }
-                } }
+                          let match = NaturalTransitionVision.match(tail: tail, head: head, outgoingContext: context) else { continue }
+                    // Source handles outside the measured shortlist are only
+                    // admitted by the complete cover/reveal motion contract.
+                    guard match.kind == .occlusion || (step == 0.1 && headStep == 0.1 && regularLeft.contains(ls) && regularRight.contains(rs)) else { continue }
+                    // Once a physical cover is proven, place the cut at its
+                    // strongest overlap, not at the first partly covered frame.
+                    let displacement = abs(ls - left.sourceStart) + abs(rs - right.sourceStart)
+                    let cover = match.kind == .occlusion ? min(NaturalTransitionVision.darkCoverage(a), NaturalTransitionVision.darkCoverage(b)) : 0
+                    let score = match.confidence + cover - displacement * 0.06
+                    if best == nil || score > best!.score { best = (match, ls, rs, step, headStep, score) }
+                } } } }
             } catch is CancellationError { return source }
             catch { fallbackReason = "Точные кадры границы недоступны; сохранена обычная склейка без предположений о визуальном совпадении" }
             if right.timelineStart - lastNaturalBoundary < 8 {
@@ -127,11 +138,22 @@ struct NaturalChapterTransitionPlanner: Sendable {
                 inputSignature: signature(timeline.items[li], timeline.items[ri], assets: [la, ra], timeline: timeline),
                 sampledFrameCount: count, outgoingOffset: timeline.items[li].sourceStart - left.sourceStart,
                 incomingOffset: timeline.items[ri].sourceStart - right.sourceStart,
-                method: Self.version + "; oriented source frames; temporal coverage, block motion and spatial correlation")
+                method: Self.version + "; oriented source frames; pre-cover background stability, temporal coverage, block motion and spatial correlation")
             if kind == .occlusion {
                 let finalLeft = timeline.items[li], finalRight = timeline.items[ri]
-                let tail = window(sampledTail, start: finalLeft.sourceStart, duration: finalLeft.sourceDuration, outgoing: true, fps: fps)
-                let head = window(sampledHead, start: finalRight.sourceStart, duration: finalRight.sourceDuration, outgoing: false, fps: fps)
+                let step = best?.leftStep ?? 0.1
+                let headStep = best?.rightStep ?? 0.1
+                // Sparse search locates the gesture; only exact delivered
+                // frames authorize a dark-frame exemption at the final cut.
+                // A 100 ms sample gap previously missed a genuinely covered
+                // frame between the last black sample and the partial reveal.
+                let framesPerSide = Int((3 * step * fps).rounded())
+                let tailTimes = (0...framesPerSide).map { finalLeft.sourceStart + finalLeft.sourceDuration - Double($0 + 1) / fps }.sorted()
+                let headTimes = (0...Int((3 * headStep * fps).rounded())).map { finalRight.sourceStart + Double($0) / fps }
+                let tail = (try? await prober.frames(asset: la, times: tailTimes, frameRate: fps)) ?? []
+                let head = (try? await prober.frames(asset: ra, times: headTimes, frameRate: fps)) ?? []
+                evidence.sampledFrameCount += tail.count + head.count
+                evidence.composedOutgoingFrameCount = composedContext(sampledTail, start: finalLeft.sourceStart, duration: finalLeft.sourceDuration, fps: fps, step: step).count
                 let samples = tail.map { ($0, finalLeft.timelineStart + $0.time - finalLeft.sourceStart) }
                     + head.map { ($0, finalRight.timelineStart + $0.time - finalRight.sourceStart) }
                 evidence.editSignature = Self.editSignature(finalLeft, finalRight, timeline: timeline)
@@ -199,16 +221,54 @@ struct NaturalChapterTransitionPlanner: Sendable {
         return starts
     }
 
-    private func times(starts: [Double], duration: Double, outgoing: Bool, fps: Double) -> [Double] {
-        Array(Set(starts.flatMap { windowTimes(start: $0, duration: duration, outgoing: outgoing, fps: fps) })).sorted()
+    private func handHandleStarts(for item: TimelineItem, candidate: Candidate, asset: MediaAsset,
+                                  in timeline: Timeline, outgoing: Bool, fps: Double) -> [Double] {
+        guard let duration = asset.metadata.duration, duration.isFinite,
+              candidate.insights?.speech == nil,
+              EditorialMomentPolicy.protectedRange(EditorialUnit(candidate: candidate)) == nil,
+              item.telemetryOverlay == nil,
+              !timeline.effectiveTelemetryItems.contains(where: { $0.linkedAssetID == asset.id || $0.targetClipID == item.id }),
+              !timeline.effectiveTitleItems.contains(where: { [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains($0.kind) }),
+              outgoing ? duration - item.sourceStart - item.sourceDuration <= 8 : item.sourceStart <= 12 else { return [] }
+        // Search actual recording handles, not named files or saved preferred
+        // ranges. Bound work to +/-1.2 s around the chosen cut; the detector
+        // must prove a stable shot followed directly by a spatial lens cover.
+        return (-12...12).compactMap { tick in
+            let value = ((item.sourceStart + Double(tick) / 10) * fps).rounded() / fps
+            guard value >= 0, value + item.sourceDuration <= duration else { return nil }
+            let others = timeline.items.filter { $0.overlay == nil && $0.id != item.id && $0.assetID == item.assetID }
+            guard others.allSatisfy({ other in
+                if other.timelineStart < item.timelineStart { return value >= other.sourceStart + other.sourceDuration - 0.001 }
+                return value + item.sourceDuration <= other.sourceStart + 0.001
+            }) else { return nil }
+            return value
+        }
     }
-    private func windowTimes(start: Double, duration: Double, outgoing: Bool, fps: Double) -> [Double] {
-        let step = max(1, (fps * 0.1).rounded()) / fps
+
+    private func times(starts: [Double], duration: Double, outgoing: Bool, fps: Double) -> [Double] {
+        Array(Set(starts.flatMap { start in
+            [0.1, 0.2].flatMap { step in
+                windowTimes(start: start, duration: duration, outgoing: outgoing, fps: fps, step: step)
+                    + (outgoing ? contextTimes(start: start, duration: duration, fps: fps, step: step) : [])
+            }
+        })).sorted()
+    }
+    private func contextTimes(start: Double, duration: Double, fps: Double, step: Double = 0.1) -> [Double] {
+        let windowStep = max(1, (fps * step).rounded()) / fps
+        let contextStep = max(1, (fps * 0.1).rounded()) / fps
+        let edge = start + duration - 1 / fps - 3 * windowStep
+        return (0..<8).map { edge + Double($0 - 8) * contextStep }.filter { $0 >= start }
+    }
+    private func composedContext(_ frames: [NaturalTransitionFrame], start: Double, duration: Double, fps: Double, step: Double = 0.1) -> [NaturalTransitionFrame] {
+        contextTimes(start: start, duration: duration, fps: fps, step: step).compactMap { t in frames.first { abs($0.time - t) < 0.001 } }
+    }
+    private func windowTimes(start: Double, duration: Double, outgoing: Bool, fps: Double, step: Double = 0.1) -> [Double] {
+        let step = max(1, (fps * step).rounded()) / fps
         let edge = outgoing ? start + duration - 1 / fps : start
         return (0..<4).map { edge + Double(outgoing ? $0 - 3 : $0) * step }
     }
-    private func window(_ frames: [NaturalTransitionFrame], start: Double, duration: Double, outgoing: Bool, fps: Double) -> [NaturalTransitionFrame] {
-        windowTimes(start: start, duration: duration, outgoing: outgoing, fps: fps).compactMap { t in frames.first { abs($0.time - t) < 0.001 } }
+    private func window(_ frames: [NaturalTransitionFrame], start: Double, duration: Double, outgoing: Bool, fps: Double, step: Double = 0.1) -> [NaturalTransitionFrame] {
+        windowTimes(start: start, duration: duration, outgoing: outgoing, fps: fps, step: step).compactMap { t in frames.first { abs($0.time - t) < 0.001 } }
     }
     private func signature(_ left: TimelineItem, _ right: TimelineItem, assets: [MediaAsset], timeline: Timeline) -> String {
         EditorialIdentity.uuid(Self.editSignature(left, right, timeline: timeline) + assets.map(\.contentHash).joined()).uuidString
@@ -234,11 +294,12 @@ struct NaturalChapterTransitionPlanner: Sendable {
         let items = timeline.items.filter { $0.overlay == nil }.sorted { $0.timelineStart < $1.timelineStart }
         for index in items.indices.dropFirst() {
             let left = items[index - 1], right = items[index]
-            guard abs(time - right.timelineStart) <= 0.31,
+            guard abs(time - right.timelineStart) <= 0.64,
                   !timeline.effectiveEffects.contains(where: { $0.enabled && time >= $0.startTime && time < $0.endTime }),
                   !timeline.items.contains(where: { $0.overlay != nil && time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration }),
                   let evidence = right.incomingEditDecision?.naturalTransition,
-                  evidence.kind == .occlusion, evidence.sampledFrameCount >= 8,
+                  evidence.kind == .occlusion, evidence.sampledFrameCount >= 16,
+                  evidence.composedOutgoingFrameCount == 8,
                   evidence.editSignature == editSignature(left, right, timeline: timeline) else { continue }
             let times = (darkOnly ? evidence.darkFrameTimes : evidence.coveredFrameTimes) ?? []
             if times.contains(where: { abs(time - $0) <= 0.5 / max(1, timeline.frameRate) + 0.001 }) { return true }

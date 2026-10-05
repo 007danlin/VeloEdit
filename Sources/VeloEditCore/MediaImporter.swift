@@ -6,11 +6,19 @@ import ImageIO
 public enum MediaImportError: LocalizedError {
     case unsupported(URL)
     case unreadable(URL)
+    case empty(URL)
+    case damaged(URL)
+    case conversionUnavailable(URL)
+    case conversionFailed(URL)
 
     public var errorDescription: String? {
         switch self {
         case .unsupported(let url): return "Формат не поддерживается: \(url.lastPathComponent)"
-        case .unreadable(let url): return "Файл недоступен: \(url.path)"
+        case .unreadable(let url): return "Файл недоступен: \(url.lastPathComponent)"
+        case .empty(let url): return "Пустой файл (0 байт): \(url.lastPathComponent). Восстановите исходник и повторите импорт."
+        case .damaged(let url): return "Не удалось прочитать медиа: \(url.lastPathComponent). Файл повреждён или имеет неверное содержимое."
+        case .conversionUnavailable(let url): return "\(url.lastPathComponent): для этого формата нужен конвертер FFmpeg. Можно добавить копию в MP4 (H.264)."
+        case .conversionFailed(let url): return "\(url.lastPathComponent): файл не удалось прочитать или преобразовать в MP4. Проверьте, открывается ли исходник."
         }
     }
 }
@@ -55,8 +63,8 @@ public struct ImportProgress: Sendable {
 }
 
 public struct MediaImporter: Sendable {
-    public static let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "insv", "360"]
-    public static let photoExtensions: Set<String> = ["jpg", "jpeg", "heic", "heif", "png", "tif", "tiff", "dng", "cr2", "nef", "arw"]
+    public static let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "insv", "360", "avi", "mkv", "wmv", "asf", "flv", "webm", "mpg", "mpeg", "m2v", "mts", "m2ts", "ts", "vob", "3gp", "3g2", "dv", "mxf", "ogv", "rm", "rmvb", "divx"]
+    public static let photoExtensions: Set<String> = ["jpg", "jpeg", "heic", "heif", "png", "tif", "tiff", "dng", "cr2", "cr3", "nef", "arw", "orf", "rw2", "raf", "bmp", "gif", "webp", "avif"]
     public static let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "caf", "flac"]
 
     public init() {}
@@ -92,11 +100,11 @@ public struct MediaImporter: Sendable {
         return Array(Set(results.map { $0.standardizedFileURL })).sorted { $0.path < $1.path }
     }
 
-    public func importAssets(from inputURLs: [URL], existing: [MediaAsset] = [], progress: (@Sendable (ImportProgress) -> Void)? = nil) async -> [Result<MediaAsset, Error>] {
+    public func importAssets(from inputURLs: [URL], existing: [MediaAsset] = [], conversionDirectory: URL? = nil, progress: (@Sendable (ImportProgress) -> Void)? = nil) async -> [Result<MediaAsset, Error>] {
         progress?(ImportProgress(completed: 0, total: 0, currentName: "Сканирую выбранные файлы"))
         let urls = expand(inputURLs)
         progress?(ImportProgress(completed: 0, total: urls.count, currentName: "Подготавливаю метаданные"))
-        let existingByURL = Dictionary(uniqueKeysWithValues: existing.map { ($0.originalURL.standardizedFileURL, $0) })
+        let existingByURL = Dictionary(existing.map { (($0.conversionSourceURL ?? $0.originalURL).standardizedFileURL, $0) }, uniquingKeysWith: { first, _ in first })
         var indexed: [(Int, Result<MediaAsset, Error>)] = []
         indexed.reserveCapacity(urls.count)
         let pending = urls.enumerated().filter { index, url in
@@ -121,7 +129,7 @@ public struct MediaImporter: Sendable {
             do { try await resourcePacer.checkpoint() }
             catch { break }
             let resources = await SystemResourceMonitor.shared.snapshot()
-            let batchSize = resources.workLimit == .unrestricted ? Self.recommendedImportConcurrency : 1
+            let batchSize = conversionDirectory == nil && resources.workLimit == .unrestricted ? Self.recommendedImportConcurrency : 1
             let batch = Array(pending[batchStart..<min(pending.count, batchStart + batchSize)])
             if let first = batch.first {
                 progress?(ImportProgress(completed: completed, total: urls.count, currentName: "Читаю: \(first.element.lastPathComponent)"))
@@ -129,8 +137,24 @@ public struct MediaImporter: Sendable {
             await withTaskGroup(of: (Int, URL, Result<MediaAsset, Error>).self) { group in
                 for (index, url) in batch {
                     group.addTask {
-                        do { return (index, url, .success(try await makeAsset(url: url))) }
-                        catch { return (index, url, .failure(error)) }
+                        do {
+                            do { return (index, url, .success(try await makeAsset(url: url))) }
+                            catch is CancellationError { throw CancellationError() }
+                            catch {
+                                if let importError = error as? MediaImportError {
+                                    switch importError {
+                                    case .empty, .unreadable: throw importError
+                                    default: break
+                                    }
+                                }
+                                guard kind(for: url) == .video, let conversionDirectory else { throw MediaImportError.damaged(url) }
+                                let converted = try await MediaCompatibility.convert(url, directory: conversionDirectory, progress: progress)
+                                var asset = try await makeAsset(url: converted)
+                                asset.displayName = url.lastPathComponent
+                                asset.conversionSourceURL = url
+                                return (index, url, .success(asset))
+                            }
+                        } catch { return (index, url, .failure(error)) }
                     }
                 }
                 for await (index, url, result) in group {
@@ -149,6 +173,7 @@ public struct MediaImporter: Sendable {
         guard FileManager.default.isReadableFile(atPath: url.path) else { throw MediaImportError.unreadable(url) }
         guard let kind = kind(for: url) else { throw MediaImportError.unsupported(url) }
         let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .creationDateKey])
+        guard (values.fileSize ?? 0) > 0 else { throw MediaImportError.empty(url) }
         // Import must not read a multi-gigabyte video end to end. This bounded
         // fingerprint reads metadata plus at most 128 KiB from the file.
         let hash = try Self.quickFingerprint(
@@ -194,6 +219,7 @@ public struct MediaImporter: Sendable {
 
     private func videoMetadata(url: URL, fileCreationDate: Date?, modificationDate: Date?) async throws -> MediaMetadata {
         let asset = AVURLAsset(url: url)
+        guard try await asset.load(.isPlayable) else { throw MediaImportError.unsupported(url) }
         let duration = try await asset.load(.duration)
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
@@ -274,7 +300,7 @@ public struct MediaImporter: Sendable {
     private func photoMetadata(url: URL, fileCreationDate: Date?, modificationDate: Date?) throws -> MediaMetadata {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
-            throw MediaImportError.unreadable(url)
+            throw MediaImportError.damaged(url)
         }
         let width = properties[kCGImagePropertyPixelWidth] as? Int
         let height = properties[kCGImagePropertyPixelHeight] as? Int

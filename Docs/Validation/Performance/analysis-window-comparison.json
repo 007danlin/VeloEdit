@@ -1,0 +1,506 @@
+[
+  {
+    "mode": "fast",
+    "assetID": "F78C7124-9FBD-4E56-9737-74BE3CBE7FE1",
+    "sampleCountBefore": 7,
+    "sampleCountAfter": 7,
+    "scenesBefore": [
+      {
+        "startTime": 0,
+        "endTime": 50.4504
+      }
+    ],
+    "scenesAfter": [
+      {
+        "endTime": 50.4504,
+        "startTime": 0
+      }
+    ],
+    "candidatesBefore": [
+      {
+        "sourceDuration": 3.0596135163397857,
+        "sourceStart": 4.04504
+      },
+      {
+        "sourceDuration": 2.949956102295136,
+        "sourceStart": 14.13512
+      },
+      {
+        "sourceDuration": 2.9776735228605915,
+        "sourceStart": 24.2252
+      },
+      {
+        "sourceDuration": 3.9881220571257217,
+        "sourceStart": 35.31528
+      }
+    ],
+    "candidatesAfter": [
+      {
+        "sourceDuration": 3.0596135163397857,
+        "sourceStart": 4.045
+      },
+      {
+        "sourceDuration": 2.9499561022951344,
+        "sourceStart": 14.135
+      },
+      {
+        "sourceDuration": 3,
+        "sourceStart": 34.315
+      },
+      {
+        "sourceDuration": 2.7371817229130215,
+        "sourceStart": 36.315
+      }
+    ],
+    "sceneWindowsEqual": true,
+    "candidateWindowsEqual": false
+  },
+  {
+    "mode": "fast",
+    "assetID": "1EC61365-C32D-499B-B3D1-BB21548CC46F",
+    "sampleCountBefore": 30,
+    "sampleCountAfter": 30,
+    "scenesBefore": [
+      {
+        "startTime": 0,
+        "endTime": 68.12361111111112
+      },
+      {
+        "startTime": 68.12361111111112,
+        "endTime": 136.24722222222223
+      },
+      {
+        "startTime": 136.24722222222223,
+        "endTime": 196.24722222222223
+      },
+      {
+        "startTime": 196.24722222222223,
+        "endTime": 204.37083333333334
+      }
+    ],
+    "scenesAfter": [
+      {
+        "endTime": 68.12361111111112,
+        "startTime": 0
+      },
+      {
+        "endTime": 136.24722222222223,
+        "startTime": 68.12361111111112
+      },
+      {
+        "endTime": 196.24722222222223,
+        "startTime": 136.24722222222223
+      },
+      {
+        "endTime": 204.37083333333334,
+        "startTime": 196.24722222222223
+      }
+    ],
+    "candidatesBefore": [
+      {
+        "sourceDuration": 3.000162037037036,
+        "sourceStart": 27.384837962962965
+      },
+      {
+        "sourceDuration": 3.000226851851842,
+        "sourceStart": 38.738773148148155
+      },
+      {
+        "sourceDuration": 3.0002916666666692,
+        "sourceStart": 50.092708333333334
+      },
+      {
+        "sourceDuration": 3.0004212962962953,
+        "sourceStart": 72.8005787037037
+      }
+    ],
+    "candidatesAfter": [
+      {
+        "sourceDuration": 3,
+        "sourceStart": 27.385
+      },
+      {
+        "sourceDuration": 3,
+        "sourceStart": 38.739
+      },
+      {
+        "sourceDuration": 3,
+        "sourceStart": 50.093
+      },
+      {
+        "sourceDuration": 3,
+        "sourceStart": 72.801
+      }
+    ],
+    "sceneWindowsEqual": true,
+    "candidateWindowsEqual": false
+  },
+  {
+    "mode": "fast",
+    "assetID": "766FEA9B-7246-465C-9DDD-8AB4E5F6708E",
+    "sampleCountBefore": 7,
+    "sampleCountAfter": 7,
+    "scenesBefore": [
+      {
+        "startTime": 0,
+        "endTime": 49.6496
+      }
+    ],
+    "scenesAfter": [
+      {
+        "endTime": 49.6496,
+        "startTime": 0
+      }
+    ],
+    "candidatesBefore": [
+      {
+        "sourceDuration": 3.070548726385911,
+        "sourceStart": 3.9649599999999996
+      },
+      {
+        "sourceDuration": 2.988087379654516,
+        "sourceStart": 23.824799999999996
+      },
+      {
+        "sourceDuration": 4.019187975406794,
+        "sourceStart": 34.75472
+      },
+      {
+        "sourceDuration": 2.8159331362082582,
+        "sourceStart": 35.755
+      }
+    ],
+    "candidatesAfter": [
+      {
+        "sourceStart": 33.755,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 33.755,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 35.755,
+        "sourceDuration": 2.8159331362082582
+      },
+      {
+        "sourceStart": 43.685,
+        "sourceDuration": 2.9911019973185518
+      }
+    ],
+    "sceneWindowsEqual": true,
+    "candidateWindowsEqual": false
+  },
+  {
+    "mode": "balanced",
+    "assetID": "F78C7124-9FBD-4E56-9737-74BE3CBE7FE1",
+    "sampleCountBefore": 20,
+    "sampleCountAfter": 20,
+    "scenesBefore": [
+      {
+        "startTime": 0,
+        "endTime": 45
+      },
+      {
+        "startTime": 45,
+        "endTime": 50.4504
+      }
+    ],
+    "scenesAfter": [
+      {
+        "startTime": 0,
+        "endTime": 45
+      },
+      {
+        "startTime": 45,
+        "endTime": 50.4504
+      }
+    ],
+    "candidatesBefore": [
+      {
+        "sourceStart": 8.45945,
+        "sourceDuration": 2.9601540262092634
+      },
+      {
+        "sourceStart": 14.76575,
+        "sourceDuration": 2.951234570487042
+      },
+      {
+        "sourceStart": 20.218241241499026,
+        "sourceDuration": 1.8538087585009748
+      },
+      {
+        "sourceStart": 22.07205,
+        "sourceDuration": 2.6060139865243883
+      },
+      {
+        "sourceStart": 23.072,
+        "sourceDuration": 2.967038479529215
+      },
+      {
+        "sourceStart": 39.11934233142135,
+        "sourceDuration": 1.8716076685786476
+      },
+      {
+        "sourceStart": 41.150979,
+        "sourceDuration": 1.8400210000000001
+      },
+      {
+        "sourceStart": 47.297250000000005,
+        "sourceDuration": 2.589963998738739
+      }
+    ],
+    "candidatesAfter": [
+      {
+        "sourceStart": 14.766,
+        "sourceDuration": 2.9512460464478796
+      },
+      {
+        "sourceStart": 21.072,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 21.072,
+        "sourceDuration": 2.2095999999999982
+      },
+      {
+        "sourceStart": 23.072,
+        "sourceDuration": 2.7465791230778187
+      },
+      {
+        "sourceStart": 39.991,
+        "sourceDuration": 2.209600000000002
+      },
+      {
+        "sourceStart": 39.991,
+        "sourceDuration": 2.209600000000002
+      },
+      {
+        "sourceStart": 47.297,
+        "sourceDuration": 2.0130861003549114
+      },
+      {
+        "sourceStart": 47.297,
+        "sourceDuration": 2.009112078325316
+      }
+    ],
+    "sceneWindowsEqual": true,
+    "candidateWindowsEqual": false
+  },
+  {
+    "mode": "balanced",
+    "assetID": "1EC61365-C32D-499B-B3D1-BB21548CC46F",
+    "sampleCountBefore": 74,
+    "sampleCountAfter": 74,
+    "scenesBefore": [
+      {
+        "startTime": 0,
+        "endTime": 47.68652777777778
+      },
+      {
+        "startTime": 47.68652777777778,
+        "endTime": 95.37305555555557
+      },
+      {
+        "startTime": 95.37305555555557,
+        "endTime": 143.05958333333334
+      },
+      {
+        "startTime": 143.05958333333334,
+        "endTime": 190.74611111111113
+      },
+      {
+        "startTime": 190.74611111111113,
+        "endTime": 204.37083333333334
+      }
+    ],
+    "scenesAfter": [
+      {
+        "startTime": 0,
+        "endTime": 47.68652777777778
+      },
+      {
+        "startTime": 47.68652777777778,
+        "endTime": 95.37305555555557
+      },
+      {
+        "startTime": 95.37305555555557,
+        "endTime": 143.05958333333334
+      },
+      {
+        "startTime": 143.05958333333334,
+        "endTime": 190.74611111111113
+      },
+      {
+        "startTime": 190.74611111111113,
+        "endTime": 204.37083333333334
+      }
+    ],
+    "candidatesBefore": [
+      {
+        "sourceStart": 36.468,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 63.717,
+        "sourceDuration": 2
+      },
+      {
+        "sourceStart": 104.592,
+        "sourceDuration": 7.811958333333337
+      },
+      {
+        "sourceStart": 119.21631944444445,
+        "sourceDuration": 2.6682492693121276
+      },
+      {
+        "sourceStart": 126.02868055555557,
+        "sourceDuration": 2.6611432136178195
+      },
+      {
+        "sourceStart": 131.841,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 139.65340277777779,
+        "sourceDuration": 2.666060975268408
+      },
+      {
+        "sourceStart": 193.152,
+        "sourceDuration": 3
+      }
+    ],
+    "candidatesAfter": [
+      {
+        "sourceStart": 36.468,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 63.717,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 104.592,
+        "sourceDuration": 7.811999999999998
+      },
+      {
+        "sourceStart": 119.216,
+        "sourceDuration": 2.668568713756585
+      },
+      {
+        "sourceStart": 126.029,
+        "sourceDuration": 2.6608237691733905
+      },
+      {
+        "sourceStart": 131.841,
+        "sourceDuration": 3
+      },
+      {
+        "sourceStart": 139.653,
+        "sourceDuration": 2.6664637530462016
+      },
+      {
+        "sourceStart": 193.152,
+        "sourceDuration": 3
+      }
+    ],
+    "sceneWindowsEqual": true,
+    "candidateWindowsEqual": false
+  },
+  {
+    "mode": "balanced",
+    "assetID": "766FEA9B-7246-465C-9DDD-8AB4E5F6708E",
+    "sampleCountBefore": 20,
+    "sampleCountAfter": 20,
+    "scenesBefore": [
+      {
+        "startTime": 0,
+        "endTime": 45
+      },
+      {
+        "startTime": 45,
+        "endTime": 49.6496
+      }
+    ],
+    "scenesAfter": [
+      {
+        "startTime": 0,
+        "endTime": 45
+      },
+      {
+        "startTime": 45,
+        "endTime": 49.6496
+      }
+    ],
+    "candidatesBefore": [
+      {
+        "sourceStart": 3.1031,
+        "sourceDuration": 2.641548682993957
+      },
+      {
+        "sourceStart": 3.1031,
+        "sourceDuration": 2.643229714535837
+      },
+      {
+        "sourceStart": 27.9279,
+        "sourceDuration": 2.6149611307416087
+      },
+      {
+        "sourceStart": 28.928,
+        "sourceDuration": 2.6969265033064254
+      },
+      {
+        "sourceStart": 28.928,
+        "sourceDuration": 2.995668144232848
+      },
+      {
+        "sourceStart": 39.3403,
+        "sourceDuration": 2.9875936992946848
+      },
+      {
+        "sourceStart": 46.5465,
+        "sourceDuration": 2.210099999999997
+      },
+      {
+        "sourceStart": 47.547,
+        "sourceDuration": 2.1026000000000025
+      }
+    ],
+    "candidatesAfter": [
+      {
+        "sourceStart": 2.103,
+        "sourceDuration": 2.2095999999999996
+      },
+      {
+        "sourceStart": 4.103,
+        "sourceDuration": 2.7935371021860123
+      },
+      {
+        "sourceStart": 33.134,
+        "sourceDuration": 2.209600000000002
+      },
+      {
+        "sourceStart": 35.134,
+        "sourceDuration": 2.64285214026242
+      },
+      {
+        "sourceStart": 34.134,
+        "sourceDuration": 2.193773817227566
+      },
+      {
+        "sourceStart": 43.51960208868313,
+        "sourceDuration": 2.065233122183024
+      },
+      {
+        "sourceStart": 45.547,
+        "sourceDuration": 2.209600000000002
+      },
+      {
+        "sourceStart": 47.547,
+        "sourceDuration": 2.1026000000000025
+      }
+    ],
+    "sceneWindowsEqual": true,
+    "candidateWindowsEqual": false
+  }
+]

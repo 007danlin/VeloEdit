@@ -1,4 +1,6 @@
 import Foundation
+import AppKit
+import AVFoundation
 import Testing
 import VeloEditCore
 @testable import VeloEdit
@@ -6,6 +8,218 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct ProjectInteractionTests {
+    @Test func deletingMissingRecentProjectRemovesAndPersistsCard() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let missingURL = try fixture.project("тест в универе")
+        let existingURL = try fixture.project("keep")
+        let defaults = UserDefaults(suiteName: fixture.suite)!
+        defaults.set([missingURL.path, existingURL.path], forKey: "recentProjectPaths.v1")
+        let model = fixture.model()
+        try FileManager.default.removeItem(at: missingURL)
+
+        model.deleteRecentProject(missingURL)
+
+        let expectedPaths = [existingURL.standardizedFileURL.path]
+        try await wait { model.recentProjectURLs.map(\.path) == expectedPaths }
+        #expect(model.errorMessage == nil)
+        #expect(model.status == "Проект удалён из списка")
+        #expect(defaults.stringArray(forKey: "recentProjectPaths.v1") == expectedPaths)
+        #expect(fixture.model().recentProjectURLs.map(\.path) == expectedPaths)
+        #expect(FileManager.default.fileExists(atPath: existingURL.path))
+    }
+
+    @Test func openPanelSelectsProjectPackagesInsteadOfOrdinaryFolders() {
+        let panel = AppModel.makeProjectOpenPanel()
+        #expect(panel.canChooseFiles)
+        #expect(!panel.canChooseDirectories)
+        #expect(!panel.treatsFilePackagesAsDirectories)
+        #expect(!panel.allowsMultipleSelection)
+        #expect(panel.allowedContentTypes.map(\.identifier) == ["app.veloedit.project"])
+        let directory = FileManager.default.temporaryDirectory
+        let savePanel = AppModel.makeVideoSavePanel(directory: directory, suggestedName: "Film.mp4")
+        #expect(savePanel.directoryURL?.standardizedFileURL.path == directory.standardizedFileURL.path)
+        #expect(savePanel.nameFieldStringValue == "Film.mp4")
+        #expect(savePanel.allowedContentTypes.map(\.identifier) == ["public.mpeg-4"])
+        #expect(!savePanel.isExtensionHidden)
+    }
+
+    @Test func finderOpenBeforeWindowAppearsLoadsSavedProject() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let url = try fixture.project("finder-open")
+        let delegate = VeloEditAppDelegate()
+        delegate.application(NSApplication.shared, open: [url])
+        let model = fixture.model()
+        delegate.model = model
+        try await wait { model.projectURL == url && model.openingProjectURL == nil }
+        #expect(model.project?.name == "finder-open")
+        #expect(model.errorMessage == nil)
+        #expect(model.videoExportDirectoryURL == url.deletingLastPathComponent())
+        await model.flushAutosave()
+    }
+
+    @Test func vlogStylePreservesExplicitPreferencesAndRestoresPreviousPresetAfterReopen() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = try fixture.project("vlog-preferences")
+        let model = fixture.model()
+        model.openRecentProject(url)
+        try await wait { model.projectURL == url && model.openingProjectURL == nil }
+        model.selectPreset(.story)
+        model.setDirectorMusicPolicy(.none)
+        model.setDirectorSourceAudioPolicy(.mute)
+        model.setDirectorTitlePolicy(.none)
+        model.setDirectorEffectsPolicy(.none)
+        model.setDirectorNarrativeMood(.dynamic)
+        model.setDirectorSubtitleStyle(.travel)
+        model.selectPreset(.vlog)
+        #expect(model.directorBrief.mood == .dynamic)
+        #expect(model.directorBrief.previousStandardPreset == .story)
+        #expect(model.directorBrief.musicPolicy == .none)
+        #expect(model.directorBrief.sourceAudioPolicy == .mute)
+        #expect(model.directorBrief.titlePolicy == .none)
+        #expect(model.directorBrief.subtitlePolicy == .off)
+        await model.flushAutosave()
+        let reopened = fixture.model()
+        reopened.openRecentProject(url)
+        try await wait { reopened.projectURL == url && reopened.openingProjectURL == nil }
+        #expect(reopened.preset == .vlog)
+        #expect(reopened.directorBrief.subtitlePolicy == .off)
+        #expect(reopened.directorBrief.subtitleStyle == .travel)
+        reopened.selectStandardDirectorMood(.calm)
+        #expect(reopened.preset == .story)
+        #expect(reopened.directorBrief.mood == .calm)
+        #expect(reopened.directorBrief.musicPolicy == .none)
+        #expect(reopened.directorBrief.subtitleStyle == .travel)
+        await reopened.flushAutosave()
+        let otherURL = try fixture.project("separate-subtitle-choice")
+        let other = fixture.model()
+        other.openRecentProject(otherURL)
+        try await wait { other.projectURL == otherURL && other.openingProjectURL == nil }
+        #expect(other.directorBrief.subtitleStyle == nil)
+    }
+
+    @Test func projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let url = try fixture.project("instant-workspace")
+        let gate = ProjectLoadGate()
+        let model = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: false,
+            personalTasteStore: LocalPersonalTasteStore(url: fixture.root.appendingPathComponent("taste.json")),
+            loadProject: { url in
+                await gate.wait()
+                return try await Task.detached { try ProjectStore(open: url) }.value
+            })
+
+        model.openRecentProject(url, name: "Мой фильм")
+        try await wait { model.openingProjectURL == url }
+        #expect(model.hasProjectWorkspace)
+        #expect(model.section == .media)
+        #expect(model.openingProjectName == "Мой фильм")
+        #expect(model.project == nil)
+        #expect(model.pipeline == nil)
+        #expect(!model.isWorking)
+        #expect(!model.status.contains("Открываю"))
+
+        model.openSection(.export)
+        #expect(model.section == .export)
+        await gate.release()
+        try await wait { model.projectURL == url && model.openingProjectURL == nil }
+        #expect(model.section == .export)
+        #expect(model.openingProjectName == nil)
+        #expect(model.project?.name == "instant-workspace")
+        await model.flushAutosave()
+    }
+
+    @Test func recentCardShowsRealMaterialsBeforeFullLoadAndPreservesSelection() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let url = try fixture.project("instant-materials")
+        let store = try ProjectStore(open: url)
+        let asset = MediaAsset(originalURL: fixture.root.appendingPathComponent("ride.mov"), kind: .video,
+                               byteSize: 1, contentHash: "ride", metadata: MediaMetadata(duration: 12))
+        try await store.update { $0.assets = [asset] }
+        let gate = ProjectLoadGate()
+        let model = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: false,
+            personalTasteStore: LocalPersonalTasteStore(url: fixture.root.appendingPathComponent("taste.json")),
+            loadProject: { _ in await gate.wait(); return store })
+        // This is the same preload performed by a card on the home screen.
+        await model.prepareProjectPresentation(at: url)
+        let started = Date()
+        model.openRecentProject(url)
+        try await wait { model.openingProjectURL == url }
+        print("PERF recent-card-first-materials milliseconds=\(Date().timeIntervalSince(started) * 1_000)")
+        #expect(model.project == nil)
+        #expect(model.pipeline == nil)
+        #expect(model.mediaLibraryAssets.map(\.id) == [asset.id])
+        let thumbnail = model.mediaLibraryThumbnailURLs[asset.id]
+        #expect(thumbnail?.lastPathComponent == "ride.jpg")
+        model.selectAssetForMediaInspector(asset.id)
+        #expect(model.mediaLibrarySelectedAssetID == asset.id)
+        await gate.release()
+        try await wait { model.openingProjectURL == nil && model.projectURL == url }
+        #expect(model.mediaLibraryAssets.map(\.id) == [asset.id])
+        #expect(model.selectedAssetID == asset.id)
+        #expect(model.openingPresentation == nil)
+        await model.flushAutosave()
+    }
+
+    @Test func coldOpenLoadsPresentationWithoutWaitingForTheStore() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let url = try fixture.project("cold-open")
+        let gate = ProjectLoadGate()
+        let model = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: false,
+            personalTasteStore: LocalPersonalTasteStore(url: fixture.root.appendingPathComponent("taste.json")),
+            loadProject: { url in
+                await gate.wait()
+                return try await Task.detached { try ProjectStore(open: url) }.value
+            })
+        model.openRecentProject(url)
+        try await wait { model.openingPresentation?.preview.name == "cold-open" }
+        #expect(model.pipeline == nil)
+        #expect(model.openingProjectURL == url)
+        await gate.release()
+        try await wait { model.openingProjectURL == nil && model.projectURL == url }
+        await model.flushAutosave()
+    }
+
+    @Test func soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let url = try fixture.project("soundtrack-undo")
+        let trackID = UUID()
+        let audioURL = fixture.root.appendingPathComponent("window.caf")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480_000))
+        buffer.frameLength = buffer.frameCapacity
+        buffer.floatChannelData![0].initialize(repeating: 0, count: Int(buffer.frameLength))
+        try AVAudioFile(forWriting: audioURL, settings: format.settings).write(from: buffer)
+        let track = LocalMusicTrack(id: trackID, title: "Window", author: "Fixture", bpm: 110, genres: [], moods: [], energy: 0.5,
+            duration: 60, license: .userFile(), sourceProvider: .user, sourcePageURL: audioURL, localFileURL: audioURL, originalFileName: "window.caf")
+        var music = MusicDirective(style: .energetic, bpm: 110, speed: 1.25, trackID: trackID)
+        music.sourceStart = 12
+        let timeline = Timeline(storyPlanID: UUID(), items: [.init(kind: .title, sourceDuration: 15, timelineStart: 0, timelineDuration: 15, title: "Window")], music: music)
+        let store = try ProjectStore(open: url)
+        try await store.update { $0.timelines = [timeline] }
+        try JSONEncoder.veloEdit.encode([track]).write(to: store.musicLibraryURL.appendingPathComponent("tracks.json"))
+        let model = fixture.model()
+        model.openRecentProject(url)
+        try await wait { model.projectURL == url && model.openingProjectURL == nil }
+        await model.refreshMusicLibrary()
+        try await wait { model.musicTracks.contains { $0.id == trackID } }
+        #expect(model.section != .timeline)
+        #expect(model.shouldHandleTimelineUndo)
+        let original = model.timeline
+        model.moveSoundtrack(toTimelineStart: 2)
+        #expect(model.timeline?.effectiveAudioClips.first?.sourceStart == 12)
+        #expect(model.timeline?.effectiveAudioClips.first?.effectiveSpeed == 1.25)
+        #expect(model.canUndoTimelineEdit)
+        model.undoTimelineEdit()
+        #expect(model.timeline == original)
+        await model.flushAutosave()
+    }
+
     @Test func rapidProjectClicksKeepTheLastProjectAndRemainResponsive() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -35,9 +249,14 @@ struct ProjectInteractionTests {
         let model = fixture.model()
         model.openRecentProject(good)
         try await wait { model.projectURL == good && model.openingProjectURL == nil }
+        model.section = .director
+        model.directorInput = "Сохранить мой черновик"
         model.openRecentProject(broken)
         try await wait { model.errorMessage != nil && model.openingProjectURL == nil }
         #expect(model.projectURL == good)
+        #expect(model.openingPresentation == nil)
+        #expect(model.section == .director)
+        #expect(model.directorInput == "Сохранить мой черновик")
         model.openRecentProject(good)
         try await wait { model.errorMessage == nil && model.openingProjectURL == nil }
         #expect(model.project?.name == "good")
@@ -149,6 +368,22 @@ struct ProjectInteractionTests {
         throw WaitFailure.timeout
     }
     private enum WaitFailure: Error { case timeout }
+
+    private actor ProjectLoadGate {
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var isReleased = false
+
+        func wait() async {
+            guard !isReleased else { return }
+            await withCheckedContinuation { continuation = $0 }
+        }
+
+        func release() {
+            isReleased = true
+            continuation?.resume()
+            continuation = nil
+        }
+    }
 
     private struct Fixture {
         let root: URL

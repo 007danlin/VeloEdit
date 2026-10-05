@@ -1,0 +1,268 @@
+[0/1] Planning build
+Building for debugging...
+[0/11] Write sources
+[4/11] Write swift-version--58304C5D6DBC2206.txt
+[6/14] Compiling VeloEditCore LocalShotReplacement.swift
+[7/14] Compiling VeloEditCore VeloEditPipeline.swift
+[8/14] Emitting module VeloEditCore
+[9/19] Compiling VeloEditCore RemovedMedia.swift
+[10/19] Compiling VeloEditCore MediaSourceRecovery.swift
+[11/19] Compiling VeloEditCore PortableProject.swift
+[12/19] Compiling VeloEditCore EditorialRenderedReview.swift
+[13/19] Compiling VeloEditCore AutonomousExternalRecovery.swift
+[14/57] Compiling VeloEditCLI main.swift
+[15/57] Emitting module VeloEditCLI
+[15/58] Write Objects.LinkFileList
+[16/58] Linking veloedit-cli
+[17/58] Applying veloedit-cli
+[19/58] Compiling VeloEditCoreTests DirectorRealProjectAuditTests.swift
+[20/58] Compiling VeloEditCoreTests DirectorVisualStyleTests.swift
+[21/58] Compiling VeloEditCoreTests EditorPerformanceTests.swift
+[22/60] Compiling VeloEditCoreTests ExportSettingsTests.swift
+[23/60] Compiling VeloEditCoreTests FilmBuildProgressTests.swift
+[24/60] Compiling VeloEditCoreTests FilmBuildRecoveryTests.swift
+[25/60] Compiling VeloEditCoreTests SmartTelemetryEngineTests.swift
+[26/60] Compiling VeloEditCoreTests TelemetryEngineTests.swift
+[27/60] Compiling VeloEditCoreTests AutonomousOperationTests.swift
+[28/60] Compiling VeloEditCoreTests DeepMediaUnderstandingTests.swift
+[29/60] Compiling VeloEditCoreTests DirectorBriefTests.swift
+[30/60] Compiling VeloEditCoreTests AIDirectorEngineTests.swift
+[31/60] Compiling VeloEditCoreTests AutomaticFilmDeliveryTests.swift
+[32/60] Compiling VeloEditCoreTests AutonomousDirectorTests.swift
+[33/60] Compiling VeloEditCoreTests EditorialIntelligenceTests.swift
+[34/60] Compiling VeloEditCoreTests EditorialQualityCorpusTests.swift
+[35/60] Compiling VeloEditCoreTests EditorialQualityTests.swift
+[36/60] Compiling VeloEditCoreTests MagicBrushReplacementTests.swift
+[37/60] Compiling VeloEditCoreTests MusicProviderArchitectureTests.swift
+[38/60] Compiling VeloEditCoreTests PerceptualReviewTests.swift
+[39/60] Compiling VeloEditCoreTests EditorialRealProjectAcceptanceTests.swift
+[40/60] Compiling VeloEditCoreTests EditorialVerificationTests.swift
+[41/60] Compiling VeloEditCoreTests EventIntelligenceTests.swift
+[42/60] Emitting module VeloEditCoreTests
+[43/60] Compiling VeloEditCoreTests TimelineAICommentsTests.swift
+[44/60] Compiling VeloEditCoreTests TransitionEffectProfessionalTests.swift
+[45/60] Compiling VeloEdit VeloEditApp.swift
+[46/60] Compiling VeloEdit TimelineKeyboardMonitor.swift
+[47/60] Compiling VeloEdit LocalDirectorAgent.swift
+[48/60] Compiling VeloEdit TelemetryLibraryView.swift
+[49/60] Compiling VeloEdit MontageTimelineView.swift
+[50/60] Compiling VeloEditCoreTests ProductionHardeningTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[51/60] Compiling VeloEditCoreTests ProjectStoreTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[52/60] Compiling VeloEditCoreTests ProxyPlaybackRegressionTests.swift
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ProxyPlaybackRegressionTests.swift:26:39: warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 24 |             }
+ 25 |         }
+ 26 |         await Task.detached { entered.wait() }.value
+    |                                       `- warning: instance method 'wait' is unavailable from asynchronous contexts; Await a Task handle instead; this is an error in the Swift 6 language mode
+ 27 |         defer { release.signal() }
+ 28 |         let started = Date()
+
+Dispatch.DispatchSemaphore.wait:2:13: note: 'wait()' declared here
+1 | class DispatchSemaphore {
+2 | public func wait()}
+  |             `- note: 'wait()' declared here
+3 | 
+[53/60] Compiling VeloEdit EditorialComparisonView.swift
+[54/60] Compiling VeloEdit AppModel.swift
+[55/60] Emitting module VeloEdit
+[56/60] Compiling VeloEdit ContentView.swift
+[56/61] Write Objects.LinkFileList
+[57/61] Linking VeloEdit
+[58/61] Applying VeloEdit
+[60/64] Compiling VeloEditAppTests ProjectInteractionTests.swift
+[61/64] Emitting module VeloEditAppTests
+[62/64] Compiling VeloEditAppTests BrushSemanticReplyTests.swift
+[62/64] Write Objects.LinkFileList
+[63/64] Linking VeloEditPackageTests
+Build complete! (26.81s)
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite MagicBrushReplacementTests started.
+◇ Suite AutomaticEditorialAssemblyTests started.
+◇ Suite BrushSemanticReplyTests started.
+◇ Test twoMountainBikeFilesDoNotBecomeBuggyFromGenericVehicleTags() started.
+◇ Test timelineAICommentsNegativeDirectivesAreNotInverted() started.
+◇ Test lowConfidenceImportDatesDoNotMergeUnrelatedAssets() started.
+◇ Test oneLongSourceDoesNotSplitGenericOrIsolatedActivityLabels() started.
+◇ Test keyTitlesSurviveNarrativePresentationAcrossShortShotsAndReturningParts() started.
+◇ Test timelineAICommentsVariantSearchPreservesExplicitGrammarConstraints() started.
+◇ Test timelineComposerProducesTemplateTitlesInsteadOfLegacyTitleCards() started.
+◇ Test shortActivityBlockOmitsUnreadableTitleAndKeepsNeighborsInsideTheirScenes() started.
+◇ Test goproChapterNamesJoinPartsOfOneRecordingWithoutStrongMetadata() started.
+◇ Test timelineAICommentsDistinguishesFilmDurationFromClipDuration() started.
+◇ Test sameCameraAtDifferentTimesAndPlacesDoesNotForceMerge() started.
+◇ Test productionPipelineUsesEventsBeforeScenesAndPersistsEventAwareScoring() started.
+◇ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() started.
+◇ Test sameLocationWeeksLaterDoesNotBecomeTheSameEvent() started.
+◇ Test structuralScenePhasesDoNotBecomeActivityTitles() started.
+◇ Test eventDurationAllocationFavorsStrongMaterialAndCapsWeakEvents() started.
+◇ Test timelineAICommentsMagicBrushAllTargetDoesNotEscapeRange() started.
+◇ Test timelineAICommentsMagicBrushSlicingKeepsAttachmentsAndOutsideSegmentsStable() started.
+◇ Test storyHierarchyQualityGateRestoresFlattenedActivityBoundaries() started.
+◇ Test longSingleEventKeepsActivityBlocksAndCreatesDistinctKeyTitles() started.
+◇ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() started.
+◇ Test oneContinuousOutingKeepsDifferentActivitiesAsScenesInsideOneMacroEvent() started.
+◇ Test timelineAICommentsStoryRebuildKeepsTypedMusicRemoval() started.
+◇ Test timelineAICommentsRejectLocalSplitWithoutDamagingAttachments() started.
+◇ Test semanticTemplateSelectionUsesExistingCategoryAndSubjectAvoidance() started.
+◇ Test sourceSequenceDetectorSupportsCameraIndependentPatterns() started.
+◇ Test eventAndSceneIdentityRemainStableAcrossRediscovery() started.
+◇ Test timelineAICommentsMagicBrushPatternsAlternateInsideRange() started.
+◇ Test reliableEmbeddedTimestampsRemainAboveFilenameSequence() started.
+◇ Test timelineAICommentsExecutorRemovesOnlyTargetedModernTransitionAndEffectObjects() started.
+◇ Test contentConfirmedActivityTitleIgnoresStructuralOrInventedSceneNames() started.
+◇ Test incompatibleActivitiesRejectUncorroboratedLegacyIDWithWeakClockAndNoGPS() started.
+◇ Test oneLongSourceSplitsConfirmedCyclingAndBuggyRunsIntoEventScenes() started.
+◇ Test timelineAICommentsMixedDeepAndTypedRequestKeepsBothPlanParts() started.
+◇ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() started.
+◇ Test exactEventDurationAllocationPreservesTheRequestedTotalDespiteQualityCaps() started.
+◇ Test eventDiscoveryKeepsAContinuousMultiDayTripAsOneEvent() started.
+◇ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() started.
+◇ Test eventDiscoveryMergesOneCrossDeviceMomentAndEstimatesClockOffset() started.
+◇ Test overlappingEventScenesConsumeEachCandidateOnlyOnce() started.
+◇ Test twoCameraBuggyBlockBeatsAStrayBicycleLabel() started.
+◇ Test eventScenesRecoverSetupActionPeakReactionAndConclusion() started.
+◇ Test eventTitleAndDateFallbackAreExplainable() started.
+◇ Test timelineAICommentsLocalRemoveTitlesPreservesModernTitlesOutsideRange() started.
+◇ Test neighbouringBuggyAnglesKeepTheirLabelsWhenNotGroupedVisually() started.
+◇ Test timelineAICommentsNoOpDoesNotCreateCheckpointOrRevision() started.
+◇ Test keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) started.
+◇ Test timelineSafetyRejectsDirectorRepairThatDropsAPlannedSceneBlock() started.
+◇ Test eventDurationAllocationUsesTheStoryTargetForOneMultiActivityEvent() started.
+◇ Test timelineAICommentsPreserveAssetBackedFreezeFrameDuration() started.
+◇ Test eventDiscoverySplitsFourDifferentEventsRecordedOnOneDay() started.
+◇ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() started.
+◇ Test phoneLivePhotoAndTimestampNamesProvideConservativeEventEvidence() started.
+◇ Test automatedTitleQualityGateEnforcesProvenanceContainmentAndOneTrack() started.
+◇ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() started.
+◇ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() started.
+◇ Test duplicateFastPathPreservesOverlapAndInformationThresholds() started.
+◇ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() started.
+◇ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() started.
+◇ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() started.
+◇ Test impossibleRequestPreservesOriginalDurationContract() started.
+◇ Test onlyTypedReplacementInsideBrushChangesFootage() started.
+◇ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() started.
+◇ Test replacementIntentIsNotMusicOrNegativeInstruction() started.
+◇ Test case passing 1 argument duration → 16.0 to keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) started.
+◇ Test case passing 1 argument duration → 60.0 to keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) started.
+✔ Test goproChapterNamesJoinPartsOfOneRecordingWithoutStrongMetadata() passed after 0.119 seconds.
+✔ Test oneLongSourceDoesNotSplitGenericOrIsolatedActivityLabels() passed after 0.119 seconds.
+✔ Test twoMountainBikeFilesDoNotBecomeBuggyFromGenericVehicleTags() passed after 0.119 seconds.
+✔ Test lowConfidenceImportDatesDoNotMergeUnrelatedAssets() passed after 0.119 seconds.
+✔ Test smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() passed after 0.119 seconds.
+✔ Test sameCameraAtDifferentTimesAndPlacesDoesNotForceMerge() passed after 0.119 seconds.
+✔ Test eventDurationAllocationFavorsStrongMaterialAndCapsWeakEvents() passed after 0.119 seconds.
+✔ Test sameLocationWeeksLaterDoesNotBecomeTheSameEvent() passed after 0.119 seconds.
+✔ Test timelineComposerProducesTemplateTitlesInsteadOfLegacyTitleCards() passed after 0.119 seconds.
+✔ Test storyHierarchyQualityGateRestoresFlattenedActivityBoundaries() passed after 0.119 seconds.
+✔ Test timelineAICommentsMagicBrushAllTargetDoesNotEscapeRange() passed after 0.119 seconds.
+✔ Test timelineAICommentsMagicBrushSlicingKeepsAttachmentsAndOutsideSegmentsStable() passed after 0.119 seconds.
+✔ Test oneContinuousOutingKeepsDifferentActivitiesAsScenesInsideOneMacroEvent() passed after 0.119 seconds.
+✔ Test smartTitleReadinessCoversAtLeastTenConcreteScenes() passed after 0.119 seconds.
+✔ Test timelineAICommentsRejectLocalSplitWithoutDamagingAttachments() passed after 0.119 seconds.
+✔ Test semanticTemplateSelectionUsesExistingCategoryAndSubjectAvoidance() passed after 0.119 seconds.
+✔ Test timelineAICommentsStoryRebuildKeepsTypedMusicRemoval() passed after 0.119 seconds.
+✔ Test sourceSequenceDetectorSupportsCameraIndependentPatterns() passed after 0.119 seconds.
+✔ Test timelineAICommentsDistinguishesFilmDurationFromClipDuration() passed after 0.120 seconds.
+✔ Test timelineAICommentsMagicBrushPatternsAlternateInsideRange() passed after 0.119 seconds.
+✔ Test timelineAICommentsExecutorRemovesOnlyTargetedModernTransitionAndEffectObjects() passed after 0.119 seconds.
+✔ Test reliableEmbeddedTimestampsRemainAboveFilenameSequence() passed after 0.119 seconds.
+✔ Test eventAndSceneIdentityRemainStableAcrossRediscovery() passed after 0.120 seconds.
+✔ Test contentConfirmedActivityTitleIgnoresStructuralOrInventedSceneNames() passed after 0.120 seconds.
+✔ Test incompatibleActivitiesRejectUncorroboratedLegacyIDWithWeakClockAndNoGPS() passed after 0.123 seconds.
+◇ Test case passing 1 argument seed → 0 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 1 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 2 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 3 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 4 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 5 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 6 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+◇ Test case passing 1 argument seed → 7 to fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) started.
+✔ Test timelineAICommentsNegativeDirectivesAreNotInverted() passed after 0.308 seconds.
+✔ Test smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() passed after 0.307 seconds.
+✔ Test exactEventDurationAllocationPreservesTheRequestedTotalDespiteQualityCaps() passed after 0.307 seconds.
+✔ Test oneLongSourceSplitsConfirmedCyclingAndBuggyRunsIntoEventScenes() passed after 0.307 seconds.
+✔ Test smartTitleRejectsMeaninglessAITextAndUsesSceneEvidenceInstead() passed after 0.307 seconds.
+✔ Test twoCameraBuggyBlockBeatsAStrayBicycleLabel() passed after 0.307 seconds.
+✔ Test eventDiscoveryMergesOneCrossDeviceMomentAndEstimatesClockOffset() passed after 0.307 seconds.
+✔ Test keyTitlesSurviveNarrativePresentationAcrossShortShotsAndReturningParts() passed after 0.308 seconds.
+✔ Test eventDiscoveryKeepsAContinuousMultiDayTripAsOneEvent() passed after 0.307 seconds.
+✔ Test eventTitleAndDateFallbackAreExplainable() passed after 0.307 seconds.
+✔ Test timelineAICommentsMixedDeepAndTypedRequestKeepsBothPlanParts() passed after 0.307 seconds.
+✔ Test timelineAICommentsLocalRemoveTitlesPreservesModernTitlesOutsideRange() passed after 0.307 seconds.
+✔ Test neighbouringBuggyAnglesKeepTheirLabelsWhenNotGroupedVisually() passed after 0.307 seconds.
+✔ Test timelineAICommentsNoOpDoesNotCreateCheckpointOrRevision() passed after 0.307 seconds.
+✔ Test eventScenesRecoverSetupActionPeakReactionAndConclusion() passed after 0.307 seconds.
+✔ Test eventDurationAllocationUsesTheStoryTargetForOneMultiActivityEvent() passed after 0.307 seconds.
+✔ Test timelineAICommentsPreserveAssetBackedFreezeFrameDuration() passed after 0.307 seconds.
+✔ Test timelineSafetyRejectsDirectorRepairThatDropsAPlannedSceneBlock() passed after 0.307 seconds.
+✔ Test eventDiscoverySplitsFourDifferentEventsRecordedOnOneDay() passed after 0.307 seconds.
+✔ Test phoneLivePhotoAndTimestampNamesProvideConservativeEventEvidence() passed after 0.307 seconds.
+✔ Test automatedTitleQualityGateEnforcesProvenanceContainmentAndOneTrack() passed after 0.307 seconds.
+✔ Test similarCameraPairSharesRunBudgetBeforeExactAllocation() passed after 0.266 seconds.
+✔ Test addingAnActionShotDoesNotEraseExplicitObservationCapacity() passed after 0.265 seconds.
+✔ Test duplicateFastPathPreservesOverlapAndInformationThresholds() passed after 0.262 seconds.
+✔ Test overlappingEvidenceIsNeverCountedOrPlayedTwice() passed after 0.262 seconds.
+✔ Test exactMeasuredDurationPreservesSourceOrderAndRepairsLateChapterCoverage() passed after 0.262 seconds.
+✔ Test timelineAICommentsVariantSearchPreservesExplicitGrammarConstraints() passed after 0.308 seconds.
+✔ Test fallbackRepairsAMeasuredShortCutBeforeApplyingDeliveryMinimum(_:) with 8 test cases passed after 0.262 seconds.
+✔ Test rejectedCandidateStaysExcludedDuringRefillAndReopen() passed after 0.262 seconds.
+✔ Test overlappingEventScenesConsumeEachCandidateOnlyOnce() passed after 0.308 seconds.
+✔ Test onlyTypedReplacementInsideBrushChangesFootage() passed after 0.266 seconds.
+✔ Suite BrushSemanticReplyTests passed after 0.312 seconds.
+✔ Test approvedReferenceRestoresSourceLabelsAndOrderWithoutCopyingItsCuts() passed after 0.272 seconds.
+✔ Test replacementIntentIsNotMusicOrNegativeInstruction() passed after 0.272 seconds.
+◇ Test semanticModelReplacementUsesTheSameScopedOperationAndRespectsNegation() started.
+✔ Test impossibleRequestPreservesOriginalDurationContract() passed after 0.286 seconds.
+✔ Suite AutomaticEditorialAssemblyTests passed after 0.332 seconds.
+✔ Test semanticModelReplacementUsesTheSameScopedOperationAndRespectsNegation() passed after 0.020 seconds.
+◇ Test partialReplacementPersistsSourceChangeAndKeepsOutsideRange() started.
+✔ Test partialReplacementPersistsSourceChangeAndKeepsOutsideRange() passed after 0.008 seconds.
+◇ Test failedReplacementIsAtomicEvenWithModelAudioCommands() started.
+✔ Test failedReplacementIsAtomicEvenWithModelAudioCommands() passed after 0.006 seconds.
+◇ Test replacementRejectsLeadInToTheSameUnwantedEpisode() started.
+✔ Test replacementRejectsLeadInToTheSameUnwantedEpisode() passed after 0.001 seconds.
+◇ Test realTest7ReplacementAndBuggyLabels() started.
+✔ Test structuralScenePhasesDoNotBecomeActivityTitles() passed after 0.446 seconds.
+✔ Test shortActivityBlockOmitsUnreadableTitleAndKeepsNeighborsInsideTheirScenes() passed after 0.467 seconds.
+✔ Test longSingleEventKeepsActivityBlocksAndCreatesDistinctKeyTitles() passed after 0.719 seconds.
+✔ Test keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration:) with 2 test cases passed after 0.910 seconds.
+✔ Test eventDiscoveryScalesToMoreThanThreeHundredAssetsWithoutPerAssetReclustering() passed after 8.190 seconds.
+TEST7 REPLACEMENT INCLUDING SAVE: 2.2606070041656494 seconds
+2026-09-15 11:06:52.835 swiftpm-testing-helper[43429:16343177] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:06:52.964 swiftpm-testing-helper[43429:16343175] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+2026-09-15 11:06:53.407 swiftpm-testing-helper[43429:16343178] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test productionPipelineUsesEventsBeforeScenesAndPersistsEventAwareScoring() passed after 24.313 seconds.
+TEST7 BRUSH: 393.6666666666667 -> 353.2951456989247, duration 300.0; titles ["Велопрогулка", "Велопрогулка", "Велопрогулка", "Багги", "Багги", "На природе", "В дороге", "Поход", "Велопрогулка", "На природе"]
+✔ Test realTest7ReplacementAndBuggyLabels() passed after 26.063 seconds.
+✔ Suite MagicBrushReplacementTests passed after 26.418 seconds.
+✔ Test run with 70 tests in 3 suites passed after 26.418 seconds.

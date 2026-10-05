@@ -149,6 +149,9 @@ struct AutonomousOperationTests {
         #expect(CGImageSourceCreateImageAtIndex(decoded, 0, nil) != nil)
     }
 
+    #if DEBUG
+    // Fault injection deliberately does not exist in production binaries.
+    // Release still runs the non-injected export/recovery tests in this suite.
     @Test func encoderFailureRecoversAndVerifiedExportSurvivesRestart() async throws {
         let f = Fixture(); defer { f.remove() }
         let store = try f.store()
@@ -187,6 +190,7 @@ struct AutonomousOperationTests {
         #expect(await reopened.manifest.renderJobs[0].status == .completed)
         #expect(await reopened.manifest.renderJobs[0].timelineID == timeline.id)
     }
+    #endif
 
     @Test func removalUndoRestoresAnalysisClipsAndOriginal() async throws {
         let f = Fixture(); defer { f.remove() }

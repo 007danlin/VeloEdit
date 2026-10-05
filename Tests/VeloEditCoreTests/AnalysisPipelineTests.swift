@@ -74,9 +74,9 @@ import Testing
     let vlmKey = FrameCacheKey(sourceFile: "source", timestamp: 1.25, resolution: 960, processingPurpose: .vlm)
 
     try await cache.store(sample, for: decodeKey)
-    #expect(await cache.value(for: vlmKey) == sample)
+    #expect(await cache.value(for: vlmKey) == sample.withMotion(0))
     await cache.removeMemoryEntries()
-    #expect(await cache.value(for: vlmKey) == sample)
+    #expect(await cache.value(for: vlmKey) == sample.withMotion(0))
 }
 
 @Test func sceneDetectorUsesVisualBoundariesAndAlwaysCoversTheClip() {
@@ -183,12 +183,13 @@ import Testing
 
 @Test func deeperAnalysisCanSatisfyALighterModeWithoutRerun() {
     let assetID = UUID()
-    let result = AnalysisResult(
+    var result = AnalysisResult(
         assetID: assetID,
         analyzedContentHash: "hash",
         candidates: [],
         completedDepth: .deep
     )
+    result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 12, evaluatedScenes: 12, modelAvailable: true)
     let fast = AIAnalysisProfile.resolve(mode: .fast, thermalState: .nominal)
     let balance = AIAnalysisProfile.resolve(mode: .balanced, thermalState: .nominal)
     let maximum = AIAnalysisProfile.resolve(mode: .maximum, thermalState: .nominal)

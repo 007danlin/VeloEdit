@@ -177,12 +177,22 @@ public struct EditorialCandidateMiner: Sendable {
         }
         var queues: [Int: [MiningSeed]] = [:]
         for i in result.indices {
-            guard let asset = byID[result[i].assetID], asset.kind == .video, !asset.missing else { continue }
+            guard let asset = byID[result[i].assetID], asset.kind == .video, !asset.missing, !asset.excluded,
+                  !result[i].warnings.contains(Self.completionMarker) else { continue }
             // Boundary confidence describes how certain the cut between two
             // analysis windows is; it is not a quality score for the footage
             // inside that window. Rejecting ordinary 0.35 windows previously
             // restricted long GoPro sources to their first ~48 seconds.
-            let scenes = (result[i].scenes ?? []).filter {
+            var investigated = (result[i].scenes ?? []).sorted { $0.startTime < $1.startTime }
+            var coveredEnd = 0.0
+            var gaps: [SceneAnalysis] = []
+            for scene in investigated {
+                if scene.startTime - coveredEnd >= 1 { gaps.append(.init(startTime: coveredEnd, endTime: scene.startTime)) }
+                coveredEnd = max(coveredEnd, scene.endTime)
+            }
+            if let end = asset.metadata.duration, end - coveredEnd >= 1 { gaps.append(.init(startTime: coveredEnd, endTime: end)) }
+            investigated += gaps
+            let scenes = investigated.filter {
                 $0.qualityScore >= 0.5 && $0.duration >= 1
             }.sorted { $0.startTime < $1.startTime }
             for scene in scenes {
@@ -217,6 +227,12 @@ public struct EditorialCandidateMiner: Sendable {
                     do {
                         let evidence = try await analyzer.analyze(candidate: candidate, asset: asset)
                         candidate.insights?.editorialEvidence = evidence
+                        if evidence.confidence >= 0.55 {
+                            let measuredQuality = evidence.samples.isEmpty
+                                ? (evidence.entryQuality + evidence.exitQuality) / 2
+                                : evidence.samples.reduce(0) { $0 + $1.quality } / Double(evidence.samples.count)
+                            candidate.insights?.bestTakeScore = measuredQuality
+                        }
                         if EditorialUnit(candidate: candidate).usableDuration >= 1 { result[i].candidates.append(candidate) }
                     } catch is CancellationError { throw CancellationError() }
                     catch {
@@ -228,7 +244,9 @@ public struct EditorialCandidateMiner: Sendable {
             }
             if !advanced { break }
         }
-        for i in result.indices where !failedAnalysisIndices.contains(i) && (cursors[i] ?? 0) == (queues[i]?.count ?? 0) {
+        for i in result.indices where byID[result[i].assetID] != nil && !failedAnalysisIndices.contains(i) && (cursors[i] ?? 0) == (queues[i]?.count ?? 0) {
+            guard let asset = byID[result[i].assetID], !asset.excluded, !asset.missing,
+                  asset.kind == .photo || (asset.metadata.duration ?? 0) > 0 else { continue }
             if !result[i].warnings.contains(Self.completionMarker) {
                 result[i].warnings.append(Self.completionMarker)
             }

@@ -280,7 +280,10 @@ private func directorFixture() -> ([MediaAsset], [AnalysisResult]) {
     let synchronized = MusicBeatSynchronizer().synchronize(timeline, to: track)
     #expect(synchronized.music?.structure?.sections.map(\.kind) == [.intro, .buildup, .drop, .chorus, .climax, .outro])
     #expect(synchronized.music?.structure?.beatInterval == 0.5)
-    #expect(synchronized.items.allSatisfy { $0.explanation.contains(where: { $0.contains("BPM") }) })
+    // A supplied BPM describes a grid, not measured beat confidence. Building
+    // the structure must not claim synchronization or trim uninspected footage.
+    #expect(synchronized.items == timeline.items)
+    #expect(synchronized.music?.structure?.analysisIsMeasured == false)
 }
 
 @Test func selfReviewRemovesAnUnjustifiedTechnicallyWeakShot() {

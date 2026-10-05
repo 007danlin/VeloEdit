@@ -58,7 +58,7 @@ for case,key,seconds,mood,vertical,subset,fresh in cases:
     d['preferences'].pop('chapterTitleReference',None)
     brief=dict(original.get('workspaceState',{}).get('directorBrief',{}));brief.update(requestedDuration=seconds,durationMode='exact',mood=mood,musicPolicy='match-video',sourceAudioPolicy='duck',titlePolicy='key-only')
     brief.pop('musicTrackID',None)
-    brief['canvasFormat']={'width':1080 if vertical else 1920,'height':1920 if vertical else 1080,'label':'9:16' if vertical else '16:9'}
+    brief['canvasFormat']={'width':1080 if vertical else 1920,'height':1920 if vertical else 1080,'label':'9:16' if vertical else '16:9','subjectAware':True,'safeAreasEnabled':True}
     brief['canvasFormatIsAutomatic']=False
     # Inspectable prompts are shared verbatim by both builds.
     prompt=f'Сделай фильм ровно {seconds} секунд. Настроение: '+{'dynamic':'динамичное','calm':'спокойное','cinematic':'киношное'}[mood]+f'. Формат: {"9:16" if vertical else "16:9"}. Музыка: подобрать под видео. Приглушить звук исходников до 20%. Титры: названия частей.'

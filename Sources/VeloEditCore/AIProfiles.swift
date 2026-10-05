@@ -19,10 +19,10 @@ public enum AIPowerMode: String, Codable, CaseIterable, Identifiable, Sendable, 
 
     public var shortDescription: String {
         switch self {
-        case .fast: return "Минимальная нагрузка и нагрев"
-        case .balanced: return "Лучший выбор для MacBook Air M4"
-        case .quality: return "Глубже анализирует лучшие моменты"
-        case .maximum: return "Максимум локального качества без спешки"
+        case .fast: return "2B · короткая выборка сцен · без proxy и анализа звука"
+        case .balanced: return "4B · ключевые сцены и пейзажи · анализ звука"
+        case .quality: return "8B · все кандидаты · подробный анализ · речь при доступности Speech"
+        case .maximum: return "Больше контекста кадров · независимая перепроверка важных сцен"
         }
     }
 }
@@ -32,20 +32,26 @@ public enum LocalAIRuntime: String, Codable, CaseIterable, Identifiable, Sendabl
     case mlx
     case ollama
 
+    // Keep decoding legacy MLX settings, but never offer a backend that is not shipped.
+    public static var allCases: [Self] { [.automatic, .ollama] }
+
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .automatic: return "Автоматически"
-        case .mlx: return "MLX (Apple Silicon)"
+        case .mlx: return "MLX (недоступен в этой сборке)"
         case .ollama: return "Ollama"
         }
     }
 }
 
 public enum AIQuantization: String, Codable, CaseIterable, Identifiable, Sendable {
+    case modelProvided = "Из установленной модели"
     case q4 = "4-bit"
     case q8 = "8-bit"
     case fp16 = "16-bit"
+
+    public static var allCases: [Self] { [.modelProvided] }
 
     public var id: String { rawValue }
 }
@@ -113,11 +119,10 @@ public struct AIAnalysisProfile: Hashable, Sendable {
     public let aiConcurrency: Int
     public let thinkingEnabled: Bool
 
-    public var modelID: String { runtime == .mlx ? mlxModelID : ollamaModelID }
+    public var modelID: String { ollamaModelID }
+    public static let cacheVersion = "pipeline-v8-ai-evidence"
     public var cacheKey: String {
-        // Thermal throttling may temporarily reduce sampling depth, but should
-        // not make a completed analysis look stale as the Mac cools down.
-        ["pipeline-v6-structured-vision", mode.rawValue, runtime.rawValue, modelID, quantization.rawValue].joined(separator: ":")
+        [Self.cacheVersion, mode.rawValue, "ollama", modelID].joined(separator: ":")
     }
 
     /// Modes differ by work performed, not only by frame density.
@@ -160,8 +165,10 @@ public struct AIAnalysisProfile: Hashable, Sendable {
         switch mode {
         case .fast: return 2
         case .balanced: return 3
-        case .quality: return 4
-        case .maximum: return 3
+        // Preserve 8/12 images per scene by making smaller batches, not by
+        // silently discarding half the scheduled images.
+        case .quality: return 2
+        case .maximum: return 1
         }
     }
 
@@ -186,6 +193,12 @@ public struct AIAnalysisProfile: Hashable, Sendable {
         }
     }
 
+    /// Image encoding happens before the first token. It needs its own budget;
+    /// the old 45/90-second total budget discarded healthy cold inference.
+    public func vlmPrefillTimeout(imageCount: Int) -> TimeInterval {
+        max(vlmTimeout, 60 + Double(max(1, imageCount)) * 20)
+    }
+
     public var sceneSensitivity: Double {
         switch mode {
         case .fast: return 0.58
@@ -196,11 +209,10 @@ public struct AIAnalysisProfile: Hashable, Sendable {
     }
 
     public var rechecksImportantScenes: Bool { mode == .maximum }
-    public var comparesAcrossVideos: Bool { mode == .maximum }
+    public var comparesAcrossVideos: Bool { true }
 
     public var summary: String {
-        let runtimeName = runtime == .mlx ? "MLX" : runtime == .ollama ? "Ollama" : "MLX/Ollama"
-        return "\(runtimeName) · \(modelID) · \(quantization.rawValue)"
+        "Ollama · \(modelID) · битность из установленной модели"
     }
 
     public var estimatedDownloadSize: String {
@@ -231,17 +243,17 @@ public struct AIAnalysisProfile: Hashable, Sendable {
             // a base MacBook Air. Falling back here prevents memory pressure
             // and swap from making the nominally "maximum" mode worse.
             let canUse30B = physicalMemory >= 32 * 1_073_741_824
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: canUse30B ? "qwen3-vl:30b-a3b-instruct" : "qwen3-vl:8b-instruct", mlxModelID: canUse30B ? "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit" : "mlx-community/Qwen3-VL-8B-Instruct-8bit", quantization: canUse30B ? .q4 : .q8, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: canUse30B ? "qwen3-vl:30b-a3b-instruct" : "qwen3-vl:8b-instruct", mlxModelID: "", quantization: .q4, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
         }
 
         var result = base
         if advanced.enabled {
             result = AIAnalysisProfile(
                 mode: mode,
-                runtime: advanced.runtime,
-                ollamaModelID: advanced.modelID.isEmpty ? base.ollamaModelID : advanced.modelID,
-                mlxModelID: advanced.modelID.isEmpty ? base.mlxModelID : advanced.modelID,
-                quantization: advanced.quantization,
+                runtime: advanced.runtime == .mlx ? .ollama : advanced.runtime,
+                ollamaModelID: advanced.modelID.isEmpty || (advanced.runtime == .mlx && advanced.modelID.contains("/")) ? base.ollamaModelID : advanced.modelID,
+                mlxModelID: "",
+                quantization: .modelProvided,
                 proxyLongEdge: base.proxyLongEdge,
                 coarseInterval: base.coarseInterval,
                 denseInterval: base.denseInterval,
@@ -255,17 +267,15 @@ public struct AIAnalysisProfile: Hashable, Sendable {
         }
 
         if lowPowerMode || thermalState == .serious || thermalState == .critical {
-            let divisor = thermalState == .critical ? 3.0 : thermalState == .serious ? 1.7 : 1.5
             result = AIAnalysisProfile(
                 mode: result.mode, runtime: result.runtime,
                 ollamaModelID: result.ollamaModelID, mlxModelID: result.mlxModelID,
-                quantization: result.quantization, proxyLongEdge: min(result.proxyLongEdge, 720),
-                coarseInterval: result.coarseInterval * divisor,
-                denseInterval: result.denseInterval * divisor,
-                maximumCoarseFrames: max(16, result.maximumCoarseFrames / Int(divisor.rounded(.up))),
-                maximumDeepCandidates: max(2, result.maximumDeepCandidates / Int(divisor.rounded(.up))),
-                framesPerCandidate: max(2, result.framesPerCandidate / Int(divisor.rounded(.up))),
-                mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false
+                quantization: result.quantization, proxyLongEdge: result.proxyLongEdge,
+                coarseInterval: result.coarseInterval, denseInterval: result.denseInterval,
+                maximumCoarseFrames: result.maximumCoarseFrames,
+                maximumDeepCandidates: result.maximumDeepCandidates,
+                framesPerCandidate: result.framesPerCandidate,
+                mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: result.thinkingEnabled
             )
         }
         return result

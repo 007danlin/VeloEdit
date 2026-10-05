@@ -1,0 +1,92 @@
+[
+  {
+    "name": "1231",
+    "path": "/Users/daniellineckij/Downloads/1231.veloedit",
+    "assets": 5,
+    "missingFiles": [],
+    "timelines": 1,
+    "job": "completed",
+    "generationStatus": null,
+    "duration": 60.0
+  },
+  {
+    "name": "тест в универе",
+    "path": "/Users/daniellineckij/Downloads/тест в универе.veloedit",
+    "assets": 5,
+    "missingFiles": [],
+    "timelines": 2,
+    "job": "completed",
+    "generationStatus": null,
+    "duration": 120.0
+  },
+  {
+    "name": "тест 123",
+    "path": "/Users/daniellineckij/Downloads/тест 123.veloedit",
+    "assets": 8,
+    "missingFiles": [],
+    "timelines": 1,
+    "job": "completed",
+    "generationStatus": null,
+    "duration": 300.00000000000006
+  },
+  {
+    "name": "Покатушки",
+    "path": "/Users/daniellineckij/Downloads/Покатушки.veloedit",
+    "assets": 8,
+    "missingFiles": [],
+    "timelines": 0,
+    "job": "cancelled",
+    "generationStatus": null,
+    "duration": null
+  },
+  {
+    "name": "тест 9",
+    "path": "/Users/daniellineckij/Downloads/тест 9.veloedit",
+    "assets": 3,
+    "missingFiles": [],
+    "timelines": 1,
+    "job": "completed",
+    "generationStatus": null,
+    "duration": 71.76666666666665
+  },
+  {
+    "name": "тест 8",
+    "path": "/Users/daniellineckij/Downloads/тест 8.veloedit",
+    "assets": 5,
+    "missingFiles": [],
+    "timelines": 0,
+    "job": "queued",
+    "generationStatus": null,
+    "duration": null
+  },
+  {
+    "name": "тест 5",
+    "path": "/Users/daniellineckij/Downloads/тест 5.veloedit",
+    "assets": 12,
+    "missingFiles": [],
+    "timelines": 1,
+    "job": null,
+    "generationStatus": null,
+    "duration": 299.9999999999998
+  },
+  {
+    "name": "тест 7",
+    "path": "/Users/daniellineckij/Downloads/тест 7.veloedit",
+    "assets": 13,
+    "missingFiles": [],
+    "timelines": 2,
+    "job": null,
+    "generationStatus": null,
+    "duration": 300.0
+  },
+  {
+    "name": "тест 4",
+    "path": "/Users/daniellineckij/Downloads/тест 4.veloedit",
+    "assets": 4,
+    "missingFiles": [],
+    "timelines": 2,
+    "job": "queued",
+    "generationStatus": null,
+    "duration": 43.051957446532406
+  }
+]

@@ -34,6 +34,10 @@ public enum SourceAudioMixPolicy {
         timeline.originalAudioVolume = volume
         if volume < 1 {
             timeline.audioDucking = AudioDuckingSettings(enabled: false)
+            if var plan = timeline.adaptiveSoundtrack {
+                for index in plan.segments.indices { plan.segments[index].duckingEnabled = false }
+                timeline.adaptiveSoundtrack = plan
+            }
             for index in timeline.items.indices where timeline.items[index].kind == .video {
                 var audio = timeline.items[index].effectiveAudioAdjustments
                 audio.volume = min(1, audio.volume)

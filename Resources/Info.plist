@@ -39,6 +39,8 @@
 	<string>2</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

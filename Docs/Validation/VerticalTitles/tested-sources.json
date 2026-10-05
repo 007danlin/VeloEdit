@@ -1,0 +1,22 @@
+[
+  {
+    "path": "Sources/VeloEditCore/AdaptiveTitleBackground.swift",
+    "sha256": "79677b4d976ccf83dc9cad7a301f8bf5270c5d513c61ca2d47f50655442f89ef"
+  },
+  {
+    "path": "Sources/VeloEditCore/AdaptiveTitleLayout.swift",
+    "sha256": "32bb12febd8ff8512fcb386b08298714f7f301551b7b4c8943f5fd170d8956e0"
+  },
+  {
+    "path": "Sources/VeloEditCore/PortraitTitleTemplates.swift",
+    "sha256": "e4a997a17a78d50a6447657ab7a1242b66470a3b056fde61496542f1ebe1ec38"
+  },
+  {
+    "path": "Sources/VeloEditCore/TitleOverlayRenderer.swift",
+    "sha256": "9d7fa2689b30fedb0f5c545bb31d600755529b9e311b2d04f3d2b46bb44b9ac9"
+  },
+  {
+    "path": "Sources/VeloEditCore/TitleTemplates.swift",
+    "sha256": "f30ed412bd441628e75300eb0a51ebc9bcd0dac4263a016ba1626e0a991890ac"
+  }
+]

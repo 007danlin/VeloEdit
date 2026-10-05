@@ -66,12 +66,14 @@ public enum TransitionEffectRenderer {
             case .softFocus:
                 let softened = gaussianBlur(image, radius: 18 * amount, extent: extent)
                 image = withOpacity(softened, amount * 0.58).composited(over: image).cropped(to: extent)
-            case .zoomBlur, .radialBlur:
-                let radius = max(1, effect.parameterValue("radius", at: timelineTime)) * amount
+            case .zoomBlur:
+                let radius = max(0, effect.parameterValue("radius", at: timelineTime)) * amount
                 image = image.clampedToExtent().applyingFilter("CIZoomBlur", parameters: [
                     kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY),
-                    kCIInputAmountKey: effect.effectType == .radialBlur ? radius * 0.62 : radius
+                    kCIInputAmountKey: radius
                 ]).cropped(to: extent)
+            case .radialBlur:
+                image = rotationalBlur(image, angle: effect.parameterValue("radius", at: timelineTime) * amount * .pi / 720, extent: extent)
             case .directionalBlur:
                 let angle = effect.parameterValue("angle", at: timelineTime)
                 image = image.clampedToExtent()
@@ -190,15 +192,13 @@ public enum TransitionEffectRenderer {
                     kCIInputScaleKey: scale
                 ]).cropped(to: extent)
             case .glitch:
-                let progress = localProgress(effect, timelineTime: timelineTime)
-                let jitter = sin(progress * .pi * 18) * amount
-                image = rgbSplit(image, amount: amount * 0.8, extent: extent)
-                    .transformed(by: CGAffineTransform(translationX: jitter * extent.width * 0.025, y: 0))
-                    .cropped(to: extent)
+                image = digitalGlitch(image, alternate: nil, amount: amount,
+                    tick: floor(max(0, timelineTime - effect.startTime) * effect.parameterValue("frequency", at: timelineTime)),
+                    blocks: false, extent: extent)
             case .scanlines:
                 image = scanlines(over: image, amount: amount, scale: max(2, effect.parameterValue("scale", at: timelineTime)), extent: extent)
             case .pixelate:
-                image = image.applyingFilter("CIPixellate", parameters: [
+                image = image.clampedToExtent().applyingFilter("CIPixellate", parameters: [
                     kCIInputCenterKey: CIVector(x: extent.midX, y: extent.midY),
                     kCIInputScaleKey: 2 + amount * 38
                 ]).cropped(to: extent)
@@ -215,7 +215,7 @@ public enum TransitionEffectRenderer {
                 let progress = localProgress(effect, timelineTime: timelineTime)
                 let jitter = sin(progress * .pi * 22) * amount * extent.width * 0.012
                 image = rgbSplit(image, amount: amount * 0.46, extent: extent)
-                    .transformed(by: CGAffineTransform(translationX: jitter, y: 0)).cropped(to: extent)
+                    .clampedToExtent().transformed(by: CGAffineTransform(translationX: jitter, y: 0)).cropped(to: extent)
                 image = scanlines(over: image, amount: amount * 0.72, scale: 6, extent: extent)
             case .lightLeak, .filmBurn:
                 let progress = localProgress(effect, timelineTime: timelineTime)
@@ -261,35 +261,41 @@ public enum TransitionEffectRenderer {
                 transform = zoomed(transform, scale: 1 + CGFloat(amount * (1 - progress) * 0.42), renderSize: renderSize)
             case .pan:
                 let direction = effect.parameterValue("direction", at: timelineTime) >= 0 ? 1.0 : -1.0
-                transform = transform.concatenating(CGAffineTransform(translationX: renderSize.width * CGFloat(direction * amount * (progress - 0.5) * 0.18), y: 0))
+                transform = zoomed(transform, scale: 1 + CGFloat(amount * 0.18), renderSize: renderSize)
+                    .concatenating(CGAffineTransform(translationX: renderSize.width * CGFloat(direction * amount * (progress - 0.5) * 0.18), y: 0))
             case .cameraDrift:
                 let direction = effect.parameterValue("direction", at: timelineTime) >= 0 ? 1.0 : -1.0
                 let x = sin(progress * .pi) * direction * amount * Double(renderSize.width) * 0.025
                 let y = cos(progress * .pi * 0.7) * amount * Double(renderSize.height) * 0.012
-                transform = zoomed(transform, scale: 1 + CGFloat(amount * 0.025), renderSize: renderSize)
+                transform = zoomed(transform, scale: 1 + CGFloat(amount * 0.052), renderSize: renderSize)
                     .concatenating(CGAffineTransform(translationX: x, y: y))
             case .shake:
                 let cycles = effect.parameterValue("frequency", at: timelineTime) == 0 ? 13 : effect.parameterValue("frequency", at: timelineTime)
-                let amplitude = max(0.05, effect.parameterValue("amplitude", at: timelineTime))
+                let amplitude = max(0, effect.parameterValue("amplitude", at: timelineTime))
                 let x = sin(progress * .pi * 2 * cycles) * amount * amplitude * Double(renderSize.width) * 0.028
                 let y = cos(progress * .pi * 2 * cycles * 1.37) * amount * amplitude * Double(renderSize.height) * 0.028
-                transform = transform.concatenating(CGAffineTransform(translationX: x, y: y))
+                transform = zoomed(transform, scale: 1 + CGFloat(amount * amplitude * 0.058), renderSize: renderSize)
+                    .concatenating(CGAffineTransform(translationX: x, y: y))
             case .handheld:
                 let cycles = max(2, effect.parameterValue("frequency", at: timelineTime))
-                let amplitude = max(0.04, effect.parameterValue("amplitude", at: timelineTime))
+                let amplitude = max(0, effect.parameterValue("amplitude", at: timelineTime))
                 let x = sin(progress * .pi * 2 * cycles) * amount * amplitude * Double(renderSize.width) * 0.018
                 let y = cos(progress * .pi * 2 * cycles * 0.83) * amount * amplitude * Double(renderSize.height) * 0.015
-                transform = transform.concatenating(CGAffineTransform(translationX: x, y: y))
+                transform = zoomed(transform, scale: 1 + CGFloat(amount * amplitude * 0.038), renderSize: renderSize)
+                    .concatenating(CGAffineTransform(translationX: x, y: y))
             case .spin:
-                let angle = CGFloat(effect.parameterValue("rotation", at: timelineTime) * .pi / 180)
-                    + CGFloat(progress * amount * .pi * 0.35)
-                transform = centeredTransform(transform, anchorX: 0.5, anchorY: 0.5, scaleX: 1, scaleY: 1, rotation: angle, x: 0, y: 0, renderSize: renderSize)
+                // The inspector's rotation is applied once with the other
+                // transform parameters below.
+                let angle = CGFloat(progress * amount * .pi * 0.35)
+                let aspect = renderSize.width / max(1, renderSize.height)
+                let coverage = abs(cos(angle)) + abs(sin(angle)) * max(aspect, 1 / aspect)
+                transform = centeredTransform(transform, anchorX: 0.5, anchorY: 0.5, scaleX: coverage, scaleY: coverage, rotation: angle, x: 0, y: 0, renderSize: renderSize)
             case .kenBurns:
-                transform = zoomed(transform, scale: 1 + CGFloat(amount * progress * 0.16), renderSize: renderSize)
+                transform = zoomed(transform, scale: 1 + CGFloat(amount * (0.04 + progress * 0.16)), renderSize: renderSize)
                     .concatenating(CGAffineTransform(translationX: CGFloat(progress - 0.5) * renderSize.width * 0.04 * CGFloat(amount), y: 0))
             case .parallaxMotion:
                 let direction = effect.parameterValue("direction", at: timelineTime) >= 0 ? 1.0 : -1.0
-                transform = zoomed(transform, scale: 1 + CGFloat(amount * 0.035), renderSize: renderSize)
+                transform = zoomed(transform, scale: 1 + CGFloat(amount * 0.122), renderSize: renderSize)
                     .concatenating(CGAffineTransform(translationX: CGFloat(direction * (progress - 0.5) * amount) * renderSize.width * 0.12, y: CGFloat(sin(progress * .pi) * amount) * renderSize.height * 0.02))
             default:
                 break
@@ -361,32 +367,35 @@ public enum TransitionEffectRenderer {
 
         switch style {
         case .blurDissolve, .lensBlur:
-            let radius = (style == .lensBlur ? 48.0 : 32.0) * peak * max(0.2, item.parameterValue("blur")) * intensity
+            let radius = (style == .lensBlur ? 48.0 : 32.0) * peak * item.parameterValue("blur") * intensity
             outgoingImage = gaussianBlur(outgoingImage, radius: radius, extent: bounds)
             incomingImage = gaussianBlur(incomingImage, radius: radius, extent: bounds)
         case .filmDissolve:
             outgoingImage = grain(over: outgoingImage, amount: 0.12 * peak * intensity, dust: false, extent: bounds)
             incomingImage = grain(over: incomingImage, amount: 0.12 * peak * intensity, dust: false, extent: bounds)
-        case .glitch, .rgbSplit, .digitalDistortion:
-            let amount = peak * intensity * max(0.2, item.parameterValue("amount"))
+        case .glitch, .digitalDistortion:
+            let amount = sin(progress * .pi) * intensity * item.parameterValue("amount")
+            // A digital break switches shots in a burst of displaced scan
+            // bands/blocks. A dissolve with channel offsets is RGB Split.
+            return digitalGlitch(progress < 0.5 ? outgoingImage : incomingImage,
+                alternate: peak > 0.5 ? (progress < 0.5 ? incomingImage : outgoingImage) : nil,
+                amount: amount, tick: floor(progress * item.parameterValue("frequency")),
+                blocks: style == .digitalDistortion, extent: bounds)
+        case .rgbSplit:
+            let amount = peak * intensity * item.parameterValue("amount")
             outgoingImage = rgbSplit(outgoingImage, amount: amount, extent: bounds)
             incomingImage = rgbSplit(incomingImage, amount: amount, extent: bounds)
-            if style != .rgbSplit {
-                let offset = sin(progress * .pi * max(4, item.parameterValue("frequency"))) * amount * bounds.width * 0.035
-                incomingImage = incomingImage.transformed(by: CGAffineTransform(translationX: offset, y: 0)).cropped(to: bounds)
-            }
         case .pixelate:
-            let scale = 2 + peak * intensity * 72
-            outgoingImage = outgoingImage.applyingFilter("CIPixellate", parameters: [kCIInputScaleKey: scale]).cropped(to: bounds)
-            incomingImage = incomingImage.applyingFilter("CIPixellate", parameters: [kCIInputScaleKey: scale]).cropped(to: bounds)
+            let scale = max(1, peak * intensity * item.parameterValue("amount") * min(bounds.width, bounds.height) * 0.18)
+            outgoingImage = outgoingImage.clampedToExtent().applyingFilter("CIPixellate", parameters: [kCIInputScaleKey: scale]).cropped(to: bounds)
+            incomingImage = incomingImage.clampedToExtent().applyingFilter("CIPixellate", parameters: [kCIInputScaleKey: scale]).cropped(to: bounds)
         case .ripple, .wave:
-            let radius = min(bounds.width, bounds.height) * (0.18 + progress * 0.74)
-            let scale = sin(progress * .pi) * intensity * (style == .wave ? 0.35 : 0.62)
-            incomingImage = incomingImage.clampedToExtent().applyingFilter("CIBumpDistortion", parameters: [
-                kCIInputCenterKey: CIVector(x: bounds.midX, y: bounds.midY),
-                kCIInputRadiusKey: radius,
-                kCIInputScaleKey: scale
-            ]).cropped(to: bounds)
+            let amplitude = sin(progress * .pi) * intensity * item.parameterValue("amount") * min(bounds.width, bounds.height) * 0.08
+            outgoingImage = waveDistortion(outgoingImage, amplitude: amplitude, progress: progress, frequency: item.parameterValue("frequency"), radial: style == .ripple, bounds: bounds)
+            incomingImage = waveDistortion(incomingImage, amplitude: amplitude, progress: progress, frequency: item.parameterValue("frequency"), radial: style == .ripple, bounds: bounds)
+        case .shatter:
+            return shattered(outgoingImage, over: incomingImage, progress: eased,
+                amount: intensity * item.parameterValue("amount"), bounds: bounds)
         default:
             break
         }
@@ -399,10 +408,16 @@ public enum TransitionEffectRenderer {
         }
 
         if isDirectional(style) || isMotion(style) {
-            let outgoingTransform = transitionTransform(style: style, direction: item.effectiveDirection, incoming: false, progress: eased, intensity: intensity, bounds: bounds)
-            let incomingTransform = transitionTransform(style: style, direction: item.effectiveDirection, incoming: true, progress: eased, intensity: intensity, bounds: bounds)
-            outgoingImage = outgoingImage.transformed(by: outgoingTransform).cropped(to: bounds)
-            incomingImage = incomingImage.transformed(by: incomingTransform).cropped(to: bounds)
+            let strength = intensity * item.parameterValue("scale") * 2
+            let outgoingTransform = transitionTransform(style: style, direction: item.effectiveDirection, incoming: false, progress: eased, intensity: strength, bounds: bounds)
+            let incomingTransform = transitionTransform(style: style, direction: item.effectiveDirection, incoming: true, progress: eased, intensity: strength, bounds: bounds)
+            // Zoom/rotation sample beyond the source rectangle. Extend those
+            // edges, while push/slide retain their complementary rectangles.
+            let extendEdges = isMotion(style) && !style.rawValue.hasPrefix("whip")
+            // The outgoing panel also backs the subpixel seam between push
+            // panels; source-over of two antialiased edges otherwise dips alpha.
+            outgoingImage = outgoingImage.clampedToExtent().transformed(by: outgoingTransform).cropped(to: bounds)
+            incomingImage = (extendEdges ? incomingImage.clampedToExtent() : incomingImage).transformed(by: incomingTransform).cropped(to: bounds)
         }
 
         let opacity: Double
@@ -444,11 +459,23 @@ public enum TransitionEffectRenderer {
         case .lightLeak, .filmBurn:
             let overlay = warmLightOverlay(extent: bounds, progress: progress, amount: peak * intensity, burn: style == .filmBurn)
             result = overlay.applyingFilter("CIScreenBlendMode", parameters: [kCIInputBackgroundImageKey: result]).cropped(to: bounds)
-        case .shatter:
-            let cells = incomingImage.applyingFilter("CICrystallize", parameters: [kCIInputRadiusKey: max(2, (1 - peak) * 24 + 3)]).cropped(to: bounds)
-            result = withOpacity(cells, eased).composited(over: outgoingImage)
         default:
             break
+        }
+        if isMotion(style), item.parameterValue("motionBlur") > 0 {
+            let radius = peak * intensity * item.parameterValue("motionBlur") * min(bounds.width, bounds.height) * 0.09
+            if style.rawValue.hasPrefix("whip") {
+                let vertical = style == .whipUp || style == .whipDown
+                result = result.clampedToExtent().applyingFilter("CIMotionBlur", parameters: [
+                    kCIInputRadiusKey: radius, kCIInputAngleKey: vertical ? Double.pi / 2 : 0
+                ])
+            } else if style == .spin {
+                result = rotationalBlur(result, angle: radius / max(bounds.width, bounds.height), extent: bounds)
+            } else {
+                result = result.clampedToExtent().applyingFilter("CIZoomBlur", parameters: [
+                    kCIInputCenterKey: CIVector(x: bounds.midX, y: bounds.midY), kCIInputAmountKey: radius * 0.6
+                ])
+            }
         }
         return result.cropped(to: bounds)
     }
@@ -535,17 +562,9 @@ public enum TransitionEffectRenderer {
     private static func previewEffectSource(bounds: CGRect) -> CIImage {
         guard let effectPreviewPhoto else {
             // Keep previews functional in test hosts and damaged app bundles
-            // where Bundle.main cannot provide the packaged photograph.
-            let base = CIImage(color: CIColor(red: 0.12, green: 0.42, blue: 0.78, alpha: 1))
-                .cropped(to: bounds)
-            let accent = CIImage(color: CIColor(red: 0.34, green: 0.82, blue: 0.38, alpha: 1))
-                .cropped(to: CGRect(
-                    x: bounds.minX,
-                    y: bounds.minY,
-                    width: bounds.width,
-                    height: bounds.height * 0.36
-                ))
-            return accent.composited(over: base).cropped(to: bounds)
+            // where Bundle.main cannot provide the packaged photograph. Use
+            // detail on both axes so horizontal tears/pans remain visible.
+            return previewSources(bounds: bounds).0
         }
         return aspectFilled(effectPreviewPhoto, into: bounds)
     }
@@ -590,13 +609,14 @@ public enum TransitionEffectRenderer {
             switch style {
             case .wipeLeft: rect = CGRect(x: bounds.maxX - bounds.width * progress, y: bounds.minY, width: bounds.width * progress, height: bounds.height)
             case .wipeRight: rect = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width * progress, height: bounds.height)
-            case .wipeUp: rect = CGRect(x: bounds.minX, y: bounds.maxY - bounds.height * progress, width: bounds.width, height: bounds.height * progress)
-            default: rect = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height * progress)
+            case .wipeUp: rect = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: bounds.height * progress)
+            default: rect = CGRect(x: bounds.minX, y: bounds.maxY - bounds.height * progress, width: bounds.width, height: bounds.height * progress)
             }
-            return CIImage(color: .white).cropped(to: rect).composited(over: CIImage(color: .black).cropped(to: bounds)).cropped(to: bounds)
-        case .circle, .iris, .radial, .maskReveal:
+            let mask = CIImage(color: .white).cropped(to: rect).composited(over: CIImage(color: .black).cropped(to: bounds)).cropped(to: bounds)
+            return gaussianBlur(mask, radius: item.parameterValue("softness") * 12, extent: bounds)
+        case .circle:
             let diagonal = hypot(bounds.width, bounds.height)
-            let radius = diagonal * progress * (style == .iris ? 0.72 : 0.62)
+            let radius = diagonal * 0.5 * progress
             guard let filter = CIFilter(name: "CIRadialGradient") else { return nil }
             filter.setValue(CIVector(x: bounds.midX, y: bounds.midY), forKey: "inputCenter")
             filter.setValue(max(0, radius - softness), forKey: "inputRadius0")
@@ -604,11 +624,11 @@ public enum TransitionEffectRenderer {
             filter.setValue(CIColor.white, forKey: "inputColor0")
             filter.setValue(CIColor.black, forKey: "inputColor1")
             return filter.outputImage?.cropped(to: bounds)
-        case .geometricWipe, .shatter:
-            let width = bounds.width * progress
-            let offset = bounds.height * 0.32
-            let rect = CGRect(x: bounds.minX - offset + width, y: bounds.minY, width: width + offset, height: bounds.height)
-            return CIImage(color: .white).cropped(to: rect).composited(over: CIImage(color: .black).cropped(to: bounds)).cropped(to: bounds)
+        case .iris, .radial, .geometricWipe, .maskReveal:
+            let mode: Double = style == .iris ? 0 : style == .radial ? 1 : style == .geometricWipe ? 2 : 3
+            return shapeMaskKernel?.apply(extent: bounds, arguments: [
+                CIVector(cgRect: bounds), progress, softness, item.parameterValue("rotation") * .pi / 180, mode
+            ])
         default:
             return nil
         }
@@ -642,14 +662,16 @@ public enum TransitionEffectRenderer {
         case .slideDown:
             return CGAffineTransform(translationX: 0, y: incoming ? height * (1 - progress) : 0)
         case .zoom, .zoomIn, .cameraPush:
-            let scale = incoming ? 1.20 - progress * 0.20 : 1 - progress * 0.08 * intensity
+            let strength = (style == .cameraPush ? 0.10 : 0.32) * intensity
+            let scale = incoming ? 1 + (1 - progress) * strength : 1 + progress * strength
             return centeredScale(scale, bounds: bounds)
         case .zoomOut, .cameraPull:
-            let scale = incoming ? 0.78 + progress * 0.22 : 1 + progress * 0.12 * intensity
+            let strength = (style == .cameraPull ? 0.10 : 0.32) * intensity
+            let scale = incoming ? 1 - (1 - progress) * strength : 1 - progress * strength
             return centeredScale(scale, bounds: bounds)
         case .spin:
             let angle = CGFloat((incoming ? 1 - progress : -progress) * .pi * intensity)
-            let scale = incoming ? 0.72 + progress * 0.28 : 1 - progress * 0.12
+            let scale = 1 + sin(progress * .pi) * intensity * 0.22
             return CGAffineTransform(translationX: bounds.midX, y: bounds.midY)
                 .rotated(by: angle)
                 .scaledBy(x: scale, y: scale)
@@ -740,19 +762,150 @@ public enum TransitionEffectRenderer {
             .cropped(to: extent)
     }
 
+    // Kernels use output coordinates, so portrait and offset render bounds
+    // behave the same as landscape. All time variation is deterministic.
+    private static let waveKernel = CIWarpKernel(source: """
+        kernel vec2 waveWarp(vec4 bounds, float amplitude, float phase, float frequency, float radial) {
+            vec2 p = destCoord();
+            vec2 q = (p - bounds.xy - bounds.zw * 0.5) / min(bounds.z, bounds.w);
+            float r = length(q);
+            vec2 axis = radial > 0.5 ? q / max(r, 0.0001) : vec2(1.0, 0.0);
+            float coordinate = radial > 0.5 ? r : q.y;
+            return p + axis * sin(coordinate * frequency * 6.283185 - phase * 12.56637) * amplitude;
+        }
+        """)
+
+    private static let shapeMaskKernel = CIColorKernel(source: """
+        kernel vec4 reveal(vec4 bounds, float progress, float softness, float rotation, float mode) {
+            vec2 p = destCoord() - bounds.xy - bounds.zw * 0.5;
+            float c = cos(rotation), s = sin(rotation);
+            vec2 q = vec2(c * p.x + s * p.y, -s * p.x + c * p.y);
+            float edge = 0.0;
+            if (mode < 0.5) {
+                float sector = mod(atan(q.y, q.x) + 3.141593, 1.047198) - 0.523599;
+                float radius = length(bounds.zw) * 0.58 * progress;
+                edge = radius * 0.866025 / cos(sector) - length(q);
+            } else if (mode < 1.5) {
+                float angle = mod(atan(q.x, q.y) + 6.283185, 6.283185);
+                edge = (progress * 6.283185 - angle) * max(1.0, length(q));
+            } else {
+                vec2 axis = mode < 2.5 ? vec2(0.866025, 0.5) : vec2(1.0, 0.0);
+                vec2 rotatedAxis = vec2(c * axis.x - s * axis.y, s * axis.x + c * axis.y);
+                float reach = dot(abs(rotatedAxis), bounds.zw) * 0.5;
+                edge = (progress * 2.0 - 1.0) * (reach + softness) - dot(q, axis);
+            }
+            float v = smoothstep(-softness, softness, edge);
+            return vec4(v, v, v, 1.0);
+        }
+        """)
+
+    private static let shardMaskKernel = CIColorKernel(source: """
+        kernel vec4 shard(vec4 tile, float side) {
+            vec2 uv = (destCoord() - tile.xy) / tile.zw;
+            float v = step(uv.x, uv.y);
+            v = side < 0.5 ? v : 1.0 - v;
+            return vec4(v, v, v, 1.0);
+        }
+        """)
+
+    private static func waveDistortion(_ image: CIImage, amplitude: Double, progress: Double,
+                                      frequency: Double, radial: Bool, bounds: CGRect) -> CIImage {
+        guard amplitude > 0.0001 else { return image }
+        return waveKernel?.apply(extent: bounds,
+            roiCallback: { _, rect in rect.insetBy(dx: -amplitude - 1, dy: -amplitude - 1) },
+            image: image.clampedToExtent(),
+            arguments: [CIVector(cgRect: bounds), amplitude, progress, frequency, radial ? 1.0 : 0.0]) ?? image
+    }
+
+    private static func noiseValue(_ seed: Double) -> Double {
+        let value = sin(seed * 12.9898 + 78.233) * 43_758.5453
+        return value - floor(value)
+    }
+
+    private static func digitalGlitch(_ image: CIImage, alternate: CIImage?, amount: Double,
+                                     tick: Double, blocks: Bool, extent: CGRect) -> CIImage {
+        guard amount > 0.000_001 else { return image.cropped(to: extent) }
+        var result = rgbSplit(image, amount: amount * (blocks ? 0.4 : 1.2), extent: extent)
+        let count = blocks ? 22 : 18
+        for index in 0..<count {
+            let seed = tick * 37 + Double(index) * 11
+            guard noiseValue(seed) > 0.38 else { continue }
+            let bandHeight = extent.height / Double(count)
+            let y = extent.minY + Double(index) * bandHeight
+            let width = blocks ? extent.width * (0.12 + noiseValue(seed + 3) * 0.42) : extent.width
+            let x = extent.minX + (blocks ? noiseValue(seed + 4) * (extent.width - width) : 0)
+            let rect = CGRect(x: x, y: y, width: width, height: bandHeight * (blocks ? 2.4 : 0.72)).intersection(extent)
+            let shift = (noiseValue(seed + 1) * 2 - 1) * amount * extent.width * (blocks ? 0.32 : 0.22)
+            let source = noiseValue(seed + 2) > 0.70 ? alternate ?? image : image
+            var band = source.clampedToExtent().transformed(by: CGAffineTransform(translationX: shift, y: 0))
+            if blocks {
+                band = band.applyingFilter("CIPixellate", parameters: [kCIInputScaleKey: max(1, amount * extent.width * 0.035)])
+            } else {
+                band = rgbSplit(band.cropped(to: extent), amount: amount * 1.8, extent: extent)
+            }
+            result = band.cropped(to: rect).composited(over: result)
+        }
+        return result.cropped(to: extent)
+    }
+
+    private static func shattered(_ outgoing: CIImage, over incoming: CIImage, progress: Double,
+                                  amount: Double, bounds: CGRect) -> CIImage {
+        var result = incoming
+        for row in 0..<3 {
+            for column in 0..<5 {
+                let tile = CGRect(x: bounds.minX + Double(column) * bounds.width / 5,
+                    y: bounds.minY + Double(row) * bounds.height / 3, width: bounds.width / 5, height: bounds.height / 3)
+                for side in 0..<2 {
+                    let seed = Double(row * 10 + column * 2 + side)
+                    let delay = noiseValue(seed) * 0.16
+                    let phase = min(1, max(0, (progress - delay) / (1 - delay)))
+                    let motion = phase * phase
+                    guard let mask = shardMaskKernel?.apply(extent: tile, arguments: [CIVector(cgRect: tile), Double(side)]) else { continue }
+                    let piece = outgoing.cropped(to: tile).applyingFilter("CIBlendWithMask", parameters: [
+                        kCIInputBackgroundImageKey: CIImage.empty(), kCIInputMaskImageKey: mask
+                    ])
+                    let dx = (tile.midX - bounds.midX + (side == 0 ? -1 : 1) * bounds.width * 0.12) * motion * (1 + amount * 3)
+                    let dy = (tile.midY - bounds.midY) * motion * 2 - bounds.height * motion * amount
+                    let transform = CGAffineTransform(translationX: tile.midX + dx, y: tile.midY + dy)
+                        .rotated(by: (noiseValue(seed + 17) - 0.5) * motion * amount * 5)
+                        .translatedBy(x: -tile.midX, y: -tile.midY)
+                    result = withOpacity(piece.transformed(by: transform), 1 - smooth(phase)).composited(over: result)
+                }
+            }
+        }
+        return result.cropped(to: bounds)
+    }
+
+    private static func rotationalBlur(_ image: CIImage, angle: Double, extent: CGRect) -> CIImage {
+        guard angle > 0.000_001 else { return image.cropped(to: extent) }
+        let samples = 9
+        var result = CIImage(color: .clear).cropped(to: extent)
+        for index in 0..<samples {
+            let rotation = (Double(index) / Double(samples - 1) - 0.5) * angle
+            let transform = CGAffineTransform(translationX: extent.midX, y: extent.midY)
+                .rotated(by: rotation).translatedBy(x: -extent.midX, y: -extent.midY)
+            let sample = withOpacity(image.clampedToExtent().transformed(by: transform).cropped(to: extent), 1 / Double(samples))
+            result = sample.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: result])
+        }
+        return result.cropped(to: extent)
+    }
+
+    private static let rgbSplitKernel = CIColorKernel(source: """
+        kernel vec4 splitChannels(__sample red, __sample cyan, __sample original) {
+            vec4 r = unpremultiply(red);
+            vec4 c = unpremultiply(cyan);
+            return premultiply(vec4(r.r, c.g, c.b, original.a));
+        }
+        """)
+
     private static func rgbSplit(_ image: CIImage, amount: Double, extent: CGRect) -> CIImage {
-        let offset = max(0.5, amount * extent.width * 0.018)
-        let red = image.applyingFilter("CIColorMatrix", parameters: [
-            "inputRVector": CIVector(x: 1, y: 0, z: 0, w: 0),
-            "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-            "inputBVector": CIVector(x: 0, y: 0, z: 0, w: 0)
-        ]).transformed(by: CGAffineTransform(translationX: offset, y: 0))
-        let cyan = image.applyingFilter("CIColorMatrix", parameters: [
-            "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-            "inputGVector": CIVector(x: 0, y: 1, z: 0, w: 0),
-            "inputBVector": CIVector(x: 0, y: 0, z: 1, w: 0)
-        ]).transformed(by: CGAffineTransform(translationX: -offset, y: 0))
-        return red.applyingFilter("CIAdditionCompositing", parameters: [kCIInputBackgroundImageKey: cyan]).cropped(to: extent)
+        guard amount > 0.000_001 else { return image.cropped(to: extent) }
+        let offset = amount * extent.width * 0.018
+        let red = image.clampedToExtent().transformed(by: CGAffineTransform(translationX: offset, y: 0))
+        let cyan = image.clampedToExtent().transformed(by: CGAffineTransform(translationX: -offset, y: 0))
+        // Adding two opaque channel images creates alpha=2 in CI's floating
+        // pipeline. Later dissolves can then invert color or become transparent.
+        return rgbSplitKernel?.apply(extent: extent, arguments: [red, cyan, image]) ?? image.cropped(to: extent)
     }
 
     private static func grain(over image: CIImage, amount: Double, dust: Bool, extent: CGRect) -> CIImage {

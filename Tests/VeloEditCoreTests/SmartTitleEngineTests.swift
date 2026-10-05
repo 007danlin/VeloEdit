@@ -21,7 +21,7 @@ import Testing
         (["swimming"], "Плавание"),
         (["skiing"], "На склоне"),
         (["surfing"], "Сёрфинг"),
-        (["climbing"], "Скалолазание"),
+        (["climbing", "rock"], "Скалолазание"),
         (["horse riding"], "Конная прогулка")
     ]
     let decisions = scenarios.compactMap { tags, _ in
@@ -34,6 +34,24 @@ import Testing
         #expect(!SmartTitleEngine.isMeaningless(decision.primaryText))
         #expect(TitleTemplateRegistry.template(id: decision.templateID) != nil)
     }
+}
+
+@Test func automaticTitlesRequireSpecificWordsAndSupportedActivity() {
+    let engine = SmartTitleEngine()
+    let insufficient: [Set<String>] = [["research", "forest"], ["trail", "trees"], ["climber", "branch", "tree"],
+                                      ["scarf", "helmet"], ["season", "outdoor"]]
+    for tags in insufficient {
+        #expect(engine.contentConfirmedActivityTitle(tags: tags) == nil)
+    }
+    #expect(engine.contentConfirmedActivityTitle(tags: ["beach"])?.primaryText == "На пляже")
+    #expect(engine.contentConfirmedActivityTitle(tags: ["lake", "beach"])?.primaryText == "У озера")
+    #expect(engine.contentConfirmedActivityTitle(tags: ["sea", "beach"])?.primaryText == "У моря")
+    #expect(engine.contentConfirmedActivityTitle(tags: ["rock_climbing"])?.primaryText == "Скалолазание")
+    #expect(engine.contentConfirmedActivityTitle(tags: ["bouldering"])?.primaryText == "Скалолазание")
+    #expect(engine.contentConfirmedActivityTitle(tags: ["скалолазание"])?.primaryText == "Скалолазание")
+    #expect(engine.contentConfirmedActivityTitle(tags: [], summaries: ["Прогулка у озера."])?.primaryText == "У озера")
+    #expect(engine.decide(.init(purpose: .ending, tags: ["road"]))?.primaryText == "В дороге")
+    #expect(engine.decide(.init(purpose: .filmOpening, tags: ["полет"])) == nil)
 }
 
 @Test func smartTitleUsesHierarchyDateAndReliableLocationWithoutInventingFacts() throws {
@@ -49,9 +67,10 @@ import Testing
         sequenceIndex: 3,
         sequenceCount: 4
     )))
-    #expect(chapter.primaryText == "День 3 — Велопрогулка")
+    #expect(chapter.primaryText == "Велопрогулка — 16 апреля 2026")
+    #expect(!chapter.primaryText.contains("День 3"))
     #expect(chapter.secondaryText?.contains("Красногорск") == true)
-    #expect(chapter.secondaryText?.contains("16 апреля 2026") == true)
+    #expect(chapter.primaryText.contains("16 апреля 2026"))
     #expect(TitleTemplateRegistry.template(id: chapter.templateID)?.category == .chapterTitles)
 
     let reliable = SmartTitleEngine().decide(SmartTitleContext(

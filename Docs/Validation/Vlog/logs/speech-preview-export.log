@@ -1,0 +1,24 @@
+Building for debugging...
+[Using on-disk description]
+[2 / 8] VeloEditCoreTests-product
+[4 / 10] VeloEditCoreTests-product
+/Users/daniellineckij/VeloEdit/Tests/VeloEditCoreTests/ReliabilityStudyTests.swift:29:17: warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+ 27 |     }
+ 28 |     func save(_ image: CGImage, _ name: String) throws {
+ 29 |         let d = try #require(CGImageDestinationCreateWithURL(root.appendingPathComponent(name + ".png") as CFURL, UTType.png.identifier as CFString, 1, nil))
+    |                 `- warning: no calls to throwing functions occur within 'try' expression [#UnnecessaryEffectMarker]
+ 30 |         CGImageDestinationAddImage(d, image, nil); #expect(CGImageDestinationFinalize(d))
+ 31 |     }
+
+[#UnnecessaryEffectMarker]: <https://docs.swift.org/compiler/documentation/diagnostics/unnecessary-effect-marker>
+[10 / 12] VeloEditCoreTests-product
+[12 / 12] VeloEditCoreTests-product
+Build complete! (6,82 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite EditorPreviewParityTests started.
+◇ Test speechCaptionUsesAudioClockAfterTwoTransitionsInPreviewAndMP4() started.
+✔ Test speechCaptionUsesAudioClockAfterTwoTransitionsInPreviewAndMP4() passed after 0.734 seconds.
+✔ Suite EditorPreviewParityTests passed after 0.734 seconds.
+✔ Test run with 1 test in 1 suite passed after 0.734 seconds.

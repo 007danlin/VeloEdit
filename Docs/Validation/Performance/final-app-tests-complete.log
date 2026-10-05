@@ -1,0 +1,47 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite BrushSemanticReplyTests started.
+◇ Suite InstantTimelineInteractionTests started.
+◇ Suite ProjectInteractionTests started.
+◇ Test streamedReplyNeverPublishesAnIncompletePlan() started.
+◇ Test invalidActionRejectsEntireCompoundPlan() started.
+◇ Test onlyTypedReplacementInsideBrushChangesFootage() started.
+◇ Test truncatedOrFailedModelStreamsCannotBecomeCommands() started.
+◇ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() started.
+➜ Test measureExactDirectorCommandLatencyAndAccuracy() skipped.
+◇ Test copiedEffectsAppearImmediatelyAsIndependentObjects() started.
+✔ Test truncatedOrFailedModelStreamsCannotBecomeCommands() passed after 0.001 seconds.
+✔ Test streamedReplyNeverPublishesAnIncompletePlan() passed after 0.001 seconds.
+✔ Test invalidActionRejectsEntireCompoundPlan() passed after 0.007 seconds.
+✔ Test onlyTypedReplacementInsideBrushChangesFootage() passed after 0.008 seconds.
+✔ Suite BrushSemanticReplyTests passed after 0.008 seconds.
+✔ Test projectWorkspaceAppearsBeforeManifestLoadsAndKeepsNavigation() passed after 0.028 seconds.
+◇ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() started.
+✔ Test soundtrackMoveKeepsSourceWindowAndUndoWorksOutsideMontage() passed after 0.068 seconds.
+◇ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() started.
+✔ Test copiedEffectsAppearImmediatelyAsIndependentObjects() passed after 0.104 seconds.
+◇ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() started.
+✔ Test rapidProjectClicksKeepTheLastProjectAndRemainResponsive() passed after 0.019 seconds.
+◇ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() started.
+✔ Test invalidProjectDoesNotDiscardTheOpenProjectAndCanBeRetried() passed after 0.042 seconds.
+◇ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() started.
+✔ Test repeatedFlushDoesNotRewriteManifestOrInvalidateWork() passed after 0.017 seconds.
+◇ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() started.
+PERF optimistic-trim maximum_ms=0.14400482177734375
+PERF instant-delete clips=120 state_ms=0.9179583339573583
+✔ Test deleteCutPasteDuplicateAndUndoApplyBeforeReturningAndPersist() passed after 0.113 seconds.
+◇ Test rapidDeletesAndRefreshNeverResurrectClips() started.
+✔ Test rapidTrimsAppearSynchronouslyAndTheFinalEditSurvivesReopen() passed after 0.060 seconds.
+◇ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() started.
+✔ Test rapidDeletesAndRefreshNeverResurrectClips() passed after 0.105 seconds.
+◇ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() started.
+✔ Test deletingLastClipClearsAttachedObjectsAndPreviewImmediately() passed after 0.118 seconds.
+◇ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() started.
+✔ Test splitThenDeleteAndInspectorChangesUseTheVisibleTimeline() passed after 0.108 seconds.
+◇ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() started.
+✔ Test selectedTitleCommandsUpdatePausedPreviewAndPersistWithoutRebuildingFilm() passed after 0.372 seconds.
+✔ Suite ProjectInteractionTests passed after 0.609 seconds.
+✔ Test splitSpedUpAudioPreservesTheSourceWindowAndUndo() passed after 0.087 seconds.
+✔ Suite InstantTimelineInteractionTests passed after 0.638 seconds.
+✔ Test run with 18 tests in 3 suites passed after 0.638 seconds.

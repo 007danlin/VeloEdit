@@ -65,7 +65,7 @@ public enum EditorialPresentationPolicy {
     }
 
     public static func chapters(in source: Timeline, plan: StoryPlan) -> Timeline {
-        if requiresChapterTitles(plan) { return ensuringChapterTitles(in: source, plan: plan) }
+        if requiresChapterTitles(plan) || source.filmParts != nil { return ensuringChapterTitles(in: source, plan: plan, preserveExistingPresentation: source.filmParts != nil) }
         guard plan.narrativeBeatPlan != nil, !ExplicitDeliveryRequirements(plan: plan).forbidsTitles else { return source }
         var timeline = source
         let items = timeline.items.filter { $0.overlay == nil && $0.kind != .title }.sorted { $0.timelineStart < $1.timelineStart }
@@ -126,6 +126,7 @@ public enum EditorialPresentationPolicy {
             title.startTime = item.timelineStart
             title.duration = duration
             title.targetClipID = item.timelineDuration >= duration ? item.id : nil
+            title.anchorClipID = item.id
             titles.append(title)
             blockContainment[title.id] = item.timelineStart...end
             let containment = AutomatedTitlePolicy.inferredContainmentByTitleID(titles, timeline: timeline)
@@ -141,6 +142,7 @@ public enum EditorialPresentationPolicy {
     }
 
     public struct ChapterBlock: Sendable {
+        public var partID: UUID? = nil
         public var text: String
         public var eventID: UUID?
         public var sceneID: UUID?
@@ -153,6 +155,20 @@ public enum EditorialPresentationPolicy {
     /// cold-open beat without a card must not delay its part's title.
     public static func chapterBlocks(in timeline: Timeline, plan: StoryPlan) -> [ChapterBlock] {
         let media = timeline.items.filter { $0.overlay == nil && $0.kind != .title }.sorted { $0.timelineStart < $1.timelineStart }
+        if timeline.filmParts != nil {
+            return FilmPartPolicy.parts(in: timeline, plan: plan).enumerated().compactMap { index, part in
+                let ids = Set(part.itemIDs)
+                let items = media.filter { ids.contains($0.id) }
+                guard let first = items.first else { return nil }
+                let manual = timeline.effectiveTitleItems.first {
+                    $0.kind == .chapter && !AutomatedTitlePolicy.isGenerated($0)
+                        && ($0.filmPartID == part.id || abs($0.startTime - first.timelineStart) < 0.001)
+                }
+                let text = manual?.text ?? timeline.chapterTitleDecisions?.first { $0.partID == part.id }?.text
+                    ?? "Часть \(index + 1)"
+                return ChapterBlock(partID: part.id, text: text, eventID: part.eventID, sceneID: nil, items: items)
+            }
+        }
         func usable(_ text: String?) -> String? {
             guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !SmartTitleEngine.isPlaceholderTitle(text) else { return nil }
@@ -183,7 +199,7 @@ public enum EditorialPresentationPolicy {
                 ?? usable(event?.title)
                 ?? usable(existingLabel)
                 ?? "Часть \((unnamedScopes.firstIndex(of: scope) ?? 0) + 1)"
-            if let last = blocks.last, last.eventID == eventID, last.sceneID == sceneID, last.text == text {
+            if let last = blocks.last, last.eventID == eventID, last.sceneID == sceneID {
                 blocks[blocks.count - 1].items.append(item)
             } else {
                 blocks.append(ChapterBlock(text: text, eventID: eventID, sceneID: sceneID, items: [item]))
@@ -198,7 +214,9 @@ public enum EditorialPresentationPolicy {
         let titles = timeline.effectiveTitleItems
         var missing: [ChapterBlock] = []
         for block in chapterBlocks(in: timeline, plan: plan) {
+            guard block.end - block.start >= 1.25 else { continue }
             let covered = titles.contains { title in
+                if block.partID != nil && title.kind != .chapter { return false }
                 guard title.enabled, (title.text == block.text || title.userEdited == true),
                       !title.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       (title.style.opacity ?? 1) > 0 else { return false }
@@ -211,7 +229,8 @@ public enum EditorialPresentationPolicy {
     }
 
     public static func ensuringChapterTitles(in source: Timeline, plan: StoryPlan, preserveExistingPresentation: Bool = false) -> Timeline {
-        guard requiresChapterTitles(plan) else { return source }
+        guard !ExplicitDeliveryRequirements(plan: plan).forbidsTitles,
+              requiresChapterTitles(plan) || source.filmParts != nil else { return source }
         var timeline = source
         let blocks = chapterBlocks(in: source, plan: plan)
         let visualStyle = DirectorVisualStyle(plan: plan)
@@ -221,6 +240,11 @@ public enum EditorialPresentationPolicy {
         let blockLabels = Set(blocks.map(\.text))
         let replaceable = automatic.filter { title in
             guard ![.subtitle, .automaticSubtitles, .wordLevelCaptions].contains(title.kind) else { return false }
+            if source.filmParts != nil {
+                return title.kind == .chapter || title.explanation.contains {
+                    $0.contains("глава события") || $0.contains("event hierarchy") || $0.contains("Editorial chapter")
+                } || blocks.first.map { title.startTime < min($0.end, $0.start + 3.5) } == true
+            }
             // A requested chapter heading replaces an automatic event opener
             // occupying the same interval, even when their wording differs.
             let overlapsHeading = blocks.contains { block in
@@ -233,19 +257,32 @@ public enum EditorialPresentationPolicy {
         var titles = source.effectiveTitleItems.filter { !automaticIDs.contains($0.id) }
         var used = Set<UUID>()
         for block in blocks where block.end - block.start >= 1.25 {
-            if titles.contains(where: { $0.enabled && ($0.text == block.text || $0.userEdited == true) && abs($0.startTime - block.start) < 0.001 && $0.duration >= 1.25 && $0.endTime <= block.end }) { continue }
-            let existing = replaceable.filter { $0.text == block.text && !used.contains($0.id) }
+            if let manualIndex = titles.firstIndex(where: {
+                $0.kind == .chapter && !AutomatedTitlePolicy.isGenerated($0)
+                    && ($0.filmPartID == block.partID && block.partID != nil || abs($0.startTime - block.start) < 0.001)
+            }) {
+                titles[manualIndex].filmPartID = block.partID
+                continue
+            }
+            if titles.contains(where: { (block.partID == nil || $0.kind == .chapter) && $0.enabled && $0.text == block.text && abs($0.startTime - block.start) < 0.001 && $0.duration >= 1.25 && $0.endTime <= block.end }) { continue }
+            let existing = replaceable.filter {
+                !used.contains($0.id) && (block.partID != nil
+                    ? $0.filmPartID == block.partID || ($0.kind == .chapter && abs($0.startTime - block.start) < 0.001)
+                    : $0.text == block.text)
+            }
                 .min { abs($0.startTime - block.start) < abs($1.startTime - block.start) }
             var title = existing ?? TitleTimelineItem(kind: .chapter, templateID: "title.minimal-clean.v1", text: block.text, startTime: block.start, duration: 2.5)
             used.insert(title.id)
             title.kind = .chapter
+            title.filmPartID = block.partID
             title.text = block.text
             title.startTime = block.start
-            title.duration = min(block.end - block.start, plan.chapterTitleReference?.duration ?? max(plan.preferredChapterTitleDuration ?? 3.5, 3.5, 2.2 + Double(block.text.count) / 12))
+            let requestedDuration = plan.chapterTitleReference?.duration ?? max(plan.preferredChapterTitleDuration ?? 3.5, 3.5, 2.2 + Double(block.text.count) / 12)
+            title.duration = min(block.end - block.start, block.partID != nil && existing != nil ? max(title.duration, requestedDuration) : requestedDuration)
             let hasReadabilityRepair = title.explanation.contains { $0.hasPrefix("Rendered OCR repair:") }
             let legacyCompact = title.templateID == "title.minimal-clean.v1" &&
                 title.style == TitleStyle(fontSize: 72, backgroundColorHex: "#101010", xPosition: 0.36, yPosition: 0.78, backgroundOpacity: 0.75)
-            if !(preserveExistingPresentation && existing != nil) || legacyCompact || plan.chapterTitleReference != nil || hasReadabilityRepair {
+            if !(preserveExistingPresentation && existing != nil) || (block.partID == nil && (legacyCompact || plan.chapterTitleReference != nil || hasReadabilityRepair)) {
                 title.templateID = "title.minimal-clean.v1"
                 title.style = plan.chapterTitleReference?.style ?? compactChapterStyle
                 title.animation = plan.chapterTitleReference?.animation ?? TitleAnimation(entrance: .none, exit: .none, duration: 0)
@@ -255,10 +292,13 @@ public enum EditorialPresentationPolicy {
             // title to its first two-second shot makes the compositor hide it
             // at that cut while OCR still expects it to be on screen.
             title.targetClipID = nil
+            title.anchorClipID = source.items.first { $0.overlay == nil && abs($0.timelineStart - block.start) < 0.001 }?.id
             title.enabled = true
             // A part begins with a visible title, including the first frame.
-            title.animation.entrance = .none
-            title.style.opacity = 1
+            if block.partID == nil || existing == nil {
+                title.animation.entrance = .none
+                title.style.opacity = 1
+            }
             let reason = "Editorial chapter: автоматический титр в начале каждой части"
             if !title.explanation.contains(reason) { title.explanation.append(reason) }
             titles.append(title)
@@ -275,7 +315,7 @@ public enum EditorialPresentationPolicy {
         let blocks = chapterBlocks(in: source, plan: plan)
         timeline.titleItems = source.effectiveTitleItems.map { original in
             guard AutomatedTitlePolicy.isGenerated(original),
-                  !(original.kind == .chapter && requiresChapterTitles(plan)),
+                  !(original.kind == .chapter && (requiresChapterTitles(plan) || source.filmParts != nil)),
                   ![.subtitle, .automaticSubtitles, .wordLevelCaptions].contains(original.kind),
                   !original.explanation.contains(where: { $0.hasPrefix("Rendered OCR repair:") }) else { return original }
             var title = original
@@ -335,7 +375,7 @@ extension EditorialIntentEnforcer {
     }
 
     public static func updatedBrief(_ brief: DirectorBrief?, prompt: String) -> DirectorBrief? {
-        guard var result = brief else { return nil }
+        guard var result = brief?.applyingSubtitleCommand(prompt) else { return nil }
         let text = prompt.lowercased()
         if let volume = OriginalAudioPromptInterpreter().volume(prompt: prompt) {
             result.sourceAudioPolicy = volume == 0 ? .mute : volume < 1 ? .duck : .preserve

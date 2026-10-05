@@ -816,10 +816,19 @@ public struct DefaultMontageGlobalScorer: MontageGlobalScoring, Sendable {
 public struct TimelineSafetyValidator: Sendable {
     public init() {}
 
-    public func violations(candidate: Timeline, comparedTo original: Timeline, plan: StoryPlan, analyses: [AnalysisResult]) -> [String] {
+    public func violations(candidate: Timeline, comparedTo original: Timeline, plan: StoryPlan, analyses: [AnalysisResult], assets: [MediaAsset] = []) -> [String] {
         let primaries = candidate.items.filter { $0.kind != .title && $0.overlay == nil }
         guard !primaries.isEmpty else { return ["Timeline не содержит primary clips"] }
         var issues: [String] = []
+        let beforeClock = EditorialChronologyReport.inspect(timeline: original, assets: assets)
+        let afterClock = EditorialChronologyReport.inspect(timeline: candidate, assets: assets)
+        if afterClock.confirmedErrorCount > beforeClock.confirmedErrorCount {
+            issues.append("Repair нарушает хронологию исходных фрагментов")
+        }
+        if afterClock.findings.filter({ $0.kind == .inferredOrderConflict }).count
+            > beforeClock.findings.filter({ $0.kind == .inferredOrderConflict }).count {
+            issues.append("Repair нарушает обоснованный порядок исходников с неизвестными часами")
+        }
         let candidateByID = Dictionary(uniqueKeysWithValues: analyses.flatMap(\.directorCandidates).map { ($0.id, $0) })
         if primaries.contains(where: { $0.sourceDuration <= 0 || $0.timelineDuration <= 0 || !$0.sourceStart.isFinite }) {
             issues.append("Недопустимая длительность или source range")
@@ -1041,11 +1050,33 @@ public struct MontagePairwiseComparator: Sendable {
     }
 }
 
+private final class MontageSelectionWork: @unchecked Sendable {
+    private let body: @Sendable () -> DirectedMontageVariant?
+    private let finished = DispatchSemaphore(value: 0)
+    // The worker is the sole writer; finished synchronizes publication.
+    private var result: DirectedMontageVariant?
+    private init(_ body: @escaping @Sendable () -> DirectedMontageVariant?) { self.body = body }
+    static func run(_ body: @escaping @Sendable () -> DirectedMontageVariant?) -> DirectedMontageVariant? {
+        let work = MontageSelectionWork(body)
+        let thread = Thread {
+            autoreleasepool { work.result = work.body() }
+            work.finished.signal()
+        }
+        thread.name = "VeloEdit montage selection"
+        thread.stackSize = 8 * 1024 * 1024
+        thread.start()
+        work.finished.wait()
+        return work.result
+    }
+}
+
 public struct MontageVariantSelector: Sendable {
     private let scorer: any MontageGlobalScoring
+    private let decisionRanker: EditingDecisionRanker?
 
-    public init(scorer: any MontageGlobalScoring = DefaultMontageGlobalScorer()) {
+    public init(scorer: any MontageGlobalScoring = DefaultMontageGlobalScorer(), decisionRanker: EditingDecisionRanker? = EditingDecisionRanker.configured()) {
         self.scorer = scorer
+        self.decisionRanker = decisionRanker?.isValid == true ? decisionRanker : nil
     }
 
     public func select(
@@ -1057,7 +1088,32 @@ public struct MontageVariantSelector: Sendable {
         personalTasteProfile: PersonalTasteProfile? = nil,
         tasteContext: TasteContext? = nil,
         avoidingTimeline: Timeline? = nil,
-        requireProductionEvidence: Bool = false
+        requireProductionEvidence: Bool = false,
+        allowsQualityWarnings: Bool = false
+    ) -> DirectedMontageVariant? {
+        // Director, review, Codable and taste scoring retain large value
+        // snapshots. Their combined stack exceeds a cooperative worker stack
+        // in debug builds; isolate the whole synchronous selection, not just
+        // one encoder whose removal merely moves the overflow elsewhere.
+        MontageSelectionWork.run {
+            selectOnOwnedStack(stories: stories, timelines: timelines, assets: assets, analyses: analyses,
+                searchDiagnostics: searchDiagnostics, personalTasteProfile: personalTasteProfile ?? PersonalTasteProfile(),
+                tasteContext: tasteContext, avoidingTimeline: avoidingTimeline,
+                requireProductionEvidence: requireProductionEvidence, allowsQualityWarnings: allowsQualityWarnings)
+        }
+    }
+
+    private func selectOnOwnedStack(
+        stories: [StoryPlanVariant],
+        timelines: [Timeline],
+        assets: [MediaAsset],
+        analyses: [AnalysisResult],
+        searchDiagnostics: VariantSelectionDiagnostics? = nil,
+        personalTasteProfile: PersonalTasteProfile? = nil,
+        tasteContext: TasteContext? = nil,
+        avoidingTimeline: Timeline? = nil,
+        requireProductionEvidence: Bool = false,
+        allowsQualityWarnings: Bool = false
     ) -> DirectedMontageVariant? {
         let features = MontageScoringFeatures(assets: assets, analyses: analyses)
         let candidates = features.candidates
@@ -1074,7 +1130,7 @@ public struct MontageVariantSelector: Sendable {
                 baseScore = scorer.score(plan: story.plan, timeline: timeline, assets: assets, analyses: analyses)
             }
             let score: MontageGlobalScore
-            if let personalTasteProfile, personalTasteProfile.totalSignalCount > 0 {
+            if let personalTasteProfile {
                 let context = tasteContext ?? story.plan.autonomousDecision.map {
                     TasteContextResolver().resolve(projectStyle: $0.projectStyle, timeline: timeline, assets: assets, analyses: analyses)
                 } ?? TasteContext()
@@ -1092,11 +1148,21 @@ public struct MontageVariantSelector: Sendable {
         guard !variants.isEmpty else { return nil }
         let distanceCalculator = VariantDistanceCalculator()
         let requiredDistance = searchDiagnostics?.minimumRequiredDistance ?? 0.16
-        let sorted = variants.filter { variant in
+        let passing = variants.filter { variant in
             guard AutomaticFilmDurationPolicy.meetsMinimum(variant.timeline) else { return false }
             guard let review = variant.timeline.editorialReview else { return !requireProductionEvidence }
             return requireProductionEvidence ? review.candidateEligible : review.rankingEligible
-        }.sorted { lhs, rhs in
+        }
+        // Automatic creation always retains a usable edit after the bounded
+        // repair/search attempts, even when every variant has quality findings.
+        // Strict evaluation callers keep the original admission contract.
+        let selectable = passing.isEmpty && allowsQualityWarnings
+            ? variants.filter { AutomaticFilmDelivery.hasContent($0.timeline) }
+            : passing
+        let sorted = selectable.sorted { lhs, rhs in
+            let aMeetsMinimum = AutomaticFilmDurationPolicy.meetsMinimum(lhs.timeline)
+            let bMeetsMinimum = AutomaticFilmDurationPolicy.meetsMinimum(rhs.timeline)
+            if aMeetsMinimum != bMeetsMinimum { return aMeetsMinimum }
             if let a = lhs.timeline.editorialReview, let b = rhs.timeline.editorialReview {
                 if a.criticalCount != b.criticalCount { return a.criticalCount < b.criticalCount }
                 if a.highCount != b.highCount { return a.highCount < b.highCount }
@@ -1278,6 +1344,59 @@ public struct MontageVariantSelector: Sendable {
             return left == right ? $0.score.total < $1.score.total : left < right
         }) else { return nil }
 
+        let legacyWinner = winner.story.strategy
+        let legacyTimelineID = winner.timeline.id
+        // A previous timeline's receipt does not prove participation in this run.
+        winner.timeline.editingDecisionSelection = nil
+        let wantsTrace = ProcessInfo.processInfo.environment["VELOEDIT_VARIANT_TRACE_DIRECTORY"]?.isEmpty == false
+        if decisionRanker != nil || wantsTrace {
+            var selection: EditingDecisionSelection?
+            let examples = variants.map { variant in
+                EditingDecisionExample(strategy: variant.story.strategy,
+                    features: .extract(timeline: variant.timeline, assets: assets, analyses: analyses),
+                    timeline: variant.timeline, legacyScore: variant.score.total,
+                    criticalCount: variant.timeline.editorialReview?.criticalCount ?? 0,
+                    highCount: variant.timeline.editorialReview?.highCount ?? 0)
+            }
+            // Multiple fallback candidates deliberately share a strategy name.
+            // Their feature/safety evidence belongs to the concrete timeline.
+            let byTimeline = Dictionary(examples.map { ($0.timeline.id, $0) }, uniquingKeysWith: { first, _ in first })
+            if let model = decisionRanker, model.isValid, let reference = byTimeline[legacyTimelineID] {
+                // A trained preference never overrides the existing admission,
+                // fresh-cut constraints, or worsens a measured safety dimension.
+                let safe = viable.filter { variant in
+                    guard let evidence = byTimeline[variant.timeline.id] else { return false }
+                    return evidence.criticalCount <= reference.criticalCount && evidence.highCount <= reference.highCount
+                        && zip(evidence.features.safetyMeasurements(in: evidence.timeline), reference.features.safetyMeasurements(in: reference.timeline)).allSatisfy { $0 <= $1 + 0.000_001 }
+                }
+                let scores = safe.compactMap { variant -> (DirectedMontageVariant, Double)? in
+                    guard let features = byTimeline[variant.timeline.id]?.features,
+                          let utility = model.utility(features) else { return nil }
+                    return (variant, utility)
+                }
+                // If any score fails (including arithmetic overflow), retain
+                // the complete legacy decision rather than rank a partial pool.
+                if scores.count == safe.count,
+                   let legacyUtility = scores.first(where: { $0.0.timeline.id == legacyTimelineID })?.1,
+                   let selected = scores.max(by: { a, b in
+                       if abs(a.1 - b.1) < 0.000_001 { return a.0.timeline.id != legacyTimelineID && b.0.timeline.id == legacyTimelineID }
+                       return a.1 < b.1
+                   }) {
+                    winner = selected.0
+                    selection = .init(modelID: model.modelID, legacyStrategy: legacyWinner,
+                        selectedStrategy: winner.story.strategy, labelProvenance: model.labelProvenance,
+                        legacyTimelineID: legacyTimelineID, selectedTimelineID: winner.timeline.id,
+                        evaluatedCandidateCount: scores.count, legacyUtility: legacyUtility, selectedUtility: selected.1)
+                }
+            }
+            winner.timeline.editingDecisionSelection = selection
+            EditingDecisionTrace(legacyWinner: legacyWinner, selectedWinner: winner.story.strategy,
+                modelID: decisionRanker?.modelID, examples: examples,
+                legacyTimelineID: legacyTimelineID, selectedTimelineID: winner.timeline.id,
+                modelParticipated: selection != nil, evaluatedCandidateCount: selection?.evaluatedCandidateCount,
+                legacyUtility: selection?.legacyUtility, selectedUtility: selection?.selectedUtility).saveIfRequested()
+        }
+
         let rejectionByStrategy = Dictionary(grouping: rejectionRecords, by: \.strategy)
         var evaluations = variants.map { variant -> VariantEvaluationRecord in
             let strategy = variant.story.strategy
@@ -1285,13 +1404,17 @@ public struct MontageVariantSelector: Sendable {
                 ? (viable.contains(where: { $0.story.strategy == strategy }) ? 0.5 : 0)
                 : utilities[strategy, default: 0] / Double(opponents[strategy, default: 0])
             let rejection = rejectionByStrategy[strategy]?.last
+            let participated = viable.contains { $0.story.strategy == strategy }
             let disposition: VariantEvaluationDisposition
-            if strategy == winner.story.strategy { disposition = .selected }
+            if variant.timeline.id == winner.timeline.id { disposition = .selected }
+            else if participated { disposition = .evaluated }
             else if let rejection, rejection.stage.contains("diversity") { disposition = .rejectedSimilar }
             else if rejection != nil { disposition = .rejectedWeak }
             else { disposition = .evaluated }
             var reasons = variant.score.strongestReasons
-            if let rejection { reasons.append("Отклонён: \(rejection.reason)") }
+            if let rejection {
+                reasons.append("\(participated ? "Сохранён с замечанием" : "Отклонён"): \(rejection.reason)")
+            }
             return VariantEvaluationRecord(
                 strategy: strategy,
                 score: variant.score,
@@ -1341,7 +1464,7 @@ public struct MontageVariantSelector: Sendable {
             run.paretoFrontStrategies = viable.map { $0.story.strategy }
             run.decisionReasons.append("Pairwise global tournament выбрал вариант \(winner.story.strategy) из \(variants.count) production-вариантов")
             run.decisionReasons.append(contentsOf: winner.score.strongestReasons)
-            if let personalTasteProfile, personalTasteProfile.totalSignalCount > 0 {
+            if let personalTasteProfile {
                 let resolvedContext = tasteContext ?? winner.story.plan.autonomousDecision.map {
                     TasteContextResolver().resolve(projectStyle: $0.projectStyle, timeline: winner.timeline, assets: assets, analyses: analyses)
                 } ?? TasteContext()
@@ -1355,6 +1478,7 @@ public struct MontageVariantSelector: Sendable {
                     variantScores: personalScores,
                     reasons: [
                         "Personalized scoring evaluated \(personalScores.count) production variants",
+                        "Базовый стиль \(BundledEditorialTaste.version); счётчик сигналов относится только к личному обучению",
                         "Winner personal fit \(Int(((personalScores[winner.story.strategy]?.personalTaste ?? 0.5) * 100).rounded()))%",
                         "Taste remained bounded by technical and perceptual quality floors"
                     ]

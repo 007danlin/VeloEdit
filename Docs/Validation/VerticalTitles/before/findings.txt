@@ -1,0 +1,51 @@
+Cinematic / Default / dark / secondary: font=8.9, truncated=false, outside=false, collisions=0
+Cinematic / Long / white / primary: font=34.0, truncated=false, outside=false, collisions=1
+Cinematic / Long / white / secondary: font=8.9, truncated=false, outside=false, collisions=1
+Cinematic / Default / scenery / secondary: font=8.9, truncated=false, outside=false, collisions=0
+Cinematic / Long / scenery / primary: font=34.0, truncated=false, outside=false, collisions=1
+Cinematic / Long / scenery / secondary: font=8.9, truncated=false, outside=false, collisions=1
+Cinematic / Size +30% / texture / secondary: font=8.9, truncated=false, outside=false, collisions=0
+Modern / Default / dark / secondary: font=9.3, truncated=false, outside=false, collisions=0
+Modern / Long / white / primary: font=33.1, truncated=false, outside=false, collisions=1
+Modern / Long / white / secondary: font=9.3, truncated=false, outside=false, collisions=1
+Modern / Default / scenery / secondary: font=9.3, truncated=false, outside=false, collisions=0
+Modern / Long / scenery / primary: font=33.1, truncated=false, outside=false, collisions=1
+Modern / Long / scenery / secondary: font=9.3, truncated=false, outside=false, collisions=1
+Modern / Size +30% / texture / secondary: font=9.3, truncated=false, outside=false, collisions=0
+Bold / Default / dark / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Bold / Long / white / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Bold / Default / scenery / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Bold / Long / scenery / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Bold / Size +30% / texture / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Elegant / Default / dark / secondary: font=7.7, truncated=false, outside=false, collisions=0
+Elegant / Long / white / secondary: font=7.7, truncated=false, outside=false, collisions=0
+Elegant / Default / scenery / secondary: font=7.7, truncated=false, outside=false, collisions=0
+Elegant / Long / scenery / secondary: font=7.7, truncated=false, outside=false, collisions=0
+Elegant / Size +30% / texture / secondary: font=7.7, truncated=false, outside=false, collisions=0
+Travel / Default / dark / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Travel / Long / white / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Travel / Default / scenery / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Travel / Long / scenery / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Travel / Size +30% / texture / secondary: font=8.5, truncated=false, outside=false, collisions=0
+Location / Default / dark / secondary: font=7.0, truncated=false, outside=false, collisions=0
+Location / Long / white / primary: font=16.0, truncated=true, outside=false, collisions=0
+Location / Long / white / secondary: font=7.0, truncated=false, outside=false, collisions=0
+Location / Default / scenery / secondary: font=7.0, truncated=false, outside=false, collisions=0
+Location / Long / scenery / primary: font=16.0, truncated=true, outside=false, collisions=0
+Location / Long / scenery / secondary: font=7.0, truncated=false, outside=false, collisions=0
+Location / Size +30% / texture / secondary: font=7.0, truncated=false, outside=false, collisions=0
+Lower Third / Default / dark / primary: font=21.7, truncated=false, outside=false, collisions=1
+Lower Third / Default / dark / secondary: font=7.7, truncated=false, outside=false, collisions=1
+Lower Third / Long / white / primary: font=17.9, truncated=false, outside=false, collisions=1
+Lower Third / Long / white / secondary: font=7.7, truncated=false, outside=false, collisions=1
+Lower Third / Default / scenery / primary: font=21.7, truncated=false, outside=false, collisions=1
+Lower Third / Default / scenery / secondary: font=7.7, truncated=false, outside=false, collisions=1
+Lower Third / Long / scenery / primary: font=17.9, truncated=false, outside=false, collisions=1
+Lower Third / Long / scenery / secondary: font=7.7, truncated=false, outside=false, collisions=1
+Lower Third / Size +30% / texture / primary: font=28.1, truncated=false, outside=false, collisions=1
+Lower Third / Size +30% / texture / secondary: font=7.7, truncated=false, outside=false, collisions=1
+Date / Default / dark / secondary: font=7.3, truncated=false, outside=false, collisions=0
+Date / Long / white / secondary: font=7.3, truncated=false, outside=false, collisions=0
+Date / Default / scenery / secondary: font=7.3, truncated=false, outside=false, collisions=0
+Date / Long / scenery / secondary: font=7.3, truncated=false, outside=false, collisions=0
+Date / Size +30% / texture / secondary: font=7.3, truncated=false, outside=false, collisions=0

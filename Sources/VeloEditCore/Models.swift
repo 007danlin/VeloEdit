@@ -33,8 +33,7 @@ public struct MediaMetadata: Codable, Hashable, Sendable {
     public var bitDepth: Int?
     public var hasAudio: Bool
     public var creationDate: Date?
-    /// File modification time is intentionally retained only as a fallback for
-    /// archives whose camera capture timestamp is unavailable.
+    /// Retained for file identity and diagnostics, never as a capture clock.
     public var modificationDate: Date?
     public var timeZoneIdentifier: String?
     public var dateSource: MediaDateSource?
@@ -91,12 +90,21 @@ public struct MediaMetadata: Codable, Hashable, Sendable {
         self.orientationDegrees = orientationDegrees
     }
 
-    public var effectiveCaptureDate: Date? { creationDate ?? modificationDate }
+    public var effectiveCaptureDate: Date? {
+        // Copy/import clocks cannot order real events. Legacy creation dates
+        // retain tentative ordering, but the chronology audit marks their
+        // missing provenance as unresolved.
+        switch dateSource {
+        case .fileCreationDate, .fileModificationDate, .importDate: return nil
+        case .embeddedMetadata, nil: return creationDate
+        }
+    }
 }
 
 public struct MediaAsset: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var originalURL: URL
+    public var conversionSourceURL: URL? = nil
     public var bookmarkData: Data?
     public var displayName: String
     public var kind: MediaKind
@@ -221,6 +229,11 @@ public struct MomentBoundary: Codable, Hashable, Sendable {
     public var confidence: Double
     public var evidence: [String]
 
+    /// A peak in camera motion, telemetry or subject visibility is a useful
+    /// activity proposal, but does not establish an action's semantic bounds.
+    /// Nil keeps explicitly supplied legacy boundaries backward compatible.
+    public var actionEvidenceConfirmed: Bool?
+
     public init(
         anticipationStart: Double,
         actionStart: Double? = nil,
@@ -231,7 +244,8 @@ public struct MomentBoundary: Codable, Hashable, Sendable {
         completionEnd: Double,
         doNotCutRanges: [EditorialSourceRange]? = nil,
         confidence: Double,
-        evidence: [String] = []
+        evidence: [String] = [],
+        actionEvidenceConfirmed: Bool? = nil
     ) {
         let start = max(0, anticipationStart)
         let end = max(start, max(completionEnd, reactionEnd ?? 0))
@@ -254,6 +268,15 @@ public struct MomentBoundary: Codable, Hashable, Sendable {
         self.doNotCutRanges = safeRanges.isEmpty ? nil : safeRanges
         self.confidence = confidence.clamped01
         self.evidence = evidence
+        self.actionEvidenceConfirmed = actionEvidenceConfirmed
+    }
+
+    public var confirmedActionConfidence: Double {
+        if let actionEvidenceConfirmed { return actionEvidenceConfirmed ? confidence : 0 }
+        // Previously saved generic peaks must not become semantic ground
+        // truth merely because an old writer called subject presence action.
+        if evidence.contains(where: { $0.hasPrefix("peak activity ") }) { return 0 }
+        return confidence
     }
 
     public var duration: Double { max(0, completionEnd - anticipationStart) }
@@ -272,7 +295,7 @@ public struct MomentBoundary: Codable, Hashable, Sendable {
     }
 
     public func containsProtectedCut(_ time: Double) -> Bool {
-        (doNotCutRanges ?? []).contains { $0.confidence >= 0.42 && $0.contains(time) }
+        confirmedActionConfidence >= 0.42 && (doNotCutRanges ?? []).contains { $0.confidence >= 0.42 && $0.contains(time) }
     }
 }
 
@@ -431,6 +454,9 @@ public struct AnalysisResult: Codable, Identifiable, Hashable, Sendable {
     public var warnings: [String]
     public var telemetry: TelemetrySummary?
     public var analysisProfileKey: String?
+    public var analyzedSourceIdentity: String? = nil
+    public var analysisModelDigest: String? = nil
+    public var aiExecution: AIExecutionEvidence? = nil
     public var usedProxy: Bool?
     public var sampledFrameCount: Int?
     public var deepAnalyzedCandidateCount: Int?
@@ -466,7 +492,7 @@ public struct AnalysisResult: Codable, Identifiable, Hashable, Sendable {
     }
 
     public func satisfies(_ profile: AIAnalysisProfile) -> Bool {
-        (completedDepth ?? .quick) >= profile.targetDepth
+        aiExecution?.isComplete == true && (completedDepth ?? .metadata) >= profile.targetDepth
     }
 
     /// Scene analysis is the canonical evidence used by AI Director. Existing
@@ -865,6 +891,7 @@ public enum FilmPreset: String, Codable, CaseIterable, Identifiable, Sendable {
     case adventure
     case story
     case summerFilm
+    case vlog
     case memories
     case cinematic
 
@@ -874,6 +901,7 @@ public enum FilmPreset: String, Codable, CaseIterable, Identifiable, Sendable {
         case .highlight: return "Лучшие моменты"
         case .adventure: return "Приключение"
         case .story: return "История"
+        case .vlog: return "Влог"
         case .summerFilm: return "Летний фильм"
         case .memories: return "Воспоминания"
         case .cinematic: return "Кинематографичный"
@@ -928,7 +956,21 @@ public enum DirectorTitlePolicy: String, Codable, CaseIterable, Identifiable, Se
     public var id: String { rawValue }
 }
 
+public enum DirectorEffectsPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case none, normal, many
+
+    public var id: String { rawValue }
+    public var localizedTitle: String {
+        switch self { case .none: return "Без"; case .normal: return "Нормально"; case .many: return "Много" }
+    }
+}
+
 public struct DirectorBrief: Codable, Hashable, Sendable {
+    public var subtitlePolicy: DirectorSubtitlePolicy?
+    /// Per-film choice; nil keeps older projects and their saved appearance.
+    public var subtitleStyle: SpeechCaptionStyle?
+    public var previousStandardPreset: FilmPreset?
+    public var subtitlesWithoutAudio: Bool?
     public var durationMode: FilmDurationMode?
     public var canvasFormat: DirectorCanvasFormat
     /// `nil` preserves the explicit format of projects created before adaptive
@@ -942,6 +984,9 @@ public struct DirectorBrief: Codable, Hashable, Sendable {
     public var musicTrackID: UUID?
     public var sourceAudioPolicy: DirectorSourceAudioPolicy
     public var titlePolicy: DirectorTitlePolicy
+    /// Absent in older projects: preserve their existing editorial behavior
+    /// until the user explicitly chooses an effects level.
+    public var effectsPolicy: DirectorEffectsPolicy?
 
     public init(
         canvasFormat: DirectorCanvasFormat = .landscape16x9,
@@ -952,7 +997,10 @@ public struct DirectorBrief: Codable, Hashable, Sendable {
         musicTrackID: UUID? = nil,
         sourceAudioPolicy: DirectorSourceAudioPolicy = .preserve,
         titlePolicy: DirectorTitlePolicy = .minimal,
-        durationMode: FilmDurationMode = .exact
+        durationMode: FilmDurationMode = .exact,
+        effectsPolicy: DirectorEffectsPolicy? = nil,
+        subtitlePolicy: DirectorSubtitlePolicy? = nil,
+        subtitleStyle: SpeechCaptionStyle? = nil
     ) {
         self.canvasFormat = canvasFormat
         self.durationMode = durationMode
@@ -963,6 +1011,9 @@ public struct DirectorBrief: Codable, Hashable, Sendable {
         self.musicTrackID = musicPolicy == .specificTrack ? musicTrackID : nil
         self.sourceAudioPolicy = sourceAudioPolicy
         self.titlePolicy = titlePolicy
+        self.effectsPolicy = effectsPolicy
+        self.subtitlePolicy = subtitlePolicy
+        self.subtitleStyle = subtitleStyle
     }
 
     public var usesAutomaticCanvasFormat: Bool { canvasFormatIsAutomatic ?? false }
@@ -1259,6 +1310,11 @@ public struct EventStoryPlan: Codable, Hashable, Sendable {
 }
 
 public struct StoryPlan: Codable, Identifiable, Hashable, Sendable {
+    public var episodePlan: EditorialEpisodePlan? = nil
+    /// Inputs considered by the automatic assembly, after explicit exclusions.
+    /// Optional preserves legacy plans and prevents coverage checks from
+    /// demanding media that was unavailable or deliberately excluded.
+    public var sourceCoverageAssetIDs: [UUID]?
     public var preferredChapterTitleDuration: Double?
     public var chapterTitleReference: ChapterTitleReference?
     public var approvedSourceChapterLabels: [UUID: ChapterTitleReference.Label]?
@@ -1295,11 +1351,8 @@ public struct StoryPlan: Codable, Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
     }
 
-    /// The effective exact target is normally the duration explicitly chosen
-    /// by the user. When the autonomous duration pass has proved that the
-    /// source material cannot cover that request, the plan carries a smaller,
-    /// material-bounded target in `constraints`; enforcing the impossible
-    /// original value would discard an otherwise valid film at delivery time.
+    /// The user target survives planning, repairs and a shorter delivery.
+    /// Physical capacity and actual playback duration are stored separately.
     public var exactDurationRequirement: Double? {
         let requirement = FilmDurationRequirement.parse(prompt: prompt,
             explicitSeconds: directorBrief?.explicitRequestedDuration ?? contentBudget?.requestedDuration,
@@ -1938,6 +1991,18 @@ public struct TelemetryOverlaySettings: Codable, Hashable, Sendable {
     public var widgets: [TelemetryWidgetLayout]?
     public var opacity: Double?
 
+    private enum CodingKeys: String, CodingKey { case metrics, corner, scale, style, widgets, opacity }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(metrics.sorted { $0.rawValue < $1.rawValue }, forKey: .metrics)
+        try values.encode(corner, forKey: .corner)
+        try values.encode(scale, forKey: .scale)
+        try values.encodeIfPresent(style, forKey: .style)
+        try values.encodeIfPresent(widgets, forKey: .widgets)
+        try values.encodeIfPresent(opacity, forKey: .opacity)
+    }
+
     public init(metrics: Set<TelemetryMetric> = [.speed, .route, .altitude, .distance], corner: OverlayCorner = .bottomLeft, scale: Double = 0.32, style: TelemetryWidgetStyle? = nil, widgets: [TelemetryWidgetLayout]? = nil, opacity: Double? = nil) {
         self.metrics = metrics
         self.corner = corner
@@ -2130,6 +2195,8 @@ public struct AdaptiveMusicSegment: Codable, Identifiable, Hashable, Sendable {
     public var confidence: Double
     public var boundaryItemID: UUID?
     public var explanation: [String]
+    /// An explicit local edit overrides the film's music-ducking policy.
+    public var duckingEnabled: Bool?
 
     public init(
         id: UUID = UUID(),
@@ -2143,7 +2210,8 @@ public struct AdaptiveMusicSegment: Codable, Identifiable, Hashable, Sendable {
         energy: Double,
         confidence: Double,
         boundaryItemID: UUID? = nil,
-        explanation: [String] = []
+        explanation: [String] = [],
+        duckingEnabled: Bool? = nil
     ) {
         self.id = id
         self.timelineStart = max(0, timelineStart)
@@ -2157,6 +2225,7 @@ public struct AdaptiveMusicSegment: Codable, Identifiable, Hashable, Sendable {
         self.confidence = confidence.clamped01
         self.boundaryItemID = boundaryItemID
         self.explanation = explanation
+        self.duckingEnabled = duckingEnabled
     }
 
     public var timelineEnd: Double { timelineStart + timelineDuration }
@@ -2175,6 +2244,9 @@ public struct AdaptiveSoundtrackPlan: Codable, Hashable, Sendable {
     public var segments: [AdaptiveMusicSegment]
     public var confidence: Double
     public var explanation: [String]
+    /// Brush edits can contain one track with different gains or silent regions.
+    /// Optional for projects written before localized soundtrack editing.
+    public var userEdited: Bool?
 
     public init(
         primaryTrackID: UUID,
@@ -2182,7 +2254,8 @@ public struct AdaptiveSoundtrackPlan: Codable, Hashable, Sendable {
         timelineFingerprint: String? = nil,
         segments: [AdaptiveMusicSegment],
         confidence: Double,
-        explanation: [String] = []
+        explanation: [String] = [],
+        userEdited: Bool? = nil
     ) {
         self.primaryTrackID = primaryTrackID
         self.timelineDuration = max(0, timelineDuration)
@@ -2190,6 +2263,7 @@ public struct AdaptiveSoundtrackPlan: Codable, Hashable, Sendable {
         self.segments = segments.sorted { $0.timelineStart < $1.timelineStart }
         self.confidence = confidence.clamped01
         self.explanation = explanation
+        self.userEdited = userEdited
     }
 
     public func isValid(
@@ -2197,8 +2271,9 @@ public struct AdaptiveSoundtrackPlan: Codable, Hashable, Sendable {
         primaryTrackID: UUID?,
         timelineFingerprint: String? = nil
     ) -> Bool {
-        guard segments.count >= 2,
-              Set(segments.compactMap(\.directive.trackID)).count >= 2,
+        guard !segments.isEmpty,
+              userEdited == true || (segments.count >= 2 && Set(segments.compactMap(\.directive.trackID)).count >= 2),
+              segments.allSatisfy({ $0.timelineDuration.isFinite && $0.timelineDuration > 0 && $0.timelineStart.isFinite }),
               self.primaryTrackID == primaryTrackID,
               abs(self.timelineDuration - timelineDuration) <= 0.12,
               let first = segments.first,
@@ -2367,14 +2442,28 @@ public struct TimelineAudioClip: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct Timeline: Codable, Identifiable, Hashable, Sendable {
+    public var speechRecords: [SpeechSourceRecord]?
+    public var suppressedSpeechCaptionKeys: [String]?
+    public var speechCaptionArchive: [TitleTimelineItem]?
+    /// User-facing parts are independent of technical scenes and title wording.
+    /// Optional so legacy projects can be frozen before their first rename.
+    public var filmParts: [FilmPart]?
+    public var chapterTitleDecisions: [ChapterTitleDecision]?
+    public var editingDecisionSelection: EditingDecisionSelection?
     public var editorialRegeneration: EditorialRegenerationRecord?
     public var editorialBeatPlan: NarrativeBeatPlan?
     public var editorialReview: EditorialReview?
+    /// A playable automatic film may finish with editorial warnings.
+    /// Missing on older projects; this never changes the measured review grade.
+    public var filmDeliveryReport: FilmDeliveryReport?
     public var id: UUID
     public var storyPlanID: UUID
     public var width: Int
     public var height: Int
     public var frameRate: Double
+    /// New automatic edits resolve one shared clock before preview/export.
+    /// Missing on existing/manual fixed-rate timelines: preserve their clock.
+    public var automaticallySelectFrameRate: Bool?
     public var items: [TimelineItem]
     /// Optional for backward-compatible decoding of existing project packages.
     public var audioClips: [TimelineAudioClip]?
@@ -2545,6 +2634,7 @@ public struct ProjectManifest: Codable, Identifiable, Sendable {
     public var events: [Event]
     public var storyPlans: [StoryPlan]
     public var timelines: [Timeline]
+    public var lastImportReport: MediaImportReport?
     public var renderJobs: [RenderJob]
     /// Unified embedded and sidecar telemetry sources. Optional preserves
     /// decoding of project packages written before Telemetry Engine 2.
@@ -2599,6 +2689,7 @@ public struct ProjectManifest: Codable, Identifiable, Sendable {
 }
 
 public struct ProjectWorkspaceState: Codable, Hashable, Sendable {
+    public var pendingNewMaterialCount: Int? = nil
     public var prompt: String
     public var preset: FilmPreset
     public var targetMinutes: Double

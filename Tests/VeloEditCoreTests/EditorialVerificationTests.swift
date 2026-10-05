@@ -156,7 +156,8 @@ func verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text: Stri
     #expect(!message.contains("coverage="))
     #expect(!message.contains("status=passed"))
     #expect(message.components(separatedBy: "титры читаемыми").count == 2)
-    #expect(message.contains("Последняя рабочая версия сохранена"))
+    #expect(message.contains("Данные проекта сохранены"))
+    #expect(!message.contains("Последняя рабочая версия"))
 }
 
 /// Opt-in recovery acceptance on an explicitly prepared disposable copy. The

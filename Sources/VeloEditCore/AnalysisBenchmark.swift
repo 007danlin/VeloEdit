@@ -8,10 +8,13 @@ public struct AnalysisBenchmarkRow: Codable, Hashable, Sendable {
     public var fileCount: Int
     public var sourceDuration: TimeInterval
     public var wallClockDuration: TimeInterval
+    public var computeDuration: TimeInterval? = nil
+    public var wallClockMeasurement: String? = nil
     public var sourceSecondsPerWallSecond: Double?
     public var decodedFrames: Int
     public var frameCacheHits: Int
     public var visionCalls: Int
+    public var vlmCacheHits: Int? = nil
     public var vlmCalls: Int
     public var vlmLatency: TimeInterval
     public var peakResidentMemoryBytes: UInt64?
@@ -19,8 +22,11 @@ public struct AnalysisBenchmarkRow: Codable, Hashable, Sendable {
     public var thermalStates: [String]
     public var fallbackFileCount: Int
     public var semanticRuntimeStatus: String
+    public var successfulVLMScenes: Int? = nil
+    public var plannedVLMScenes: Int? = nil
+    public var successfulVLMRechecks: Int? = nil
 
-    public init?(mode: AIPowerMode, assets: [MediaAsset], analyses: [AnalysisResult]) {
+    public init?(mode: AIPowerMode, assets: [MediaAsset], analyses: [AnalysisResult], operationDuration: TimeInterval? = nil) {
         let measured = analyses.compactMap(\.metrics).filter { $0.mode == mode }
         guard !measured.isEmpty else { return nil }
         self.mode = mode
@@ -28,12 +34,18 @@ public struct AnalysisBenchmarkRow: Codable, Hashable, Sendable {
         fileCount = measured.count
         let measuredIDs = Set(analyses.filter { $0.metrics?.mode == mode }.map(\.assetID))
         sourceDuration = assets.filter { measuredIDs.contains($0.id) }.compactMap(\.metadata.duration).reduce(0, +)
-        wallClockDuration = measured.map(\.totalDuration).reduce(0, +)
+        computeDuration = measured.map(\.totalDuration).reduce(0, +)
+        // Legacy records can only provide a date envelope, never an operation
+        // measurement. The CLI supplies its own monotonic end-to-end interval.
+        wallClockDuration = operationDuration ?? max(0, (measured.map(\.endedAt).max() ?? Date())
+            .timeIntervalSince(measured.map(\.startedAt).min() ?? Date()))
+        wallClockMeasurement = operationDuration == nil ? "legacy-date-envelope" : "monotonic-operation"
         sourceSecondsPerWallSecond = wallClockDuration > 0 ? sourceDuration / wallClockDuration : nil
         decodedFrames = measured.map(\.decodedFrameCount).reduce(0, +)
         frameCacheHits = measured.map(\.frameCacheHitCount).reduce(0, +)
         visionCalls = measured.map(\.visionCallCount).reduce(0, +)
         vlmCalls = measured.map(\.vlmCallCount).reduce(0, +)
+        vlmCacheHits = measured.compactMap(\.vlmCacheHitCount).reduce(0, +)
         vlmLatency = measured.map(\.vlmLatency).reduce(0, +)
         peakResidentMemoryBytes = measured
             .flatMap(\.stageMetrics)
@@ -50,17 +62,28 @@ public struct AnalysisBenchmarkRow: Codable, Hashable, Sendable {
         }
         let metricsByAsset = Dictionary(uniqueKeysWithValues: pairs)
         fallbackFileCount = assets.filter {
-            guard $0.kind == .video, let metrics = metricsByAsset[$0.id] else { return $0.kind == .video }
+            // Unmeasured files (or files analyzed in another mode) cannot be
+            // classified as metadata fallback in this mode's benchmark row.
+            guard $0.kind == .video, let metrics = metricsByAsset[$0.id] else { return false }
             return metrics.decodedFrameCount + metrics.frameCacheHitCount == 0
         }.count
+        let results = analyses.filter { $0.metrics?.mode == mode }
+        let evidence = results.compactMap(\.aiExecution)
+        successfulVLMScenes = evidence.map(\.evaluatedScenes).reduce(0, +)
+        plannedVLMScenes = evidence.map(\.plannedScenes).reduce(0, +)
+        successfulVLMRechecks = evidence.map(\.evaluatedRechecks).reduce(0, +)
         if fallbackFileCount > 0 {
             semanticRuntimeStatus = "metadata-fallback"
-        } else if mode == .fast {
-            semanticRuntimeStatus = "valid-local-fast"
-        } else if vlmCalls == 0 {
-            semanticRuntimeStatus = "valid-local-no-vlm"
-        } else {
+        } else if evidence.count != results.count {
+            semanticRuntimeStatus = "unverified-legacy"
+        } else if evidence.contains(where: { !$0.isComplete }) {
+            if (successfulVLMScenes ?? 0) > 0 { semanticRuntimeStatus = "partial-vlm" }
+            else if evidence.contains(where: { $0.plannedScenes > 0 && !$0.modelAvailable }) { semanticRuntimeStatus = "model-unavailable" }
+            else { semanticRuntimeStatus = vlmCalls > 0 ? "vlm-failed" : "incomplete-local" }
+        } else if (successfulVLMScenes ?? 0) > 0 {
             semanticRuntimeStatus = "valid-vlm"
+        } else {
+            semanticRuntimeStatus = "valid-local-no-vlm"
         }
     }
 
@@ -73,22 +96,27 @@ public struct AnalysisBenchmarkRow: Codable, Hashable, Sendable {
             "\(fileCount)",
             String(format: "%.2f s", sourceDuration),
             String(format: "%.2f s", wallClockDuration),
+            String(format: "%.2f s", computeDuration ?? 0),
+            wallClockMeasurement ?? "unknown",
             speed,
             "\(decodedFrames)",
             "\(frameCacheHits)",
             "\(visionCalls)",
             "\(vlmCalls)",
+            "\(vlmCacheHits ?? 0)",
             String(format: "%.2f s", vlmLatency),
             memory,
             cpu,
             thermalStates.joined(separator: ","),
-            semanticRuntimeStatus
+            semanticRuntimeStatus,
+            "\(successfulVLMScenes ?? 0)/\(plannedVLMScenes ?? 0)",
+            "\(successfulVLMRechecks ?? 0)"
         ].joined(separator: "\t")
     }
 
     public static let tabSeparatedHeader = [
-        "mode", "files", "source", "wall", "speed", "decoded", "cache-hits",
-        "vision", "vlm", "vlm-latency", "peak-process-rss", "process-cpu", "thermal", "status"
+        "mode", "files", "source", "wall", "compute-sum", "wall-measurement", "speed", "decoded", "cache-hits",
+        "vision", "vlm", "vlm-cache-hits", "vlm-latency", "peak-process-rss", "process-cpu", "thermal", "status", "vlm-scenes-completed/planned", "vlm-rechecks-completed"
     ].joined(separator: "\t")
 }
 

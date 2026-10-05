@@ -1,0 +1,1177 @@
+--- before/Sources/VeloEdit/AppModel.swift
++++ after/Sources/VeloEdit/AppModel.swift
+@@ -497,15 +497,20 @@
+         AIAnalysisProfile.resolve(mode: aiPowerMode, advanced: advancedAISettings, thermalState: .nominal)
+     }
+     var aiProfileSummary: String { aiProfile.summary }
+-    var canDownloadAIModel: Bool { aiProfile.runtime != .mlx }
++    var canDownloadAIModel: Bool { true }
+     func isAIModelInstalled(for mode: AIPowerMode) -> Bool {
+         return aiModelAvailability[mode] ?? (mode == aiPowerMode && aiVisionModelInstalled)
+     }
+     func canDownloadAIModel(for mode: AIPowerMode) -> Bool {
+-        return AIAnalysisProfile.resolve(mode: mode, advanced: advancedAISettings, thermalState: .nominal).runtime != .mlx
++        return true
+     }
+     var aiAnalysisRuntimeStatus: String {
+-        project?.analyses.compactMap(\.aiRuntimeLabel).last ?? "Runtime будет проверен при первом анализе"
++        guard let result = project?.analyses.last else { return "Runtime будет проверен при первом анализе" }
++        let speech = result.deepMediaDiagnostics?.stages.first { $0.stage == .asr }
++        let speechStatus = speech?.ran == true ? "Речь распознана локально"
++            : speech?.reason.contains("недоступен") == true ? "Распознавание речи недоступно" : nil
++        return [result.aiRuntimeLabel, result.aiExecution?.summary, result.aiExecution?.modelQuantization, speechStatus]
++            .compactMap { $0 }.joined(separator: " · ")
+     }
+     var aiAnalysisDetail: String {
+         let samples = project?.analyses.compactMap(\.sampledFrameCount).reduce(0, +) ?? 0
+@@ -517,7 +522,7 @@
+         let telemetry = project?.analyses.compactMap(\.telemetry?.timedSamples?.count).reduce(0, +) ?? 0
+         if samples == 0 { return "Proxy → адаптивная выборка → лучшие моменты → глубокий анализ" }
+         let telemetryStatus = telemetry > 0 ? " · синхронизировано точек телеметрии: \(telemetry)" : ""
+-        return "Кадров: \(samples) · декодировано: \(decoded) · из кэша: \(cacheHits) · VLM-пакетов: \(vlmCalls), из кэша: \(vlmReused) · глубоко проверено: \(deep)\(telemetryStatus)"
++        return "Кадров: \(samples) · декодировано: \(decoded) · из кэша: \(cacheHits) · VLM-попыток: \(vlmCalls), из кэша: \(vlmReused) · глубоко проверено: \(deep)\(telemetryStatus)"
+     }
+     var aiThermalStatus: String {
+         switch ProcessInfo.processInfo.thermalState {
+@@ -1052,7 +1057,12 @@
+             }
+             await self.refresh()
+             let total = self.project?.assets.count ?? 0
+-            let message = count == 0
++            let incomplete = self.project?.assets.filter { asset in
++                self.project?.analyses.contains { $0.assetID == asset.id && self.analysis($0, satisfies: self.aiProfile) } != true
++            }.count ?? total
++            let message = incomplete > 0
++                ? "Частичный анализ сохранён. Требуют повторного анализа: \(incomplete) из \(total)."
++                : count == 0
+                 ? "Анализ уже готов — все материалы актуальны (\(total))."
+                 : "Анализ завершён — обработано новых материалов: \(count) из \(total)."
+             self.status = message
+@@ -1100,11 +1110,6 @@
+ 
+     func refreshLocalVisionModelStatus(startService: Bool = true) async {
+         let profile = aiProfile
+-        guard profile.runtime != .mlx else {
+-            aiVisionModelInstalled = false
+-            aiVisionModelStatus = "MLX adapter ещё не включён в эту release-сборку; доступен Apple Vision fallback"
+-            return
+-        }
+         aiVisionModelStatus = "Проверяю \(profile.ollamaModelID)…"
+         let availability = await LocalAIModelManager.shared.availability(
+             model: profile.ollamaModelID,
+@@ -1139,10 +1144,6 @@
+         var availabilityByMode: [AIPowerMode: Bool] = [:]
+         for mode in AIPowerMode.allCases {
+             let profile = AIAnalysisProfile.resolve(mode: mode, advanced: advancedAISettings, thermalState: .nominal)
+-            guard profile.runtime != .mlx else {
+-                availabilityByMode[mode] = false
+-                continue
+-            }
+             let availability = await LocalAIModelManager.shared.availability(model: profile.ollamaModelID)
+             availabilityByMode[mode] = availability.installed
+             if mode == aiPowerMode {
+--- before/Sources/VeloEdit/ContentView.swift
++++ after/Sources/VeloEdit/ContentView.swift
+@@ -4679,7 +4679,8 @@
+         .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+         .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45)))
+         .fixedSize(horizontal: true, vertical: false)
+-        .accessibilityLabel("Мощность ИИ")
++        .accessibilityLabel("Глубина анализа видео")
++        .help("Режим меняет анализ видео. Чат во всех режимах использует Qwen3 4B; точные команды применяются без ожидания нейросети. Сравнение роликов работает во всех режимах.")
+         .alert(downloadAlertTitle, isPresented: downloadConfirmationPresented) {
+             Button("Отмена", role: .cancel) { pendingDownloadMode = nil }
+             Button("Загрузить") {
+--- before/Sources/VeloEdit/LocalDirectorAgent.swift
++++ after/Sources/VeloEdit/LocalDirectorAgent.swift
+@@ -281,7 +281,7 @@
+         let requestModeInstruction = mode == .advisory
+             ? "РЕЖИМ СОВЕТА: предложи музыку, название или объясни звук по данным анализа. Ничего не применяй, пиши в настоящем времени, верни commands: [] и пустой normalizedBrief. Обязательно скажи, что исходник и Timeline не изменены."
+             : "РЕЖИМ МОНТАЖА: подготовь исполняемый план только для явно запрошенных изменений."
+-        let system = OllamaMessage(role: "system", content: """
++        let editingSystem = OllamaMessage(role: "system", content: """
+             Ты монтажный режиссёр внутри VeloEdit. Отвечай естественно по-русски, ровно 1–2 короткими предложениями. Реагируй только на пожелание пользователя: не пересказывай служебную сводку, не делай арифметических расчётов и не выдумывай стиль или длительность. Точные числа повторяй буквально и считай жёсткими ограничениями. Сейчас ты только принимаешь задачу: пиши в будущем времени и не утверждай, что фильм, звук или музыка уже изменены. Например, говори «отключу звук исходников после применения правок», а не «звук убран». Не притворяйся, что просмотрел кадры, если анализ не завершён.
+ 
+             \(requestModeInstruction)
+@@ -294,6 +294,11 @@
+ 
+             Для set_sharpening, set_video_denoise, set_blur и set_stabilization value — 0...1. set_rolling_shutter, set_smooth_slow_motion и set_audio_ducking принимают true/false. detach_audio не использует value. «Приглуши музыку» означает set_music_volume, а «музыку тише под речь» — set_audio_ducking. «Приглуши звук исходников» означает set_original_audio_volume со значением \(DirectorSourceAudioPolicy.duck.volume): оставить 20% исходной громкости. Не приглушай при этом музыку под камеру. «Убери шум» означает set_noise_reduction; отличай аудиошум от video denoise. «Сделай голос/речь тише» может уменьшить громкость исходной дорожки через set_clip_volume, но не обещай изоляцию голоса из уже смешанной фонограммы. Фразы «только ключевые титры», «минимум титров» и ответы на вопрос о количестве титров задают частоту, а не текст: никогда не превращай слова «ключевой момент» или «важный момент» в add_title. add_title допустим только когда пользователь явно просит добавить надпись; текст должен быть дан пользователем или подтверждаться анализом содержания. Сохраняй все действия, точные числа и цели пользователя. Количество моментов, темп истории, предпочтения по содержанию и общую длительность сохраняй в normalizedBrief, но не выдумывай для них command, если такого action нет. При просьбе «сделай динамичнее» выбирай локальные монтажные решения по контексту: убрать слабое, укоротить затянутое, усилить action и кульминацию; не ускоряй автоматически все клипы. Полная пересборка разрешает Story Engine вернуть ранее неиспользованные фрагменты и изменить структуру, но commands должны содержать только доступные typed actions. VeloEdit сам ищет и скачивает разрешённые non-premium треки через официальный Free To Use API, даже если локальная библиотека сейчас пуста. Никогда не отвечай, что пользователь должен вручную добавить музыку или что локальный трек не найден: для монтажного музыкального запроса подтверди подбор, а приложение сообщит фактический результат загрузки. Музыку нельзя генерировать. Не добавляй действий, которых пользователь не просил, и не называй в reply эффекты, которых нет в commands.
+             """)
++        let system = mode == .advisory ? OllamaMessage(role: "system", content: """
++            Ты монтажный режиссёр внутри VeloEdit. Пользователь просит только совет, никаких изменений проекта.
++            Ответь непосредственно на вопрос по-русски, конкретно и кратко. Сначала дай запрошенный результат: если нужно название, предложи готовое название в кавычках «»; если варианты музыки — назови подходящие варианты и объясни выбор. Учитывай описание пользователя и доступный анализ, не выдумывай просмотренные кадры. Не заменяй ответ подтверждением получения задачи или фразой об отсутствии изменений. После содержательного ответа можно кратко подтвердить, что проект не изменён.
++            Верни только JSON по выданной схеме: reply — содержательный совет, normalizedBrief — пустая строка, commands — пустой массив. Не обещай выполнить или применить совет.
++            """) : editingSystem
+         let hardConstraint: String
+         if let count = PromptInterpreter.requestedClipCount(from: userMessage.lowercased()) {
+             hardConstraint = "Жёсткое ограничение из сообщения: количество моментов равно \(count). Это обязательное точное число."
+@@ -341,15 +346,20 @@
+             if ollamaHistory.count > 10 { ollamaHistory.removeFirst(ollamaHistory.count - 10) }
+         }
+         return try Self.decodeReply(content, userMessage: userMessage, runtimeLabel: Self.ollamaRuntimeLabel,
+-                                    allowsFootageReplacement: allowsFootageReplacement && mode == .edit)
++                                    allowsFootageReplacement: allowsFootageReplacement && mode == .edit, mode: mode)
+     }
+ 
+     /// A structured action, never words in the assistant's prose, authorizes
+     /// source replacement. The brush supplies the only supported target scope.
+-    static func decodeReply(_ content: String, userMessage: String, runtimeLabel: String, allowsFootageReplacement: Bool) throws -> DirectorAIReply {
++    static func decodeReply(_ content: String, userMessage: String, runtimeLabel: String, allowsFootageReplacement: Bool, mode: DirectorRequestMode = .edit) throws -> DirectorAIReply {
+         let decoded = try JSONDecoder().decode(OllamaDirectorPayload.self, from: Data(cleanedJSON(content).utf8))
+         let reply = decoded.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !reply.isEmpty else { throw URLError(.cannotParseResponse) }
++        // Advisory mode cannot carry executable edits, even when the model
++        // ignores its empty-plan instruction or echoes actions from history.
++        if mode == .advisory {
++            return DirectorAIReply(text: reply, runtimeLabel: runtimeLabel, normalizedBrief: nil)
++        }
+         // Validate every action before returning any executable plan. Dropping a
+         // malformed item would silently turn a compound request into a partial edit.
+         let commands = try decoded.commands.compactMap { command -> EditorCommand? in
+--- before/Sources/VeloEditCore/AIExecutionEvidence.swift
++++ after/Sources/VeloEditCore/AIExecutionEvidence.swift
+@@ -0,0 +1,42 @@
++import Foundation
++
++/// Persisted evidence of completed work, distinct from the requested profile.
++/// Missing evidence in older projects requires one fresh analysis.
++public struct AIExecutionEvidence: Codable, Hashable, Sendable {
++    public var visualAnalysisCompleted: Bool
++    public var audioAnalysisCompleted: Bool
++    public var plannedScenes: Int
++    public var evaluatedScenes: Int
++    public var plannedRechecks: Int
++    public var evaluatedRechecks: Int
++    public var modelAvailable: Bool
++    public var modelQuantization: String?
++
++    public init(visualAnalysisCompleted: Bool, audioAnalysisCompleted: Bool = true, plannedScenes: Int = 0, evaluatedScenes: Int = 0,
++                plannedRechecks: Int = 0, evaluatedRechecks: Int = 0,
++                modelAvailable: Bool = false, modelQuantization: String? = nil) {
++        self.visualAnalysisCompleted = visualAnalysisCompleted
++        self.audioAnalysisCompleted = audioAnalysisCompleted
++        self.plannedScenes = plannedScenes
++        self.evaluatedScenes = evaluatedScenes
++        self.plannedRechecks = plannedRechecks
++        self.evaluatedRechecks = evaluatedRechecks
++        self.modelAvailable = modelAvailable
++        self.modelQuantization = modelQuantization
++    }
++
++    public var isComplete: Bool {
++        visualAnalysisCompleted && audioAnalysisCompleted && plannedScenes >= 0 && plannedRechecks >= 0
++            && evaluatedScenes == plannedScenes && evaluatedRechecks == plannedRechecks
++            && (plannedScenes + plannedRechecks == 0 || modelAvailable)
++    }
++
++    public var summary: String {
++        guard visualAnalysisCompleted else { return "Анализ кадров не завершён; нужен повтор" }
++        guard audioAnalysisCompleted else { return "Анализ звука не завершён; нужен повтор" }
++        guard plannedScenes > 0 else { return "Локальный анализ кадров завершён" }
++        let recheck = plannedRechecks > 0 ? " · перепроверено: \(evaluatedRechecks)/\(plannedRechecks)" : ""
++        return "Нейрооценки: \(evaluatedScenes)/\(plannedScenes)\(recheck)"
++            + (isComplete ? " · завершено" : " · требуется повтор")
++    }
++}
+--- before/Sources/VeloEditCore/AIProfiles.swift
++++ after/Sources/VeloEditCore/AIProfiles.swift
+@@ -19,10 +19,10 @@
+ 
+     public var shortDescription: String {
+         switch self {
+-        case .fast: return "Минимальная нагрузка и нагрев"
+-        case .balanced: return "Лучший выбор для MacBook Air M4"
+-        case .quality: return "Глубже анализирует лучшие моменты"
+-        case .maximum: return "Максимум локального качества без спешки"
++        case .fast: return "2B · короткая выборка сцен · без proxy и анализа звука"
++        case .balanced: return "4B · ключевые сцены и пейзажи · анализ звука"
++        case .quality: return "8B · все кандидаты · подробный анализ · речь при доступности Speech"
++        case .maximum: return "Больше контекста кадров · независимая перепроверка важных сцен"
+         }
+     }
+ }
+@@ -32,20 +32,26 @@
+     case mlx
+     case ollama
+ 
++    // Keep decoding legacy MLX settings, but never offer a backend that is not shipped.
++    public static var allCases: [Self] { [.automatic, .ollama] }
++
+     public var id: String { rawValue }
+     public var title: String {
+         switch self {
+         case .automatic: return "Автоматически"
+-        case .mlx: return "MLX (Apple Silicon)"
++        case .mlx: return "MLX (недоступен в этой сборке)"
+         case .ollama: return "Ollama"
+         }
+     }
+ }
+ 
+ public enum AIQuantization: String, Codable, CaseIterable, Identifiable, Sendable {
++    case modelProvided = "Из установленной модели"
+     case q4 = "4-bit"
+     case q8 = "8-bit"
+     case fp16 = "16-bit"
++
++    public static var allCases: [Self] { [.modelProvided] }
+ 
+     public var id: String { rawValue }
+ }
+@@ -113,11 +119,10 @@
+     public let aiConcurrency: Int
+     public let thinkingEnabled: Bool
+ 
+-    public var modelID: String { runtime == .mlx ? mlxModelID : ollamaModelID }
++    public var modelID: String { ollamaModelID }
++    public static let cacheVersion = "pipeline-v8-ai-evidence"
+     public var cacheKey: String {
+-        // Completed pre-v7 results may contain thermally reduced sampling or
+-        // motion copied from a different temporal neighbour. Recompute once.
+-        ["pipeline-v7-frame-context", mode.rawValue, runtime.rawValue, modelID, quantization.rawValue].joined(separator: ":")
++        [Self.cacheVersion, mode.rawValue, "ollama", modelID].joined(separator: ":")
+     }
+ 
+     /// Modes differ by work performed, not only by frame density.
+@@ -160,8 +165,10 @@
+         switch mode {
+         case .fast: return 2
+         case .balanced: return 3
+-        case .quality: return 4
+-        case .maximum: return 3
++        // Preserve 8/12 images per scene by making smaller batches, not by
++        // silently discarding half the scheduled images.
++        case .quality: return 2
++        case .maximum: return 1
+         }
+     }
+ 
+@@ -186,6 +193,12 @@
+         }
+     }
+ 
++    /// Image encoding happens before the first token. It needs its own budget;
++    /// the old 45/90-second total budget discarded healthy cold inference.
++    public func vlmPrefillTimeout(imageCount: Int) -> TimeInterval {
++        max(vlmTimeout, 60 + Double(max(1, imageCount)) * 20)
++    }
++
+     public var sceneSensitivity: Double {
+         switch mode {
+         case .fast: return 0.58
+@@ -196,11 +209,10 @@
+     }
+ 
+     public var rechecksImportantScenes: Bool { mode == .maximum }
+-    public var comparesAcrossVideos: Bool { mode == .maximum }
++    public var comparesAcrossVideos: Bool { true }
+ 
+     public var summary: String {
+-        let runtimeName = runtime == .mlx ? "MLX" : runtime == .ollama ? "Ollama" : "MLX/Ollama"
+-        return "\(runtimeName) · \(modelID) · \(quantization.rawValue)"
++        "Ollama · \(modelID) · битность из установленной модели"
+     }
+ 
+     public var estimatedDownloadSize: String {
+@@ -231,17 +243,17 @@
+             // a base MacBook Air. Falling back here prevents memory pressure
+             // and swap from making the nominally "maximum" mode worse.
+             let canUse30B = physicalMemory >= 32 * 1_073_741_824
+-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: canUse30B ? "qwen3-vl:30b-a3b-instruct" : "qwen3-vl:8b-instruct", mlxModelID: canUse30B ? "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit" : "mlx-community/Qwen3-VL-8B-Instruct-8bit", quantization: canUse30B ? .q4 : .q8, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
++            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: canUse30B ? "qwen3-vl:30b-a3b-instruct" : "qwen3-vl:8b-instruct", mlxModelID: "", quantization: .q4, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
+         }
+ 
+         var result = base
+         if advanced.enabled {
+             result = AIAnalysisProfile(
+                 mode: mode,
+-                runtime: advanced.runtime,
+-                ollamaModelID: advanced.modelID.isEmpty ? base.ollamaModelID : advanced.modelID,
+-                mlxModelID: advanced.modelID.isEmpty ? base.mlxModelID : advanced.modelID,
+-                quantization: advanced.quantization,
++                runtime: advanced.runtime == .mlx ? .ollama : advanced.runtime,
++                ollamaModelID: advanced.modelID.isEmpty || (advanced.runtime == .mlx && advanced.modelID.contains("/")) ? base.ollamaModelID : advanced.modelID,
++                mlxModelID: "",
++                quantization: .modelProvided,
+                 proxyLongEdge: base.proxyLongEdge,
+                 coarseInterval: base.coarseInterval,
+                 denseInterval: base.denseInterval,
+--- before/Sources/VeloEditCore/AdaptiveAnalysis.swift
++++ after/Sources/VeloEditCore/AdaptiveAnalysis.swift
+@@ -414,7 +414,11 @@
+ }
+ 
+ private struct OllamaVisionResponse: Decodable {
+-    let message: OllamaVisionMessage
++    let message: OllamaVisionMessage?
++    let model: String?
++    let done: Bool?
++    let done_reason: String?
++    let error: String?
+     let load_duration: Double?
+     let prompt_eval_duration: Double?
+     let eval_duration: Double?
+@@ -429,6 +433,36 @@
+         if let prompt_eval_count { values["promptTokens"] = prompt_eval_count }
+         if let eval_count { values["generatedTokens"] = eval_count }
+         return values
++    }
++}
++
++/// Only a finished, validated response may enter the semantic cache.
++struct OllamaVisionStream {
++    private(set) var content = ""
++    private(set) var finished = false
++    private(set) var measurements: [String: Double] = [:]
++    let expectedModel: String
++
++    mutating func append(_ line: String) throws {
++        guard !finished else { throw URLError(.cannotParseResponse) }
++        let event = try JSONDecoder().decode(OllamaVisionResponse.self, from: Data(line.utf8))
++        if let error = event.error {
++            throw NSError(domain: "OllamaInference", code: 1, userInfo: [NSLocalizedDescriptionKey: error])
++        }
++        if let model = event.model, model != expectedModel && model != expectedModel + ":latest" {
++            throw URLError(.cannotParseResponse)
++        }
++        content += event.message?.content ?? ""
++        guard content.utf8.count <= 2_000_000, event.done_reason != "length" else {
++            throw URLError(.cannotParseResponse)
++        }
++        finished = event.done == true
++        if finished { measurements = event.runtimeMeasurements }
++    }
++
++    func completedContent() throws -> String {
++        guard finished, !content.isEmpty else { throw URLError(.cannotParseResponse) }
++        return content
+     }
+ }
+ private struct OllamaModelTags: Decodable {
+@@ -538,7 +572,7 @@
+         metrics: AnalysisMetricsRecorder? = nil
+     ) async throws -> [Int: DeepFrameJudgement] {
+         do {
+-            return try await LocalAIModelManager.recoveringRequest {
++            return try await LocalAIModelManager.recoveringRequest(retryTimeouts: false) {
+                 try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics)
+             }
+         } catch is CancellationError {
+@@ -586,7 +620,7 @@
+         """
+         let payload: [String: Any] = ["model": model,
+             "messages": [["role": "user", "content": prompt, "images": images]],
+-            "stream": false, "think": thinking, "keep_alive": "10m",
++            "stream": true, "think": thinking, "keep_alive": "10m",
+             "format": Self.responseSchema(indices: scenes.map(\.index))]
+         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
+         request.httpMethod = "POST"
+@@ -600,17 +634,38 @@
+             let started = ProcessInfo.processInfo.systemUptime
+             var recorded = false
+             do {
+-                let (data, response) = try await URLSession.shared.data(for: preparedRequest)
++                let configuration = URLSessionConfiguration.ephemeral
++                configuration.timeoutIntervalForRequest = timeout
++                configuration.timeoutIntervalForResource = timeout + 600
++                let session = URLSession(configuration: configuration)
++                defer { session.invalidateAndCancel() }
++                let (bytes, response) = try await session.bytes(for: preparedRequest)
++                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
++                    throw NSError(domain: "OllamaHTTP", code: (response as? HTTPURLResponse)?.statusCode ?? 0)
++                }
++                var stream = OllamaVisionStream(expectedModel: model)
++                var receivedText = false
++                for try await line in bytes.lines where !line.isEmpty {
++                    try Task.checkCancellation()
++                    try stream.append(line)
++                    if !receivedText && !stream.content.isEmpty {
++                        receivedText = true
++                        trace?.event("vlm.first-token", fields: ["model": model],
++                                     values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
++                    }
++                }
++                let content = try stream.completedContent()
++                _ = try Self.parseBatch(content, indices: indices)
+                 await metrics?.recordVLMCall(latency: ProcessInfo.processInfo.systemUptime - started)
+                 recorded = true
+-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+-                let envelope = try JSONDecoder().decode(OllamaVisionResponse.self, from: data)
+-                trace?.event("vlm.runtime", fields: ["model": model], values: envelope.runtimeMeasurements)
+-                _ = try Self.parseBatch(envelope.message.content, indices: indices)
+-                return envelope.message.content
++                trace?.event("vlm.runtime", fields: ["model": model], values: stream.measurements)
++                return content
+             } catch {
+                 if !recorded { await metrics?.recordVLMCall(latency: ProcessInfo.processInfo.systemUptime - started) }
+-                trace?.event("vlm.failed", fields: ["error": String(describing: type(of: error))])
++                let failure = error as NSError
++                trace?.event("vlm.failed", fields: ["error": String(describing: type(of: error)),
++                    "domain": failure.domain, "code": String(failure.code), "message": failure.localizedDescription,
++                    "model": model], values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
+                 throw error
+             }
+         }
+@@ -657,15 +712,10 @@
+         detailedProgress: (@Sendable (AnalysisStageUpdate) -> Void)? = nil
+     ) async throws -> AnalysisResult {
+         await metrics?.start(.fastInspection)
+-        var baseline: AnalysisResult
+-        if let previous,
+-           previous.assetID == asset.id,
+-           previous.analyzedContentHash == asset.contentHash,
+-           previous.schemaVersion == schemaVersion {
+-            baseline = previous
+-        } else {
+-            baseline = try await LocalHeuristicAnalyzer(schemaVersion: schemaVersion).analyze(asset: asset)
+-        }
++        // Rebuild local scores; a retry must not blend a previous VLM answer twice.
++        var baseline = try await LocalHeuristicAnalyzer(schemaVersion: schemaVersion).analyze(asset: asset)
++        baseline.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: false)
++        baseline.completedDepth = .metadata
+         await metrics?.finish(.fastInspection)
+         baseline.analysisProfileKey = profile.cacheKey
+         baseline.analyzedSourceIdentity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+@@ -706,14 +756,16 @@
+             }
+             baseline.deepMediaVersion = DeepAnalysisCache.version
+             baseline.aiRuntimeLabel = "Apple Vision · локально"
+-            baseline.completedDepth = profile.targetDepth
+-            progress?("Быстрый анализ фото готов", 1)
++            let photoComplete = (baseline.sampledFrameCount ?? 0) > 0
++            baseline.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: photoComplete)
++            baseline.completedDepth = photoComplete ? profile.targetDepth : .metadata
++            progress?(photoComplete ? "Анализ фото готов" : "Фото требует повторного анализа", 1)
+             detailedProgress?(AnalysisStageUpdate(stage: .fusion, fraction: 1))
+             return baseline
+         }
+         guard let duration = asset.metadata.duration, duration > 0 else {
+             baseline.aiRuntimeLabel = "Метаданные · локальный fallback"
+-            baseline.completedDepth = profile.targetDepth
++            baseline.completedDepth = .metadata
+             baseline.deepMediaVersion = DeepAnalysisCache.version
+             progress?("Metadata fallback готов", 1)
+             detailedProgress?(AnalysisStageUpdate(stage: .fusion, fraction: 1))
+@@ -768,6 +820,8 @@
+                 currentScene: sampling.scenes.isEmpty ? nil : 1,
+                 sceneCount: sampling.scenes.count
+             ))
++        } catch is CancellationError {
++            throw CancellationError()
+         } catch {
+             await metrics?.finish(.adaptiveSampling)
+             baseline.warnings.append("Адаптивная выборка кадров недоступна: \(error.localizedDescription)")
+@@ -900,20 +954,24 @@
+ 
+         let runtime = OllamaVisionRuntime()
+         // ResourceWorkPacer waits for cooling; it never drops scheduled VLM work.
+-        let ollamaAllowed = profile.maximumVLMScenes > 0 && profile.runtime != .mlx
+-        let hasVisionModel = ollamaAllowed
+-            ? await LocalAIModelManager.shared.availability(
+-                model: profile.ollamaModelID
+-            ).installed
+-            : false
+-        baseline.analysisModelDigest = hasVisionModel ? await LocalAIModelManager.shared.installedModelDigest(model: profile.ollamaModelID) : nil
++        let availability = await LocalAIModelManager.shared.availability(model: profile.ollamaModelID)
++        let modelInfo = availability.installed
++            ? await LocalAIModelManager.shared.installedModelInfo(model: profile.ollamaModelID) : nil
++        let hasVisionModel = modelInfo != nil
++        baseline.analysisModelDigest = modelInfo?.digest
++        let selectedIndices = selectedVLMIndices(in: candidates)
++        var execution = AIExecutionEvidence(
++            visualAnalysisCompleted: !samples.isEmpty,
++            audioAnalysisCompleted: profile.audioAnalysisLevel == .none || !asset.metadata.hasAudio || audioSummary != nil,
++            plannedScenes: selectedIndices.count,
++            plannedRechecks: profile.rechecksImportantScenes ? min(2, selectedIndices.count) : 0,
++            modelAvailable: hasVisionModel, modelQuantization: modelInfo?.quantization)
+         var deepIndices: Set<Int> = []
+         var deepFailures = 0
+         if hasVisionModel {
+             var resourcePacer = ResourceWorkPacer()
+             try await resourcePacer.checkpoint()
+             await metrics?.start(.vlm)
+-            let selectedIndices = selectedVLMIndices(in: candidates)
+             let batches = stride(from: 0, to: selectedIndices.count, by: profile.scenesPerVLMRequest).map {
+                 Array(selectedIndices[$0..<min(selectedIndices.count, $0 + profile.scenesPerVLMRequest)])
+             }
+@@ -946,7 +1004,7 @@
+                         scenes: inputs,
+                         model: profile.ollamaModelID,
+                         thinking: profile.thinkingEnabled,
+-                        timeout: profile.vlmTimeout,
++                        timeout: profile.vlmPrefillTimeout(imageCount: inputs.reduce(0) { $0 + $1.frames.count }),
+                         cache: deepCache,
+                         cacheContext: profile.cacheKey + "|" + FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash),
+                         metrics: metrics
+@@ -967,26 +1025,28 @@
+             }
+ 
+             if profile.rechecksImportantScenes {
+-                let recheck = selectedIndices.filter { index in
+-                    let confidenceDistance = abs(candidates[index].scores.composite - 0.72)
+-                    return confidenceDistance < 0.22
+-                }.prefix(2)
+-                if !recheck.isEmpty {
++                // Always independently verify the strongest/ambiguous planned
++                // moments, even when none passes the former arbitrary threshold.
++                let recheck = selectedIndices.sorted {
++                    abs(candidates[$0].scores.composite - 0.72) < abs(candidates[$1].scores.composite - 0.72)
++                }.prefix(execution.plannedRechecks)
++                for index in recheck {
+                     try await resourcePacer.checkpoint()
+-                    let inputs = recheck.map { index in
+-                        VLMSceneInput(index: index, frames: nearbyFrames(for: candidates[index], in: samples), telemetry: nil)
+-                    }
+-                    if let judgements = try? await runtime.analyzeBatch(
+-                        scenes: inputs,
+-                        model: profile.ollamaModelID,
+-                        thinking: profile.thinkingEnabled,
+-                        timeout: profile.vlmTimeout,
+-                        metrics: metrics
+-                    ) {
+-                        for index in recheck {
+-                            guard let judgement = judgements[index] else { continue }
++                    let inputs = [VLMSceneInput(index: index, frames: nearbyFrames(for: candidates[index], in: samples), telemetry: nil)]
++                    do {
++                        let judgements = try await runtime.analyzeBatch(
++                            scenes: inputs, model: profile.ollamaModelID, thinking: profile.thinkingEnabled,
++                            timeout: profile.vlmPrefillTimeout(imageCount: inputs[0].frames.count), metrics: metrics)
++                        if let judgement = judgements[index] {
+                             apply(judgement, to: &candidates[index])
++                            execution.evaluatedRechecks += 1
++                            PerformanceTrace.current?.event("vlm.recheck-completed", fields: ["index": String(index)])
+                         }
++                    } catch is CancellationError {
++                        throw CancellationError()
++                    } catch {
++                        if (error as? URLError)?.code == .cancelled { throw CancellationError() }
++                        baseline.warnings.append("Независимая перепроверка сцены не завершена: \(error.localizedDescription)")
+                     }
+                 }
+             }
+@@ -998,15 +1058,13 @@
+                 ? "Apple Vision + video/telemetry · локальный fallback"
+                 : "Qwen3-VL batch + video/telemetry · Ollama · локально"
+         } else {
+-            let reason = profile.runtime == .mlx
+-                ? "Нативный MLX runtime выбран, но модель ещё не установлена в сборку; использован Apple Vision."
+-                : "Модель \(profile.ollamaModelID) не загружена; использован адаптивный Apple Vision-анализ."
++            let reason = "Модель \(profile.ollamaModelID) не установлена; нейроанализ не завершён. Сохранён локальный анализ кадров."
+             baseline.warnings.append(reason)
+             baseline.aiRuntimeLabel = telemetryMoments.isEmpty
+                 ? "Apple Vision + adaptive sampling · локально"
+                 : "Apple Vision + video/GPMF · локально"
+         }
+-        detailedProgress?(AnalysisStageUpdate(stage: .embeddings, label: "Embeddings, объекты, звук и речь", fraction: 0.94))
++        detailedProgress?(AnalysisStageUpdate(stage: .embeddings, label: "Локальные признаки, объекты, звук и речь", fraction: 0.94))
+         let deepMedia = await DeepMediaCandidateEnricher().enrich(
+             candidates: candidates,
+             samples: samples,
+@@ -1020,6 +1078,10 @@
+         if audioSummary != nil { audioSummary?.events = deepMedia.audioEvents }
+         baseline.deepMediaVersion = DeepAnalysisCache.version
+         baseline.deepMediaDiagnostics = deepMedia.diagnostics
++        if let speech = deepMedia.diagnostics.stages.first(where: { $0.stage == .asr }),
++           !speech.ran, speech.reason.contains("недоступен") {
++            baseline.warnings.append(speech.reason)
++        }
+         await metrics?.start(.fusion)
+         baseline.deepAnalyzedCandidateCount = deepIndices.count
+         baseline.candidates = candidates
+@@ -1032,10 +1094,15 @@
+             telemetryMoments: telemetryMoments,
+             audio: audioSummary
+         )
+-        baseline.completedDepth = profile.targetDepth
++        try Task.checkCancellation()
++        execution.evaluatedScenes = deepIndices.count
++        baseline.aiExecution = execution
++        baseline.completedDepth = execution.isComplete ? profile.targetDepth : min(profile.targetDepth, .quick)
++        if !execution.isComplete { baseline.warnings.append(execution.summary) }
+         await metrics?.finish(.fusion, workUnits: baseline.scenes?.count ?? 0)
+         progress?("Передаю лучшие моменты Story Engine", 1)
+-        detailedProgress?(AnalysisStageUpdate(stage: .fusion, label: "Анализ готов для AI Director", fraction: 1))
++        detailedProgress?(AnalysisStageUpdate(stage: .fusion, label: execution.isComplete
++            ? "Анализ готов для AI Director" : "Частичный анализ: \(execution.summary)", fraction: 1))
+         return baseline
+     }
+ 
+@@ -1104,7 +1171,7 @@
+         return selected.sorted { $0.timestamp < $1.timestamp }
+     }
+ 
+-    private func selectedVLMIndices(in candidates: [Candidate]) -> [Int] {
++    func selectedVLMIndices(in candidates: [Candidate]) -> [Int] {
+         let ranked = candidates.indices.sorted { lhs, rhs in
+             let left = candidates[lhs]
+             let right = candidates[rhs]
+@@ -1128,12 +1195,15 @@
+         case .broadScenes, .temporalRecheck:
+             selected = ranked
+         }
+-        return Array(selected.prefix(profile.maximumVLMScenes))
+-    }
+-
+-    private func nearbyFrames(for candidate: Candidate, in samples: [VisualFrameSample]) -> [VisualFrameSample] {
++        // Keep the preferred semantic ordering, then fill the mode's budget
++        // with representative scenes. Calm scenery must still reach the VLM.
++        let remaining = ranked.filter { !selected.contains($0) }
++        return Array((selected + remaining).prefix(profile.maximumVLMScenes))
++    }
++
++    func nearbyFrames(for candidate: Candidate, in samples: [VisualFrameSample]) -> [VisualFrameSample] {
+         let center = candidate.sourceStart + candidate.sourceDuration / 2
+-        let maximumPerScene = max(2, min(profile.framesPerCandidate, max(3, 18 / profile.scenesPerVLMRequest)))
++        let maximumPerScene = profile.framesPerCandidate
+         return Array(samples.sorted { abs($0.timestamp - center) < abs($1.timestamp - center) }
+             .prefix(maximumPerScene))
+             .sorted { $0.timestamp < $1.timestamp }
+--- before/Sources/VeloEditCore/AnalysisBenchmark.swift
++++ after/Sources/VeloEditCore/AnalysisBenchmark.swift
+@@ -22,6 +22,9 @@
+     public var thermalStates: [String]
+     public var fallbackFileCount: Int
+     public var semanticRuntimeStatus: String
++    public var successfulVLMScenes: Int? = nil
++    public var plannedVLMScenes: Int? = nil
++    public var successfulVLMRechecks: Int? = nil
+ 
+     public init?(mode: AIPowerMode, assets: [MediaAsset], analyses: [AnalysisResult], operationDuration: TimeInterval? = nil) {
+         let measured = analyses.compactMap(\.metrics).filter { $0.mode == mode }
+@@ -59,17 +62,28 @@
+         }
+         let metricsByAsset = Dictionary(uniqueKeysWithValues: pairs)
+         fallbackFileCount = assets.filter {
+-            guard $0.kind == .video, let metrics = metricsByAsset[$0.id] else { return $0.kind == .video }
++            // Unmeasured files (or files analyzed in another mode) cannot be
++            // classified as metadata fallback in this mode's benchmark row.
++            guard $0.kind == .video, let metrics = metricsByAsset[$0.id] else { return false }
+             return metrics.decodedFrameCount + metrics.frameCacheHitCount == 0
+         }.count
++        let results = analyses.filter { $0.metrics?.mode == mode }
++        let evidence = results.compactMap(\.aiExecution)
++        successfulVLMScenes = evidence.map(\.evaluatedScenes).reduce(0, +)
++        plannedVLMScenes = evidence.map(\.plannedScenes).reduce(0, +)
++        successfulVLMRechecks = evidence.map(\.evaluatedRechecks).reduce(0, +)
+         if fallbackFileCount > 0 {
+             semanticRuntimeStatus = "metadata-fallback"
+-        } else if mode == .fast {
+-            semanticRuntimeStatus = "valid-local-fast"
+-        } else if vlmCalls == 0 && (vlmCacheHits ?? 0) == 0 {
++        } else if evidence.count != results.count {
++            semanticRuntimeStatus = "unverified-legacy"
++        } else if evidence.contains(where: { !$0.isComplete }) {
++            if (successfulVLMScenes ?? 0) > 0 { semanticRuntimeStatus = "partial-vlm" }
++            else if evidence.contains(where: { $0.plannedScenes > 0 && !$0.modelAvailable }) { semanticRuntimeStatus = "model-unavailable" }
++            else { semanticRuntimeStatus = vlmCalls > 0 ? "vlm-failed" : "incomplete-local" }
++        } else if (successfulVLMScenes ?? 0) > 0 {
++            semanticRuntimeStatus = "valid-vlm"
++        } else {
+             semanticRuntimeStatus = "valid-local-no-vlm"
+-        } else {
+-            semanticRuntimeStatus = "valid-vlm"
+         }
+     }
+ 
+@@ -94,13 +108,15 @@
+             memory,
+             cpu,
+             thermalStates.joined(separator: ","),
+-            semanticRuntimeStatus
++            semanticRuntimeStatus,
++            "\(successfulVLMScenes ?? 0)/\(plannedVLMScenes ?? 0)",
++            "\(successfulVLMRechecks ?? 0)"
+         ].joined(separator: "\t")
+     }
+ 
+     public static let tabSeparatedHeader = [
+         "mode", "files", "source", "wall", "compute-sum", "wall-measurement", "speed", "decoded", "cache-hits",
+-        "vision", "vlm", "vlm-cache-hits", "vlm-latency", "peak-process-rss", "process-cpu", "thermal", "status"
++        "vision", "vlm", "vlm-cache-hits", "vlm-latency", "peak-process-rss", "process-cpu", "thermal", "status", "vlm-scenes-completed/planned", "vlm-rechecks-completed"
+     ].joined(separator: "\t")
+ }
+ 
+--- before/Sources/VeloEditCore/DeepMediaEnricher.swift
++++ after/Sources/VeloEditCore/DeepMediaEnricher.swift
+@@ -62,7 +62,7 @@
+             itemCount: audioEvents.count,
+             confidence: mean(audioEvents.map(\.confidence)),
+             duration: Date().timeIntervalSince(audioStarted),
+-            reason: audioEvents.isEmpty ? "Аудиособытия недоступны; сохранён fallback" : "DSP-классификация shortlist audio"
++            reason: audioEvents.isEmpty ? "Аудиособытия недоступны; сохранён fallback" : "DSP-анализ звука (правила обработки сигнала, без отдельной нейросети)"
+         ))
+ 
+         let embeddingStarted = Date()
+@@ -100,7 +100,7 @@
+             itemCount: embeddings.count,
+             confidence: mean(embeddings.map(\.confidence)),
+             duration: Date().timeIntervalSince(embeddingStarted),
+-            reason: "Embeddings построены по adaptive/key frames без дополнительного decode; cache hits \(embeddingCacheHits)"
++            reason: "Локальные дескрипторы изображения и меток (без отдельной нейросети); cache hits \(embeddingCacheHits)"
+         ))
+ 
+         let trackingStarted = Date()
+--- before/Sources/VeloEditCore/DeepMediaUnderstanding.swift
++++ after/Sources/VeloEditCore/DeepMediaUnderstanding.swift
+@@ -54,7 +54,8 @@
+     }
+ }
+ 
+-/// Lightweight local descriptor built from already-decoded adaptive key frames.
++/// Deterministic descriptor, not a learned neural embedding network.
++/// Built from already-decoded adaptive key frames.
+ /// It combines spatial luminance, histogram and hashed semantic channels, so it
+ /// separates visually different events even when their high-level tags match.
+ public struct LocalVisualEmbeddingModel: EmbeddingModelProtocol, Sendable {
+--- before/Sources/VeloEditCore/LocalAIModelManager.swift
++++ after/Sources/VeloEditCore/LocalAIModelManager.swift
+@@ -23,9 +23,19 @@
+     let error: String?
+ }
+ 
++public struct InstalledAIModel: Codable, Sendable, Hashable {
++    public struct Details: Codable, Sendable, Hashable {
++        public let quantization_level: String?
++        public let parameter_size: String?
++    }
++    public let name: String
++    public let digest: String?
++    public let details: Details?
++    public var quantization: String? { details?.quantization_level }
++}
++
+ private struct OllamaLocalTags: Decodable {
+-    struct Model: Decodable { let name: String; let digest: String? }
+-    let models: [Model]
++    let models: [InstalledAIModel]
+ }
+ 
+ private struct OllamaWarmRequest: Encodable {
+@@ -52,6 +62,7 @@
+     private var tagsSnapshot: (names: [String], time: TimeInterval)?
+     private let availabilityLifetime: TimeInterval = 2
+     private var modelDigests: [String: String] = [:]
++    private var modelDetails: [String: InstalledAIModel] = [:]
+ 
+     public init() {}
+ 
+@@ -70,12 +81,13 @@
+         try await Self.recoveringRequest { try await self.warmUp(model: model) }
+     }
+ 
+-    static func recoveringRequest<T: Sendable>(_ operation: @Sendable () async throws -> T) async throws -> T {
++    static func recoveringRequest<T: Sendable>(retryTimeouts: Bool = true, _ operation: @Sendable () async throws -> T) async throws -> T {
+         var attempts = 0
+         while true {
+             try Task.checkCancellation()
+             do { return try await operation() }
+             catch {
++                if !retryTimeouts, (error as? URLError)?.code == .timedOut { throw error }
+                 let cause = AutonomousFailureCause.classify(error)
+                 guard cause == .transientNetwork || cause == .localService else { throw error }
+                 let delay: TimeInterval
+@@ -104,7 +116,9 @@
+             return LocalModelAvailability(
+                 serviceAvailable: true,
+                 installed: installed,
+-                message: installed ? "\(model) загружена и готова" : "\(model) ещё не загружена"
++                message: installed
++                    ? "Установлена: \(model) · \(modelDetails[model]?.quantization ?? modelDetails[model + ":latest"]?.quantization ?? "битность неизвестна")"
++                    : "\(model) не установлена — полный нейроанализ этого режима недоступен"
+             )
+         } catch {
+             return LocalModelAvailability(serviceAvailable: false, installed: false, message: error.localizedDescription)
+@@ -211,6 +225,11 @@
+         return modelDigests[model] ?? modelDigests["\(model):latest"]
+     }
+ 
++    public func installedModelInfo(model: String) async -> InstalledAIModel? {
++        guard await installedModels(forceRefresh: true) != nil else { return nil }
++        return modelDetails[model] ?? modelDetails["\(model):latest"]
++    }
++
+     private func installedModels(forceRefresh: Bool = false) async -> [String]? {
+         if !forceRefresh, let snapshot = tagsSnapshot,
+            ProcessInfo.processInfo.systemUptime - snapshot.time < availabilityLifetime { return snapshot.names }
+@@ -231,6 +250,7 @@
+               let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let tags = try? JSONDecoder().decode(OllamaLocalTags.self, from: data) else { return nil }
+         modelDigests = Dictionary(tags.models.compactMap { model in model.digest.map { (model.name, $0) } }, uniquingKeysWith: { _, new in new })
++        modelDetails = Dictionary(tags.models.map { ($0.name, $0) }, uniquingKeysWith: { _, new in new })
+         return tags.models.map(\.name)
+     }
+ 
+--- before/Sources/VeloEditCore/LocalSpeechRecognizer.swift
++++ after/Sources/VeloEditCore/LocalSpeechRecognizer.swift
+@@ -46,6 +46,12 @@
+         case .authorized:
+             return true
+         case .notDetermined:
++            // Consent belongs to the interactive app. Headless CLI/test runs
++            // must report the optional ASR stage unavailable, not trigger TCC
++            // against an unsigned runner or wait for an invisible prompt.
++            guard Bundle.main.bundleURL.pathExtension == "app",
++                  Bundle.main.executableURL?.lastPathComponent == "VeloEdit",
++                  Bundle.main.object(forInfoDictionaryKey: "NSSpeechRecognitionUsageDescription") is String else { return false }
+             return await withCheckedContinuation { continuation in
+                 SFSpeechRecognizer.requestAuthorization { status in
+                     continuation.resume(returning: status == .authorized)
+--- before/Sources/VeloEditCore/Models.swift
++++ after/Sources/VeloEditCore/Models.swift
+@@ -433,6 +433,7 @@
+     public var analysisProfileKey: String?
+     public var analyzedSourceIdentity: String? = nil
+     public var analysisModelDigest: String? = nil
++    public var aiExecution: AIExecutionEvidence? = nil
+     public var usedProxy: Bool?
+     public var sampledFrameCount: Int?
+     public var deepAnalyzedCandidateCount: Int?
+@@ -468,7 +469,7 @@
+     }
+ 
+     public func satisfies(_ profile: AIAnalysisProfile) -> Bool {
+-        (completedDepth ?? .quick) >= profile.targetDepth
++        aiExecution?.isComplete == true && (completedDepth ?? .metadata) >= profile.targetDepth
+     }
+ 
+     /// Scene analysis is the canonical evidence used by AI Director. Existing
+--- before/Sources/VeloEditCore/VeloEditPipeline.swift
++++ after/Sources/VeloEditCore/VeloEditPipeline.swift
+@@ -1767,6 +1767,8 @@
+         preferredAssetID: UUID? = nil,
+         progress: (@Sendable (ImportProgress) -> Void)? = nil
+     ) async throws -> Int {
++        let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled], reason: "VeloEdit анализирует видео")
++        defer { ProcessInfo.processInfo.endActivity(activity) }
+         let snapshot = await store.snapshot()
+         return try await PerformanceTrace.measure(name: "analysis", projectID: snapshot.manifest.id, revision: String(snapshot.revision)) {
+             try await self.analyzeMissingImpl(preferredAssetID: preferredAssetID, progress: progress)
+@@ -1788,7 +1790,7 @@
+                       $0.analyzedContentHash == asset.contentHash,
+                       $0.schemaVersion == current.analysisSchemaVersion,
+                       $0.deepMediaVersion == DeepAnalysisCache.version,
+-                      $0.analysisProfileKey?.hasPrefix("pipeline-v7-frame-context:") == true,
++                      $0.analysisProfileKey?.hasPrefix(AIAnalysisProfile.cacheVersion + ":") == true,
+                       $0.analyzedSourceIdentity == FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash),
+                       currentModelDigest == nil || $0.analysisModelDigest == currentModelDigest,
+                       $0.satisfies(baseProfile) else { return false }
+@@ -1816,6 +1818,7 @@
+ 
+         var analyzedCount = 0
+         var failedCount = 0
++        var incompleteCount = 0
+         let paths = CachePaths(root: await store.cacheURL)
+         let frameCache = FrameCache(rootURL: paths.frameCacheDirectory)
+         let deepCache = DeepAnalysisCache(rootURL: paths.deepMediaCacheDirectory)
+@@ -1970,7 +1973,12 @@
+                 if result.analyzedSourceIdentity == nil {
+                     result.analyzedSourceIdentity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+                 }
+-                result.completedDepth = max(result.completedDepth ?? .quick, profile.targetDepth)
++                // An explicitly injected analyzer defines its own contract. The
++                // production analyzer must retain its measured completion state.
++                if customAnalyzer != nil, result.aiExecution == nil {
++                    result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true)
++                    result.completedDepth = max(result.completedDepth ?? .quick, profile.targetDepth)
++                }
+                 if result.deepMediaVersion == nil {
+                     result.deepMediaVersion = DeepAnalysisCache.version
+                     result.deepMediaDiagnostics = DeepMediaDiagnostics(stages: [
+@@ -2002,10 +2010,14 @@
+                     // every asset would turn a 300-file import into O(n³) work.
+                 }
+                 PerformanceTrace.current?.event("stage.end", fields: ["stage": "persistence"])
+-                if resultWasCurrent { analyzedCount += 1 }
++                if resultWasCurrent {
++                    analyzedCount += 1
++                    if result.aiExecution?.isComplete != true { incompleteCount += 1 }
++                }
+                 await eta.finishFile()
+                 await reporter.publish(
+-                    AnalysisStageUpdate(stage: .persistence, label: "Анализ готов", fraction: 1),
++                    AnalysisStageUpdate(stage: .persistence, label: result.aiExecution?.isComplete == true
++                        ? "Анализ готов" : "Частичный анализ сохранён; нужен повтор", fraction: 1),
+                     fileName: asset.displayName
+                 )
+             } catch is CancellationError {
+@@ -2056,7 +2068,8 @@
+                 project.events = eventDiscovery.events
+             }
+         }
+-        let label = failedCount == 0 ? "Анализ готов" : "Анализ завершён, ошибок: \(failedCount)"
++        let label = failedCount + incompleteCount == 0 ? "Анализ готов"
++            : "Анализ завершён, ошибок: \(failedCount), требуют повтора: \(incompleteCount)"
+         progress?(ImportProgress(completed: pending.count * 100, total: pending.count * 100, currentName: label))
+         return analyzedCount
+     }
+--- before/Tests/VeloEditAppTests/AICompletionStatusTests.swift
++++ after/Tests/VeloEditAppTests/AICompletionStatusTests.swift
+@@ -0,0 +1,51 @@
++import Foundation
++import Testing
++import VeloEditCore
++@testable import VeloEdit
++
++@Suite @MainActor struct AICompletionStatusTests {
++    @Test func advisoryReplyCannotReturnEditsEvenWhenTheModelIncludesThem() throws {
++        let content = #"{"reply":"Название: «Лесной маршрут».","normalizedBrief":"Пересобрать фильм","commands":[{"action":"set_music_volume","target":"all","value":"0.2","secondaryTarget":""},{"action":"replace_footage","target":"selected","value":"","secondaryTarget":""}]}"#
++        let reply = try LocalDirectorAgent.decodeReply(content, userMessage: "Предложи название, ничего не меняй",
++            runtimeLabel: "test", allowsFootageReplacement: true, mode: .advisory)
++        #expect(reply.text.contains("Лесной маршрут"))
++        #expect(reply.commands.isEmpty)
++        #expect(reply.normalizedBrief == nil)
++        #expect(!reply.replacesSelectedFootage)
++    }
++
++    @Test func partialAnalysisIsVisibleAndDoesNotMakeTheProjectReady() throws {
++        let suite = "VeloEdit.AICompletionStatusTests.\(UUID().uuidString)"
++        let defaults = try #require(UserDefaults(suiteName: suite))
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        defer {
++            defaults.removePersistentDomain(forName: suite)
++            try? FileManager.default.removeItem(at: root)
++        }
++        let model = AppModel(defaults: defaults, startBackgroundServices: false,
++            personalTasteStore: LocalPersonalTasteStore(url: root.appendingPathComponent("taste.json")))
++        model.aiPowerMode = .balanced
++        let profile = model.aiProfile
++        let asset = MediaAsset(originalURL: root.appendingPathComponent("source.mov"), kind: .video,
++            byteSize: 1, contentHash: "source", metadata: MediaMetadata(duration: 10))
++        var result = AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash,
++            candidates: [Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: 3,
++                scores: ClipScores(quality: 0.8, interest: 0.7, action: 0.2, stability: 0.8))],
++            analysisProfileKey: profile.cacheKey, aiRuntimeLabel: "Qwen3-VL · Ollama",
++            completedDepth: .scene, deepMediaVersion: DeepAnalysisCache.version)
++        result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 2,
++            evaluatedScenes: 1, modelAvailable: true, modelQuantization: "Q4_K_M")
++        model.project = ProjectManifest(name: "Partial", assets: [asset], analyses: [result])
++        #expect(!model.isAnalysisCurrent)
++        #expect(model.aiAnalysisRuntimeStatus.contains("1/2"))
++        #expect(model.aiAnalysisRuntimeStatus.contains("требуется повтор"))
++        #expect(model.aiAnalysisRuntimeStatus.contains("Q4_K_M"))
++        model.project?.analyses[0].aiExecution?.evaluatedScenes = 2
++        #expect(model.isAnalysisCurrent)
++        #expect(model.aiAnalysisRuntimeStatus.contains("завершено"))
++        model.project?.analyses[0].deepMediaDiagnostics = DeepMediaDiagnostics(stages: [
++            DeepAnalysisStageReport(stage: .asr, ran: false, reason: "On-device ASR недоступен; использованы DSP speech/silence boundaries")
++        ])
++        #expect(model.aiAnalysisRuntimeStatus.contains("Распознавание речи недоступно"))
++    }
++}
+--- before/Tests/VeloEditAppTests/AIModeRuntimeAuditTests.swift
++++ after/Tests/VeloEditAppTests/AIModeRuntimeAuditTests.swift
+@@ -54,6 +54,8 @@
+         } else {
+             #expect(reply.runtimeLabel == "Qwen3 4B Instruct · локальная нейросеть")
+             #expect(!reply.text.isEmpty)
++            #expect(reply.text.range(of: #"«[^«»]{2,60}»"#, options: .regularExpression) != nil,
++                    "Совет должен содержать запрошенное название, а не только подтверждение отсутствия изменений")
+             #expect(reply.commands.isEmpty)
+             #expect(firstReply != nil)
+         }
+--- before/Tests/VeloEditCoreTests/AIModeReliabilityTests.swift
++++ after/Tests/VeloEditCoreTests/AIModeReliabilityTests.swift
+@@ -0,0 +1,162 @@
++import Foundation
++import Testing
++@testable import VeloEditCore
++
++@Suite struct AIModeReliabilityTests {
++    @Test func calmScenesReachEveryModeAndHigherModesKeepTheirFrameContext() {
++        let asset = UUID()
++        let candidates = (0..<18).map { index in
++            Candidate(assetID: asset, sourceStart: Double(index * 4), sourceDuration: 3,
++                scores: ClipScores(quality: 0.8, interest: 0.1, action: 0.01, stability: 0.9), tags: ["landscape"])
++        }
++        let frames = (0..<24).map { index in
++            VisualFrameSample(timestamp: Double(index), motion: 0, exposure: 0.8, detail: 0.7,
++                labels: ["outdoor"], labelConfidence: 0.9, faceCount: 0, jpegBase64: "frame",
++                histogram: [0.25, 0.75], luminanceFingerprint: [128])
++        }
++        for (mode, scenes, images) in [(AIPowerMode.fast, 2, 3), (.balanced, 6, 5), (.quality, 12, 8), (.maximum, 18, 12)] {
++            let profile = AIAnalysisProfile.resolve(mode: mode, thermalState: .nominal)
++            let analyzer = AdaptiveLocalAnalyzer(profile: profile)
++            #expect(analyzer.selectedVLMIndices(in: candidates).count == scenes)
++            #expect(analyzer.nearbyFrames(for: candidates[0], in: frames).count == images)
++            #expect(profile.scenesPerVLMRequest * images <= 18)
++            #expect(profile.comparesAcrossVideos)
++            #expect(profile.vlmPrefillTimeout(imageCount: images) > 45)
++        }
++    }
++
++    @Test func legacyMLXAndQuantizationSettingsResolveToAnHonestRuntime() throws {
++        #expect(!LocalAIRuntime.allCases.contains(.mlx))
++        #expect(AIQuantization.allCases == [.modelProvided])
++        let legacy = try JSONDecoder().decode(AdvancedAISettings.self,
++            from: Data(#"{"enabled":true,"runtime":"mlx","modelID":"mlx-community/Qwen3-VL-8B-Instruct-8bit","quantization":"8-bit"}"#.utf8))
++        let profile = AIAnalysisProfile.resolve(mode: .quality, advanced: legacy, thermalState: .nominal)
++        #expect(profile.runtime == .ollama)
++        #expect(profile.modelID == "qwen3-vl:8b-instruct")
++        #expect(!profile.summary.contains("MLX"))
++        #expect(!profile.summary.contains("8-bit"))
++        let model = try JSONDecoder().decode(InstalledAIModel.self,
++            from: Data(#"{"name":"custom:latest","digest":"abc","details":{"quantization_level":"Q8_0","parameter_size":"8B"}}"#.utf8))
++        #expect(model.quantization == "Q8_0")
++    }
++
++    @Test func requestedDepthCannotHideMissingOrPartialInference() throws {
++        let profile = AIAnalysisProfile.resolve(mode: .maximum, thermalState: .nominal)
++        var result = AnalysisResult(assetID: UUID(), analyzedContentHash: "source", candidates: [], completedDepth: .maximum)
++        #expect(!result.satisfies(profile))
++        result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 3, evaluatedScenes: 2,
++            plannedRechecks: 2, evaluatedRechecks: 0, modelAvailable: true)
++        #expect(!result.satisfies(profile))
++        result.aiExecution?.evaluatedScenes = 3
++        #expect(!result.satisfies(profile))
++        result.aiExecution?.evaluatedRechecks = 2
++        #expect(result.satisfies(profile))
++        result.aiExecution?.audioAnalysisCompleted = false
++        #expect(!result.satisfies(profile))
++        result.aiExecution?.audioAnalysisCompleted = true
++        let restored = try JSONDecoder().decode(AnalysisResult.self, from: JSONEncoder().encode(result))
++        #expect(restored.satisfies(profile))
++        result.aiExecution?.modelAvailable = false
++        #expect(!result.satisfies(profile))
++    }
++
++    @Test func metadataFallbackDoesNotClaimFullDepth() async throws {
++        let asset = MediaAsset(originalURL: URL(fileURLWithPath: "/tmp/no-duration.mov"), kind: .video,
++            byteSize: 0, contentHash: "unknown", metadata: MediaMetadata())
++        let profile = AIAnalysisProfile.resolve(mode: .maximum, thermalState: .nominal)
++        let result = try await AdaptiveLocalAnalyzer(profile: profile).analyze(asset: asset, analysisURL: asset.originalURL, usedProxy: false)
++        #expect(result.completedDepth == .metadata)
++        #expect(!result.satisfies(profile))
++    }
++
++    @Test func benchmarkCountsSuccessfulJudgementsRatherThanAttempts() async throws {
++        for mode in [AIPowerMode.fast, .balanced, .maximum] {
++            let asset = MediaAsset(originalURL: URL(fileURLWithPath: "/tmp/fixture.mov"), kind: .video,
++                byteSize: 1, contentHash: "fixture", metadata: MediaMetadata(duration: 10))
++            let metrics = AnalysisMetricsRecorder(mode: mode, metadata: asset.metadata)
++            await metrics.recordFrames(total: 3, decoded: 3, analyzed: 3, cacheHits: 0)
++            await metrics.recordVLMCall(latency: 1)
++            var result = AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash, candidates: [],
++                completedDepth: .maximum, metrics: await metrics.snapshot())
++            result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 2, modelAvailable: true)
++            var row = try #require(AnalysisBenchmarkRow(mode: mode, assets: [asset], analyses: [result]))
++            #expect(row.semanticRuntimeStatus == "vlm-failed")
++            result.aiExecution?.evaluatedScenes = 1
++            row = try #require(AnalysisBenchmarkRow(mode: mode, assets: [asset], analyses: [result]))
++            #expect(row.semanticRuntimeStatus == "partial-vlm")
++            result.aiExecution?.evaluatedScenes = 2
++            row = try #require(AnalysisBenchmarkRow(mode: mode, assets: [asset], analyses: [result]))
++            #expect(row.semanticRuntimeStatus == "valid-vlm")
++            #expect(row.successfulVLMScenes == 2)
++            let unmeasured = MediaAsset(originalURL: URL(fileURLWithPath: "/tmp/other.mov"), kind: .video,
++                byteSize: 1, contentHash: "other", metadata: MediaMetadata(duration: 20))
++            row = try #require(AnalysisBenchmarkRow(mode: mode, assets: [asset, unmeasured], analyses: [result]))
++            #expect(row.fileCount == 1)
++            #expect(row.fallbackFileCount == 0)
++            #expect(row.semanticRuntimeStatus == "valid-vlm")
++        }
++    }
++
++    @Test func streamingRequiresTerminalEventAndKeepsAllContent() throws {
++        var stream = OllamaVisionStream(expectedModel: "test")
++        try stream.append(#"{"model":"test","message":{"role":"assistant","content":"first"},"done":false}"#)
++        #expect(throws: (any Error).self) { try stream.completedContent() }
++        try stream.append(#"{"model":"test","message":{"role":"assistant","content":" second"},"done":true,"eval_count":12}"#)
++        #expect(try stream.completedContent() == "first second")
++        #expect(stream.measurements["generatedTokens"] == 12)
++        #expect(throws: (any Error).self) { try stream.append(#"{"done":true}"#) }
++        var wrong = OllamaVisionStream(expectedModel: "test")
++        #expect(throws: (any Error).self) { try wrong.append(#"{"model":"different","done":true}"#) }
++        var failed = OllamaVisionStream(expectedModel: "test")
++        #expect(throws: (any Error).self) { try failed.append(#"{"error":"out of memory"}"#) }
++        var truncated = OllamaVisionStream(expectedModel: "test")
++        #expect(throws: (any Error).self) { try truncated.append(#"{"done":true,"done_reason":"length"}"#) }
++    }
++
++    @Test func timeoutDoesNotStartAnotherExpensiveInference() async {
++        let calls = RetryCount()
++        await #expect(throws: URLError.self) {
++            try await LocalAIModelManager.recoveringRequest(retryTimeouts: false) {
++                await calls.increment()
++                throw URLError(.timedOut)
++            } as Void
++        }
++        #expect(await calls.value == 1)
++    }
++
++    @Test func pipelineRetriesIncompleteWorkThenReusesCompletedWork() async throws {
++        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
++        defer { try? FileManager.default.removeItem(at: root) }
++        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
++        let source = root.appendingPathComponent("fixture.jpg")
++        try Data([1, 2, 3]).write(to: source)
++        let asset = MediaAsset(originalURL: source, kind: .photo, byteSize: 3, contentHash: "source", metadata: MediaMetadata(duration: 2))
++        let store = try ProjectStore(createAt: root.appendingPathComponent("test.veloedit"), name: "Retry")
++        try await store.update { $0.assets = [asset] }
++        let analyzer = RecoveringAnalyzer()
++        let pipeline = VeloEditPipeline(store: store, analyzer: analyzer)
++        #expect(try await pipeline.analyzeMissing() == 1)
++        #expect(try await pipeline.analyzeMissing() == 1)
++        #expect(try await pipeline.analyzeMissing() == 0)
++        #expect(await analyzer.calls == 2)
++    }
++}
++
++private actor RetryCount {
++    var value = 0
++    func increment() { value += 1 }
++}
++
++private actor RecoveringAnalyzer: VisionModelProtocol {
++    var calls = 0
++    func analyze(asset: MediaAsset) async throws -> AnalysisResult {
++        calls += 1
++        var result = AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash,
++            candidates: [Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: 2,
++                scores: ClipScores(quality: 0.8, interest: 0.8, action: 0.5, stability: 0.8), tags: ["outdoor"])],
++            completedDepth: .maximum)
++        result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 1,
++            evaluatedScenes: calls == 1 ? 0 : 1, modelAvailable: true)
++        return result
++    }
++}
+--- before/Tests/VeloEditCoreTests/AIProfilesTests.swift
++++ after/Tests/VeloEditCoreTests/AIProfilesTests.swift
+@@ -17,7 +17,7 @@
+     let baseMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
+     let largeMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 32 * 1_073_741_824, thermalState: .nominal)
+     #expect(baseMemory.ollamaModelID == "qwen3-vl:8b-instruct")
+-    #expect(baseMemory.quantization == .q8)
++    #expect(baseMemory.quantization == .q4)
+     #expect(largeMemory.ollamaModelID == "qwen3-vl:30b-a3b-instruct")
+ }
+ 
+@@ -53,10 +53,10 @@
+     #expect(dense.allSatisfy { $0 >= 0 && $0 < 120 })
+ }
+ 
+-@Test func manualModelAndQuantizationOverrideTheFriendlyMode() {
++@Test func manualModelUsesItsInstalledQuantization() {
+     let advanced = AdvancedAISettings(enabled: true, runtime: .ollama, modelID: "my-local-vlm", quantization: .q8)
+     let profile = AIAnalysisProfile.resolve(mode: .fast, advanced: advanced, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
+     #expect(profile.modelID == "my-local-vlm")
+-    #expect(profile.quantization == .q8)
++    #expect(profile.quantization == .modelProvided)
+     #expect(profile.mode == .fast)
+ }
+--- before/Tests/VeloEditCoreTests/AnalysisPipelineTests.swift
++++ after/Tests/VeloEditCoreTests/AnalysisPipelineTests.swift
+@@ -183,12 +183,13 @@
+ 
+ @Test func deeperAnalysisCanSatisfyALighterModeWithoutRerun() {
+     let assetID = UUID()
+-    let result = AnalysisResult(
++    var result = AnalysisResult(
+         assetID: assetID,
+         analyzedContentHash: "hash",
+         candidates: [],
+         completedDepth: .deep
+     )
++    result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 12, evaluatedScenes: 12, modelAvailable: true)
+     let fast = AIAnalysisProfile.resolve(mode: .fast, thermalState: .nominal)
+     let balance = AIAnalysisProfile.resolve(mode: .balanced, thermalState: .nominal)
+     let maximum = AIAnalysisProfile.resolve(mode: .maximum, thermalState: .nominal)

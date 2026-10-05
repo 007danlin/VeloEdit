@@ -7,7 +7,7 @@ struct VeloEditApp: App {
     @NSApplicationDelegateAdaptor(VeloEditAppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        Window("VeloEdit", id: "main") {
             ContentView()
                 .environmentObject(model)
                 .frame(minWidth: 980, minHeight: 700)
@@ -35,11 +35,14 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
         AppNotifications.shared.configure()
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
         guard !isFlushingAutosave else { return .terminateLater }
         isFlushingAutosave = true
         Task {
+            await model.stopForApplicationTermination()
             let saved = await model.flushAutosave()
             isFlushingAutosave = false
             sender.reply(toApplicationShouldTerminate: saved)
@@ -71,6 +74,8 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
     final class Coordinator {
         private weak var window: NSWindow?
         private var didBecomeKeyObserver: NSObjectProtocol?
+        private var willCloseObserver: NSObjectProtocol?
+        private var windowLayoutObservers: [NSObjectProtocol] = []
         private var didScheduleMaximize = false
         private var didMaximize = false
 
@@ -80,7 +85,12 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
                 if let didBecomeKeyObserver {
                     NotificationCenter.default.removeObserver(didBecomeKeyObserver)
                 }
+                if let willCloseObserver { NotificationCenter.default.removeObserver(willCloseObserver) }
+                windowLayoutObservers.forEach(NotificationCenter.default.removeObserver)
                 self.window = window
+                willCloseObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.willCloseNotification, object: window, queue: .main
+                ) { _ in NSApplication.shared.terminate(nil) }
                 let hasSavedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame VeloEdit.Main") != nil
                 window.setFrameAutosaveName("VeloEdit.Main")
                 if hasSavedFrame { window.setFrameUsingName("VeloEdit.Main"); didMaximize = true }
@@ -88,19 +98,24 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
                 window.titleVisibility = .hidden
                 window.titlebarAppearsTransparent = true
                 window.styleMask.insert(.fullSizeContentView)
-                window.standardWindowButton(.closeButton)?.isHidden = false
-                window.standardWindowButton(.miniaturizeButton)?.isHidden = false
-                window.standardWindowButton(.zoomButton)?.isHidden = false
+                windowLayoutObservers = [NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification]
+                    .map { notification in
+                        NotificationCenter.default.addObserver(forName: notification, object: window, queue: .main) { [weak window] _ in
+                            if let window { WindowControlSizing.apply(to: window) }
+                        }
+                    }
                 didBecomeKeyObserver = NotificationCenter.default.addObserver(
                     forName: NSWindow.didBecomeKeyNotification,
                     object: window,
                     queue: .main
                 ) { [weak self, weak window] _ in
                     guard let window else { return }
+                    WindowControlSizing.apply(to: window)
                     self?.scheduleMaximize(window)
                 }
             }
 
+            WindowControlSizing.apply(to: window)
             if window.isKeyWindow {
                 scheduleMaximize(window)
             }
@@ -126,9 +141,34 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
         }
 
         deinit {
+            windowLayoutObservers.forEach(NotificationCenter.default.removeObserver)
+            if let willCloseObserver { NotificationCenter.default.removeObserver(willCloseObserver) }
             if let didBecomeKeyObserver {
                 NotificationCenter.default.removeObserver(didBecomeKeyObserver)
             }
+        }
+    }
+}
+
+/// Enlarge the actual AppKit controls, including their hit targets, while
+/// preserving native hover, Option-click and full-screen behavior. AppKit
+/// retains ownership and positioning of the buttons in the title bar.
+enum WindowControlSizing {
+    static func apply(to window: NSWindow) {
+        for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = window.standardWindowButton(type) else { continue }
+            button.isHidden = false
+            let native = button.intrinsicContentSize
+            guard native.width > 0, native.height > 0 else { continue }
+            let size = NSSize(width: max(18, native.width), height: max(18, native.height))
+            guard button.frame.size != size
+                || abs(button.bounds.width - native.width) > 0.01
+                || abs(button.bounds.height - native.height) > 0.01 else { continue }
+            let center = NSPoint(x: button.frame.midX, y: button.frame.midY)
+            button.frame = NSRect(x: center.x - size.width / 2, y: center.y - size.height / 2,
+                                  width: size.width, height: size.height)
+            button.bounds = NSRect(origin: .zero, size: native)
+            button.needsDisplay = true
         }
     }
 }
@@ -139,6 +179,7 @@ struct VeloEditCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("Новый проект") { model.createProject() }.keyboardShortcut("n")
+                .disabled(model.openingProjectURL != nil)
             Button("Открыть проект") { model.openProject() }.keyboardShortcut("o")
             Menu("Открыть недавний") {
                 if model.recentProjectURLs.isEmpty {
@@ -154,7 +195,7 @@ struct VeloEditCommands: Commands {
             }
             Divider()
             Button("Импортировать материалы") { model.chooseMedia() }.keyboardShortcut("i")
-                .disabled(model.pipeline == nil)
+                .disabled(model.pipeline == nil || model.openingProjectURL != nil)
         }
 
         CommandGroup(replacing: .pasteboard) {
@@ -184,18 +225,18 @@ struct VeloEditCommands: Commands {
         }
 
         CommandGroup(replacing: .undoRedo) {
-            Button(model.shouldHandleTimelineShortcuts ? "Отменить правку монтажа" : "Отменить") {
-                if model.shouldHandleTimelineShortcuts { model.undoTimelineEdit() }
+            Button(model.shouldHandleTimelineUndo ? "Отменить правку монтажа" : "Отменить") {
+                if model.shouldHandleTimelineUndo { model.undoTimelineEdit() }
                 else { sendTextCommand(NSSelectorFromString("undo:")) }
             }
                 .keyboardShortcut("z")
-                .disabled(model.shouldHandleTimelineShortcuts && (!model.canUndoTimelineEdit || model.isWorking))
-            Button(model.shouldHandleTimelineShortcuts ? "Повторить правку монтажа" : "Повторить") {
-                if model.shouldHandleTimelineShortcuts { model.redoTimelineEdit() }
+                .disabled(model.shouldHandleTimelineUndo && (!model.canUndoTimelineEdit || model.isWorking))
+            Button(model.shouldHandleTimelineUndo ? "Повторить правку монтажа" : "Повторить") {
+                if model.shouldHandleTimelineUndo { model.redoTimelineEdit() }
                 else { sendTextCommand(NSSelectorFromString("redo:")) }
             }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
-                .disabled(model.shouldHandleTimelineShortcuts && (!model.canRedoTimelineEdit || model.isWorking))
+                .disabled(model.shouldHandleTimelineUndo && (!model.canRedoTimelineEdit || model.isWorking))
         }
 
         CommandGroup(after: .sidebar) {
@@ -209,20 +250,20 @@ struct VeloEditCommands: Commands {
             ForEach(Array(WorkspaceSection.allCases.enumerated()), id: \.element.id) { index, section in
                 Button(section.title) { model.openSection(section) }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
-                    .disabled(model.project == nil && section != .home)
+                    .disabled(!model.hasProjectWorkspace && section != .home)
             }
         }
 
         CommandMenu("Фильм") {
             Button("Анализировать материалы") { model.analyze() }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-                .disabled(!model.mediaReady || model.isWorking)
+                .disabled(model.openingProjectURL != nil || !model.mediaReady || model.isWorking)
             Button("Создать фильм") { model.createFilm() }
                 .keyboardShortcut(.return, modifiers: [.command])
-                .disabled(!model.mediaReady || model.isWorking || model.isDirectorResponding)
+                .disabled(model.openingProjectURL != nil || !model.mediaReady || model.isWorking || model.isDirectorResponding)
             Button("Открыть просмотр") { model.showMovie() }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
-                .disabled(!model.hasPlayablePreview)
+                .disabled(model.openingProjectURL != nil || !model.hasPlayablePreview)
             Divider()
             Button("Отменить текущую операцию") { model.cancelOperation() }
                 .keyboardShortcut(.cancelAction)

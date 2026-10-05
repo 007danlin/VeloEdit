@@ -87,7 +87,9 @@ public enum LocalEditorialEditPlanner {
         for neighbour in neighbours {
             let other = timeline.items[neighbour]
             guard supported(other), other.eventID == original.eventID, other.eventSceneID == original.eventSceneID,
-                  !hasDependentMedia(timeline, ids: [itemID, other.id]) else { continue }
+                  !hasDependentMedia(timeline, ids: [itemID, other.id], allowAnchoredTiming: true) else { continue }
+            let lower = min(index, neighbour), upper = max(index, neighbour)
+            guard abs(timeline.items[lower].timelineStart + timeline.items[lower].timelineDuration - timeline.items[upper].timelineStart) < 1 / fps else { continue }
             var after = timeline
             after.items[index].sourceDuration += delta; after.items[index].timelineDuration += delta
             after.items[neighbour].sourceDuration -= delta; after.items[neighbour].timelineDuration -= delta
@@ -100,7 +102,7 @@ public enum LocalEditorialEditPlanner {
                 if let range = EditorialMomentPolicy.protectedRange(unit), item.sourceStart > range.start + 1 / fps || item.sourceStart + item.sourceDuration < range.end - 1 / fps { return false }
                 return !after.items.contains { other in other.id != item.id && other.assetID == item.assetID && other.sourceStart < item.sourceStart + item.sourceDuration - 0.001 && other.sourceStart + other.sourceDuration > item.sourceStart + 0.001 }
             }) else { continue }
-            after.items = TimelineTiming.retimed(after.items)
+            after.items[upper].timelineStart = after.items[lower].timelineStart + after.items[lower].timelineDuration
             let ids: Set<UUID> = [itemID, other.id]
             for i in after.titleItems?.indices ?? 0..<0 {
                 guard let target = after.titleItems?[i].targetClipID, ids.contains(target),
@@ -112,12 +114,43 @@ public enum LocalEditorialEditPlanner {
                       let old = timeline.items.first(where: { $0.id == incoming }), let new = after.items.first(where: { $0.id == incoming }) else { continue }
                 after.transitionItems?[i].startTime += new.timelineStart - old.timelineStart
             }
+            for i in after.telemetryItems?.indices ?? 0..<0 {
+                guard let target = after.telemetryItems?[i].targetClipID, ids.contains(target),
+                      let old = timeline.items.first(where: { $0.id == target }), let new = after.items.first(where: { $0.id == target }),
+                      let telemetry = after.telemetryItems?[i] else { continue }
+                let offset = max(0, telemetry.timelineStart - old.timelineStart)
+                after.telemetryItems?[i].timelineStart = new.timelineStart + offset
+                let followsEnd = abs(telemetry.timelineEnd - old.timelineStart - old.timelineDuration) < 1 / fps
+                after.telemetryItems?[i].timelineDuration = followsEnd ? new.timelineDuration - offset : min(telemetry.timelineDuration, new.timelineDuration - offset)
+            }
+            guard after.effectiveTelemetryItems.allSatisfy({ $0.timelineDuration >= 0.05 }) else { continue }
+            if var music = timeline.effectiveAdaptiveSoundtrack {
+                for i in music.segments.indices {
+                    guard let boundary = music.segments[i].boundaryItemID, ids.contains(boundary),
+                          let new = after.items.first(where: { $0.id == boundary }) else { continue }
+                    music.segments[i].timelineStart = new.timelineStart
+                }
+                for i in music.segments.indices {
+                    let end = i + 1 < music.segments.count ? music.segments[i + 1].timelineStart : timeline.duration
+                    music.segments[i].timelineDuration = end - music.segments[i].timelineStart
+                    music.segments[i].directive.selectionEvidence = nil
+                }
+                guard music.segments.allSatisfy({ $0.timelineDuration >= max(0.05, $0.transitionDuration) }) else { continue }
+                music.timelineFingerprint = after.adaptiveSoundtrackFingerprint
+                after.adaptiveSoundtrack = music
+            }
+            for i in after.editorialBeatPlan?.beats.indices ?? 0..<0 {
+                guard let candidate = after.editorialBeatPlan?.beats[i].candidateID,
+                      let item = after.items.first(where: { ids.contains($0.id) && $0.candidateID == candidate }) else { continue }
+                after.editorialBeatPlan?.beats[i].allocatedDuration = item.timelineDuration
+                after.editorialBeatPlan?.beats[i].momentDecision?.sourceRange = .init(start: item.sourceStart, end: item.sourceStart + item.sourceDuration)
+            }
+            after.music?.selectionEvidence = nil
             after.editorialReview = nil
-            let lower = min(index, neighbour), upper = max(index, neighbour)
             return .init(title: longer ? "Оставить момент подольше" : "Покороче", before: timeline, after: after,
                 affectedItemIDs: [timeline.items[lower].id, timeline.items[upper].id], start: timeline.items[lower].timelineStart,
                 end: timeline.items[upper].timelineStart + timeline.items[upper].timelineDuration,
-                detail: "Два соседних фрагмента этой главы: \(longer ? "+" : "−")\(String(format: "%.1f", abs(delta))) с у выбранного, компенсация у соседнего. Длительность фильма сохраняется.")
+                detail: "Два соседних фрагмента этой главы: \(longer ? "+" : "−")\(String(format: "%.1f", abs(delta))) с у выбранного, компенсация у соседнего. Связанные титры, телеметрия и музыкальный стык следуют за кадрами. Длительность фильма сохраняется.")
         }
         throw LocalEditorialEditError.unavailable("В этой области нельзя изменить длину без потери момента, сдвига связанных дорожек или нарушения блокировки. Текущая версия сохранена. Для большей области используйте «Правка с AI» с явным указанием соседних сцен.")
     }
@@ -126,14 +159,22 @@ public enum LocalEditorialEditPlanner {
         item.kind == .video && !item.locked && item.overlay == nil && !item.isFreezeFrame && !item.isReversed && item.speedRamp == nil && abs(item.speed - 1) < 0.001
     }
 
-    private static func hasDependentMedia(_ timeline: Timeline, ids: Set<UUID>) -> Bool {
+    private static func hasDependentMedia(_ timeline: Timeline, ids: Set<UUID>, allowAnchoredTiming: Bool = false) -> Bool {
         let items = timeline.items.filter { ids.contains($0.id) }
         let start = items.map(\.timelineStart).min() ?? 0
         let end = items.map { $0.timelineStart + $0.timelineDuration }.max() ?? 0
         return timeline.items.contains { $0.overlay?.baseItemID.map(ids.contains) == true } ||
             timeline.effectiveAudioClips.contains { $0.timelineStart < end && $0.timelineStart + $0.timelineDuration > start } ||
-            timeline.effectiveTelemetryItems.contains { $0.timelineStart < end && $0.timelineStart + $0.timelineDuration > start } ||
+            timeline.effectiveTelemetryItems.contains {
+                $0.timelineStart < end && $0.timelineEnd > start &&
+                (!allowAnchoredTiming || $0.locked || $0.targetClipID.map(ids.contains) != true || $0.timelineStart < start || $0.timelineEnd > end)
+            } ||
             timeline.effectiveEffects.contains { $0.startTime < end && $0.endTime > start } ||
-            timeline.effectiveAdaptiveSoundtrack?.segments.contains { $0.timelineStart > start && $0.timelineStart < end } == true
+            timeline.effectiveTitleItems.contains {
+                allowAnchoredTiming && $0.targetClipID.map(ids.contains) == true && ($0.startTime < start || $0.endTime > end)
+            } ||
+            timeline.effectiveAdaptiveSoundtrack?.segments.contains {
+                $0.timelineStart > start && $0.timelineStart < end && (!allowAnchoredTiming || $0.boundaryItemID.map(ids.contains) != true)
+            } == true
     }
 }

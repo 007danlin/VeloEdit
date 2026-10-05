@@ -1,0 +1,197 @@
+Building for debugging...
+[2 / 6] VeloEditCore
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:767:37: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 765 |     // Kernels use output coordinates, so portrait and offset render bounds
+ 766 |     // behave the same as landscape. All time variation is deterministic.
+ 767 |     private static let waveKernel = CIWarpKernel(source: """
+     |                                     `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 768 |         kernel vec2 waveWarp(vec4 bounds, float amplitude, float phase, float frequency, float radial) {
+ 769 |             vec2 p = destCoord();
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:778:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 776 |         """)
+ 777 | 
+ 778 |     private static let shapeMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 779 |         kernel vec4 reveal(vec4 bounds, float progress, float softness, float rotation, float mode) {
+ 780 |             vec2 p = destCoord() - bounds.xy - bounds.zw * 0.5;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:802:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 800 |         """)
+ 801 | 
+ 802 |     private static let shardMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 803 |         kernel vec4 shard(vec4 tile, float side) {
+ 804 |             vec2 uv = (destCoord() - tile.xy) / tile.zw;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:893:41: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 891 |     }
+ 892 | 
+ 893 |     private static let rgbSplitKernel = CIColorKernel(source: """
+     |                                         `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 894 |         kernel vec4 splitChannels(__sample red, __sample cyan, __sample original) {
+ 895 |             vec4 r = unpremultiply(red);
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[3 / 7] VeloEditCore
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:767:37: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 765 |     // Kernels use output coordinates, so portrait and offset render bounds
+ 766 |     // behave the same as landscape. All time variation is deterministic.
+ 767 |     private static let waveKernel = CIWarpKernel(source: """
+     |                                     `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 768 |         kernel vec2 waveWarp(vec4 bounds, float amplitude, float phase, float frequency, float radial) {
+ 769 |             vec2 p = destCoord();
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:778:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 776 |         """)
+ 777 | 
+ 778 |     private static let shapeMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 779 |         kernel vec4 reveal(vec4 bounds, float progress, float softness, float rotation, float mode) {
+ 780 |             vec2 p = destCoord() - bounds.xy - bounds.zw * 0.5;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:802:42: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 800 |         """)
+ 801 | 
+ 802 |     private static let shardMaskKernel = CIColorKernel(source: """
+     |                                          `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 803 |         kernel vec4 shard(vec4 tile, float side) {
+ 804 |             vec2 uv = (destCoord() - tile.xy) / tile.zw;
+
+/Users/daniellineckij/VeloEdit/Sources/VeloEditCore/TransitionEffectRenderer.swift:893:41: warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 891 |     }
+ 892 | 
+ 893 |     private static let rgbSplitKernel = CIColorKernel(source: """
+     |                                         `- warning: 'init(source:)' was deprecated in macOS 10.14: Core Image Kernel Language API deprecated. (Define CI_SILENCE_GL_DEPRECATION to silence these warnings) [#DeprecatedDeclaration]
+ 894 |         kernel vec4 splitChannels(__sample red, __sample cyan, __sample original) {
+ 895 |             vec4 r = unpremultiply(red);
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[7 / 10] VeloEditCore
+[9 / 11] VeloEditCore
+[10 / 13] VeloEdit-product
+[13 / 14] VeloEditAppTests-product
+[15 / 19] VeloEditCoreTests-product
+[16 / 19] VeloEditCoreTests-product
+[18 / 21] VeloEditCoreTests-product
+[23 / 25] VeloEditCoreTests-product
+[26 / 26] VeloEditCore-product
+[27 / 28] veloedit-cli-product
+Build complete! (10,84 с)
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite TransitionPlaybackRegressionTests started.
+◇ Suite DirectorEffectsPolicyTests started.
+◇ Test effectCardsAreDistinctWithinEachCategory() started.
+◇ Suite EditorPreviewParityTests started.
+◇ Suite EffectRenderingAuditTests started.
+◇ Test semanticSelectorUsesMotionAndGuardsCreativeAccents() started.
+◇ Test transitionReplacementPreservesPositionAndDurationAndDeleteRestoresCut() started.
+◇ Test tz16EffectStackReordersAndPresetStaysEditable() started.
+◇ Test tz16AIAnimationCreatesRealValidatedKeyframesAndBudgetsEffects() started.
+◇ Suite DirectorVisualStyleTests started.
+◇ Test directorBriefRoundTripsEveryOpeningChoice() started.
+◇ Test tz16TypedValuesAndLegacyScalarsRoundTripTogether() started.
+◇ Test tz16RegistryIsCompleteTypedAndCapabilityAware() started.
+◇ Test sharedRendererKeepsExactTransitionEndpointsAndProducesLiveCards() started.
+◇ Test professionalTransitionAndEffectCatalogsCoverTZ14Families() started.
+◇ Test tz16EasingCurvesAreStableAndBounded() started.
+◇ Test nonMotionEffectCardsDoNotInheritAnAbsentZeroScale() started.
+◇ Test tz16NaturalLanguageUsesEditableEffectAndAnimationTools() started.
+◇ Test tz16TransitionDirectionEasingAndFCPXMLCapabilityPersist() started.
+◇ Test legacyTransitionDecodesWithMetadataDefaults() started.
+◇ Test basicEffectCardsRenderVisiblePixels() started.
+◇ Test staleObjectsDoNotOverrideAnotherBoundaryAndLegacyCutHasNoOverlap() started.
+◇ Test noneNormalAndManyProduceDifferentBudgetsThatSurviveFinalReview() started.
+◇ Test legacyStoryPlanWithoutDirectorBriefStillDecodes() started.
+◇ Test noEffectsRemovesPhotoMotionTransitionsAndEndingFadeOnDelivery() started.
+◇ Test shortClipsCannotReuseATrackBeforeThePreviousClipEnds() started.
+◇ Test composerUsesEffectsAnswerEvenWithoutEffectsInPrompt() started.
+◇ Test everyPresetUsesTheFullRendererInStablePreviewAndExport() started.
+◇ Test overlayAndEffectBoundariesDoNotRestartOrDisableTheTransition() started.
+◇ Test choicesPersistAndMissingChoicePreservesOldProjects() started.
+◇ Test encodedTransitionMatchesPreviewFramesAndDuration(_:) started.
+◇ Test explicitNoEffectsTextWinsAndNoTransitionsStillAllowsClipEffects() started.
+➜ Test highResolutionCameraTransitionDeliversLivePlayerFrames() skipped.
+◇ Test explicitDurationsDriveBothClocksIncludingDisabledAndCutObjects() started.
+◇ Test movingTransitionsDoNotDimTheIncomingPanel() started.
+◇ Test everyEffectAndStackChangesPreviewAndSurvivesVideoExport() started.
+◇ Test allTransitionFramesStayOpaqueInLandscapePortraitAndOffsetBounds() started.
+◇ Test cinematicChoiceOverridesAnAdventurePresetForTitlesAndTransitions() started.
+◇ Test inspectorEditsSurviveAutomaticChapterReviewAndProjectReload() started.
+◇ Test generatedChapterPixelsMatchTheApprovedReferenceAndMigrateThePreviousAutomaticStyle() started.
+◇ Test rebuildingFilmCarriesEditedTitlesWithTheirSourceClips() started.
+◇ Test subtitlesAndManualTitleEditsKeepTheirOwnTimingAndTypography() started.
+◇ Test chapterHeadingOccupiesLessPictureAndHoldsForReading() started.
+◇ Test everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+◇ Test longerTextGetsMoreReadingTimeWithoutLeakingIntoTheNextPart() started.
+◇ Test case passing 1 argument style → .fadeThroughBlack to encodedTransitionMatchesPreviewFramesAndDuration(_:) started.
+◇ Test case passing 1 argument style → .glitch to encodedTransitionMatchesPreviewFramesAndDuration(_:) started.
+◇ Test case passing 1 argument style → .rgbSplit to encodedTransitionMatchesPreviewFramesAndDuration(_:) started.
+◇ Test case passing 1 argument style → .digitalDistortion to encodedTransitionMatchesPreviewFramesAndDuration(_:) started.
+◇ Test case passing 1 argument style → .shatter to encodedTransitionMatchesPreviewFramesAndDuration(_:) started.
+✔ Test tz16RegistryIsCompleteTypedAndCapabilityAware() passed after 0.686 seconds.
+✔ Test directorBriefRoundTripsEveryOpeningChoice() passed after 0.686 seconds.
+✔ Test professionalTransitionAndEffectCatalogsCoverTZ14Families() passed after 0.688 seconds.
+✔ Test tz16EffectStackReordersAndPresetStaysEditable() passed after 0.702 seconds.
+✔ Test tz16AIAnimationCreatesRealValidatedKeyframesAndBudgetsEffects() passed after 0.704 seconds.
+✔ Test nonMotionEffectCardsDoNotInheritAnAbsentZeroScale() passed after 0.704 seconds.
+✔ Test legacyTransitionDecodesWithMetadataDefaults() passed after 0.785 seconds.
+◇ Test case passing 1 argument mood → .calm to everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+◇ Test case passing 1 argument mood → .cinematic to everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+◇ Test case passing 1 argument mood → .dynamic to everyPartGetsCompactReadableHeadingsAcrossMoods(_:) started.
+✔ Test tz16EasingCurvesAreStableAndBounded() passed after 0.837 seconds.
+✔ Test staleObjectsDoNotOverrideAnotherBoundaryAndLegacyCutHasNoOverlap() passed after 0.837 seconds.
+✔ Test legacyStoryPlanWithoutDirectorBriefStillDecodes() passed after 0.837 seconds.
+✔ Test tz16TypedValuesAndLegacyScalarsRoundTripTogether() passed after 0.838 seconds.
+✔ Test shortClipsCannotReuseATrackBeforeThePreviousClipEnds() passed after 0.837 seconds.
+✔ Test semanticSelectorUsesMotionAndGuardsCreativeAccents() passed after 0.838 seconds.
+✔ Test tz16TransitionDirectionEasingAndFCPXMLCapabilityPersist() passed after 0.838 seconds.
+✔ Test transitionReplacementPreservesPositionAndDurationAndDeleteRestoresCut() passed after 0.838 seconds.
+✔ Test choicesPersistAndMissingChoicePreservesOldProjects() passed after 0.837 seconds.
+✔ Test noEffectsRemovesPhotoMotionTransitionsAndEndingFadeOnDelivery() passed after 0.837 seconds.
+✔ Test tz16NaturalLanguageUsesEditableEffectAndAnimationTools() passed after 0.838 seconds.
+✔ Test composerUsesEffectsAnswerEvenWithoutEffectsInPrompt() passed after 0.837 seconds.
+✔ Test noneNormalAndManyProduceDifferentBudgetsThatSurviveFinalReview() passed after 0.838 seconds.
+✔ Test basicEffectCardsRenderVisiblePixels() passed after 0.838 seconds.
+✔ Test explicitNoEffectsTextWinsAndNoTransitionsStillAllowsClipEffects() passed after 0.837 seconds.
+✔ Test explicitDurationsDriveBothClocksIncludingDisabledAndCutObjects() passed after 0.837 seconds.
+✔ Test cinematicChoiceOverridesAnAdventurePresetForTitlesAndTransitions() passed after 0.867 seconds.
+✔ Test subtitlesAndManualTitleEditsKeepTheirOwnTimingAndTypography() passed after 0.866 seconds.
+✔ Test rebuildingFilmCarriesEditedTitlesWithTheirSourceClips() passed after 0.866 seconds.
+✔ Test inspectorEditsSurviveAutomaticChapterReviewAndProjectReload() passed after 0.868 seconds.
+✔ Test generatedChapterPixelsMatchTheApprovedReferenceAndMigrateThePreviousAutomaticStyle() passed after 0.867 seconds.
+✔ Test longerTextGetsMoreReadingTimeWithoutLeakingIntoTheNextPart() passed after 0.879 seconds.
+✔ Suite DirectorEffectsPolicyTests passed after 0.882 seconds.
+✔ Test everyPartGetsCompactReadableHeadingsAcrossMoods(_:) with 3 test cases passed after 0.933 seconds.
+✔ Test chapterHeadingOccupiesLessPictureAndHoldsForReading() passed after 0.933 seconds.
+✔ Suite DirectorVisualStyleTests passed after 0.939 seconds.
+✔ Test effectCardsAreDistinctWithinEachCategory() passed after 1.068 seconds.
+✔ Test overlayAndEffectBoundariesDoNotRestartOrDisableTheTransition() passed after 1.269 seconds.
+✔ Test movingTransitionsDoNotDimTheIncomingPanel() passed after 1.436 seconds.
+✔ Test everyPresetUsesTheFullRendererInStablePreviewAndExport() passed after 1.446 seconds.
+✔ Test allTransitionFramesStayOpaqueInLandscapePortraitAndOffsetBounds() passed after 4.310 seconds.
+◇ Test glitchHasHorizontalTearsAndDiscreteRepeatableBursts() started.
+✔ Test glitchHasHorizontalTearsAndDiscreteRepeatableBursts() passed after 0.085 seconds.
+◇ Test correctedFamiliesHaveDistinctGeometry() started.
+✔ Test correctedFamiliesHaveDistinctGeometry() passed after 0.085 seconds.
+◇ Test wipesTravelInTheirNamedDirectionAndGeometricRevealFinishesBeforeEndpoint() started.
+✔ Test wipesTravelInTheirNamedDirectionAndGeometricRevealFinishesBeforeEndpoint() passed after 0.032 seconds.
+◇ Test everyExposedTransitionParameterChangesRenderedPixels() started.
+✔ Test sharedRendererKeepsExactTransitionEndpointsAndProducesLiveCards() passed after 4.588 seconds.
+✔ Test encodedTransitionMatchesPreviewFramesAndDuration(_:) with 5 test cases passed after 4.656 seconds.
+✔ Suite TransitionPlaybackRegressionTests passed after 4.657 seconds.
+✔ Test everyExposedTransitionParameterChangesRenderedPixels() passed after 0.275 seconds.
+◇ Test allNonTransformEffectsKeepOpaqueEdgesAndCanBeDisabled() started.
+✔ Test allNonTransformEffectsKeepOpaqueEdgesAndCanBeDisabled() passed after 0.797 seconds.
+◇ Test automaticCameraMotionCoversFrameAndInspectorRotationIsAppliedOnce() started.
+✔ Test automaticCameraMotionCoversFrameAndInspectorRotationIsAppliedOnce() passed after 0.028 seconds.
+◇ Test auditContactSheets() started.
+✔ Test auditContactSheets() passed after 0.361 seconds.
+✔ Suite EffectRenderingAuditTests passed after 5.978 seconds.
+✔ Test everyEffectAndStackChangesPreviewAndSurvivesVideoExport() passed after 9.625 seconds.
+◇ Test editsBypassParametersAndKeyframesChangePausedCompositionFrames() started.
+✔ Test editsBypassParametersAndKeyframesChangePausedCompositionFrames() passed after 0.194 seconds.
+✔ Suite EditorPreviewParityTests passed after 9.821 seconds.
+✔ Test run with 48 tests in 5 suites passed after 9.821 seconds.

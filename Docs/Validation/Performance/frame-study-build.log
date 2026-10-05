@@ -1,0 +1,9 @@
+Scripts/frame-decode-study.swift:50:70: warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
+48 |                         for time in times {
+49 |                             var actual = CMTime.zero
+50 |                             do { _ = results.add(frame(try generator.copyCGImage(at: time, actualTime: &actual), requested: time, actual: actual)) }
+   |                                                                      `- warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
+51 |                             catch { _ = results.add(nil) }
+52 |                         }
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>

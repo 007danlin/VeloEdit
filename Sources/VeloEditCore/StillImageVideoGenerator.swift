@@ -11,6 +11,24 @@ public enum BackgroundAnimationConfiguration {
 }
 
 enum StillImageRenderGeometry {
+    static func kenBurnsMotion(source: CGSize, target: CGSize, progress: CGFloat, duration: Double) -> (scale: CGFloat, x: CGFloat, y: CGFloat) {
+        guard source.width > 0, source.height > 0, target.width > 0, target.height > 0 else { return (1, 0, 0) }
+        let p = min(1, max(0, progress))
+        let eased = p * p * (3 - 2 * p)
+        let scale = 1 + CGFloat(PhotoPresentationPolicy.zoomAmount * min(1, max(0, duration) / 4)) * eased
+        let fill = max(target.width / source.width, target.height / source.height)
+        let extraX = max(0, source.width * fill * scale - target.width)
+        let extraY = max(0, source.height * fill * scale - target.height)
+        // Follow the axis with actual source material outside the canvas.
+        // A tall photo needs vertical travel, not a horizontal move clamped
+        // to zero. Bound travel by duration to avoid a rushed panorama sweep.
+        let maximumTravel = min(target.width, target.height) * CGFloat(max(0, duration)) * 0.07
+        if extraY / target.height > extraX / target.width {
+            return (scale, 0, (0.5 - eased) * min(extraY * 0.6, maximumTravel))
+        }
+        return (scale, (0.5 - eased) * min(extraX * 0.6, maximumTravel), 0)
+    }
+
     static func orientedImage(at url: URL) -> CIImage? {
         guard let loaded = CIImage(
             contentsOf: url,
@@ -86,7 +104,7 @@ public actor StillImageVideoGenerator {
         duration: Double,
         width: Int,
         height: Int,
-        frameRate: Int32,
+        frameRate: Double,
         destination: URL,
         codec: AVVideoCodecType = .h264,
         motion: ClipEffect? = .zoomIn,
@@ -101,6 +119,7 @@ public actor StillImageVideoGenerator {
         let intensity = CGFloat(max(0, min(1, animationIntensity)))
         try? FileManager.default.removeItem(at: destination)
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
+        writer.movieTimeScale = TimelineTiming.compositionTimescale
         let compression: [String: Any]
         if codec == .jpeg {
             compression = [AVVideoQualityKey: 0.92]
@@ -121,6 +140,7 @@ public actor StillImageVideoGenerator {
             ]
         }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+        input.mediaTimeScale = VideoFrameTiming.duration(for: frameRate).timescale
         input.expectsMediaDataInRealTime = false
         let attributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
@@ -137,7 +157,8 @@ public actor StillImageVideoGenerator {
         }
         writer.startSession(atSourceTime: .zero)
 
-        let frames = max(1, Int((duration * Double(frameRate)).rounded()))
+        let frameStep = VideoFrameTiming.duration(for: frameRate)
+        let frames = max(1, Int(ceil(duration / frameStep.seconds - 0.000_001)))
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         var resourcePacer = ResourceWorkPacer()
         defer { if writer.status == .writing { writer.cancelWriting() } }
@@ -168,8 +189,15 @@ public actor StillImageVideoGenerator {
             } else {
                 switch motion {
                 case .kenBurns:
-                    motionScale = 1 + 0.09 * progress
-                    horizontalTravel = CGFloat(width) * (-0.025 + 0.05 * progress)
+                    // An evidenced subject path already supplies its own
+                    // camera move. A second generic zoom could crop it again.
+                    if subjectReframe == nil {
+                        let move = StillImageRenderGeometry.kenBurnsMotion(source: image.extent.size,
+                            target: bounds.size, progress: progress, duration: duration)
+                        motionScale = move.scale
+                        horizontalTravel = move.x
+                        verticalTravel = move.y
+                    }
                 case .zoomIn:
                     motionScale = 1 + CGFloat(PhotoPresentationPolicy.zoomAmount) * progress
                 case .zoomOut:
@@ -237,10 +265,11 @@ public actor StillImageVideoGenerator {
             }
 
             context.render(finalImage, to: buffer, bounds: bounds, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
-            guard adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: frameRate)) else {
+            guard adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame) * frameStep.value, timescale: frameStep.timescale)) else {
                 throw DerivedMediaError.exportFailed(writer.error?.localizedDescription ?? "pixel buffer")
             }
         }
+        writer.endSession(atSourceTime: CMTime(value: CMTimeValue(frames) * frameStep.value, timescale: frameStep.timescale))
         input.markAsFinished()
         await writer.finishWriting()
         guard writer.status == .completed else {

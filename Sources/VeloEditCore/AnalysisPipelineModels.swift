@@ -215,15 +215,20 @@ public struct AnalysisMetrics: Codable, Hashable, Sendable {
     public var resolution: String?
     public var mode: AIPowerMode
     public var thermalStates: [String]
+    public var operationID: UUID? = nil
+    public var vlmCacheHitCount: Int? = nil
 }
 
 public actor AnalysisMetricsRecorder {
     private struct ActiveStage: Sendable {
         let startedAt: Date
+        let monotonicStart: TimeInterval
         let resource: AnalysisResourceSnapshot
     }
 
     private let startedAt = Date()
+    private let monotonicStart = ProcessInfo.processInfo.systemUptime
+    private let trace = PerformanceTrace.current
     private let mode: AIPowerMode
     private let codec: String?
     private let resolution: String?
@@ -235,6 +240,7 @@ public actor AnalysisMetricsRecorder {
     private var frameCacheHitCount = 0
     private var visionCallCount = 0
     private var vlmCallCount = 0
+    private var vlmCacheHitCount = 0
     private var vlmLatency: TimeInterval = 0
     private var queueWaitTime: TimeInterval = 0
 
@@ -250,17 +256,19 @@ public actor AnalysisMetricsRecorder {
 
     public func start(_ stage: AnalysisStage) {
         guard active[stage] == nil else { return }
-        active[stage] = ActiveStage(startedAt: Date(), resource: .capture())
+        trace?.event("stage.begin", fields: ["stage": stage.rawValue])
+        active[stage] = ActiveStage(startedAt: Date(), monotonicStart: ProcessInfo.processInfo.systemUptime, resource: .capture())
     }
 
     public func finish(_ stage: AnalysisStage, workUnits: Int = 0) {
         guard let start = active.removeValue(forKey: stage) else { return }
         let end = Date()
+        trace?.event("stage.end", fields: ["stage": stage.rawValue], values: ["workUnits": Double(workUnits)])
         stages.append(AnalysisStageMetrics(
             stage: stage,
             startedAt: start.startedAt,
             endedAt: end,
-            duration: max(0, end.timeIntervalSince(start.startedAt)),
+            duration: max(0, ProcessInfo.processInfo.systemUptime - start.monotonicStart),
             workUnits: max(0, workUnits),
             resourceStart: start.resource,
             resourceEnd: .capture()
@@ -281,6 +289,8 @@ public actor AnalysisMetricsRecorder {
         vlmLatency += max(0, latency)
     }
 
+    public func recordVLMCacheHit() { vlmCacheHitCount += 1 }
+
     public func recordQueueWait(_ duration: TimeInterval) {
         queueWaitTime += max(0, duration)
     }
@@ -291,7 +301,7 @@ public actor AnalysisMetricsRecorder {
         return AnalysisMetrics(
             startedAt: startedAt,
             endedAt: endedAt,
-            totalDuration: max(0, endedAt.timeIntervalSince(startedAt)),
+            totalDuration: max(0, ProcessInfo.processInfo.systemUptime - monotonicStart),
             stageMetrics: stages.sorted { $0.startedAt < $1.startedAt },
             frameCount: frameCount,
             decodedFrameCount: decodedFrameCount,
@@ -305,7 +315,9 @@ public actor AnalysisMetricsRecorder {
             codec: codec,
             resolution: resolution,
             mode: mode,
-            thermalStates: Array(Set(stages.flatMap { [$0.resourceStart.thermalState, $0.resourceEnd.thermalState] })).sorted()
+            thermalStates: Array(Set(stages.flatMap { [$0.resourceStart.thermalState, $0.resourceEnd.thermalState] })).sorted(),
+            operationID: trace?.operationID,
+            vlmCacheHitCount: vlmCacheHitCount
         )
     }
 

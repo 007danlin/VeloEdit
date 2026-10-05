@@ -1,0 +1,1078 @@
+{
+  "timelineWidth": 1920,
+  "timelineHeight": 1080,
+  "timelineSeconds": 120.0,
+  "videoItems": 23,
+  "speeds": [
+    1
+  ],
+  "sourceOverlapPairs": [],
+  "originalAudioVolume": 0.2,
+  "music": {
+    "volume": 0.2097,
+    "trackTitle": "Day Trips",
+    "bpm": 78.5
+  },
+  "titles": [
+    {
+      "animation": {
+        "entrance": "none",
+        "easing": "ease-in-out",
+        "exit": "none",
+        "duration": 0
+      },
+      "track": 0,
+      "id": "C56E366F-6A07-45C8-B6EF-6ADEF472716B",
+      "enabled": true,
+      "text": "В дороге",
+      "templateID": "title.minimal-clean.v1",
+      "activeWordHighlighting": true,
+      "words": [],
+      "style": {
+        "scale": 1,
+        "strokeWidth": 1.5,
+        "opacity": 1,
+        "rotation": 0,
+        "fontSize": 72,
+        "textColorHex": "#FFFFFF",
+        "blur": 0,
+        "tracking": 0,
+        "lineSpacing": 1,
+        "activeWordColorHex": "#FFD60A",
+        "backgroundColorHex": "#111111",
+        "yPosition": 0.78,
+        "fontFamily": "Avenir Next",
+        "alignment": "left",
+        "shadow": 0.45,
+        "backgroundOpacity": 1,
+        "xPosition": 0.36,
+        "fontWeight": 0.88
+      },
+      "duration": 3.5,
+      "kind": "chapter",
+      "explanation": [
+        "Editorial chapter: автоматический титр в начале каждой части",
+        "Rendered OCR repair: high-contrast static title"
+      ],
+      "startTime": 0
+    },
+    {
+      "animation": {
+        "entrance": "none",
+        "easing": "ease-in-out",
+        "exit": "none",
+        "duration": 0
+      },
+      "track": 0,
+      "id": "F26DAF1C-E833-466B-8245-35C050DEFED7",
+      "enabled": true,
+      "text": "На природе",
+      "templateID": "title.minimal-clean.v1",
+      "activeWordHighlighting": true,
+      "words": [],
+      "style": {
+        "scale": 1,
+        "strokeWidth": 0,
+        "opacity": 1,
+        "rotation": 0,
+        "fontSize": 72,
+        "textColorHex": "#FFFFFF",
+        "blur": 0,
+        "tracking": 0,
+        "lineSpacing": 1,
+        "activeWordColorHex": "#FFD60A",
+        "backgroundColorHex": "#111111",
+        "yPosition": 0.78,
+        "fontFamily": "Avenir Next",
+        "alignment": "left",
+        "shadow": 0.25,
+        "backgroundOpacity": 0.75,
+        "xPosition": 0.36,
+        "fontWeight": 0.88
+      },
+      "duration": 3.5,
+      "kind": "chapter",
+      "explanation": [
+        "Editorial chapter: автоматический титр в начале каждой части"
+      ],
+      "startTime": 32.06666666666666
+    },
+    {
+      "animation": {
+        "entrance": "none",
+        "easing": "ease-in-out",
+        "exit": "none",
+        "duration": 0
+      },
+      "track": 0,
+      "id": "7208BB16-BAA9-43F0-AC07-AD1CBE4D4B35",
+      "enabled": true,
+      "text": "Багги",
+      "templateID": "title.minimal-clean.v1",
+      "activeWordHighlighting": true,
+      "words": [],
+      "style": {
+        "scale": 1,
+        "strokeWidth": 1.5,
+        "opacity": 1,
+        "rotation": 0,
+        "fontSize": 72,
+        "textColorHex": "#FFFFFF",
+        "blur": 0,
+        "tracking": 0,
+        "lineSpacing": 1,
+        "activeWordColorHex": "#FFD60A",
+        "backgroundColorHex": "#111111",
+        "yPosition": 0.78,
+        "fontFamily": "Avenir Next",
+        "alignment": "left",
+        "shadow": 0.45,
+        "backgroundOpacity": 1,
+        "xPosition": 0.36,
+        "fontWeight": 0.88
+      },
+      "duration": 3.5,
+      "kind": "chapter",
+      "explanation": [
+        "Editorial chapter: автоматический титр в начале каждой части",
+        "Rendered OCR repair: high-contrast static title"
+      ],
+      "startTime": 74.03333333333333
+    }
+  ],
+  "filmDeliveryReport": {
+    "exportVerification": {
+      "renderSignature": "c6e62f45599a8f195345b454808700793309139ff3497fd16862f335f9b7c5da",
+      "provenance": "RenderEngine control MP4; independent AVAssetImageGenerator decode and AAC PCM measurement",
+      "durationDifference": 0,
+      "encodedAudio": {
+        "outputTruePeakDBTP": -10.613207216224229,
+        "measuredFrames": 5760000,
+        "peakLimited": false,
+        "truePeakDBTP": -10.613207216224229,
+        "appliedGainDB": 0,
+        "integratedLUFS": -24.3664241603591,
+        "outputLUFS": -24.3664241603591
+      },
+      "videoDuration": 120,
+      "fileSize": 264602570,
+      "fileModifiedTime": 1789751136.05155,
+      "encodedHeight": 1080,
+      "probes": [
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004595588558004238,
+          "time": 0.03333333333333333,
+          "meanLumaDifference": 0.004335171568627451
+        },
+        {
+          "decoded": true,
+          "hashDistance": 5,
+          "meanAbsolutePixelDifference": 0.009409466802026145,
+          "time": 1.75,
+          "meanLumaDifference": 0.001999080882352941
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.006433823495171964,
+          "time": 2,
+          "meanLumaDifference": 0.006338082107843137
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0031250001047737896,
+          "time": 3.466666666666667,
+          "meanLumaDifference": 0.0021292892156862743
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.003033088258234784,
+          "time": 4,
+          "meanLumaDifference": 0.0014208026960784313
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004235600543324836,
+          "time": 6,
+          "meanLumaDifference": 0.003082873774509804
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004698989039752632,
+          "time": 8,
+          "meanLumaDifference": 0.0038832720588235295
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004059436367242597,
+          "time": 10,
+          "meanLumaDifference": 0.0041628370098039215
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.003504136075207498,
+          "time": 11.966666666666667,
+          "meanLumaDifference": 0.0026118259803921567
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.003925398254068568,
+          "time": 12.033333333333333,
+          "meanLumaDifference": 0.0034543504901960783
+        },
+        {
+          "decoded": true,
+          "hashDistance": 5,
+          "meanAbsolutePixelDifference": 0.010746017054771073,
+          "time": 13.55,
+          "meanLumaDifference": 0.004074754901960785
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.00418198540864978,
+          "time": 14,
+          "meanLumaDifference": 0.004802389705882353
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0034083946302416734,
+          "time": 15.066666666666666,
+          "meanLumaDifference": 0.0022173713235294117
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.0032743566334829666,
+          "time": 15.133333333333333,
+          "meanLumaDifference": 0.0026003370098039214
+        },
+        {
+          "decoded": true,
+          "hashDistance": 5,
+          "meanAbsolutePixelDifference": 0.007846966938814148,
+          "time": 16.583333333333332,
+          "meanLumaDifference": 0.00032169117647058823
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0034352022703387775,
+          "time": 17.1,
+          "meanLumaDifference": 0.0033624387254901963
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.0032628677727188915,
+          "time": 18.033333333333335,
+          "meanLumaDifference": 0.002470128676470588
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0024892769870348275,
+          "time": 18.1,
+          "meanLumaDifference": 0.0019033394607843137
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.0041053922977880575,
+          "time": 20.066666666666666,
+          "meanLumaDifference": 0.004174325980392157
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.003105851690634154,
+          "time": 22.066666666666666,
+          "meanLumaDifference": 0.0014284620098039215
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.002768841943179723,
+          "time": 24.066666666666666,
+          "meanLumaDifference": 0.001872702205882353
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.003339460861752741,
+          "time": 26.066666666666666,
+          "meanLumaDifference": 0.0026271446078431375
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.003067555262532551,
+          "time": 28.066666666666666,
+          "meanLumaDifference": 0.0022786458333333335
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0026462929672561586,
+          "time": 30.033333333333335,
+          "meanLumaDifference": 0.0019071691176470588
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.002309283008798957,
+          "time": 30.1,
+          "meanLumaDifference": 0.0016314338235294118
+        },
+        {
+          "decoded": true,
+          "hashDistance": 8,
+          "meanAbsolutePixelDifference": 0.02192478564393241,
+          "time": 31.066666666666666,
+          "meanLumaDifference": 0.0044424019607843136
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.002868412950192578,
+          "time": 32.03333333333333,
+          "meanLumaDifference": 0.0034505208333333332
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004603247725754045,
+          "time": 32.1,
+          "meanLumaDifference": 0.003948376225490196
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004438572417711839,
+          "time": 33.81666666666667,
+          "meanLumaDifference": 0.003994332107843137
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004863664420554414,
+          "time": 34.06666666666667,
+          "meanLumaDifference": 0.004633884803921569
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.005028339684940875,
+          "time": 35.06666666666667,
+          "meanLumaDifference": 0.00450750612745098
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004450061445822939,
+          "time": 35.53333333333333,
+          "meanLumaDifference": 0.003749234068627451
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004572610487230122,
+          "time": 36.06666666666667,
+          "meanLumaDifference": 0.004365808823529412
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004469209743547253,
+          "time": 38.03333333333333,
+          "meanLumaDifference": 0.0042049632352941175
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004346660789451562,
+          "time": 38.1,
+          "meanLumaDifference": 0.003986672794117647
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004557291933451779,
+          "time": 40.06666666666667,
+          "meanLumaDifference": 0.004270067401960784
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004001991648692638,
+          "time": 41.46666666666667,
+          "meanLumaDifference": 0.003565410539215686
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004339001461630687,
+          "time": 42.06666666666667,
+          "meanLumaDifference": 0.004051776960784314
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004465380174224265,
+          "time": 44.06666666666667,
+          "meanLumaDifference": 0.004293045343137255
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.00415134834474884,
+          "time": 44.833333333333336,
+          "meanLumaDifference": 0.003745404411764706
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0036228555400157347,
+          "time": 44.9,
+          "meanLumaDifference": 0.0029411764705882353
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004136029630899429,
+          "time": 46.35,
+          "meanLumaDifference": 0.0036879595588235293
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.003944546784623526,
+          "time": 46.86666666666667,
+          "meanLumaDifference": 0.003477328431372549
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004132199988816865,
+          "time": 47.8,
+          "meanLumaDifference": 0.003626685049019608
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.00396752476808615,
+          "time": 47.86666666666667,
+          "meanLumaDifference": 0.003396905637254902
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.0043160235800314695,
+          "time": 49.31666666666667,
+          "meanLumaDifference": 0.0037568933823529413
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.00430070495349355,
+          "time": 49.833333333333336,
+          "meanLumaDifference": 0.0036956188725490195
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0043619795178528875,
+          "time": 50.766666666666666,
+          "meanLumaDifference": 0.003668811274509804
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004603247958584689,
+          "time": 50.833333333333336,
+          "meanLumaDifference": 0.0038832720588235295
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004476869347854517,
+          "time": 52.8,
+          "meanLumaDifference": 0.0037339154411764708
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004304534682887606,
+          "time": 54.7,
+          "meanLumaDifference": 0.0034964767156862747
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004446232036571018,
+          "time": 54.8,
+          "meanLumaDifference": 0.0038028492647058823
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004453891291632317,
+          "time": 56.8,
+          "meanLumaDifference": 0.003852634803921569
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004438572519575246,
+          "time": 58.56666666666667,
+          "meanLumaDifference": 0.003791360294117647
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004197304078843445,
+          "time": 58.63333333333333,
+          "meanLumaDifference": 0.003565410539215686
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004113051705644466,
+          "time": 59.916666666666664,
+          "meanLumaDifference": 0.003331801470588235
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004124540646444075,
+          "time": 60.6,
+          "meanLumaDifference": 0.0034581801470588234
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004526654520304874,
+          "time": 61.2,
+          "meanLumaDifference": 0.0038219975490196077
+        },
+        {
+          "decoded": true,
+          "hashDistance": 3,
+          "meanAbsolutePixelDifference": 0.004040288142277859,
+          "time": 61.266666666666666,
+          "meanLumaDifference": 0.0033624387254901963
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.00411305166198872,
+          "time": 62.55,
+          "meanLumaDifference": 0.003324142156862745
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004316023434512317,
+          "time": 63.233333333333334,
+          "meanLumaDifference": 0.003400735294117647
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0045151655649533495,
+          "time": 63.833333333333336,
+          "meanLumaDifference": 0.004036458333333334
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004170496453298256,
+          "time": 63.9,
+          "meanLumaDifference": 0.003599877450980392
+        },
+        {
+          "decoded": true,
+          "hashDistance": 3,
+          "meanAbsolutePixelDifference": 0.004411764952237718,
+          "time": 65.35,
+          "meanLumaDifference": 0.0036611519607843137
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.0044730394874932244,
+          "time": 65.86666666666666,
+          "meanLumaDifference": 0.00391390931372549
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004396446267492138,
+          "time": 66.8,
+          "meanLumaDifference": 0.00391390931372549
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.0044385724759195,
+          "time": 66.86666666666666,
+          "meanLumaDifference": 0.003856464460784314
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.0045228249655338,
+          "time": 68.15,
+          "meanLumaDifference": 0.0038488051470588237
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004216452376567759,
+          "time": 68.83333333333333,
+          "meanLumaDifference": 0.003201593137254902
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004457720773643814,
+          "time": 69.43333333333334,
+          "meanLumaDifference": 0.00392156862745098
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.0039024206052999943,
+          "time": 69.5,
+          "meanLumaDifference": 0.0034581801470588234
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.0044424021762097254,
+          "time": 70.95,
+          "meanLumaDifference": 0.0040173100490196074
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004438572563230991,
+          "time": 71.46666666666667,
+          "meanLumaDifference": 0.004013480392156862
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004595588616211899,
+          "time": 72.4,
+          "meanLumaDifference": 0.004339001225490196
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.003783701278734952,
+          "time": 72.46666666666667,
+          "meanLumaDifference": 0.0036841299019607842
+        },
+        {
+          "decoded": true,
+          "hashDistance": 3,
+          "meanAbsolutePixelDifference": 0.004576440289383754,
+          "time": 73.23333333333333,
+          "meanLumaDifference": 0.0044845281862745095
+        },
+        {
+          "decoded": true,
+          "hashDistance": 3,
+          "meanAbsolutePixelDifference": 0.005690870311809704,
+          "time": 74,
+          "meanLumaDifference": 0.0051815257352941175
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004794730390131008,
+          "time": 74.06666666666666,
+          "meanLumaDifference": 0.004944087009803921
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0063112745083344635,
+          "time": 75.78333333333333,
+          "meanLumaDifference": 0.005786611519607843
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0064414828812005,
+          "time": 76.03333333333333,
+          "meanLumaDifference": 0.0063495710784313725
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.00607766541725141,
+          "time": 77.03333333333333,
+          "meanLumaDifference": 0.00546875
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0045649510248040315,
+          "time": 77.5,
+          "meanLumaDifference": 0.00428921568627451
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004867493949859636,
+          "time": 78.03333333333333,
+          "meanLumaDifference": 0.004967064950980392
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.005288756248774007,
+          "time": 80,
+          "meanLumaDifference": 0.005736825980392156
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0049172795115737244,
+          "time": 80.06666666666666,
+          "meanLumaDifference": 0.004721966911764706
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.005491728075867286,
+          "time": 82.03333333333333,
+          "meanLumaDifference": 0.005430453431372549
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004633884887880413,
+          "time": 83.03333333333333,
+          "meanLumaDifference": 0.004047947303921569
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0055185355940921,
+          "time": 84.03333333333333,
+          "meanLumaDifference": 0.005101102941176471
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.005947457135334844,
+          "time": 86,
+          "meanLumaDifference": 0.005127910539215686
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.0051508885553630535,
+          "time": 86.06666666666666,
+          "meanLumaDifference": 0.0047181372549019605
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.005261948634142755,
+          "time": 88.03333333333333,
+          "meanLumaDifference": 0.004051776960784314
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0032054228795459494,
+          "time": 89.03333333333333,
+          "meanLumaDifference": 0.0026386335784313727
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0037147670773265418,
+          "time": 90.03333333333333,
+          "meanLumaDifference": 0.0034198835784313725
+        },
+        {
+          "decoded": true,
+          "hashDistance": 4,
+          "meanAbsolutePixelDifference": 0.005250459747912828,
+          "time": 92,
+          "meanLumaDifference": 0.003856464460784314
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.005108762485178886,
+          "time": 92.06666666666666,
+          "meanLumaDifference": 0.0043504901960784315
+        },
+        {
+          "decoded": true,
+          "hashDistance": 3,
+          "meanAbsolutePixelDifference": 0.004273897186067188,
+          "time": 94.03333333333333,
+          "meanLumaDifference": 0.002853094362745098
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.003913909466064069,
+          "time": 95.03333333333333,
+          "meanLumaDifference": 0.0029488357843137254
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.003959865465731127,
+          "time": 96.03333333333333,
+          "meanLumaDifference": 0.004055606617647059
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004947916928358609,
+          "time": 98,
+          "meanLumaDifference": 0.004959405637254902
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0048291973798768595,
+          "time": 98.06666666666666,
+          "meanLumaDifference": 0.003722426470588235
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.005798101006803336,
+          "time": 100.03333333333333,
+          "meanLumaDifference": 0.005261948529411765
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.006204044828336919,
+          "time": 102.03333333333333,
+          "meanLumaDifference": 0.005978094362745098
+        },
+        {
+          "decoded": true,
+          "hashDistance": 3,
+          "meanAbsolutePixelDifference": 0.004074754946486792,
+          "time": 104.03333333333333,
+          "meanLumaDifference": 0.0034734987745098037
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.004377297746032127,
+          "time": 106.03333333333333,
+          "meanLumaDifference": 0.004262408088235294
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.004833027116546873,
+          "time": 108.03333333333333,
+          "meanLumaDifference": 0.005277267156862745
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.00460707730599097,
+          "time": 110,
+          "meanLumaDifference": 0.00469515931372549
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004128370233956957,
+          "time": 110.06666666666666,
+          "meanLumaDifference": 0.003626685049019608
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.004840686200623168,
+          "time": 112.03333333333333,
+          "meanLumaDifference": 0.004541973039215687
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.0044500614239950664,
+          "time": 113.93333333333334,
+          "meanLumaDifference": 0.00428155637254902
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.0053002453460067045,
+          "time": 114.03333333333333,
+          "meanLumaDifference": 0.005403645833333333
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.005166207203728845,
+          "time": 116.03333333333333,
+          "meanLumaDifference": 0.005457261029411764
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.00332414218064514,
+          "time": 117.8,
+          "meanLumaDifference": 9.191176470588235e-05
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 0.003174785502778832,
+          "time": 117.86666666666666,
+          "meanLumaDifference": 8.425245098039216e-05
+        },
+        {
+          "decoded": true,
+          "hashDistance": 1,
+          "meanAbsolutePixelDifference": 0.0028339461769064656,
+          "time": 118.91666666666667,
+          "meanLumaDifference": 0.002068014705882353
+        },
+        {
+          "decoded": true,
+          "hashDistance": 2,
+          "meanAbsolutePixelDifference": 0.0006663602803200774,
+          "time": 119.83333333333333,
+          "meanLumaDifference": 0
+        },
+        {
+          "decoded": true,
+          "hashDistance": 0,
+          "meanAbsolutePixelDifference": 3.829657089227112e-06,
+          "time": 119.96666666666667,
+          "meanLumaDifference": 0
+        }
+      ],
+      "encodedWidth": 1920,
+      "outputURL": "file:///Users/daniellineckij/VeloEdit/Build/Performance/real-film/film.veloedit/Cache/Preview/DerivedMedia/EditorialControlExports/475ef3df3dde54e5d4ff8481d2f74ba6a73f4d054878d1b8d91872d6af573209.mp4",
+      "fileModified": "2026-09-18T17:05:36Z",
+      "aspectRatioMatches": true
+    },
+    "renderSignature": "c6e62f45599a8f195345b454808700793309139ff3497fd16862f335f9b7c5da",
+    "timelineWidth": 1920,
+    "timelineHeight": 1080,
+    "requestSignature": "682fc96b1b2b57549dba68ac7f92de1a5d7c4b65f840ff07c30f66d35d76b5c7",
+    "warnings": [
+      "[durationPadding] Длительность плана превышает подтверждённое действие/речь/наблюдение",
+      "[shotFamilyRunTooLong] Повтор camera setup: 2 планов, 12 с",
+      "[hardDuplicate] Повтор source range или взаимозаменяемого setup без нового состояния",
+      "[shotFamilyRunTooLong] Повтор camera setup: 3 планов, 15 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 4 планов, 18 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 5 планов, 26 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 6 планов, 29 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 7 планов, 31 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 8 планов, 34 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 9 планов, 37 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 10 планов, 40 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 11 планов, 41 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 3 планов, 18 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 4 планов, 24 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 5 планов, 36 с",
+      "[shotFamilyRunTooLong] Повтор camera setup: 6 планов, 43 с",
+      "Длительность отдельных планов или фильма отличается от рекомендованной.",
+      "В ролике остались похожие планы.",
+      "В ритме или последовательности сцен остались замечания.",
+      "Некоторые титры могут требовать правки.",
+      "Читаемость части титров не подтверждена после автоматической правки"
+    ],
+    "requirements": [
+      {
+        "passed": true,
+        "sourcePhrase": "Формат: Горизонтальное 16:9. Длительность — 2 минуты . Настроение: динамичное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий.",
+        "verificationMethod": "Playback clock after transitions and retiming",
+        "scope": "film",
+        "evidence": "Запрошено 120.0 с (exact); монтаж 120.0 с",
+        "rule": "duration",
+        "mandatory": true
+      },
+      {
+        "passed": true,
+        "sourcePhrase": "Формат: Горизонтальное 16:9. Длительность — 2 минуты . Настроение: динамичное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий.",
+        "verificationMethod": "Timeline raster",
+        "scope": "film",
+        "evidence": "1920 × 1080",
+        "rule": "format",
+        "mandatory": true
+      },
+      {
+        "passed": true,
+        "sourcePhrase": "Формат: Горизонтальное 16:9. Длительность — 2 минуты . Настроение: динамичное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий.",
+        "verificationMethod": "Actual Timeline source and candidate IDs",
+        "scope": "film",
+        "evidence": "Проверены 3 исходников и 23 фрагментов",
+        "rule": "excludedMaterial",
+        "mandatory": true
+      },
+      {
+        "passed": true,
+        "sourcePhrase": "Формат: Горизонтальное 16:9. Длительность — 2 минуты . Настроение: динамичное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий.",
+        "verificationMethod": "Titles at actual chapter boundaries",
+        "scope": "film",
+        "evidence": "Проверено частей: 3",
+        "rule": "chapterTitles",
+        "mandatory": true
+      },
+      {
+        "passed": false,
+        "sourcePhrase": "Формат: Горизонтальное 16:9. Длительность — 2 минуты . Настроение: динамичное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий.",
+        "verificationMethod": "Rendered title readability evidence",
+        "scope": "film",
+        "evidence": "Читаемость части титров не подтверждена после автоматической правки",
+        "rule": "titleVisibility",
+        "mandatory": true
+      },
+      {
+        "passed": true,
+        "sourcePhrase": "Формат: Горизонтальное 16:9. Длительность — 2 минуты . Настроение: динамичное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий.",
+        "verificationMethod": "Encoded MP4 video track dimensions",
+        "scope": "film",
+        "evidence": "Экспорт: 1920 × 1080; запрос: 1920 × 1080",
+        "rule": "exportRaster",
+        "mandatory": true
+      },
+      {
+        "passed": true,
+        "sourcePhrase": "Формат: Горизонтальное 16:9. Длительность — 2 минуты . Настроение: динамичное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий.",
+        "verificationMethod": "Independent MP4 video track decode, raster, duration and preview parity",
+        "scope": "film",
+        "evidence": "Видеоряд экспортированного файла: 120.0 с",
+        "rule": "export",
+        "mandatory": true
+      }
+    ]
+  },
+  "assetUsage": {
+    "F78C7124-9FBD-4E56-9737-74BE3CBE7FE1": 5,
+    "1EC61365-C32D-499B-B3D1-BB21548CC46F": 11,
+    "766FEA9B-7246-465C-9DDD-8AB4E5F6708E": 7
+  }
+}

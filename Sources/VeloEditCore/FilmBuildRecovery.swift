@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 public struct FilmBuildRequest: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable { case create, regenerate }
@@ -14,7 +15,7 @@ public struct FilmBuildRequest: Codable, Equatable, Sendable {
 }
 
 public struct FilmBuildDraft: Codable, Sendable {
-    public enum Phase: String, Codable, Sendable { case finishing, verifying }
+    public enum Phase: String, Codable, Sendable { case finishing, verifying, readyForPlayback }
     public var phase: Phase
     public var timeline: Timeline
     public var plan: StoryPlan
@@ -39,7 +40,7 @@ public struct FilmBuildRecovery: Codable, Sendable {
     public var stageTitle: String {
         switch draft?.phase {
         case .finishing: return "Доработка выбранного монтажа"
-        case .verifying: return "Проверка готового фильма и звука"
+        case .verifying, .readyForPlayback: return "Проверка готового фильма и звука"
         case nil: return "Сборка фильма с сохранённым анализом"
         }
     }
@@ -62,6 +63,37 @@ public struct FilmBuildRecovery: Codable, Sendable {
             && lhs.workspaceState?.directorMusicTrackID == rhs.workspaceState?.directorMusicTrackID
             && lhs.workspaceState?.directorBrief == rhs.workspaceState?.directorBrief
             && lhs.workspaceState?.pendingDirectorInstructions == rhs.workspaceState?.pendingDirectorInstructions
+    }
+
+    /// Recovery may not silently substitute a soundtrack or omit detached
+    /// audio. Regular preview can warn; committing a recovered edit must fail.
+    static func validateSelectedAudio(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack]) async throws {
+        let trackIDs = Set([timeline.music?.trackID].compactMap { $0 }
+            + (timeline.effectiveAdaptiveSoundtrack?.segments.compactMap(\.directive.trackID) ?? [])
+            + timeline.effectiveAudioClips.compactMap(\.trackID))
+        var urls: [URL] = []
+        for id in trackIDs {
+            guard let track = tracks.first(where: { $0.id == id }) else {
+                throw AutonomousOperationError.verificationFailed("Музыка сохранённого монтажа недоступна: \(id). Черновик сохранён без замены саундтрека.")
+            }
+            urls.append(track.localFileURL)
+        }
+        for clip in timeline.effectiveAudioClips where clip.assetID != nil {
+            guard let asset = assets.first(where: { $0.id == clip.assetID }) else {
+                throw AutonomousOperationError.verificationFailed("Звуковой фрагмент сохранённого монтажа недоступен: \(clip.title). Черновик сохранён.")
+            }
+            urls.append(asset.originalURL)
+        }
+        for url in Set(urls) {
+            do {
+                guard FileManager.default.fileExists(atPath: url.path),
+                      try await !AVURLAsset(url: url).loadTracks(withMediaType: .audio).isEmpty else {
+                    throw CocoaError(.fileReadNoSuchFile)
+                }
+            } catch {
+                throw AutonomousOperationError.verificationFailed("Не удалось открыть выбранный звук: \(url.lastPathComponent). Черновик сохранён без замены саундтрека.")
+            }
+        }
     }
 }
 
