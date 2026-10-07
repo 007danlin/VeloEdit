@@ -18,10 +18,16 @@ struct LibraryItemButton<Label: View>: View {
 }
 
 enum LibraryDragSession {
-    static let type = UTType(exportedAs: "app.veloedit.library-item", conformingTo: .data)
+    // These are small textual commands, not files. A custom public.data
+    // representation is bridged by SwiftUI to an AppKit file promise. On
+    // macOS 27 that promise has no file metadata, so NSFilePromiseReceiver
+    // raises an exception before the timeline can handle the drop.
+    static let type = UTType.utf8PlainText
 
     static func provider(for payload: String) -> NSItemProvider {
         let provider = NSItemProvider()
+        // Register only text: NSString also advertises public.url for commands
+        // such as "title:...", which are not URLs either.
         provider.registerDataRepresentation(forTypeIdentifier: type.identifier, visibility: .all) { completion in
             completion(Data(payload.utf8), nil)
             return nil

@@ -187,7 +187,7 @@ def build(args):
         # Finder window itself only contains the app and its install target;
         # all legal documents remain in the signed application bundle.
         (artifacts / "Install.txt").write_text(instructions)
-        dmg = artifacts / f"{name}.dmg"
+        dmg = artifacts / f"VeloEdit_{version}.dmg"
         run(packaging_python, ROOT / "Scripts/package-dmg.py", app, dmg,
             "--volume-name", "VeloEdit" + (" Local" if not args.release else ""))
         run("hdiutil", "verify", dmg)

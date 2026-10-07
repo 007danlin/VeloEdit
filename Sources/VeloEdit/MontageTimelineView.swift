@@ -1070,13 +1070,12 @@ struct MagneticTimelineView: View {
         let croppedLeadingWidth = preview?.edge == .leading
             ? max(0, CGFloat((item.timelineDuration - shownDuration) * pointsPerSecond)) : 0
 
-        let isBackground = item.assetID.flatMap { model.timelineMediaAsset($0) }
-            .flatMap { BackgroundPreset.preset(for: $0) } != nil
+        let isPhoto = item.assetID.flatMap { model.timelineMediaAsset($0) }?.kind == .photo
 
         return ZStack(alignment: .topLeading) {
             clipFilmstrip(item, width: width + croppedLeadingWidth)
                 .offset(x: -croppedLeadingWidth)
-                .frame(width: width, height: isBackground ? 76 : 58, alignment: .topLeading)
+                .frame(width: width, height: isPhoto ? 76 : 58, alignment: .topLeading)
                 .clipped()
             if hasSourceAudio(item) {
                 MontageWaveform(
@@ -1240,6 +1239,17 @@ struct MagneticTimelineView: View {
             if let preset = BackgroundPreset.preset(for: asset) {
                 BackgroundPresetArtwork(preset: preset)
                     .frame(width: width, height: 76)
+            } else if asset.kind == .photo {
+                // Photo cache entries contain one complete image, not the
+                // 16-frame composite used by video clips. Fill the whole card
+                // with that image, including the space videos use for audio.
+                CachedThumbnailImage(
+                    url: model.timelineThumbnailURLs[item.id] ?? model.thumbnailURLs[assetID],
+                    kind: .photo,
+                    contentMode: .fill
+                )
+                .frame(width: width, height: 76)
+                .clipped()
             } else {
                 if let filmstripURL = model.timelineFilmstripURLs[item.id] {
                     CachedAdaptiveFilmstripImage(

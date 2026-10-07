@@ -137,10 +137,11 @@ struct CachedThumbnailImage: View {
         Group {
             if let image {
                 if stretchesToFill {
-                    Image(nsImage: image).resizable()
+                    Image(nsImage: image).resizable().interpolation(.high)
                 } else {
                     Image(nsImage: image)
                         .resizable()
+                        .interpolation(.high)
                         .aspectRatio(contentMode: contentMode)
                 }
             } else {

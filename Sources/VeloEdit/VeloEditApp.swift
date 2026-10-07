@@ -19,6 +19,7 @@ struct VeloEditApp: App {
                         DirectorModelSetupBanner(setup: directorModelSetup).environmentObject(model)
                     }
             }
+                .preferredColorScheme(.dark)
                 .environmentObject(model)
                 .environmentObject(directorModelSetup)
                 .frame(minWidth: 980, minHeight: 700)
@@ -33,10 +34,11 @@ struct VeloEditApp: App {
                 }
         }
         .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified)
+        .windowToolbarStyle(.automatic)
         .commands { VeloEditCommands(model: model) }
         Window("Лицензия и компоненты", id: "legal") {
             LegalInfoView()
+                .preferredColorScheme(.dark)
         }
         .defaultSize(width: 780, height: 620)
     }
@@ -53,6 +55,11 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
     private var pendingProjectURL: URL?
     private var isFlushingAutosave = false
     private var waitForWorkTask: Task<Void, Never>?
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Keep native windows and panels dark regardless of the macOS theme.
+        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppNotifications.shared.configure()
@@ -164,11 +171,8 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
                 window.setFrameAutosaveName("VeloEdit.Main")
                 if hasSavedFrame { window.setFrameUsingName("VeloEdit.Main"); didMaximize = true }
                 window.contentMinSize = NSSize(width: 980, height: 700)
-                window.titleVisibility = .hidden
-                window.titlebarAppearsTransparent = true
-                window.styleMask.insert(.fullSizeContentView)
-                // Keep the standard window buttons at AppKit's native frame and
-                // bounds. Scaling them can distort their circular bezel on older macOS.
+                // SwiftUI and AppKit own the title bar and standard window buttons,
+                // including their native size, spacing, and placement.
                 didBecomeKeyObserver = NotificationCenter.default.addObserver(
                     forName: NSWindow.didBecomeKeyNotification,
                     object: window,

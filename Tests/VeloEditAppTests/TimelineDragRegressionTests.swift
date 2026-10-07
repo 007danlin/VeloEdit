@@ -7,6 +7,19 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct TimelineDragRegressionTests {
+    @Test func libraryCommandsUseNativeTextInsteadOfAFilePromise() async throws {
+        let payload = "title:title:" + Data("Новый маршрут 🚲".utf8).base64EncodedString()
+        let provider = LibraryDragSession.provider(for: payload)
+        #expect(LibraryDragSession.type == .utf8PlainText)
+        #expect(provider.canLoadObject(ofClass: NSString.self))
+        #expect(provider.registeredTypeIdentifiers == [LibraryDragSession.type.identifier])
+        #expect(!provider.hasItemConformingToTypeIdentifier("public.file-url"))
+        let loaded = await withCheckedContinuation { continuation in
+            LibraryDragSession.load(provider) { continuation.resume(returning: $0) }
+        }
+        #expect(loaded == payload)
+    }
+
     @Test func sameLibraryProviderCanBeDroppedRepeatedlyWithoutSourceGlobalState() async {
         let provider = LibraryDragSession.provider(for: "title:title:VGVzdA==")
         let session = LibraryTimelineDropSession()
