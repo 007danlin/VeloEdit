@@ -37,7 +37,7 @@ private struct OllamaOptions: Encodable {
     // A typed multi-action plan is larger than the old two-string response.
     // Keep enough room so a request with several edits is not truncated into
     // invalid JSON and silently downgraded to the deterministic fallback.
-    let numPredict = 1200
+    var numPredict = 1200
 
     enum CodingKeys: String, CodingKey {
         case temperature
@@ -52,7 +52,7 @@ private struct OllamaChatRequest: Encodable {
     let think = false
     let format = OllamaDirectorSchema()
     let keepAlive = "15m"
-    let options = OllamaOptions()
+    var options = OllamaOptions()
 
     enum CodingKeys: String, CodingKey {
         case model, messages, stream, think, format, options
@@ -150,7 +150,7 @@ private struct OllamaTagsResponse: Decodable {
 
 @MainActor
 final class LocalDirectorAgent {
-    typealias ResponseProvider = @MainActor (String, DirectorContext, DirectorRequestMode, Bool) async -> DirectorAIReply
+    typealias ResponseProvider = @MainActor (String, DirectorContext, DirectorRequestMode, Bool) async throws -> DirectorAIReply
     private let responseProvider: ResponseProvider?
 
     init(responseProvider: ResponseProvider? = nil) {
@@ -226,25 +226,48 @@ final class LocalDirectorAgent {
         if let commands = EditorCommandParser().parseComplete(userMessage, hasSelection: context.selectedItemSummary != nil) {
             return DirectorAIReply(text: "Применяю правку.", runtimeLabel: "Точная монтажная команда", normalizedBrief: nil, commands: commands)
         }
-        do { try await acquireModelSlot() } catch { return DirectorAIReply(text: "", runtimeLabel: "Отменено", normalizedBrief: nil) }
+        do { try await acquireModelSlot() } catch { return DirectorAIReply(text: "", runtimeLabel: "Отменено", normalizedBrief: nil, planningFailed: true) }
         defer { modelRequestActive = false }
-        if let responseProvider {
-            return await responseProvider(userMessage, context, mode, allowsFootageReplacement)
+        for attempt in 0..<2 {
+            do {
+                try Task.checkCancellation()
+                if let responseProvider {
+                    return try await responseProvider(userMessage, context, mode, allowsFootageReplacement)
+                }
+                return try await respondWithOllama(
+                    to: userMessage,
+                    context: context,
+                    mode: mode,
+                    recordInHistory: recordInHistory,
+                    allowsFootageReplacement: allowsFootageReplacement,
+                    onPartialReply: onPartialReply,
+                    repairingPlan: attempt > 0
+                )
+            } catch {
+                guard !Task.isCancelled, !(error is CancellationError) else { return DirectorAIReply(text: "", runtimeLabel: "Отменено", normalizedBrief: nil, planningFailed: true) }
+                let invalidPlan = error is DecodingError || (error as? URLError)?.code == .cannotParseResponse
+                if attempt == 0, invalidPlan {
+                    PerformanceTrace.current?.event("director.plan-retry")
+                    onPartialReply?("Уточняю команды правки")
+                    continue
+                }
+                return Self.planningFailure(error)
+            }
         }
-        do {
-            return try await respondWithOllama(
-                to: userMessage,
-                context: context,
-                mode: mode,
-                recordInHistory: recordInHistory,
-                allowsFootageReplacement: allowsFootageReplacement,
-                onPartialReply: onPartialReply
-            )
-        } catch {
-            guard !Task.isCancelled else { return DirectorAIReply(text: "", runtimeLabel: "Отменено", normalizedBrief: nil, planningFailed: true) }
-            return DirectorAIReply(text: "Не удалось получить полный план правки. Изменения не применены.",
-                runtimeLabel: "План не получен", normalizedBrief: nil, isFallback: true, planningFailed: true)
+        return Self.planningFailure(URLError(.cannotParseResponse))
+    }
+
+    private static func planningFailure(_ error: Error) -> DirectorAIReply {
+        let reason: String
+        switch (error as? URLError)?.code {
+        case .timedOut: reason = "Локальная модель не успела подготовить правку. Повторите запрос."
+        case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
+            reason = "Прервалась связь с локальной моделью. Повторите запрос после её запуска."
+        case .badServerResponse: reason = "Локальная модель вернула ошибку. Проверьте её состояние в настройках ИИ и повторите запрос."
+        default: reason = "Не удалось разобрать все действия в запросе даже после повторной попытки. Попробуйте указать правки отдельными предложениями и назвать нужные клипы."
         }
+        return DirectorAIReply(text: reason + " Изменения не применены.", runtimeLabel: "Правка не подготовлена",
+            normalizedBrief: nil, isFallback: true, planningFailed: true)
     }
 
     private func acquireModelSlot() async throws {
@@ -278,7 +301,7 @@ final class LocalDirectorAgent {
                 defer { self.modelRequestActive = false }
                 try Task.checkCancellation()
                 if let provider = self.responseProvider {
-                    let answer = await provider(prompt, context, .advisory, false)
+                    let answer = try await provider(prompt, context, .advisory, false)
                     return DirectorAIReply(text: answer.text, runtimeLabel: answer.runtimeLabel, normalizedBrief: nil,
                         judgment: answer.judgment, isFallback: answer.isFallback)
                 }
@@ -357,7 +380,8 @@ final class LocalDirectorAgent {
         mode: DirectorRequestMode,
         recordInHistory: Bool,
         allowsFootageReplacement: Bool,
-        onPartialReply: (@MainActor @Sendable (String) -> Void)?
+        onPartialReply: (@MainActor @Sendable (String) -> Void)?,
+        repairingPlan: Bool = false
     ) async throws -> DirectorAIReply {
         let ollamaAvailable = await hasOllamaModel(startService: true)
         try Task.checkCancellation()
@@ -374,6 +398,7 @@ final class LocalDirectorAgent {
             Верни только JSON по выданной схеме: reply — ответ пользователю; normalizedBrief — краткий русский бриф для подбора истории; commands — полный исполняемый план. На каждое действие создавай отдельный элемент commands. target всегда один из: all, selected, first, last или number:N. Для неиспользуемых value и secondaryTarget передавай пустую строку. secondaryTarget нужен только наложению и использует тот же формат цели.
             Для переименования существующего титра используй set_title_text: новый текст в value, выбранный титр — target selected. Сохраняй регистр и пунктуацию текста. Не заменяй переименование добавлением нового титра.
             add_library_effect: value — код эффекта из полного каталога: \(TimelineEffectType.allCases.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")). Добавляет редактируемый эффект на указанные клипы. Не дублируй то же действие через set_effect.
+            «Ещё хочу эффект камеры в первом видео» означает {"action":"add_library_effect","target":"first","value":"video-camera","secondaryTarget":""}. «Эффект камеры», «видеокамера», REC, видоискатель — video-camera; «ручная камера» — handheld; «дрейф камеры» — camera-drift. Это разные эффекты. Для эффекта из библиотеки всегда используй add_library_effect, а не set_effect. Вводные слова «ещё хочу», «можешь», «пожалуйста» не меняют действие. «В первом видео» указывает первый клип монтажа, «во втором» — number:2; не заменяй явный номер выбранным клипом.
             apply_title_template: value — ID шаблона, target указывает титр. Каталог: \(TitleTemplateRegistry.all.map { "\($0.id)=\($0.name)" }.joined(separator: "; ")). Для нового титра сначала add_title, затем apply_title_template; текст сохраняется.
             Полный каталог set_transition: \(TransitionStyle.allCases.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")).
             insert_background: target beginning/end; value — JSON строкой {"background":"clouds","title":"Путешествие","duration":4}; title можно опустить. Это отдельный клип из библиотеки и привязанный титр, а не set_overlay. Для неба используй clouds, для звёздного неба stars. Каталог фонов: \(BackgroundPreset.catalogPresets.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")).
@@ -403,7 +428,10 @@ final class LocalDirectorAgent {
             \(userMessage)
             """)
         let history = Array(ollamaHistory.suffix(8))
-        let messages = [system] + history + [contextualUser]
+        var messages = [system] + history + [contextualUser]
+        if repairingPlan {
+            messages.append(OllamaMessage(role: "user", content: "Предыдущая попытка не дала корректного полного плана; ничего не применено. Составь план заново для всего исходного запроса. Используй только перечисленные action, коды и цели, включи все поля команды. reply сократи до одной фразы, не повторяй каталог. Не теряй ни одну запрошенную правку."))
+        }
         if !ollamaAvailable {
             #if canImport(FoundationModels)
             if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
@@ -417,7 +445,8 @@ final class LocalDirectorAgent {
             // can still resolve supported commands and reports omissions.
             return DirectorAIReply(text: "Проверяю доступные монтажные команды.", runtimeLabel: "Базовый алгоритм · это не нейросеть", normalizedBrief: nil, isFallback: true)
         }
-        let payload = OllamaChatRequest(model: Self.ollamaModel, messages: messages)
+        var payload = OllamaChatRequest(model: Self.ollamaModel, messages: messages)
+        if repairingPlan { payload.options.numPredict = 2400 }
         var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
         request.timeoutInterval = allowsFootageReplacement ? 20 : 180

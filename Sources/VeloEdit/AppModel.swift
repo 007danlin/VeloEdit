@@ -4544,13 +4544,15 @@ final class AppModel: ObservableObject {
         let preservedTimelineTime = edit.playheadTime
         let shouldResumePlayback = previewPlayer.map(Self.isActivelyPlaying) ?? false
         let normalizedInstruction = clean.lowercased().replacingOccurrences(of: "ё", with: "е")
-        let explicitlyUsesSelection = [
+        let completeWithoutSelection = EditorCommandParser().parseComplete(clean, hasSelection: false)
+        let explicitlyUsesSelection = completeWithoutSelection == nil && ([
             "выбранн", "выделенн", "этот клип", "этого клипа", "этом клипе",
             "этот фрагмент", "этого фрагмента", "этом фрагменте",
-            "этот момент", "этого момента", "у него", "на нем", "сделай его"
+            "этот момент", "этого момента", "этом моменте", "это видео", "этом видео", "этого видео",
+            "этот ролик", "этом ролике", "этого ролика", "здесь", "у него", "для него", "на нем", "сделай его"
         ].contains(where: normalizedInstruction.contains)
             || (edit.selectedItemIsTitle
-                && EditorCommandParser().parse(clean, preset: edit.preset).contains { $0.semanticCategory.hasPrefix("title-") })
+                && EditorCommandParser().parse(clean, preset: edit.preset).contains { $0.semanticCategory.hasPrefix("title-") }))
         let selectedItemID: UUID? = {
             guard explicitlyUsesSelection else { return nil }
             if let id = edit.selectedItemID,

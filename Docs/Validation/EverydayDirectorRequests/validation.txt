@@ -1,0 +1,54 @@
+Everyday director requests — 2026-10-07
+
+Reported request: «еще хочу эффект камеры в первом видео».
+Root causes: the exact route accepted only a few rigid commands; the general
+parser did not recognize «камеры» as the existing video-camera library effect.
+Model generation/decoding failures all became the same generic planning error.
+
+Changes:
+- Closed whole-request grammar for ordinary effects, media scopes, speed,
+  duration, audio, filters, crop, rotation and explicit clip operations.
+- Conversational prefixes, quoted catalogue names, numbered/ordinal clips,
+  compound requests and pronouns keep their intended scopes.
+- Unknown tails, negations, unsupported parameters and missing selections do
+  not qualify as complete commands. A malformed compound model plan is atomic.
+- One bounded model-plan repair attempt for malformed/truncated plans;
+  transport errors have separate actionable messages.
+
+Verification of final application sources:
+- 229 request variants: 67 ordinary/compound requests, 124 catalogue requests
+  (62 effects × displayed name and raw code), 34 ambiguous/unsupported/negative
+  requests, and 4 requests requiring a selection. All passed.
+- Core regression selection: 101 tests, passed.
+- App regression selection: 35 tests, one pre-existing cancellation-input
+  failure; the new reliability tests and Timeline integration checks passed.
+- Camera request exercised through both director chat and Timeline comment:
+  no model call, first clip only despite another selection, durable save,
+  preview-ready receipt, reopening and Undo. Compound pronoun request also
+  verified without an unrelated selection.
+- The broad concurrent suite was interrupted after unrelated media/title
+  failures; it is not claimed as a clean full-suite run.
+- Isolated sequential comparison against a separate git HEAD (19792a4) source snapshot
+  reproduced the same five unrelated failing tests listed below. Three music
+  timing tests passed in isolation on both versions.
+
+Pre-existing failures reproduced on both HEAD and final code:
+1. editorialMasteringChangesTheActualCompositionMix — AVFoundation Cannot Open.
+2. editorialMasteringAcceptsTrackShorterThanMovie — AVFoundation Cannot Open.
+3. titlesForbiddenAndTooShortPartFollowExistingRules — short chapter policy.
+4. speechCaptionAtBeginningDoesNotReplacePartTitle — subtitle/chapter behavior.
+5. sendRemainsAvailableWhileReplyingAndCancellationReleasesComposer — old
+   expectation that an advisory message is restored from the editing queue.
+
+Final complete bundle: ./Scripts/build-app.sh exited 0 after the last source
+changes. Built arm64 + x86_64 app, speech worker and OVRLEY bridge; architecture
+and ad-hoc signature checks passed. Output: Build/VeloEdit.app.
+Build log: build-app.log.
+
+DMG packaging: python3 Scripts/build-distribution.py --skip-build exited 0.
+The existing complete app source fingerprint was verified against current
+source/resource/script files before packaging. No application files changed.
+Installer: Build/Distribution/VeloEdit-0.1.0-2026.280.164556-universal-local/VeloEdit_0.1.0.dmg
+SHA-256: 2f06f5df1e4932c9d0ec85269a7abbd9c6fb264b2e19bebd33ead04414f6e37d
+Universal arm64/x86_64; local ad-hoc package. Copied bundle signature and
+hdiutil image checksum verified. Packaging log: build-dmg.log.

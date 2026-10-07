@@ -1,0 +1,659 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite AIModeReliabilityTests started.
+◇ Test calmScenesReachEveryModeAndHigherModesKeepTheirFrameContext() started.
+✔ Test calmScenesReachEveryModeAndHigherModesKeepTheirFrameContext() passed after 0.001 seconds.
+◇ Test legacyMLXAndQuantizationSettingsResolveToAnHonestRuntime() started.
+✔ Test legacyMLXAndQuantizationSettingsResolveToAnHonestRuntime() passed after 0.001 seconds.
+◇ Test requestedDepthCannotHideMissingOrPartialInference() started.
+✔ Test requestedDepthCannotHideMissingOrPartialInference() passed after 0.001 seconds.
+◇ Test metadataFallbackDoesNotClaimFullDepth() started.
+✔ Test metadataFallbackDoesNotClaimFullDepth() passed after 0.001 seconds.
+◇ Test benchmarkCountsSuccessfulJudgementsRatherThanAttempts() started.
+✔ Test benchmarkCountsSuccessfulJudgementsRatherThanAttempts() passed after 0.001 seconds.
+◇ Test streamingRequiresTerminalEventAndKeepsAllContent() started.
+✔ Test streamingRequiresTerminalEventAndKeepsAllContent() passed after 0.001 seconds.
+◇ Test timeoutDoesNotStartAnotherExpensiveInference() started.
+✔ Test timeoutDoesNotStartAnotherExpensiveInference() passed after 0.001 seconds.
+◇ Test pipelineRetriesIncompleteWorkThenReusesCompletedWork() started.
+✔ Test pipelineRetriesIncompleteWorkThenReusesCompletedWork() passed after 0.033 seconds.
+✔ Suite AIModeReliabilityTests passed after 0.036 seconds.
+◇ Suite DirectorCommentCombinationTests started.
+◇ Test cheerfulMusic(_:) started.
+◇ Test case passing 1 argument request → "Музыку повеселее" to cheerfulMusic(_:) started.
+◇ Test case passing 1 argument request → "Повеселей музыку" to cheerfulMusic(_:) started.
+◇ Test case passing 1 argument request → "Сделай музыку весёлой" to cheerfulMusic(_:) started.
+✔ Test cheerfulMusic(_:) with 3 test cases passed after 0.008 seconds.
+◇ Test compoundRequestKeepsTitleContentAndAllActions() started.
+✔ Test compoundRequestKeepsTitleContentAndAllActions() passed after 0.014 seconds.
+◇ Test compoundStructuralCommandsKeepOrderAndModelCompletesTitleStyle() started.
+✔ Test compoundStructuralCommandsKeepOrderAndModelCompletesTitleStyle() passed after 0.005 seconds.
+◇ Test renameIsPreciseAndPartialFailureIsVisible() started.
+✔ Test renameIsPreciseAndPartialFailureIsVisible() passed after 0.020 seconds.
+✔ Suite DirectorCommentCombinationTests passed after 0.049 seconds.
+◇ Suite DirectorEffectsPolicyTests started.
+◇ Test choicesPersistAndMissingChoicePreservesOldProjects() started.
+✔ Test choicesPersistAndMissingChoicePreservesOldProjects() passed after 0.001 seconds.
+◇ Test noneNormalAndManyProduceDifferentBudgetsThatSurviveFinalReview() started.
+✔ Test noneNormalAndManyProduceDifferentBudgetsThatSurviveFinalReview() passed after 0.046 seconds.
+◇ Test noEffectsRemovesPhotoMotionTransitionsAndEndingFadeOnDelivery() started.
+✔ Test noEffectsRemovesPhotoMotionTransitionsAndEndingFadeOnDelivery() passed after 0.014 seconds.
+◇ Test explicitNoEffectsTextWinsAndNoTransitionsStillAllowsClipEffects() started.
+✔ Test explicitNoEffectsTextWinsAndNoTransitionsStillAllowsClipEffects() passed after 0.001 seconds.
+◇ Test composerUsesEffectsAnswerEvenWithoutEffectsInPrompt() started.
+✔ Test composerUsesEffectsAnswerEvenWithoutEffectsInPrompt() passed after 0.033 seconds.
+✔ Suite DirectorEffectsPolicyTests passed after 0.095 seconds.
+◇ Suite DirectorLiveJudgmentTests started.
+◇ Test questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Как тебе?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Здесь затянуто?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Почему так?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Что здесь не так?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Мне не нравится конец" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Убрать паузу?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Этот кадр плохой?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Какой дубль лучше?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Почему так резко?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Слишком медленно?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Нет, мне как раз нравится эта пауза" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Что слышно?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Какая музыка подойдёт?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Как назвать фильм?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Нужен переход?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Речь не обрезана?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Что скажешь о начале?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Кадр стоит сохранить?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Как тебе весь фильм?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Сравни клип 1 и клип 2" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Почему ты убрал конец?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Пауза хорошая?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Готово?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Какая громкость музыки?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Не меняй цвет" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Не добавляй музыку" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Не сокращай паузу" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Ничего не меняй, только оцени" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Только предложи название" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Без изменений, посоветуй музыку" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Да, сделай" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Да сделай" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Давай так" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Продолжи ожидание" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Объясни подробнее" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Проанализируй этот момент" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Только совет, сделай вывод" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Не трогай монтаж" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Что тут не так?" to questionsDoNotAuthorizeMutation(_:) started.
+◇ Test case passing 1 argument prompt → "Можно оставить тишину?" to questionsDoNotAuthorizeMutation(_:) started.
+✔ Test questionsDoNotAuthorizeMutation(_:) with 40 test cases passed after 0.020 seconds.
+◇ Test explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Музыку на 20%" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "громкость музыки 20,5%" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Убери переход" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Обрежь конец" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Переставь клип 2" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Сделай ярче" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Почему так резко и убери этот переход" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Не меняй цвет, убери переход" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Не трогай музыку, добавь титр" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Сократи клип 1 до 4 секунд" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Поставь музыку на 20%" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Раздели клип" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Вставь фон небо" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Замени дубль" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Увеличь громкость" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Убери дрожание и замени дубль" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь титр «Пауза?»" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Собери фильм" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Поверни кадр" to explicitAndMixedRequestsRetainActions(_:) started.
+◇ Test case passing 1 argument prompt → "Включи субтитры" to explicitAndMixedRequestsRetainActions(_:) started.
+✔ Test explicitAndMixedRequestsRetainActions(_:) with 20 test cases passed after 0.001 seconds.
+◇ Test localEvidenceDoesNotBorrowGlobalTagsOrDSPLabels() started.
+✔ Test localEvidenceDoesNotBorrowGlobalTagsOrDSPLabels() passed after 0.001 seconds.
+◇ Test sceneDescriptionsCannotResolveTimingOrAudioQuestions() started.
+✔ Test sceneDescriptionsCannotResolveTimingOrAudioQuestions() passed after 0.001 seconds.
+◇ Test missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 0 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 1 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 2 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 3 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 4 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 5 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 6 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 7 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 8 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 9 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 10 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 11 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 12 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 13 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 14 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+◇ Test case passing 1 argument change → 15 to missingContradictoryOrStaleEvidenceStaysLimited(_:) started.
+✔ Test missingContradictoryOrStaleEvidenceStaysLimited(_:) with 16 test cases passed after 0.002 seconds.
+◇ Test targetsRespectExplicitObjectClockAndWholeFilm() started.
+✔ Test targetsRespectExplicitObjectClockAndWholeFilm() passed after 0.001 seconds.
+◇ Test duplicateAnalysisCannotRelabelOldCandidateAsCurrentEvidence() started.
+✔ Test duplicateAnalysisCannotRelabelOldCandidateAsCurrentEvidence() passed after 0.001 seconds.
+◇ Test rangeUsesExistingSpeedRampAndReverseClock(_:) started.
+◇ Test case passing 1 argument reversed → false to rangeUsesExistingSpeedRampAndReverseClock(_:) started.
+◇ Test case passing 1 argument reversed → true to rangeUsesExistingSpeedRampAndReverseClock(_:) started.
+✔ Test rangeUsesExistingSpeedRampAndReverseClock(_:) with 2 test cases passed after 0.001 seconds.
+◇ Test cacheBudgetAndSnapshotInvalidation() started.
+✔ Test cacheBudgetAndSnapshotInvalidation() passed after 0.001 seconds.
+◇ Test judgmentValidatesObjectCoverageVersionAndClaimType() started.
+✔ Test judgmentValidatesObjectCoverageVersionAndClaimType() passed after 0.001 seconds.
+◇ Test originalTitleIsNotMistakenForAnInventedTranscriptQuote() started.
+✔ Test originalTitleIsNotMistakenForAnInventedTranscriptQuote() passed after 0.001 seconds.
+◇ Test receiptsDistinguishSavePreviewPartialAndCancellation() started.
+✔ Test receiptsDistinguishSavePreviewPartialAndCancellation() passed after 0.001 seconds.
+◇ Test acceptedProposalStaysBoundToOriginalObjectAndAnalysis() started.
+✔ Test acceptedProposalStaysBoundToOriginalObjectAndAnalysis() passed after 0.001 seconds.
+◇ Test oldMessagesDecodeWithoutNewFields() started.
+✔ Test oldMessagesDecodeWithoutNewFields() passed after 0.001 seconds.
+✔ Suite DirectorLiveJudgmentTests passed after 0.028 seconds.
+◇ Test questionnaireTitleRequirementSurvivesIntentParsing() started.
+✔ Test questionnaireTitleRequirementSurvivesIntentParsing() passed after 0.008 seconds.
+◇ Test chapterTitlesStartAtZeroAndEveryPartWithoutDependingOnNarrativeBeats() started.
+✔ Test chapterTitlesStartAtZeroAndEveryPartWithoutDependingOnNarrativeBeats() passed after 0.059 seconds.
+◇ Test chapterRepairReanchorsAfterShorteningWithoutUndoingReadabilityFix() started.
+✔ Test chapterRepairReanchorsAfterShorteningWithoutUndoingReadabilityFix() passed after 0.057 seconds.
+◇ Test chapterHeadingReplacesOverlappingAutomaticOpenerButKeepsManualText() started.
+✔ Test chapterHeadingReplacesOverlappingAutomaticOpenerButKeepsManualText() passed after 0.008 seconds.
+◇ Test unknownPartStillGetsLabelAndRepeatedEventTitleSurvivesCleanup() started.
+✔ Test unknownPartStillGetsLabelAndRepeatedEventTitleSurvivesCleanup() passed after 0.011 seconds.
+◇ Test tooShortPartCannotSilentlyPassTitleContract() started.
+✔ Test tooShortPartCannotSilentlyPassTitleContract() passed after 0.031 seconds.
+◇ Test cinematicMoodDoesNotAuthorizeCutawaysOrColorChanges() started.
+✔ Test cinematicMoodDoesNotAuthorizeCutawaysOrColorChanges() passed after 0.023 seconds.
+◇ Test genericOutdoorTagsDoNotAuthorizeCrossEventCutaway() started.
+✔ Test genericOutdoorTagsDoNotAuthorizeCrossEventCutaway() passed after 0.001 seconds.
+◇ Test generationDoesNotReplayMusicSelectionFromPendingQuestionnaire() started.
+✔ Test generationDoesNotReplayMusicSelectionFromPendingQuestionnaire() passed after 0.003 seconds.
+◇ Test musicRequestSelectsMoodAndRespectsOptOut() started.
+✔ Test musicRequestSelectsMoodAndRespectsOptOut() passed after 0.003 seconds.
+◇ Test originalAudioInstructionIsExecutableAndLatestCommandWins() started.
+✔ Test originalAudioInstructionIsExecutableAndLatestCommandWins() passed after 0.001 seconds.
+◇ Test sourceAudioQuestionnaireAnswerAndPlaceholderTitlesAreHandledLiterally() started.
+✔ Test sourceAudioQuestionnaireAnswerAndPlaceholderTitlesAreHandledLiterally() passed after 0.004 seconds.
+◇ Test automatedTitlePolicyRepairsOldGeneratedOverlapWithoutTouchingManualLayers() started.
+✔ Test automatedTitlePolicyRepairsOldGeneratedOverlapWithoutTouchingManualLayers() passed after 0.001 seconds.
+◇ Test editorCatalogValuesSurviveProjectEncoding() started.
+✔ Test editorCatalogValuesSurviveProjectEncoding() passed after 0.001 seconds.
+◇ Test clipAdjustmentsSurviveEncodingAndOldItemsUseNeutralDefaults() started.
+✔ Test clipAdjustmentsSurviveEncodingAndOldItemsUseNeutralDefaults() passed after 0.001 seconds.
+◇ Test viewerToolAdjustmentsSurviveEncodingAndTriggerRealMediaProcessing() started.
+✔ Test viewerToolAdjustmentsSurviveEncodingAndTriggerRealMediaProcessing() passed after 0.001 seconds.
+◇ Test processedAudioRenderingStartsAndProducesSamples() started.
+2026-10-07 19:39:34.416 swiftpm-testing-helper[7219:3279692] Audio files cannot be non-interleaved. Ignoring setting AVLinearPCMIsNonInterleaved YES.
+✔ Test processedAudioRenderingStartsAndProducesSamples() passed after 0.098 seconds.
+◇ Test oldExtendedAdjustmentsDecodeWithNeutralViewerToolDefaults() started.
+✔ Test oldExtendedAdjustmentsDecodeWithNeutralViewerToolDefaults() passed after 0.001 seconds.
+◇ Test extendedImageAudioAndSpeedRampCommandsAreExecutable() started.
+✔ Test extendedImageAudioAndSpeedRampCommandsAreExecutable() passed after 0.008 seconds.
+◇ Test expandedCatalogContainsRequestedMotionAndTransitions() started.
+✔ Test expandedCatalogContainsRequestedMotionAndTransitions() passed after 0.001 seconds.
+◇ Test transitionPlaybackClockMapsBackToVisibleTimelineBoundaries() started.
+✔ Test transitionPlaybackClockMapsBackToVisibleTimelineBoundaries() passed after 0.001 seconds.
+◇ Test shortTimelineRegionsKeepTheirRealDuration() started.
+✔ Test shortTimelineRegionsKeepTheirRealDuration() passed after 0.001 seconds.
+◇ Test telemetryCommandCreatesRenderableTimelineIntent() started.
+✔ Test telemetryCommandCreatesRenderableTimelineIntent() passed after 0.005 seconds.
+◇ Test freeToUseProviderUsesTheOfficialAPIAndStoresAttribution() started.
+✔ Test freeToUseProviderUsesTheOfficialAPIAndStoresAttribution() passed after 0.001 seconds.
+◇ Test freeToUseTrackDecodesOfficialTupleMetadata() started.
+✔ Test freeToUseTrackDecodesOfficialTupleMetadata() passed after 0.001 seconds.
+◇ Test localMusicSelectorUsesMoodBPMEnergyAndCanExcludeCurrentTrack() started.
+✔ Test localMusicSelectorUsesMoodBPMEnergyAndCanExcludeCurrentTrack() passed after 0.001 seconds.
+◇ Test conversationalMusicChangesAreRecognizedWithoutGeneratingMusic() started.
+✔ Test conversationalMusicChangesAreRecognizedWithoutGeneratingMusic() passed after 0.001 seconds.
+◇ Test generatedCutsSnapToTheSelectedLocalTracksBeatGrid() started.
+✔ Test generatedCutsSnapToTheSelectedLocalTracksBeatGrid() passed after 0.001 seconds.
+◇ Test changingSelectedMusicOnlyRefreshesBeatStructure() started.
+✔ Test changingSelectedMusicOnlyRefreshesBeatStructure() passed after 0.001 seconds.
+◇ Test russianEditorRequestBecomesTypedCommandsAndChangesTheRequestedClip() started.
+✔ Test russianEditorRequestBecomesTypedCommandsAndChangesTheRequestedClip() passed after 0.003 seconds.
+◇ Test titleSplitDuplicateAndMoveCommandsReallyRewriteTimeline() started.
+✔ Test titleSplitDuplicateAndMoveCommandsReallyRewriteTimeline() passed after 0.001 seconds.
+◇ Test parserExtractsQuotedTitleAndGlobalMovieCommands() started.
+✔ Test parserExtractsQuotedTitleAndGlobalMovieCommands() passed after 0.005 seconds.
+◇ Test naturalAudioRequestsDistinguishMusicSpeechAndNoise() started.
+✔ Test naturalAudioRequestsDistinguishMusicSpeechAndNoise() passed after 0.004 seconds.
+◇ Test multiClauseRequestKeepsTargetsSeparateAndResolvesPronouns() started.
+✔ Test multiClauseRequestKeepsTargetsSeparateAndResolvesPronouns() passed after 0.001 seconds.
+◇ Test naturalCreativeRequestActuallyAddsVariedTransitionsAndMotion() started.
+✔ Test naturalCreativeRequestActuallyAddsVariedTransitionsAndMotion() passed after 0.004 seconds.
+◇ Test russianLocativeTargetAndTransitionBoundaryResolveToRenderedClip() started.
+✔ Test russianLocativeTargetAndTransitionBoundaryResolveToRenderedClip() passed after 0.003 seconds.
+◇ Test repeatedVisualCommandIsReportedAsNoOpInsteadOfClaimingAChange() started.
+✔ Test repeatedVisualCommandIsReportedAsNoOpInsteadOfClaimingAChange() passed after 0.001 seconds.
+◇ Test overlayRequestCreatesARealSecondLayerWithoutLengtheningMovie() started.
+✔ Test overlayRequestCreatesARealSecondLayerWithoutLengtheningMovie() passed after 0.003 seconds.
+◇ Test overlayStylesAndReferencesSurviveProjectEncoding() started.
+✔ Test overlayStylesAndReferencesSurviveProjectEncoding() passed after 0.001 seconds.
+◇ Test freezeFrameCommandInsertsARealTimedStill() started.
+✔ Test freezeFrameCommandInsertsARealTimedStill() passed after 0.002 seconds.
+◇ Test reverseAndAutoEnhanceCommandsChangeTheSelectedClip() started.
+✔ Test reverseAndAutoEnhanceCommandsChangeTheSelectedClip() passed after 0.003 seconds.
+◇ Test instantReplayDuplicatesTheMomentAndSlowsOnlyTheCopy() started.
+✔ Test instantReplayDuplicatesTheMomentAndSlowsOnlyTheCopy() passed after 0.003 seconds.
+◇ Test conversationalDirectorWordingStillBecomesExecutableCommands() started.
+✔ Test conversationalDirectorWordingStillBecomesExecutableCommands() passed after 0.004 seconds.
+◇ Test titleAppearanceCanBeChangedByRequest() started.
+✔ Test titleAppearanceCanBeChangedByRequest() passed after 0.007 seconds.
+◇ Test editorCommandsCreateAndEditTemplateTitleObjects() started.
+✔ Test editorCommandsCreateAndEditTemplateTitleObjects() passed after 0.001 seconds.
+◇ Test turquoiseTitleBackgroundIsUnderstoodInRussian() started.
+✔ Test turquoiseTitleBackgroundIsUnderstoodInRussian() passed after 0.002 seconds.
+◇ Test incrementalDuplicateEvaluationMatchesEveryFullPrefix() started.
+✔ Test incrementalDuplicateEvaluationMatchesEveryFullPrefix() passed after 0.077 seconds.
+◇ Test incrementalSequenceSearchMatchesOriginalCompleteAlgorithm() started.
+✔ Test incrementalSequenceSearchMatchesOriginalCompleteAlgorithm() passed after 0.514 seconds.
+◇ Suite EverydayDirectorCommandTests started.
+◇ Test everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → еще хочу эффект камеры в первом видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Ещё хочу добавить эффект камеры на первое видео! to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Можешь добавить эффект видеокамеры во втором видео? to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Ну и ещё, пожалуйста, наложи эффект «Видеокамера» на первый клип to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → В первом видео хочу эффект камеры to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект REC для третьего ролика to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект видоискателя в последний фрагмент to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Поставь эффект ручной камеры на выбранное видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Примени эффект дрейфа камеры в первом клипе to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь плавный наезд камеры в первом видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь плавный отъезд камеры во втором видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры здесь to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры на это видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Хочу эффект камеры на нём to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры на весь фильм to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры ко всем клипам to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры на 1-е видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры в 12-м клипе to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры на видео № 3 to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры в клипе номер 15 to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Пожалуйста, установи громкость музыки на 12,5% to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Музыку на 0%, пожалуйста! to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Сделай музыку тише to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери музыку to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Приглуши музыку под речь to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Приглуши звук исходников to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери звук исходников to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Верни исходный звук to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери звук в первом видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Включи звук выбранного клипа to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Установи громкость второго клипа 40% to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Отдели звук последнего видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Ускорь первое видео в 2 раза to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Замедли третий клип в 4 раза to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Поставь скорость второго видео 1,5x to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Верни нормальную скорость первого клипа to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери замедление во всех клипах to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Сделай длительность первого видео 3,5 секунды to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Установи длительность клипа 2 4 секунды to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Сделай длительность выбранного клипа 3 секунды to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Сделай первое видео чёрно-белым to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь теплый фильтр во втором видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Примени фильтр нуар в последнем клипе to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери фильтр с первого клипа to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Стабилизируй первое видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери тряску в выбранном клипе to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Выключи стабилизацию второго видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Поверни первое видео вправо на 90 градусов to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Поверни выбранный клип влево to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Отрази первое видео зеркально to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Заполни кадр в первом видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Покажи второе видео целиком to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери все эффекты с последнего клипа to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Удали второй клип to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Дублируй первое видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Разрежь выбранный клип to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Перемести последний клип в начало to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Убери все титры to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Поставь титр «Камера, музыка и свет» в конце to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры в первом видео и убери звук to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Ускорь первый клип в 2 раза, второй клип сделай чёрно-белым, убери у него звук to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры во втором видео и добавь на нем эффект глитч to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры во втором видео и убери звук выбранного клипа to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры в первом видео и добавь эффект глитч во втором видео to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь эффект камеры в первом видео; громкость музыки 20% to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Ускорь первый клип в 2 раза. Убери звук во втором видео. to everydayRequestsProduceCompletePlans(_:) started.
+◇ Test case passing 1 argument sample → Добавь титр «Ещё хочу камеру!» в конце и добавь эффект камеры в первом видео to everydayRequestsProduceCompletePlans(_:) started.
+✔ Test everydayRequestsProduceCompletePlans(_:) with 67 test cases passed after 0.065 seconds.
+◇ Test everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .zoom to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .pushIn to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .pullOut to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .pan to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .shake to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .motionBlur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .blur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .directionalBlur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .backgroundBlur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .exposure to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .contrast to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .saturation to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .temperature to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .vignette to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .grain to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .fade to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .light to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .flash to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .glow to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .brightness to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .vibrance to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .tint to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .highlights to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .shadows to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .sharpness to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .opacity to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .filmGrain to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .cinematicVignette to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .cinematicMotionBlur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .bloom to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .lensBlur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .softFocus to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .letterbox to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .colorGrade to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .cinematicContrast to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .tealOrangeGrade to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .vintage to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .filmLook to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .cameraDrift to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .handheld to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .spin to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .kenBurns to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .parallaxMotion to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .zoomBlur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .radialBlur to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .chromaticAberration to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .lensDistortion to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .fisheye to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .barrelDistortion to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .glitch to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .rgbSplit to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .scanlines to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .pixelate to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .posterize to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .halftone to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .vhsDistortion to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .lightLeak to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .filmBurn to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .dust to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .noise to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .fogHaze to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+◇ Test case passing 1 argument effect → .videoCamera to everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) started.
+✔ Test everyLibraryEffectSupportsItsDisplayedNameAndCode(_:) with 62 test cases passed after 0.086 seconds.
+◇ Test unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Не добавляй эффект камеры в первом видео" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Не надо эффект камеры в первом видео" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Стоит ли добавить эффект камеры в первом видео?" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Почему не добавился эффект камеры?" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Как выглядит эффект камеры?" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Какой эффект камеры лучше?" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Объясни эффект камеры" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в первом видео кроме последних двух секунд" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в первом видео на 2 секунды" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры с 2 по 4 секунду" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в первом видео и замени неудачный дубль" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в первом видео и сделай историю интереснее" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры на первом и третьем клипе" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в клипах 1-3" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры на видео 0" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры на видео -1" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в клипе 99999999999999999999999999999999" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры на лицо" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект неизвестного плагина в первом видео" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры если там человек" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры как в прошлом проекте" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Удали" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Разрежь" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Громкость музыки 120%" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Громкость музыки -10%" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Ускорь первое видео в 0 раз" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Замедли первое видео в 100 раз" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Сделай длительность первого клипа 0 секунд" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Сделай длительность 10 секунд" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Поверни первое видео вправо на 45 градусов" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Убери эффект камеры в первом видео" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в первом видео без изменений" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры во втором" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры в первом видео, а во втором сделай черно-белым" to unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) started.
+✔ Test unknownTailNegationAndAmbiguityCannotBypassInterpretation(_:) with 34 test cases passed after 0.021 seconds.
+◇ Test selectionIsRequired(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры на выбранное видео" to selectionIsRequired(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры на это видео" to selectionIsRequired(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект камеры здесь" to selectionIsRequired(_:) started.
+◇ Test case passing 1 argument prompt → "Убери звук выделенного клипа" to selectionIsRequired(_:) started.
+✔ Test selectionIsRequired(_:) with 4 test cases passed after 0.001 seconds.
+◇ Test firstCameraEffectTargetsOnlyFirstClipAndSurvivesRoundTrip() started.
+✔ Test firstCameraEffectTargetsOnlyFirstClipAndSurvivesRoundTrip() passed after 0.001 seconds.
+✔ Suite EverydayDirectorCommandTests passed after 0.176 seconds.
+◇ Test exactCommentRoutingRequiresTheWholeRequestAndSelection() started.
+✔ Test exactCommentRoutingRequiresTheWholeRequestAndSelection() passed after 0.007 seconds.
+◇ Suite ScopedDirectorCommandTests started.
+◇ Test titleCreationStylingAndRenamingExecuteInOrderWithinBrush() started.
+✔ Test titleCreationStylingAndRenamingExecuteInOrderWithinBrush() passed after 0.007 seconds.
+◇ Test splitThenSpeedAndEffectsReachBothHalvesAndKeepAudioSourceClock() started.
+✔ Test splitThenSpeedAndEffectsReachBothHalvesAndKeepAudioSourceClock() passed after 0.005 seconds.
+◇ Test localAudioRestoreDoesNotUnmuteRestOfFilm() started.
+✔ Test localAudioRestoreDoesNotUnmuteRestOfFilm() passed after 0.004 seconds.
+◇ Test globalSplitPreservesMediaClockAndAttachedLayers(_:) started.
+◇ Test case passing 1 argument reverse → false to globalSplitPreservesMediaClockAndAttachedLayers(_:) started.
+◇ Test case passing 1 argument reverse → true to globalSplitPreservesMediaClockAndAttachedLayers(_:) started.
+✔ Test globalSplitPreservesMediaClockAndAttachedLayers(_:) with 2 test cases passed after 0.001 seconds.
+◇ Test localMoveKeepsOutsideClipsAndAttachedTitles() started.
+✔ Test localMoveKeepsOutsideClipsAndAttachedTitles() passed after 0.004 seconds.
+◇ Test overlayUsesOnlyClipsInsideSelection() started.
+✔ Test overlayUsesOnlyClipsInsideSelection() passed after 0.004 seconds.
+◇ Test musicGainMuteAndDuckingPreserveOutsideRegionsAndRoundTrip() started.
+✔ Test musicGainMuteAndDuckingPreserveOutsideRegionsAndRoundTrip() passed after 0.001 seconds.
+◇ Test manualMusicRegionsFollowSpeedChange() started.
+✔ Test manualMusicRegionsFollowSpeedChange() passed after 0.004 seconds.
+✔ Suite ScopedDirectorCommandTests passed after 0.033 seconds.
+◇ Test titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Добавь титры" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Сделай ролик с титрами" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Add a title" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+◇ Test case passing 1 argument prompt → "Include captions" to titleRecoveryRecognizesExplicitRequests(prompt:) started.
+✔ Test titleRecoveryRecognizesExplicitRequests(prompt:) with 4 test cases passed after 0.012 seconds.
+◇ Test titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Добавь музыку. Титры оставить как есть" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Добавь музыку, титры не нужны" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Убрать титры" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Do not add titles" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Without captions" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+◇ Test case passing 1 argument prompt → "Количество титров изменено — примените правки к фильму" to titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) started.
+✔ Test titleRecoveryDoesNotInventAdditionFromUnrelatedInstructions(prompt:) with 6 test cases passed after 0.023 seconds.
+◇ Test titleRecoveryUsesLatestInstructionAndUpdatesBriefBothWays() started.
+✔ Test titleRecoveryUsesLatestInstructionAndUpdatesBriefBothWays() passed after 0.008 seconds.
+◇ Test titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+◇ Test case passing 1 argument kinds → [VeloEditCore.TimelineItemKind.photo] to titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+◇ Test case passing 1 argument kinds → [VeloEditCore.TimelineItemKind.video] to titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+◇ Test case passing 1 argument kinds → [VeloEditCore.TimelineItemKind.photo, VeloEditCore.TimelineItemKind.video] to titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) started.
+✔ Test titleRecoveryBuildsReadableOpeningWithoutNarrativeAnalysis(kinds:) with 3 test cases passed after 0.028 seconds.
+◇ Test titleRecoveryRejectsInvisibleAndUnreadableTitles() started.
+✔ Test titleRecoveryRejectsInvisibleAndUnreadableTitles() passed after 0.024 seconds.
+◇ Suite VideoCameraEffectTests started.
+◇ Test monochromeFieldsAndViewfinderWorkInLandscapePortraitAndOffsetFrames() started.
+✔ Test monochromeFieldsAndViewfinderWorkInLandscapePortraitAndOffsetFrames() passed after 0.081 seconds.
+◇ Test blinkFollowsEffectLocalTimeAndControlsChangeTheActualFrame() started.
+✔ Test blinkFollowsEffectLocalTimeAndControlsChangeTheActualFrame() passed after 0.029 seconds.
+◇ Test savedCameraEffectKeepsSettingsAndCanProduceReviewArtwork() started.
+✔ Test savedCameraEffectKeepsSettingsAndCanProduceReviewArtwork() passed after 0.007 seconds.
+✔ Suite VideoCameraEffectTests passed after 0.118 seconds.
+✔ Test run with 101 tests in 7 suites passed after 1.615 seconds.
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+➜ Test actualDirectorModelAndExactCommandHaveDistinctExecutionPaths() skipped.
+◇ Suite DirectorCommandBridgeTests started.
+◇ Test everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "insert_background", value: "{\"background\":\"clouds\",\"title\":\"Путешествие\",\"duration\":4}", expected: VeloEditCore.EditorCommand.insertBackground(VeloEditCore.DirectorBackgroundInsertion(background: "clouds", title: Optional("Путешествие"), duration: 4.0, position: VeloEditCore.TimelineInsertionPosition.beginning))) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "insert_source", value: "собака", expected: VeloEditCore.EditorCommand.insertSource("собака", VeloEditCore.TimelineInsertionPosition.end)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "add_library_effect", value: "glitch", expected: VeloEditCore.EditorCommand.addLibraryEffect(VeloEditCore.TimelineEffectType.glitch, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "apply_title_template", value: "title.minimal-clean.v1", expected: VeloEditCore.EditorCommand.applyTitleTemplate("title.minimal-clean.v1", VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_speed", value: "2", expected: VeloEditCore.EditorCommand.setSpeed(2.0, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "remove_slow_motion", value: "", expected: VeloEditCore.EditorCommand.removeSlowMotion(VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_speed_ramp", value: "ease-in", expected: VeloEditCore.EditorCommand.setSpeedRamp(Optional(VeloEditCore.SpeedRamp(points: [VeloEditCore.SpeedRampPoint(position: 0.0, rate: 0.5), VeloEditCore.SpeedRampPoint(position: 0.35, rate: 1.0), VeloEditCore.SpeedRampPoint(position: 1.0, rate: 1.0)])), VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_duration", value: "2", expected: VeloEditCore.EditorCommand.setDuration(2.0, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_filter", value: "monochrome", expected: VeloEditCore.EditorCommand.setFilter(VeloEditCore.VideoFilter.monochrome, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_crop", value: "fill", expected: VeloEditCore.EditorCommand.setCrop(VeloEditCore.CropStyle.fill, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "rotate", value: "right", expected: VeloEditCore.EditorCommand.rotate(1, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_brightness", value: "0.2", expected: VeloEditCore.EditorCommand.setBrightness(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_contrast", value: "1.2", expected: VeloEditCore.EditorCommand.setContrast(1.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_saturation", value: "1.2", expected: VeloEditCore.EditorCommand.setSaturation(1.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_warmth", value: "0.2", expected: VeloEditCore.EditorCommand.setWarmth(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_opacity", value: "0.5", expected: VeloEditCore.EditorCommand.setOpacity(0.5, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_exposure", value: "1.2", expected: VeloEditCore.EditorCommand.setExposure(1.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_highlights", value: "0.2", expected: VeloEditCore.EditorCommand.setHighlights(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_shadows", value: "0.2", expected: VeloEditCore.EditorCommand.setShadows(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_vignette", value: "0.2", expected: VeloEditCore.EditorCommand.setVignette(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_grain", value: "0.2", expected: VeloEditCore.EditorCommand.setGrain(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_sharpening", value: "0.2", expected: VeloEditCore.EditorCommand.setSharpening(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_video_denoise", value: "0.2", expected: VeloEditCore.EditorCommand.setVideoDenoise(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_blur", value: "0.2", expected: VeloEditCore.EditorCommand.setBlur(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_stabilization", value: "0.2", expected: VeloEditCore.EditorCommand.setStabilization(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_rolling_shutter", value: "true", expected: VeloEditCore.EditorCommand.setRollingShutterCorrection(true, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_smooth_slow_motion", value: "true", expected: VeloEditCore.EditorCommand.setSmoothSlowMotion(true, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "auto_enhance", value: "", expected: VeloEditCore.EditorCommand.autoEnhance(VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_clip_volume", value: "0.3", expected: VeloEditCore.EditorCommand.setClipVolume(0.3, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_clip_muted", value: "true", expected: VeloEditCore.EditorCommand.setClipMuted(true, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_clip_fades", value: "0.2,0.4", expected: VeloEditCore.EditorCommand.setClipFades(0.2, 0.4, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_noise_reduction", value: "0.2", expected: VeloEditCore.EditorCommand.setNoiseReduction(0.2, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_eq", value: "voice", expected: VeloEditCore.EditorCommand.setEQ(VeloEditCore.AudioEQPreset.voice, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "detach_audio", value: "", expected: VeloEditCore.EditorCommand.detachAudio(VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_audio_ducking", value: "false", expected: VeloEditCore.EditorCommand.setAudioDucking(false)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_transition", value: "cross-dissolve", expected: VeloEditCore.EditorCommand.setTransition(Optional(VeloEditCore.TransitionStyle.crossDissolve), VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_transition_pattern", value: "cross-dissolve,light-flash", expected: VeloEditCore.EditorCommand.setTransitionPattern([VeloEditCore.TransitionStyle.crossDissolve, VeloEditCore.TransitionStyle.lightFlash], VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_effect", value: "push-in", expected: VeloEditCore.EditorCommand.setEffect(Optional(VeloEditCore.ClipEffect.pushIn), VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_effect_pattern", value: "push-in,pan-left", expected: VeloEditCore.EditorCommand.setEffectPattern([VeloEditCore.ClipEffect.pushIn, VeloEditCore.ClipEffect.panLeft], VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_overlay", value: "picture-in-picture", expected: VeloEditCore.EditorCommand.setOverlay(Optional(VeloEditCore.OverlayStyle.pictureInPicture), VeloEditCore.EditorCommandTarget.all, Optional(VeloEditCore.EditorCommandTarget.first))) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_telemetry", value: "speed", expected: VeloEditCore.EditorCommand.setTelemetryOverlay(Optional(VeloEditCore.TelemetryOverlaySettings(metrics: Set([VeloEditCore.TelemetryMetric.speed]), corner: VeloEditCore.OverlayCorner.bottomLeft, scale: 0.32, style: nil, widgets: nil, opacity: nil)), VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "insert_freeze_frame", value: "1", expected: VeloEditCore.EditorCommand.insertFreezeFrame(1.0, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "insert_instant_replay", value: "0.5", expected: VeloEditCore.EditorCommand.insertInstantReplay(0.5, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_reverse", value: "true", expected: VeloEditCore.EditorCommand.setReverse(true, VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "add_title", value: "Новая Глава", expected: VeloEditCore.EditorCommand.addTitle("Новая Глава", VeloEditCore.TimelineInsertionPosition.beginning)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_title_text", value: "Новая Глава", expected: VeloEditCore.EditorCommand.setTitleText("Новая Глава", VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_title_style", value: "{\"fontSize\":80,\"textColorHex\":\"#AABBCC\",\"alignment\":\"left\"}", expected: VeloEditCore.EditorCommand.setTitleStyle(Optional(80.0), Optional("#AABBCC"), nil, Optional(VeloEditCore.TitleAlignment.left), VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "remove_titles", value: "", expected: VeloEditCore.EditorCommand.removeTitles) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "delete", value: "", expected: VeloEditCore.EditorCommand.delete(VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "duplicate", value: "", expected: VeloEditCore.EditorCommand.duplicate(VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "split", value: "", expected: VeloEditCore.EditorCommand.split(VeloEditCore.EditorCommandTarget.all)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "move", value: "beginning", expected: VeloEditCore.EditorCommand.move(VeloEditCore.EditorCommandTarget.all, VeloEditCore.TimelineInsertionPosition.beginning)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_original_audio_volume", value: "0.2", expected: VeloEditCore.EditorCommand.setOriginalAudioVolume(0.2)) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_music", value: "joyful", expected: VeloEditCore.EditorCommand.setMusic(Optional(VeloEditCore.MusicDirective(style: VeloEditCore.MusicStyle.joyful, bpm: 112.0, volume: 0.18, speed: nil, trackID: nil, trackTitle: nil, preferDifferentTrack: nil, structure: nil, autonomousIntent: nil, searchRequests: nil, sourceStart: nil, selectionEvidence: nil)))) to everyEditorActionHasAnExecutableBridge(_:) started.
+◇ Test case passing 1 argument sample → Sample(action: "set_music_volume", value: "0.2", expected: VeloEditCore.EditorCommand.setMusicVolume(0.2)) to everyEditorActionHasAnExecutableBridge(_:) started.
+✔ Test everyEditorActionHasAnExecutableBridge(_:) with 55 test cases passed after 0.010 seconds.
+◇ Test malformedStyleDoesNotTurnCompoundRequestIntoPartialEdit() started.
+✔ Test malformedStyleDoesNotTurnCompoundRequestIntoPartialEdit() passed after 0.001 seconds.
+✔ Suite DirectorCommandBridgeTests passed after 0.010 seconds.
+◇ Suite DirectorLiveInteractionTests started.
+◇ Test discussionAcrossAllComposersCannotEdit(_:) started.
+◇ Test case passing 1 argument surface → 0 to discussionAcrossAllComposersCannotEdit(_:) started.
+◇ Test case passing 1 argument surface → 1 to discussionAcrossAllComposersCannotEdit(_:) started.
+◇ Test case passing 1 argument surface → 2 to discussionAcrossAllComposersCannotEdit(_:) started.
+✔ Test discussionAcrossAllComposersCannotEdit(_:) with 3 test cases passed after 0.060 seconds.
+◇ Test lateAnswerCannotReachReplacedProject() started.
+✔ Test lateAnswerCannotReachReplacedProject() passed after 0.067 seconds.
+◇ Test extendedWaitKeepsOriginalQuestionAndBrushRange() started.
+✔ Test extendedWaitKeepsOriginalQuestionAndBrushRange() passed after 0.031 seconds.
+◇ Test continuationCannotReuseFactsAfterProjectChanges() started.
+✔ Test continuationCannotReuseFactsAfterProjectChanges() passed after 0.033 seconds.
+◇ Test discussionCannotCancelAuthorizedInitialDirectorTask() started.
+✔ Test discussionCannotCancelAuthorizedInitialDirectorTask() passed after 0.038 seconds.
+◇ Test deadlineDoesNotWaitForUncooperativeRuntimeOrPublishLateResult() started.
+✔ Test deadlineDoesNotWaitForUncooperativeRuntimeOrPublishLateResult() passed after 0.050 seconds.
+◇ Test onlyOneGenerationCanBeActiveAndExpiredQueueDoesNotGenerate() started.
+✔ Test onlyOneGenerationCanBeActiveAndExpiredQueueDoesNotGenerate() passed after 0.110 seconds.
+◇ Test exactCommandNeverCallsLanguageModel() started.
+✔ Test exactCommandNeverCallsLanguageModel() passed after 0.001 seconds.
+◇ Test followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Здесь затянуто?", "Нет, мне нравится эта пауза", "Почему так?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Как тебе клип 1?", "Мне нравится спокойный темп", "А клип 2?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Какой дубль лучше?", "Сравни клип 1 и клип 2", "А что с речью?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Что слышно?", "Мне нравится тишина", "Какая музыка подойдет?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Почему так резко?", "Не меняй переход", "Что скажешь о цвете?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Убрать паузу?", "Не сокращай паузу", "Она слишком длинная?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Что здесь не так?", "Как тебе весь фильм?", "А начало?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Мне не нравится конец", "Что скажешь о начале?", "Почему так?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Какая музыка подойдет?", "Не добавляй музыку", "Можно оставить тишину?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Как назвать фильм?", "Только предложи название", "А другой вариант?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Этот кадр плохой?", "Мне нравится этот момент", "Оставить?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Почему ты убрал конец?", "Объясни подробнее", "Речь не обрезана?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Речь не обрезана?", "Мне нравится эта фраза", "Что слышно в клипе 2?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Слишком медленно?", "Мне нравится медленное начало", "Как тебе финал?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+◇ Test case passing 1 argument dialogue → ["Нужен переход?", "Ничего не меняй", "Что здесь удачно?"] to followUpKeepsFinalAdviceAndObjection(_:) started.
+✔ Test followUpKeepsFinalAdviceAndObjection(_:) with 15 test cases passed after 0.725 seconds.
+◇ Test advicePayloadHasSeparateBudgetAndNoEditingCatalog() started.
+✔ Test advicePayloadHasSeparateBudgetAndNoEditingCatalog() passed after 0.001 seconds.
+✔ Suite DirectorLiveInteractionTests passed after 1.118 seconds.
+◇ Test streamedReplyNeverPublishesAnIncompletePlan() started.
+✔ Test streamedReplyNeverPublishesAnIncompletePlan() passed after 0.001 seconds.
+◇ Test truncatedOrFailedModelStreamsCannotBecomeCommands() started.
+✔ Test truncatedOrFailedModelStreamsCannotBecomeCommands() passed after 0.001 seconds.
+◇ Test invalidActionRejectsEntireCompoundPlan() started.
+✔ Test invalidActionRejectsEntireCompoundPlan() passed after 0.001 seconds.
+◇ Suite EverydayDirectorReliabilityTests started.
+◇ Test ordinaryEditsDoNotNeedTheModel(_:) started.
+◇ Test case passing 1 argument prompt → "еще хочу эффект камеры в первом видео" to ordinaryEditsDoNotNeedTheModel(_:) started.
+◇ Test case passing 1 argument prompt → "Можешь добавить эффект видеокамеры во втором видео?" to ordinaryEditsDoNotNeedTheModel(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь эффект «Видеокамера» в первом видео; громкость музыки 20%" to ordinaryEditsDoNotNeedTheModel(_:) started.
+◇ Test case passing 1 argument prompt → "Ускорь первый клип в 2 раза. Убери звук во втором видео." to ordinaryEditsDoNotNeedTheModel(_:) started.
+◇ Test case passing 1 argument prompt → "Пожалуйста, сделай первое видео чёрно-белым" to ordinaryEditsDoNotNeedTheModel(_:) started.
+◇ Test case passing 1 argument prompt → "Убери музыку" to ordinaryEditsDoNotNeedTheModel(_:) started.
+◇ Test case passing 1 argument prompt → "Добавь титр «Ещё хочу камеру!» в конце и добавь эффект камеры в первом видео" to ordinaryEditsDoNotNeedTheModel(_:) started.
+✔ Test ordinaryEditsDoNotNeedTheModel(_:) with 7 test cases passed after 0.004 seconds.
+◇ Test invalidPlanIsRetriedOnceAndOnlyCompleteReplyCanExecute() started.
+✔ Test invalidPlanIsRetriedOnceAndOnlyCompleteReplyCanExecute() passed after 0.001 seconds.
+◇ Test repeatedlyMalformedCompoundPlanDoesNotApplyRecognizedPrefix() started.
+✔ Test repeatedlyMalformedCompoundPlanDoesNotApplyRecognizedPrefix() passed after 0.001 seconds.
+◇ Test transportFailureExplainsTheCauseWithoutRepeatingLongGeneration(_:) started.
+◇ Test case passing 1 argument code → Code(rawValue: -1001) to transportFailureExplainsTheCauseWithoutRepeatingLongGeneration(_:) started.
+◇ Test case passing 1 argument code → Code(rawValue: -1004) to transportFailureExplainsTheCauseWithoutRepeatingLongGeneration(_:) started.
+◇ Test case passing 1 argument code → Code(rawValue: -1005) to transportFailureExplainsTheCauseWithoutRepeatingLongGeneration(_:) started.
+◇ Test case passing 1 argument code → Code(rawValue: -1011) to transportFailureExplainsTheCauseWithoutRepeatingLongGeneration(_:) started.
+✔ Test transportFailureExplainsTheCauseWithoutRepeatingLongGeneration(_:) with 4 test cases passed after 0.002 seconds.
+◇ Test cancellationCannotTriggerRepairOrReturnCommands() started.
+✔ Test cancellationCannotTriggerRepairOrReturnCommands() passed after 0.001 seconds.
+◇ Test advisoryCannotUseTheExactEditingShortcut() started.
+✔ Test advisoryCannotUseTheExactEditingShortcut() passed after 0.001 seconds.
+✔ Suite EverydayDirectorReliabilityTests passed after 0.009 seconds.
+◇ Suite ReliabilityInteractionTests started.
+◇ Test workPreventsIdleSleepAndReleasesItsAssertion() started.
+✔ Test workPreventsIdleSleepAndReleasesItsAssertion() passed after 0.014 seconds.
+◇ Test sendRemainsAvailableWhileReplyingAndCancellationReleasesComposer() started.
+✘ Test sendRemainsAvailableWhileReplyingAndCancellationReleasesComposer() recorded an issue at ReliabilityInteractionTests.swift:45:9: Expectation failed: model.directorInput.contains("Новое пожелание")
+↳ model.directorInput.contains("Новое пожелание") → false
+↳   model.directorInput → "После отмены"
+✘ Test sendRemainsAvailableWhileReplyingAndCancellationReleasesComposer() failed after 0.004 seconds with 1 issue.
+◇ Test cancellingFilmRemovesPendingBubblesAndObsoleteStatus() started.
+✔ Test cancellingFilmRemovesPendingBubblesAndObsoleteStatus() passed after 0.001 seconds.
+◇ Test manualWorkspaceStartsWithoutAIAndPersists() started.
+✔ Test manualWorkspaceStartsWithoutAIAndPersists() passed after 0.037 seconds.
+✘ Suite ReliabilityInteractionTests failed after 0.058 seconds with 1 issue.
+◇ Suite TimelineDirectorIntegrationTests started.
+◇ Test pronounAfterNamedClipDoesNotRequireUnrelatedSelection() started.
+✔ Test pronounAfterNamedClipDoesNotRequireUnrelatedSelection() passed after 0.383 seconds.
+◇ Test everydayCameraRequestSavesPreviewsAndUndoesWithoutModel(throughDirector:) started.
+◇ Test case passing 1 argument throughDirector → false to everydayCameraRequestSavesPreviewsAndUndoesWithoutModel(throughDirector:) started.
+◇ Test case passing 1 argument throughDirector → true to everydayCameraRequestSavesPreviewsAndUndoesWithoutModel(throughDirector:) started.
+✔ Test everydayCameraRequestSavesPreviewsAndUndoesWithoutModel(throughDirector:) with 2 test cases passed after 0.499 seconds.
+➜ Test prepareDirectorLiveUIFixture() skipped.
+◇ Test screenshotRequestUpdatesPreviewAndUndoesAsOneEdit(throughDirector:) started.
+◇ Test case passing 1 argument throughDirector → false to screenshotRequestUpdatesPreviewAndUndoesAsOneEdit(throughDirector:) started.
+◇ Test case passing 1 argument throughDirector → true to screenshotRequestUpdatesPreviewAndUndoesAsOneEdit(throughDirector:) started.
+✔ Test screenshotRequestUpdatesPreviewAndUndoesAsOneEdit(throughDirector:) with 2 test cases passed after 2.456 seconds.
+➜ Test realLocalDirectorAppliesCompoundMontageAndBrush() skipped.
+◇ Test compoundMontageReachesDirectorUpdatesPlaybackAndSurvivesReopen() started.
+✔ Test compoundMontageReachesDirectorUpdatesPlaybackAndSurvivesReopen() passed after 0.451 seconds.
+◇ Test brushChangesMusicOnlyInsideRangeAndRecordsItInDirectorChat() started.
+✔ Test brushChangesMusicOnlyInsideRangeAndRecordsItInDirectorChat() passed after 0.468 seconds.
+◇ Test semanticBrushUsesModelCommandsAndCancelledQueueStaysInHistory() started.
+✔ Test semanticBrushUsesModelCommandsAndCancelledQueueStaysInHistory() passed after 0.326 seconds.
+◇ Test brushVolumeChangesRenderedAudioOnlyInsideSelection() started.
+LOCAL AUDIO MIX: inside (rms: 0.005303300922096924, frequency: 220.0), outside (rms: 0.01909188393883764, frequency: 218.0), regions Optional([0.18, 0.05, 0.18])
+✔ Test brushVolumeChangesRenderedAudioOnlyInsideSelection() passed after 0.488 seconds.
+✔ Suite TimelineDirectorIntegrationTests passed after 5.075 seconds.
+✘ Test run with 35 tests in 5 suites failed after 6.274 seconds with 1 issue.
+Note: Some test targets reported failures:
+  - VeloEditAppTests (Swift Testing)

@@ -6,6 +6,52 @@ import VeloEditCore
 
 @Suite(.serialized) @MainActor
 struct TimelineDirectorIntegrationTests {
+    @Test func pronounAfterNamedClipDoesNotRequireUnrelatedSelection() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.submitTimelineAIEdit("Добавь эффект камеры во втором видео и убери у него звук")
+        try await wait { !model.isWorking && model.queuedTimelineAIEditCount == 0 }
+        #expect(fixture.requests.values.isEmpty)
+        #expect(model.timeline?.effectiveEffects.first { $0.effectType == .videoCamera }?.targetClipID == original.items[1].id)
+        #expect(model.timeline?.items[1].effectiveAudioAdjustments.muted == true)
+        #expect(model.timeline?.items[0].audioAdjustments == original.items[0].audioAdjustments)
+        #expect(model.directorMessages.last?.response?.saved == true)
+    }
+
+    @Test(arguments: [false, true]) func everydayCameraRequestSavesPreviewsAndUndoesWithoutModel(throughDirector: Bool) async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.selectTimelineItem(original.items.last!.id)
+        let request = "еще хочу эффект камеры в первом видео"
+        if throughDirector {
+            model.directorInput = request
+            model.sendDirectorMessage()
+        } else {
+            model.submitTimelineAIEdit(request)
+        }
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        #expect(fixture.requests.values.isEmpty)
+        let updated = try #require(model.timeline)
+        #expect(updated.items == original.items)
+        let cameras = updated.effectiveEffects.filter { $0.effectType == .videoCamera }
+        #expect(cameras.count == 1)
+        #expect(cameras.first?.targetClipID == original.items.first?.id)
+        #expect(cameras.first?.duration == original.items.first?.timelineDuration)
+        #expect(model.previewPlayer?.currentItem != nil)
+        #expect(model.directorMessages.last?.response?.saved == true)
+        #expect(model.directorMessages.last?.response?.previewReady == true)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last?.effectiveEffects.filter { $0.effectType == .videoCamera }.count == 1)
+        model.undoTimelineEdit()
+        try await wait { !model.isWorking && model.timeline?.effectiveEffects == original.effectiveEffects }
+        #expect(model.timeline?.items == original.items)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_DIRECTOR_UI_FIXTURE"] != nil))
     func prepareDirectorLiveUIFixture() async throws {
         let fixture = try await Fixture()

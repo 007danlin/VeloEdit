@@ -23,6 +23,10 @@ public struct DirectorRequestIntentInterpreter: Sendable {
             let negated = clause.range(of: #"\bне\s+(?:\S+\s+)?(?:меняй|трогай|изменяй|добавляй|сокращай|убирай|удаляй|переставляй|обрезай|делай|заменяй|включай|выключай|применяй)"#, options: .regularExpression) != nil
             if !negated, clause.range(of: action, options: .regularExpression) != nil { return .edit }
         }
+        // Polite requests often use the infinitive and end in a question mark:
+        // «Можешь добавить эффект камеры в первом видео?» is still an edit.
+        // The closed grammar must cover the entire request before this shortcut.
+        if EditorCommandParser().parseComplete(prompt, hasSelection: true) != nil { return .edit }
         if ["как тебе", "затянуто", "почему", "зачем", "что здесь", "что тут", "не нравится", "мне нравится", "нравится эта", "слишком", "плохой", "удачн", "посоветуй", "предложи", "подойдет", "какая", "какой", "как назвать", "придумай название", "варианты", "что за шум", "определи шум", "что слышно", "оцени", "сравни", "объясни", "поясни", "не трогай", "не меняй", "не изменяй", "не добавляй", "не сокращай", "не надо", "готово", "продолжи ожидание", "подожди", "да, сделай", "да сделай", "давай так"].contains(where: text.contains) || text.contains("?") { return .advisory }
         if !EditorCommandParser().parse(prompt).isEmpty { return .edit }
         if ["хочу фильм", "нужен фильм", "фильм на", "создать фильм", "собрать фильм", "сделать фильм"].contains(where: text.contains) { return .edit }

@@ -1,0 +1,171 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test editorialMasteringChangesTheActualCompositionMix() started.
+✘ Test editorialMasteringChangesTheActualCompositionMix() recorded an issue at EditorialAudioMasteringTests.swift:64:2: Caught error: Error Domain=AVFoundationErrorDomain Code=-11829 "Cannot Open" UserInfo={NSUnderlyingError=0x78c9216f40 {Error Domain=NSOSStatusErrorDomain Code=-12848 "(null)"}, NSLocalizedFailureReason=This media may be damaged., AVErrorFailedDependenciesKey=(
+    "assetProperty_Tracks"
+), NSURL=file:///var/folders/cm/7sxc540x6jb6kb5722ntgyvm0000gn/T/VeloEdit-MasteringAudio/7746e21e1d9bc2bad4ac311170a811cfe94c45055fd94bb6a4940da0e3041e20.m4a, NSLocalizedDescription=Cannot Open}
+✘ Test editorialMasteringChangesTheActualCompositionMix() failed after 0.024 seconds with 1 issue.
+◇ Test editorialMasteringAcceptsTrackShorterThanMovie() started.
+✘ Test editorialMasteringAcceptsTrackShorterThanMovie() recorded an issue at EditorialAudioMasteringTests.swift:92:2: Caught error: Error Domain=AVFoundationErrorDomain Code=-11829 "Cannot Open" UserInfo={NSUnderlyingError=0x78c9216be0 {Error Domain=NSOSStatusErrorDomain Code=-12848 "(null)"}, NSLocalizedFailureReason=This media may be damaged., AVErrorFailedDependenciesKey=(
+    "assetProperty_Tracks"
+), NSURL=file:///var/folders/cm/7sxc540x6jb6kb5722ntgyvm0000gn/T/VeloEdit-MasteringAudio/1ec12f61dfbb4c87df059188a8485ef740bb5e0e448dd1ee07ba8b11d5480454.m4a, NSLocalizedDescription=Cannot Open}
+✘ Test editorialMasteringAcceptsTrackShorterThanMovie() failed after 0.005 seconds with 1 issue.
+◇ Suite MusicCascadeTests started.
+◇ Test failuresAndEmptyCataloguesAdvanceWithoutWaitingForTimers() started.
+✔ Test failuresAndEmptyCataloguesAdvanceWithoutWaitingForTimers() passed after 0.002 seconds.
+◇ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() started.
+✔ Test failedReserveAdvancesEvenWhileEarlierStageIsStillStalled() passed after 0.532 seconds.
+✔ Suite MusicCascadeTests passed after 0.535 seconds.
+◇ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() started.
+✔ Test freshFilmDownloadsInBackgroundAndPrefersCachedOnlineTrack() passed after 0.309 seconds.
+◇ Suite SmartChapterTitlesTests started.
+◇ Test titlesForbiddenAndTooShortPartFollowExistingRules() started.
+✘ Test titlesForbiddenAndTooShortPartFollowExistingRules() recorded an issue at SmartChapterTitlesTests.swift:185:9: Expectation failed: EditorialPresentationPolicy.missingChapterTitles(in: short, plan: plan).isEmpty
+↳ EditorialPresentationPolicy.missingChapterTitles(in: short, plan: plan).isEmpty → false
+↳   EditorialPresentationPolicy.missingChapterTitles(in: short, plan: plan) → [VeloEditCore.EditorialPresentationPolicy.ChapterBlock(partID: Optional(FB7F699E-93A8-5DD9-A864-A0E3EBF17B96), text: "Сплав по реке", eventID: Optional(A470B7C4-6491-455A-AC62-CDD30D5CAD8F), sceneID: nil, items: [VeloEditCore.TimelineItem(id: FB4B3AF5-EB5C-41F5-B0B6-6DDCC6356733, candidateID: Optional(D8C91EA0-CC50-42D0-A463-04431D02A990), assetID: Optional(840AB9EF-2BB7-4B7F-8D5D-BF75C0F97E0C), kind: VeloEditCore.TimelineItemKind.video, sourceStart: 0.0, sourceDuration: 10.0, timelineStart: 0.0, timelineDuration: 0.8, speed: 1.0, title: nil, transition: nil, effect: nil, videoAdjustments: nil, audioAdjustments: nil, titleStyle: nil, overlay: nil, freezeFrame: nil, reversePlayback: nil, speedRamp: nil, telemetryOverlay: nil, storyRole: nil, editorialPurpose: nil, incomingEditDecision: nil, eventID: Optional(A470B7C4-6491-455A-AC62-CDD30D5CAD8F), eventSceneID: Optional(0CD56654-7077-4B75-BBE2-0E9B09A51585), locked: false, explanation: [])])]
+↳   isEmpty → false
+✘ Test titlesForbiddenAndTooShortPartFollowExistingRules() failed after 0.041 seconds with 1 issue.
+◇ Test speechCaptionAtBeginningDoesNotReplacePartTitle() started.
+✘ Test speechCaptionAtBeginningDoesNotReplacePartTitle() recorded an issue at SmartChapterTitlesTests.swift:296:9: Expectation failed: named.effectiveTitleItems.filter { $0.kind == .chapter }.count == 1
+↳ named.effectiveTitleItems.filter { $0.kind == .chapter }.count == 1 → false
+↳   named.effectiveTitleItems.filter { $0.kind == .chapter }.count → 0
+✘ Test speechCaptionAtBeginningDoesNotReplacePartTitle() recorded an issue at SmartChapterTitlesTests.swift:297:9: Expectation failed: named.effectiveTitleItems.first { $0.id == caption.id } == caption
+↳ named.effectiveTitleItems.first { $0.id == caption.id } == caption → false
+↳   named.effectiveTitleItems.first { $0.id == caption.id } → TitleTimelineItem(speechAnchor: nil, filmPartID: Optional(56B11E97-F537-5B33-B692-7D2B40117F8E), id: 156CC624-2C48-45AB-AEB3-5FFA35D3008D, kind: VeloEditCore.TitleTimelineKind.subtitle, templateID: nil, text: "Сплав по реке", additionalText: nil, callToAction: nil, chapterNumber: nil, startTime: 0.0, duration: 4.0, track: 0, style: VeloEditCore.TitleStyle(fontSize: 72.0, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", alignment: VeloEditCore.TitleAlignment.center, fontFamily: Optional("Helvetica Neue"), fontWeight: Optional(0.7), xPosition: Optional(0.5), yPosition: Optional(0.5), scale: Optional(1.0), rotation: Optional(0.0), opacity: Optional(1.0), shadow: Optional(0.35), strokeWidth: Optional(0.0), backgroundOpacity: Optional(1.0), blur: Optional(0.0), tracking: Optional(0.0), lineSpacing: Optional(1.0), activeWordColorHex: Optional("#FFD60A")), animation: VeloEditCore.TitleAnimation(entrance: VeloEditCore.TitleAnimationKind.fade, exit: VeloEditCore.TitleAnimationKind.fade, duration: 0.35, easing: VeloEditCore.KeyframeEasing.easeInOut), words: [], activeWordHighlighting: true, enabled: true, targetClipID: nil, anchorClipID: nil, explanation: [], userEdited: Optional(true))
+↳     some → TitleTimelineItem(speechAnchor: nil, filmPartID: Optional(56B11E97-F537-5B33-B692-7D2B40117F8E), id: 156CC624-2C48-45AB-AEB3-5FFA35D3008D, kind: VeloEditCore.TitleTimelineKind.subtitle, templateID: nil, text: "Сплав по реке", additionalText: nil, callToAction: nil, chapterNumber: nil, startTime: 0.0, duration: 4.0, track: 0, style: VeloEditCore.TitleStyle(fontSize: 72.0, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", alignment: VeloEditCore.TitleAlignment.center, fontFamily: Optional("Helvetica Neue"), fontWeight: Optional(0.7), xPosition: Optional(0.5), yPosition: Optional(0.5), scale: Optional(1.0), rotation: Optional(0.0), opacity: Optional(1.0), shadow: Optional(0.35), strokeWidth: Optional(0.0), backgroundOpacity: Optional(1.0), blur: Optional(0.0), tracking: Optional(0.0), lineSpacing: Optional(1.0), activeWordColorHex: Optional("#FFD60A")), animation: VeloEditCore.TitleAnimation(entrance: VeloEditCore.TitleAnimationKind.fade, exit: VeloEditCore.TitleAnimationKind.fade, duration: 0.35, easing: VeloEditCore.KeyframeEasing.easeInOut), words: [], activeWordHighlighting: true, enabled: true, targetClipID: nil, anchorClipID: nil, explanation: [], userEdited: Optional(true))
+↳       speechAnchor → nil
+↳       filmPartID → 56B11E97-F537-5B33-B692-7D2B40117F8E
+↳         some → 56B11E97-F537-5B33-B692-7D2B40117F8E
+↳       id → 156CC624-2C48-45AB-AEB3-5FFA35D3008D
+↳       kind → .subtitle
+↳       templateID → nil
+↳       text → "Сплав по реке"
+↳       additionalText → nil
+↳       callToAction → nil
+↳       chapterNumber → nil
+↳       startTime → 0.0
+↳       duration → 4.0
+↳       track → 0
+↳       style → TitleStyle(fontSize: 72.0, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", alignment: VeloEditCore.TitleAlignment.center, fontFamily: Optional("Helvetica Neue"), fontWeight: Optional(0.7), xPosition: Optional(0.5), yPosition: Optional(0.5), scale: Optional(1.0), rotation: Optional(0.0), opacity: Optional(1.0), shadow: Optional(0.35), strokeWidth: Optional(0.0), backgroundOpacity: Optional(1.0), blur: Optional(0.0), tracking: Optional(0.0), lineSpacing: Optional(1.0), activeWordColorHex: Optional("#FFD60A"))
+↳         fontSize → 72.0
+↳         textColorHex → "#FFFFFF"
+↳         backgroundColorHex → "#111111"
+↳         alignment → .center
+↳         fontFamily → "Helvetica Neue"
+↳           some → "Helvetica Neue"
+↳         fontWeight → 0.7
+↳           some → 0.7
+↳         xPosition → 0.5
+↳           some → 0.5
+↳         yPosition → 0.5
+↳           some → 0.5
+↳         scale → 1.0
+↳           some → 1.0
+↳         rotation → 0.0
+↳           some → 0.0
+↳         opacity → 1.0
+↳           some → 1.0
+↳         shadow → 0.35
+↳           some → 0.35
+↳         strokeWidth → 0.0
+↳           some → 0.0
+↳         backgroundOpacity → 1.0
+↳           some → 1.0
+↳         blur → 0.0
+↳           some → 0.0
+↳         tracking → 0.0
+↳           some → 0.0
+↳         lineSpacing → 1.0
+↳           some → 1.0
+↳         activeWordColorHex → "#FFD60A"
+↳           some → "#FFD60A"
+↳       animation → TitleAnimation(entrance: VeloEditCore.TitleAnimationKind.fade, exit: VeloEditCore.TitleAnimationKind.fade, duration: 0.35, easing: VeloEditCore.KeyframeEasing.easeInOut)
+↳         entrance → .fade
+↳         exit → .fade
+↳         duration → 0.35
+↳         easing → .easeInOut
+↳       words → []
+↳       activeWordHighlighting → true
+↳       enabled → true
+↳       targetClipID → nil
+↳       anchorClipID → nil
+↳       explanation → []
+↳       userEdited → true
+↳         some → true
+↳   caption → TitleTimelineItem(speechAnchor: nil, filmPartID: nil, id: 156CC624-2C48-45AB-AEB3-5FFA35D3008D, kind: VeloEditCore.TitleTimelineKind.subtitle, templateID: nil, text: "Сплав по реке", additionalText: nil, callToAction: nil, chapterNumber: nil, startTime: 0.0, duration: 4.0, track: 0, style: VeloEditCore.TitleStyle(fontSize: 72.0, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", alignment: VeloEditCore.TitleAlignment.center, fontFamily: Optional("Helvetica Neue"), fontWeight: Optional(0.7), xPosition: Optional(0.5), yPosition: Optional(0.5), scale: Optional(1.0), rotation: Optional(0.0), opacity: Optional(1.0), shadow: Optional(0.35), strokeWidth: Optional(0.0), backgroundOpacity: Optional(1.0), blur: Optional(0.0), tracking: Optional(0.0), lineSpacing: Optional(1.0), activeWordColorHex: Optional("#FFD60A")), animation: VeloEditCore.TitleAnimation(entrance: VeloEditCore.TitleAnimationKind.fade, exit: VeloEditCore.TitleAnimationKind.fade, duration: 0.35, easing: VeloEditCore.KeyframeEasing.easeInOut), words: [], activeWordHighlighting: true, enabled: true, targetClipID: nil, anchorClipID: nil, explanation: [], userEdited: Optional(true))
+↳     speechAnchor → nil
+↳     filmPartID → nil
+↳     id → 156CC624-2C48-45AB-AEB3-5FFA35D3008D
+↳     kind → .subtitle
+↳     templateID → nil
+↳     text → "Сплав по реке"
+↳     additionalText → nil
+↳     callToAction → nil
+↳     chapterNumber → nil
+↳     startTime → 0.0
+↳     duration → 4.0
+↳     track → 0
+↳     style → TitleStyle(fontSize: 72.0, textColorHex: "#FFFFFF", backgroundColorHex: "#111111", alignment: VeloEditCore.TitleAlignment.center, fontFamily: Optional("Helvetica Neue"), fontWeight: Optional(0.7), xPosition: Optional(0.5), yPosition: Optional(0.5), scale: Optional(1.0), rotation: Optional(0.0), opacity: Optional(1.0), shadow: Optional(0.35), strokeWidth: Optional(0.0), backgroundOpacity: Optional(1.0), blur: Optional(0.0), tracking: Optional(0.0), lineSpacing: Optional(1.0), activeWordColorHex: Optional("#FFD60A"))
+↳       fontSize → 72.0
+↳       textColorHex → "#FFFFFF"
+↳       backgroundColorHex → "#111111"
+↳       alignment → .center
+↳       fontFamily → "Helvetica Neue"
+↳         some → "Helvetica Neue"
+↳       fontWeight → 0.7
+↳         some → 0.7
+↳       xPosition → 0.5
+↳         some → 0.5
+↳       yPosition → 0.5
+↳         some → 0.5
+↳       scale → 1.0
+↳         some → 1.0
+↳       rotation → 0.0
+↳         some → 0.0
+↳       opacity → 1.0
+↳         some → 1.0
+↳       shadow → 0.35
+↳         some → 0.35
+↳       strokeWidth → 0.0
+↳         some → 0.0
+↳       backgroundOpacity → 1.0
+↳         some → 1.0
+↳       blur → 0.0
+↳         some → 0.0
+↳       tracking → 0.0
+↳         some → 0.0
+↳       lineSpacing → 1.0
+↳         some → 1.0
+↳       activeWordColorHex → "#FFD60A"
+↳         some → "#FFD60A"
+↳     animation → TitleAnimation(entrance: VeloEditCore.TitleAnimationKind.fade, exit: VeloEditCore.TitleAnimationKind.fade, duration: 0.35, easing: VeloEditCore.KeyframeEasing.easeInOut)
+↳       entrance → .fade
+↳       exit → .fade
+↳       duration → 0.35
+↳       easing → .easeInOut
+↳     words → []
+↳     activeWordHighlighting → true
+↳     enabled → true
+↳     targetClipID → nil
+↳     anchorClipID → nil
+↳     explanation → []
+↳     userEdited → true
+↳       some → true
+✘ Test speechCaptionAtBeginningDoesNotReplacePartTitle() failed after 0.025 seconds with 2 issues.
+✘ Suite SmartChapterTitlesTests failed after 0.067 seconds with 3 issues.
+✘ Test run with 7 tests in 2 suites failed after 0.942 seconds with 5 issues.
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ReliabilityInteractionTests started.
+◇ Test sendRemainsAvailableWhileReplyingAndCancellationReleasesComposer() started.
+✘ Test sendRemainsAvailableWhileReplyingAndCancellationReleasesComposer() recorded an issue at ReliabilityInteractionTests.swift:45:9: Expectation failed: model.directorInput.contains("Новое пожелание")
+↳ model.directorInput.contains("Новое пожелание") → false
+↳   model.directorInput → "После отмены"
+✘ Test sendRemainsAvailableWhileReplyingAndCancellationReleasesComposer() failed after 0.011 seconds with 1 issue.
+✘ Suite ReliabilityInteractionTests failed after 0.011 seconds with 1 issue.
+✘ Test run with 1 test in 1 suite failed after 0.012 seconds with 1 issue.
+Note: Some test targets reported failures:
+  - VeloEditCoreTests (Swift Testing)
+  - VeloEditAppTests (Swift Testing)

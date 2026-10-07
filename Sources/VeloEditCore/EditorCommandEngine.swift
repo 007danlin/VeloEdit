@@ -193,6 +193,26 @@ public struct EditorCommandParser: Sendable {
     /// A whole-message grammar for exact instructions. Returning nil means the
     /// entire request needs interpretation; no recognized prefix may be applied.
     public func parseComplete(_ prompt: String, hasSelection: Bool) -> [EditorCommand]? {
+        let text = ExactEditorCommandParser.cleanRequest(prompt)
+        let segments = commandSegments(text)
+        guard !segments.isEmpty else { return nil }
+        var commands: [EditorCommand] = []
+        var inheritedTarget: EditorCommandTarget?
+        for segment in segments {
+            if let parsed = ExactEditorCommandParser.parseClause(segment, hasSelection: hasSelection, inheritedTarget: inheritedTarget) {
+                commands.append(contentsOf: parsed.commands)
+                inheritedTarget = parsed.target ?? inheritedTarget
+            } else if let parsed = parseLegacyComplete(segment, hasSelection: hasSelection) {
+                commands.append(contentsOf: parsed)
+                inheritedTarget = explicitTarget(in: Self.normalized(segment)) ?? inheritedTarget
+            } else {
+                return nil
+            }
+        }
+        return commands.isEmpty ? nil : commands
+    }
+
+    private func parseLegacyComplete(_ prompt: String, hasSelection: Bool) -> [EditorCommand]? {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         func captures(_ pattern: String) -> [String]? {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
@@ -271,6 +291,9 @@ public struct EditorCommandParser: Sendable {
         preset: FilmPreset,
         targetOverride: EditorCommandTarget?
     ) -> [EditorCommand] {
+        if let exact = ExactEditorCommandParser.parseClause(ExactEditorCommandParser.cleanRequest(prompt), hasSelection: true, inheritedTarget: targetOverride) {
+            return exact.commands
+        }
         if let libraryCommand = DirectorLibraryEdits.parse(prompt) { return [libraryCommand] }
         let text = Self.normalized(prompt.replacingOccurrences(of: #"[«“\"][^»”\"]*[»”\"]"#, with: "", options: .regularExpression))
         guard !text.isEmpty else { return [] }
@@ -646,7 +669,7 @@ public struct EditorCommandParser: Sendable {
     }
 
     private func commandSegments(_ prompt: String) -> [String] {
-        guard let regex = try? NSRegularExpression(pattern: #"[,;]\s+|;\s*|,(?!\d)\s*|\n+|\s+(?:и|а также|а)\s+(?=(?:переимен\w*|замени\w*|добав\w*|сделай|убери|поставь|музык\w*|титр\w*|разреж\w*|раздели|ускор\w*|замедл\w*|перемес\w*|дублир\w*|скопир\w*|отдел\w*|включ\w*|выключ\w*|поверн\w*|обреж\w*|сниз\w*|увелич\w*|уменьш\w*|приглуш\w*|установ\w*|удали)\b)"#, options: .caseInsensitive) else { return [prompt] }
+        guard let regex = try? NSRegularExpression(pattern: #"[,;]\s+|;\s*|,(?!\d)\s*|\n+|[.!?]\s+|\s+(?:и|а также|а)\s+(?=(?:переимен\w*|замени\w*|добав\w*|сделай|убери|поставь|музык\w*|титр\w*|разреж\w*|раздели|ускор\w*|замедл\w*|перемес\w*|дублир\w*|скопир\w*|отдел\w*|включ\w*|выключ\w*|поверн\w*|обреж\w*|сниз\w*|увелич\w*|уменьш\w*|приглуш\w*|установ\w*|удали|налож\w*|примен\w*|хочу|нуж\w*)\b)"#, options: .caseInsensitive) else { return [prompt] }
         let quotedRanges = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]|плавно замедли и ускорь"#, options: .caseInsensitive))?
             .matches(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)).map(\.range) ?? []
         let range = NSRange(prompt.startIndex..<prompt.endIndex, in: prompt)
