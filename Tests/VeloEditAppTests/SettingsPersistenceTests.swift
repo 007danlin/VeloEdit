@@ -5,7 +5,7 @@ import VeloEditCore
 
 @Suite(.serialized) @MainActor
 struct SettingsPersistenceTests {
-    @Test func statisticsCountAnalyzedMaterialPerProjectWithoutDuplicatingAProject() async throws {
+    @Test func statisticsCountUniqueSourcesAcrossProjectsWithoutDuplicatingAProject() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let firstURL = fixture.root.appendingPathComponent("first.veloedit")
@@ -30,8 +30,8 @@ struct SettingsPersistenceTests {
         model.refreshUsageStatistics()
         try await wait { model.usageStatistics.projectCount == 2 }
         #expect(model.usageStatistics.projectCount == 2)
-        #expect(model.usageStatistics.analyzedAssetCount == 2)
-        #expect(model.usageStatistics.analyzedContentDuration == 120)
+        #expect(model.usageStatistics.sourceAssetCount == 1)
+        #expect(model.usageStatistics.sourceContentDuration == 60)
     }
 
     @Test func statisticsRecoverOlderProjectsAndPersistBeyondRecentHistory() async throws {
@@ -42,7 +42,7 @@ struct SettingsPersistenceTests {
             let url = fixture.root.appendingPathComponent("project-\(index).veloedit")
             let store = try ProjectStore(createAt: url, name: "Project \(index)")
             let asset = MediaAsset(originalURL: fixture.root.appendingPathComponent("video.mov"), kind: .video,
-                byteSize: 100, contentHash: "shared-video", metadata: MediaMetadata(duration: 60))
+                byteSize: 100, contentHash: "video-\(index)", metadata: MediaMetadata(duration: 60))
             try await store.update {
                 $0.assets = [asset]
                 $0.analyses = [AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash, candidates: [])]
@@ -55,8 +55,8 @@ struct SettingsPersistenceTests {
         model.refreshUsageStatistics()
         try await wait { model.usageStatistics.projectCount == 14 }
         #expect(model.recentProjectURLs.count == 12)
-        #expect(model.usageStatistics.analyzedContentDuration == 840)
-        #expect(model.usageStatistics.analyzedAssetCount == 14)
+        #expect(model.usageStatistics.sourceContentDuration == 840)
+        #expect(model.usageStatistics.sourceAssetCount == 14)
         #expect(Set(defaults.stringArray(forKey: "projectLibraryPaths.v1") ?? []) == Set(urls.map(\.path)))
 
         // Clearing the recent cards must not erase the statistics library.
@@ -66,13 +66,13 @@ struct SettingsPersistenceTests {
         reopened.refreshUsageStatistics()
         try await wait { reopened.usageStatistics.projectCount == 14 }
         #expect(reopened.recentProjectURLs.isEmpty)
-        #expect(reopened.usageStatistics.analyzedContentDuration == 840)
+        #expect(reopened.usageStatistics.sourceContentDuration == 840)
 
         try FileManager.default.removeItem(at: urls[0])
         reopened.refreshUsageStatistics()
         try await wait { reopened.usageStatistics.projectCount == 13 }
-        #expect(reopened.usageStatistics.analyzedContentDuration == 780)
-        #expect(reopened.usageStatistics.analyzedAssetCount == 13)
+        #expect(reopened.usageStatistics.sourceContentDuration == 780)
+        #expect(reopened.usageStatistics.sourceAssetCount == 13)
     }
 
     @Test func openingThirteenthProjectKeepsTheEvictedProjectInStatistics() async throws {
@@ -115,8 +115,8 @@ struct SettingsPersistenceTests {
         let model = fixture.model()
         model.refreshUsageStatistics()
         try await wait { model.usageStatistics.projectCount == 1 }
-        #expect(model.usageStatistics.analyzedContentDuration == 90)
-        #expect(model.usageStatistics.analyzedAssetCount == 1)
+        #expect(model.usageStatistics.sourceContentDuration == 90)
+        #expect(model.usageStatistics.sourceAssetCount == 1)
         #expect(ProjectSummary.load(from: url)?.statisticsVersion == ProjectSummary.currentStatisticsVersion)
     }
 
@@ -154,6 +154,50 @@ struct SettingsPersistenceTests {
         let exported = try String(contentsOf: exportURL, encoding: .utf8)
         #expect(!exported.contains("Пожелание"))
         #expect(!exported.contains("Неотправленный"))
+    }
+
+    @Test func portableCopyIncludesChatBeforeAutosaveDebounceAndRestoresOnFreshInstallation() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let source = fixture.root.appendingPathComponent("source.veloedit")
+        let store = try ProjectStore(createAt: source, name: "Portable conversation")
+        let model = fixture.model()
+        model.pipeline = VeloEditPipeline(store: store, personalTasteStore: fixture.tasteStore())
+        model.project = await store.manifest
+        let messages = (1...20).flatMap { index in
+            [DirectorMessage(role: .user, text: "Сохрани момент \(index)"),
+             DirectorMessage(role: .assistant, text: "Момент \(index) отмечен")]
+        }
+        model.directorMessages = messages
+        model.directorInput = "Продолжим с горной сцены"
+        model.feedback = "Сделать финал спокойнее"
+        model.prompt = "Поездка в горы с друзьями"
+        let copy = fixture.root.appendingPathComponent("copy.veloedit")
+        // Deliberately do not wait for the 500 ms chat autosave.
+        _ = try await model.collectProjectCopy(to: copy)
+        let moved = fixture.root.appendingPathComponent("another-computer/film.veloedit")
+        try FileManager.default.createDirectory(at: moved.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: copy, to: moved)
+        try FileManager.default.removeItem(at: source)
+
+        let secondInstallation = try Fixture()
+        defer { secondInstallation.remove() }
+        let reopened = secondInstallation.model()
+        reopened.openRecentProject(moved)
+        try await wait { reopened.projectURL == moved && reopened.openingProjectURL == nil }
+        #expect(reopened.directorMessages.map(\.id) == messages.map(\.id))
+        #expect(reopened.directorMessages.map(\.text) == messages.map(\.text))
+        #expect(reopened.directorInput == "Продолжим с горной сцены")
+        #expect(reopened.feedback == "Сделать финал спокойнее")
+        #expect(reopened.prompt == "Поездка в горы с друзьями")
+        #expect(await reopened.flushAutosave())
+
+        let agent = LocalDirectorAgent()
+        agent.restoreConversation(reopened.directorMessages)
+        #expect(agent.recentConversationContext.contains("Пользователь: Сохрани момент 20"))
+        #expect(agent.recentConversationContext.contains("Режиссёр: Момент 20 отмечен"))
+        agent.restoreConversation(DirectorMessage.initial)
+        #expect(agent.recentConversationContext.isEmpty)
     }
 
     private func wait(until condition: @MainActor () -> Bool) async throws {

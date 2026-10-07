@@ -1,0 +1,2 @@
+arm64: app, Qwen configuration, speech, OVRLEY, Ollama, H.264/AAC encode+decode passed.
+x86_64: app, Qwen configuration, speech, OVRLEY, Ollama, H.264/AAC encode+decode passed.

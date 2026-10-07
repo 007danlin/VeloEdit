@@ -11,6 +11,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
     case director
     case timeline
     case export
+    case settings
 
     var id: String { rawValue }
     var title: String {
@@ -20,6 +21,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
         case .director: return "Умный режиссёр"
         case .timeline: return "Монтаж"
         case .export: return "Экспорт"
+        case .settings: return "Настройки"
         }
     }
     var icon: String {
@@ -29,8 +31,15 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
         case .director: return "wand.and.stars"
         case .timeline: return "timeline.selection"
         case .export: return "square.and.arrow.up"
+        case .settings: return "gearshape"
         }
     }
+}
+
+enum WorkspaceSettingsTab: String, CaseIterable {
+    case general = "Основные"
+    case storage = "Хранилище"
+    case keyboardShortcuts = "Горячие клавиши"
 }
 
 enum DirectorMessageRole: Sendable {
@@ -42,6 +51,7 @@ struct DirectorMessage: Identifiable, Sendable {
     let id: UUID
     let role: DirectorMessageRole
     var text: String
+    var response: DirectorResponseRecord? = nil
     let createdAt: Date
 
     init(id: UUID = UUID(), role: DirectorMessageRole, text: String, createdAt: Date = Date()) {
@@ -78,6 +88,7 @@ private extension DirectorMessage {
             text: projectMessage.text,
             createdAt: projectMessage.createdAt
         )
+        response = projectMessage.response
     }
 }
 
@@ -89,6 +100,7 @@ private extension ProjectDirectorMessage {
             text: directorMessage.text,
             createdAt: directorMessage.createdAt
         )
+        response = directorMessage.response
     }
 }
 
@@ -180,9 +192,11 @@ final class AppModel: ObservableObject {
         let briefChanges: DirectorBriefFieldChanges
         var retryCount: Int = 0
         var trace: PerformanceTrace? = nil
+        var proposal: DirectorEditProposal? = nil
     }
 
     private static let recentProjectsKey = "recentProjectPaths.v1"
+    let intro: FirstLaunchCoordinator
     private static let projectLibraryKey = "projectLibraryPaths.v1"
     private let defaults: UserDefaults
     private static let freeToUseLicenseAcceptedKey = "freeToUseLicenseAccepted.v1"
@@ -196,9 +210,47 @@ final class AppModel: ObservableObject {
         didSet {
             cachedPlaybackMap = nil
             cachedTimelineAssets = nil
+            rebuildDirectorMomentIndex()
         }
     }
     private var cachedTimelineAssets: [UUID: MediaAsset]?
+    private var directorContextRevision: UInt64 = 0
+    private var directorMomentIndexTask: Task<DirectorMomentIndex?, Never>?
+    private var directorAdviceReplyID: UUID?
+    private struct AdviceContinuation {
+        let prompt: String
+        let context: DirectorContext
+        let range: ClosedRange<Double>?
+        let projectID: UUID?
+        let revision: UInt64
+    }
+    private var directorAdviceContinuation: AdviceContinuation?
+    private var directorMemoryPressure: DispatchSourceMemoryPressure?
+
+    private func rebuildDirectorMomentIndex() {
+        directorContextRevision &+= 1
+        directorAdviceContinuation = nil
+        directorMomentIndexTask?.cancel()
+        let snapshot = project
+        let revision = directorContextRevision
+        directorMomentIndexTask = Task.detached(priority: .utility) {
+            guard !Task.isCancelled, let snapshot else { return nil }
+            return DirectorMomentIndex(project: snapshot, revision: revision)
+        }
+        if directorMemoryPressure == nil {
+            let pressure = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+            pressure.setEventHandler { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.directorMomentIndexTask?.cancel()
+                    self?.directorMomentIndexTask = nil
+                    self?.directorAdviceContinuation = nil
+                }
+            }
+            pressure.resume()
+            directorMemoryPressure = pressure
+        }
+    }
+
 
     func timelineMediaAsset(_ id: UUID) -> MediaAsset? {
         if cachedTimelineAssets == nil {
@@ -207,6 +259,17 @@ final class AppModel: ObservableObject {
         }
         return cachedTimelineAssets?[id]
     }
+    @Published var showsMissingMedia = false
+    @Published var storageProjects: [ProjectStorageUsage] = []
+    @Published var storageModels: [InstalledAIModel] = []
+    @Published var storageModelsMessage = ""
+    @Published var storageIsLoading = false
+    @Published var storageIsCleaning = false
+    private var storageTask: Task<Void, Never>?
+    private var manualProjectAfterCreation = false
+    private var needsCacheRefreshAfterCleanup = false
+    var missingMediaAssets: [MediaAsset] { project?.assets.filter(\.missing) ?? [] }
+    var hasActiveWork: Bool { isWorking || isDirectorResponding || openingProjectURL != nil }
     @Published var projectURL: URL?
     @Published private(set) var videoExportDirectory: URL?
     @Published private(set) var openingProjectURL: URL?
@@ -265,6 +328,7 @@ final class AppModel: ObservableObject {
         get { playbackClock.time }
         set { if playbackClock.time != newValue { playbackClock.time = newValue } }
     }
+    @Published var settingsTab: WorkspaceSettingsTab = .general
     @Published var section: WorkspaceSection = .home {
         didSet {
             // Some inspector and playback actions navigate directly. Do not
@@ -364,6 +428,7 @@ final class AppModel: ObservableObject {
     private var previewPosterRequestID: UUID?
     private var previewPosterPlaybackID: ObjectIdentifier?
     private var previewPosterPlaybackTime: Double?
+    private var previewPlayerFrameReady = false
     /// While a rebuilt composition is seeking back to the edited frame, keep
     /// the timeline playhead pinned there instead of briefly accepting the new
     /// AVPlayerItem's initial zero time.
@@ -411,14 +476,18 @@ final class AppModel: ObservableObject {
             finished()
             return
         }
-        if request.exact, let playback = self.activePlayback, !Self.isActivelyPlaying(player) {
-            self.preparePreviewPoster(for: playback, playerItem: item, at: request.time)
-        }
+        let revision = self.previewSeekRevision
         let target = CMTime(seconds: request.time, preferredTimescale: 600)
         let tolerance = request.exact ? CMTime.zero
             : CMTime(seconds: 1 / max(15, request.frameRate), preferredTimescale: 600)
-        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { _ in
-            Task { @MainActor in finished() }
+        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] completed in
+            Task { @MainActor in
+                if let self, completed, self.previewPlayer === player,
+                   player.currentItem === item, self.previewSeekRevision == revision {
+                    self.showReadyPreviewPlayerFrame()
+                }
+                finished()
+            }
         }
     }
     private var timelineEditRevision: UInt64 = 0
@@ -730,6 +799,7 @@ final class AppModel: ObservableObject {
              try await Task.detached(priority: .userInitiated) { try ProjectStore(open: url) }.value
          }) {
         self.defaults = defaults
+        self.intro = FirstLaunchCoordinator(defaults: defaults)
         self.directorAgent = directorAgent ?? LocalDirectorAgent()
         self.personalTasteStore = personalTasteStore
         self.loadProject = loadProject
@@ -746,6 +816,8 @@ final class AppModel: ObservableObject {
     }
 
     func createProject() {
+        intro.accept(.projectCommand)
+        guard !storageIsCleaning else { return }
         // Let the welcome button finish its gesture before replacing its view.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.openingProjectURL == nil, !self.isCreatingProject,
@@ -762,9 +834,15 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func beginManualOnboarding() {
+        if pipeline != nil { startManualEditing() }
+        else { manualProjectAfterCreation = true; createProject() }
+    }
+
     func cancelProjectCreation() {
         guard isPresentingNewProject, !isCreatingProject else { return }
         isPresentingNewProject = false
+        manualProjectAfterCreation = false
         newProjectError = nil
         if let previous = sectionBeforeProjectCreation { section = previous }
         sectionBeforeProjectCreation = nil
@@ -805,6 +883,10 @@ final class AppModel: ObservableObject {
             sectionBeforeProjectCreation = nil
             section = .media
             status = "Проект создан — перетащите фотографии, видео или музыку"
+            if manualProjectAfterCreation {
+                manualProjectAfterCreation = false
+                startManualEditing()
+            }
         } catch {
             if (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSFileWriteFileExistsError {
                 newProjectError = "Проект с таким названием уже существует. Измените название или папку."
@@ -828,6 +910,8 @@ final class AppModel: ObservableObject {
     private var projectOpenPanel: NSOpenPanel?
 
     func openProject() {
+        intro.accept(.projectCommand)
+        guard !storageIsCleaning else { return }
         guard !isCreatingProject, projectOpenPanel == nil else { return }
         let panel = Self.makeProjectOpenPanel()
         projectOpenPanel = panel
@@ -933,33 +1017,21 @@ final class AppModel: ObservableObject {
     }
 
     private func performRecentProjectDeletion(_ url: URL) {
-        if recentProjectFileIsMissing(url) {
-            finishRecentProjectDeletion(url, wasMissing: true)
-            return
-        }
+        guard !hasActiveWork, !storageIsCleaning else { return }
+        if recentProjectFileIsMissing(url) { forgetStoredProject(url); return }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Удалить проект?"
-        alert.informativeText = "Проект «\(url.deletingPathExtension().lastPathComponent)» будет перемещён в Корзину."
-        alert.addButton(withTitle: "Удалить")
+        alert.messageText = "Переместить проект в Корзину?"
+        alert.informativeText = "Пакет «\(url.deletingPathExtension().lastPathComponent)» будет перемещён целиком: монтаж, анализ, история, кэш и вложенные материалы. Внешние исходники и экспорт за пределами пакета сохранятся. Проект можно восстановить из Корзины; место освободится после её очистки в Finder."
+        alert.addButton(withTitle: "Переместить в Корзину")
         alert.addButton(withTitle: "Отмена")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        NSWorkspace.shared.recycle([url]) { [weak self] _, error in
-            Task { @MainActor in
-                guard let self else { return }
-                let wasMissing = error != nil && self.recentProjectFileIsMissing(url)
-                if let error {
-                    if !wasMissing {
-                        self.errorMessage = error.localizedDescription
-                        return
-                    }
-                }
-                self.finishRecentProjectDeletion(url, wasMissing: wasMissing)
-            }
-        }
+        Task { if let result = await trashStoredProjects([url]) { status = result } }
     }
 
     private func openProject(at url: URL, destination: WorkspaceSection = .media, name: String? = nil) {
+        intro.accept(.projectCommand)
+        guard !storageIsCleaning else { return }
         // A recent-project card lives inside a ForEach backed by
         // `recentProjectURLs`. Opening it also moves that URL to the front of
         // the list. If we publish those changes while SwiftUI is still
@@ -973,7 +1045,7 @@ final class AppModel: ObservableObject {
     }
 
     private func performProjectOpen(at url: URL, destination: WorkspaceSection, name: String?) {
-        guard !isCreatingProject else { return }
+        guard !isCreatingProject, !storageIsCleaning else { return }
         cancelProjectCreation()
         guard openingProjectURL?.standardizedFileURL != url.standardizedFileURL else {
             section = destination
@@ -1128,6 +1200,7 @@ final class AppModel: ObservableObject {
     }
 
     func chooseMedia() {
+        guard !storageIsCleaning else { return }
         guard pipeline != nil else { return }
         let panel = NSOpenPanel()
         panel.title = "Импорт медиа и телеметрии"
@@ -1344,14 +1417,18 @@ final class AppModel: ObservableObject {
     }
 
     func exportSubtitles(_ format: SubtitleFileFormat) {
-        guard let timeline, !isWorking else { return }
-        let panel = NSSavePanel(); panel.nameFieldStringValue = "Субтитры." + format.rawValue
-        panel.allowedContentTypes = [UTType(filenameExtension: format.rawValue) ?? .plainText]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try Data(SubtitleFileExporter.render(timeline: timeline, format: format).utf8).write(to: url, options: .atomic)
-            status = "Субтитры сохранены: \(url.lastPathComponent)"
-        } catch { errorMessage = error.localizedDescription }
+        guard timeline != nil, !isWorking, exportPanel == nil else { return }
+        let projectID = project?.id
+        let panel = Self.makeExportSavePanel(title: "Сохранить субтитры", directory: videoExportDirectoryURL,
+                                             suggestedName: "Субтитры." + format.rawValue,
+                                             contentType: UTType(filenameExtension: format.rawValue) ?? .plainText)
+        presentExportPanel(panel) { [weak self] url in
+            guard let self, self.project?.id == projectID, let timeline = self.timeline, !self.isWorking else { return }
+            do {
+                try Data(SubtitleFileExporter.render(timeline: timeline, format: format).utf8).write(to: url, options: .atomic)
+                self.status = "Субтитры сохранены: \(url.lastPathComponent)"
+            } catch { self.errorMessage = error.localizedDescription }
+        }
     }
 
     func selectPreset(_ value: FilmPreset) {
@@ -1630,6 +1707,11 @@ final class AppModel: ObservableObject {
     func sendDirectorMessage() {
         let sourceText = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sourceText.isEmpty else { return }
+        if DirectorRequestIntentInterpreter().mode(for: sourceText) == .advisory {
+            directorInput = ""
+            submitDirectorAdvice(sourceText)
+            return
+        }
         if isDirectorResponding {
             queuedDirectorMessages.append(sourceText)
             directorInput = ""
@@ -1682,18 +1764,6 @@ final class AppModel: ObservableObject {
         directorTask = Task {
             let activity = WorkActivity(reason: "Ответ и монтаж VeloEdit")
             defer { withExtendedLifetime(activity) {} }
-            if requestMode == .advisory,
-               let pipeline,
-               !self.isWorking,
-               !self.isAnalysisCurrent,
-               self.project?.assets.isEmpty == false {
-                self.isAnalyzing = true
-                self.directorStatus = "Сначала анализирую ролик, не меняя исходник и Timeline"
-                _ = try? await pipeline.analyzeMissing(preferredAssetID: self.selectedAssetID)
-                guard !Task.isCancelled, self.directorGeneration == responseGeneration else { return }
-                await self.refresh()
-                self.isAnalyzing = false
-            }
             let naturalLanguageBaseline = self.timeline
             var naturalExecution: NaturalLanguageEditResult?
             var naturalLanguageApplied = false
@@ -1733,6 +1803,13 @@ final class AppModel: ObservableObject {
                 }
             )
             guard !Task.isCancelled, self.directorGeneration == responseGeneration else { return }
+            if reply.planningFailed {
+                self.consumePendingDirectorInstruction(exchange.text)
+                self.finishDirectorExchange(replyID: exchange.replyID, sourceText: exchange.text, reply: reply, mode: .advisory)
+                self.isDirectorResponding = false
+                self.directorTask = nil
+                return
+            }
             if requestMode == .advisory {
                 reply = DirectorAIReply(
                     text: reply.text,
@@ -2113,9 +2190,14 @@ final class AppModel: ObservableObject {
     /// Accept an edit from the timeline composer even while another pipeline
     /// operation is finishing. Pipeline mutations remain serialized; busy-time
     /// submissions are queued instead of being rejected by a disabled button.
-    func submitTimelineAIEdit(_ instruction: String, range: ClosedRange<Double>? = nil) {
+    func submitTimelineAIEdit(_ instruction: String, range: ClosedRange<Double>? = nil, proposal: DirectorEditProposal? = nil) {
         let clean = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        if DirectorRequestIntentInterpreter().mode(for: clean) == .advisory {
+            feedback = ""
+            submitDirectorAdvice(clean, range: range)
+            return
+        }
         let trace = PerformanceTrace(name: "edit.command", projectID: project?.id, revision: String(timelineEditRevision))
         trace.event("edit.submitted", fields: ["selectedID": selectedTimelineItemID?.uuidString ?? ""])
         trace.event("edit.accepted")
@@ -2199,14 +2281,14 @@ final class AppModel: ObservableObject {
         }
 
         feedback = ""
-        let selectedItem = timeline?.items.first { $0.id == selectedTimelineItemID }
+        let selectedItem = timeline?.items.first { $0.id == (proposal?.item.id ?? selectedTimelineItemID) }
         let edit = PendingTimelineAIEdit(
             instruction: clean,
             replyID: beginTimelineDirectorExchange(clean, range: range),
             range: range,
             timelineAnchor: timeline.map(TimelineAIAnchor.init),
-            selectedItemID: selectedTitleTimelineItem?.id ?? selectedItem?.id,
-            selectedItemIsTitle: selectedTitleTimelineItem != nil,
+            selectedItemID: proposal?.item.id ?? selectedTitleTimelineItem?.id ?? selectedItem?.id,
+            selectedItemIsTitle: proposal == nil && selectedTitleTimelineItem != nil,
             selectedCandidateID: selectedItem?.candidateID,
             playheadTime: timelinePlayheadTime,
             preset: preset,
@@ -2214,7 +2296,8 @@ final class AppModel: ObservableObject {
             preferredMusicTrackID: requestedPreferredMusicTrackID,
             directorBrief: requestedDirectorBrief,
             briefChanges: briefChanges,
-            trace: trace
+            trace: trace,
+            proposal: proposal
         )
         pendingTimelineAIEdits.append(edit)
         queuedTimelineAIEditCount = pendingTimelineAIEdits.count
@@ -2248,20 +2331,23 @@ final class AppModel: ObservableObject {
     func export1080p() { exportVideo(quality: .final1080p, suggestedName: "Фильм VeloEdit высокой чёткости.mp4") }
 
     func exportTelemetryOverlay() {
+        guard !isWorking, exportPanel == nil else { return }
         guard let pipeline, timeline?.effectiveTelemetryItems.isEmpty == false else {
             errorMessage = "Добавьте хотя бы один слой телеметрии на Timeline."
             return
         }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Телеметрия VeloEdit ProRes 4444.mov"
-        panel.allowedContentTypes = [.quickTimeMovie]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        run("Экспортирую прозрачную телеметрию", completionNotification: "Экспорт завершён") {
-            _ = try await pipeline.renderTelemetryOverlay(to: url) { [weak self] item in
-                Task { @MainActor in self?.setProgress(item) }
+        let panel = Self.makeExportSavePanel(title: "Сохранить прозрачную телеметрию", directory: videoExportDirectoryURL,
+                                             suggestedName: "Телеметрия VeloEdit ProRes 4444.mov", contentType: .quickTimeMovie)
+        presentExportPanel(panel) { [weak self] url in
+            guard let self, self.pipeline === pipeline, !self.isWorking else { return }
+            self.run("Экспортирую прозрачную телеметрию", completionNotification: "Экспорт завершён") {
+                try await self.commitTimelineForExport(using: pipeline)
+                _ = try await pipeline.renderTelemetryOverlay(to: url) { [weak self] item in
+                    Task { @MainActor in self?.setProgress(item) }
+                }
+                self.status = "Прозрачный overlay ProRes 4444 сохранён"
+                NSWorkspace.shared.activateFileViewerSelecting([url])
             }
-            self.status = "Прозрачный overlay ProRes 4444 сохранён"
-            NSWorkspace.shared.activateFileViewerSelecting([url])
         }
     }
 
@@ -2306,10 +2392,10 @@ final class AppModel: ObservableObject {
         videoExportDirectory ?? projectURL?.deletingLastPathComponent()
     }
 
-    private var videoExportPanel: NSSavePanel?
+    private var exportPanel: NSSavePanel?
 
     func chooseVideoExportDirectory() {
-        guard pipeline != nil, !isWorking, videoExportPanel == nil else { return }
+        guard pipeline != nil, !isWorking, exportPanel == nil else { return }
         let package = projectURL
         let panel = NSOpenPanel()
         panel.title = "Куда сохранить видео"
@@ -2320,7 +2406,7 @@ final class AppModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.treatsFilePackagesAsDirectories = false
         panel.directoryURL = videoExportDirectoryURL
-        presentVideoExportPanel(panel) { [weak self] url in
+        presentExportPanel(panel) { [weak self] url in
             guard let self, self.projectURL == package else { return }
             self.videoExportDirectory = url
         }
@@ -2329,22 +2415,29 @@ final class AppModel: ObservableObject {
     func saveVideoAs() { exportVideo(quality: .maximum, suggestedName: "Фильм VeloEdit.mp4", frameRate: timeline?.frameRate) }
 
     static func makeVideoSavePanel(directory: URL?, suggestedName: String) -> NSSavePanel {
-        let panel = NSSavePanel()
-        panel.title = "Сохранить видео"
+        let panel = makeExportSavePanel(title: "Сохранить видео", directory: directory,
+                                        suggestedName: suggestedName, contentType: .mpeg4Movie)
         panel.message = "Видео будет сохранено отдельным MP4-файлом."
-        panel.nameFieldStringValue = suggestedName
-        panel.directoryURL = directory
-        panel.canCreateDirectories = true
-        panel.isExtensionHidden = false
-        panel.allowedContentTypes = [.mpeg4Movie]
         return panel
     }
 
-    private func presentVideoExportPanel(_ panel: NSSavePanel, selection: @escaping (URL) -> Void) {
-        videoExportPanel = panel
+    private static func makeExportSavePanel(title: String, directory: URL?, suggestedName: String,
+                                            contentType: UTType) -> NSSavePanel {
+        let panel = NSSavePanel()
+        panel.title = title
+        panel.directoryURL = directory
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [contentType]
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = suggestedName
+        return panel
+    }
+
+    private func presentExportPanel(_ panel: NSSavePanel, selection: @escaping (URL) -> Void) {
+        exportPanel = panel
         DispatchQueue.main.async { [weak self] in
             let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-                self?.videoExportPanel = nil
+                self?.exportPanel = nil
                 guard response == .OK, let url = panel.url else { return }
                 selection(url)
             }
@@ -2357,9 +2450,9 @@ final class AppModel: ObservableObject {
     }
 
     private func exportVideo(quality: RenderQuality, suggestedName: String, frameRate: Double? = nil) {
-        guard let pipeline, timeline != nil, !isWorking, videoExportPanel == nil else { return }
+        guard let pipeline, timeline != nil, !isWorking, exportPanel == nil else { return }
         let panel = Self.makeVideoSavePanel(directory: videoExportDirectoryURL, suggestedName: suggestedName)
-        presentVideoExportPanel(panel) { [weak self] url in
+        presentExportPanel(panel) { [weak self] url in
             guard let self, self.pipeline === pipeline, !self.isWorking else { return }
             self.videoExportDirectory = url.deletingLastPathComponent()
             self.run("Сохраняю видео", completionNotification: "Видео сохранено") {
@@ -2375,16 +2468,18 @@ final class AppModel: ObservableObject {
     }
 
     func exportFCPXML(mode: FCPXMLExportMode = .edit) {
-        guard let pipeline, !isWorking else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = mode == .edit ? "Монтаж VeloEdit.fcpxml" : "Подборка VeloEdit.fcpxml"
-        panel.allowedContentTypes = [UTType(filenameExtension: "fcpxml") ?? .xml]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        run("Экспортирую проект для Final Cut Pro", completionNotification: "Экспорт завершён") {
-            try await self.commitTimelineForExport(using: pipeline)
-            try await pipeline.exportFCPXML(to: url, mode: mode)
-            self.status = "Проект для Final Cut Pro сохранён: \(url.lastPathComponent)"
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+        guard let pipeline, !isWorking, exportPanel == nil else { return }
+        let panel = Self.makeExportSavePanel(title: "Сохранить монтаж для Final Cut Pro", directory: videoExportDirectoryURL,
+                                             suggestedName: mode == .edit ? "Монтаж VeloEdit.fcpxml" : "Подборка VeloEdit.fcpxml",
+                                             contentType: UTType(filenameExtension: "fcpxml") ?? .xml)
+        presentExportPanel(panel) { [weak self] url in
+            guard let self, self.pipeline === pipeline, !self.isWorking else { return }
+            self.run("Экспортирую проект для Final Cut Pro", completionNotification: "Экспорт завершён") {
+                try await self.commitTimelineForExport(using: pipeline)
+                try await pipeline.exportFCPXML(to: url, mode: mode)
+                self.status = "Проект для Final Cut Pro сохранён: \(url.lastPathComponent)"
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
         }
     }
 
@@ -2587,15 +2682,207 @@ final class AppModel: ObservableObject {
     }
 
     func collectProjectCopy() {
-        guard let pipeline, let projectURL, !isWorking else { return }
-        let destination = projectURL.deletingLastPathComponent().appendingPathComponent("\(project?.name ?? "Проект") — копия \(UUID().uuidString.prefix(6)).veloedit")
-        run("Собираю копию проекта") {
-            _ = try await pipeline.collectProjectCopy(to: destination) { [weak self] update in
-                Task { @MainActor in self?.setProgress(update) }
+        guard pipeline != nil, let projectURL, !isWorking else { return }
+        let panel = NSSavePanel()
+        panel.title = "Собрать копию проекта с исходниками"
+        panel.nameFieldStringValue = "\(project?.name ?? "Проект") — копия.veloedit"
+        panel.directoryURL = projectURL.deletingLastPathComponent()
+        panel.allowedContentTypes = [UTType(filenameExtension: "veloedit") ?? .package]
+        panel.canCreateDirectories = true
+        presentExportPanel(panel) { [weak self] destination in
+            guard let self, self.projectURL == projectURL, !self.isWorking else { return }
+            guard !FileManager.default.fileExists(atPath: destination.path) else {
+                self.errorMessage = "В этом месте уже есть проект. Выберите другое имя для копии."
+                return
             }
-            self.status = "Копия проекта собрана и проверена"
-            NSWorkspace.shared.activateFileViewerSelecting([destination])
+            self.run("Собираю копию проекта") {
+                _ = try await self.collectProjectCopy(to: destination)
+                self.status = "Копия проекта собрана и проверена"
+                NSWorkspace.shared.activateFileViewerSelecting([destination])
+            }
         }
+    }
+
+    func collectProjectCopy(to destination: URL) async throws -> URL {
+        guard let pipeline else { throw ProjectStoreError.invalidProjectPackage(destination) }
+        // The chat debounce may still be pending when the user collects a
+        // portable copy. Include the latest messages, drafts and timeline edits.
+        guard await flushAutosave(), self.pipeline === pipeline else {
+            throw ProjectStoreError.persistenceFailure(stage: "подготовка копии", path: destination.path,
+                underlying: errorMessage ?? "Проект изменился во время сохранения")
+        }
+        try Task.checkCancellation()
+        return try await pipeline.collectProjectCopy(to: destination) { [weak self] update in
+            Task { @MainActor in self?.setProgress(update) }
+        }
+    }
+
+    func locateMissingMedia(_ assetID: UUID? = nil) {
+        guard let pipeline, !hasActiveWork, !storageIsCleaning else { return }
+        let panel = NSOpenPanel()
+        panel.title = assetID == nil ? "Папка с перемещёнными исходниками" : "Найти исходный файл"
+        panel.prompt = "Восстановить связь"
+        panel.canChooseDirectories = assetID == nil
+        panel.canChooseFiles = assetID != nil
+        panel.allowsMultipleSelection = false
+        if let assetID, let asset = project?.assets.first(where: { $0.id == assetID }) {
+            panel.message = "Выберите оригинал «\(asset.displayName)» или его точную копию."
+        } else {
+            panel.message = "VeloEdit проверит совпадение файлов и сохранит все монтажные правки."
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        run("Восстанавливаю исходники") {
+            let count: Int
+            if let assetID { try await pipeline.relinkMedia(assetID: assetID, to: url); count = 1 }
+            else { count = try await pipeline.relinkMedia(in: url) }
+            await self.refresh()
+            self.status = "Восстановлено файлов: \(count). Не найдено: \(self.missingMediaAssets.count)."
+            if self.missingMediaAssets.isEmpty { self.showsMissingMedia = false }
+            if count == 0 { self.errorMessage = "В выбранной папке не найдено однозначных совпадений. Выберите файл отдельно или проверьте, что это точные копии исходников." }
+            if self.timeline != nil, self.missingMediaAssets.isEmpty {
+                let playback = try await pipeline.makePlayback(interactiveQuality: Self.interactivePreviewQuality)
+                self.setPlayback(playback, show: false, autoplay: false)
+            }
+        }
+    }
+
+    func refreshStorageUsage() {
+        storageTask?.cancel()
+        storageIsLoading = true
+        let urls = ProjectLibrary.uniqueURLs(knownProjectURLs + recentProjectURLs + [projectURL].compactMap { $0 })
+        storageTask = Task { [weak self] in
+            let inventory = Task.detached(priority: .utility) { () -> [ProjectStorageUsage] in
+                var result: [ProjectStorageUsage] = []
+                for url in urls {
+                    guard !Task.isCancelled else { break }
+                    result.append(StorageMaintenance.usage(of: url))
+                }
+                return result
+            }
+            let projects = await withTaskCancellationHandler(operation: { await inventory.value }, onCancel: { inventory.cancel() })
+            guard !Task.isCancelled, let self else { return }
+            self.storageProjects = projects
+            do {
+                let models = try await LocalAIModelManager.shared.installedModelList()
+                guard !Task.isCancelled else { return }
+                self.storageModels = models
+                self.storageModelsMessage = models.isEmpty ? "Загруженных моделей нет" : "Модели могут использоваться другими приложениями через Ollama. Общие файлы занимают место только один раз."
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.storageModels = []
+                self.storageModelsMessage = "Локальный сервис недоступен. Список моделей появится после подготовки ИИ."
+            }
+            self.storageIsLoading = false
+        }
+    }
+
+    func isCurrentProject(_ url: URL) -> Bool {
+        projectURL.map { StorageMaintenance.sameProject($0, url) } ?? false
+    }
+
+    private func suspendProjectCacheReaders() async -> Bool {
+        guard await flushAutosave() else { return false }
+        projectRestoreTask?.cancel()
+        previewRebuildTask?.cancel()
+        filmVerificationTask?.cancel()
+        externalResourceWaitTask?.cancel()
+        await projectRestoreTask?.value
+        await previewRebuildTask?.value
+        await filmVerificationTask?.value
+        projectRestoreTask = nil
+        previewRebuildTask = nil
+        filmVerificationTask = nil
+        clearTimelinePlayback()
+        return true
+    }
+
+    func clearSelectedProjectCaches(_ selection: [URL: Set<ProjectCacheCategory>]) async -> String? {
+        guard !hasActiveWork, !storageIsCleaning, downloadingAIPowerMode == nil else { return nil }
+        storageIsCleaning = true
+        isWorking = true
+        activityTitle = "Очищаю хранилище"
+        defer { storageIsCleaning = false; isWorking = false; refreshStorageUsage() }
+        if selection.keys.contains(where: isCurrentProject) {
+            guard await suspendProjectCacheReaders() else { return nil }
+        }
+        let others = knownProjectURLs
+        var freed: Int64 = 0
+        var failures: [String] = []
+        for (url, categories) in selection.sorted(by: { $0.key.path < $1.key.path }) {
+            for category in ProjectCacheCategory.allCases where categories.contains(category) {
+                do {
+                    freed += try await Task.detached(priority: .utility) {
+                        try StorageMaintenance.clear(category, package: url, protectingProjects: others)
+                    }.value
+                } catch { failures.append("\(url.deletingPathExtension().lastPathComponent), \(category.title): \(error.localizedDescription)") }
+            }
+            if isCurrentProject(url) {
+                thumbnailURLs = [:]; timelineFilmstripURLs = [:]; timelineThumbnailURLs = [:]
+                needsCacheRefreshAfterCleanup = true
+            }
+        }
+        if !failures.isEmpty { errorMessage = "Часть кэша не удалось удалить. Уже освобождено \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)).\n" + failures.joined(separator: "\n") }
+        let message = "Освобождено \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)). Кэш создастся по мере необходимости."
+        status = message
+        return message
+    }
+
+    func trashStoredProjects(_ urls: [URL]) async -> String? {
+        guard !hasActiveWork, !storageIsCleaning, downloadingAIPowerMode == nil, !urls.isEmpty else { return nil }
+        storageIsCleaning = true
+        isWorking = true
+        activityTitle = "Перемещаю проекты в Корзину"
+        defer { storageIsCleaning = false; isWorking = false; refreshStorageUsage() }
+        if urls.contains(where: isCurrentProject) {
+            guard await suspendProjectCacheReaders() else { return nil }
+        }
+        let others = knownProjectURLs
+        do {
+            let dependents = try await Task.detached(priority: .utility) { try StorageMaintenance.projectsDepending(on: urls, among: others) }.value
+            guard dependents.isEmpty else {
+                errorMessage = "В этих пакетах есть материалы других проектов: " + dependents.map { $0.deletingPathExtension().lastPathComponent }.joined(separator: ", ") + ". Сначала соберите автономные копии этих проектов или перенесите их исходники."
+                return nil
+            }
+        } catch { errorMessage = "Не удалось проверить связи проектов. Удаление не начато: \(error.localizedDescription)"; return nil }
+        var moved = 0
+        for url in urls {
+            do {
+                try await Task.detached(priority: .utility) { try StorageMaintenance.moveProjectToTrash(url) }.value
+                if isCurrentProject(url) {
+                    pipeline = nil
+                    resetProjectUI()
+                    isWorking = true
+                    section = .settings
+                }
+                forgetStoredProject(url)
+                moved += 1
+            } catch { errorMessage = "Перемещено в Корзину: \(moved). Не удалось удалить «\(url.lastPathComponent)»: \(error.localizedDescription)"; break }
+        }
+        guard moved > 0 else { return nil }
+        return "В Корзину перемещено проектов: \(moved). Место освободится после её очистки в Finder."
+    }
+
+    func forgetStoredProject(_ url: URL) {
+        knownProjectURLs.removeAll { $0.resolvingSymlinksInPath().standardizedFileURL.path == url.resolvingSymlinksInPath().standardizedFileURL.path }
+        recentProjectURLs.removeAll { $0.resolvingSymlinksInPath().standardizedFileURL.path == url.resolvingSymlinksInPath().standardizedFileURL.path }
+        preparedProjectPresentations[url.standardizedFileURL] = nil
+        defaults.set(knownProjectURLs.map(\.path), forKey: Self.projectLibraryKey)
+        persistRecentProjects()
+        refreshStorageUsage()
+    }
+
+    func removeStoredModel(_ name: String) async -> Bool {
+        guard !hasActiveWork, !storageIsCleaning, downloadingAIPowerMode == nil else { return false }
+        storageIsCleaning = true
+        isWorking = true
+        activityTitle = "Удаляю AI-модель"
+        defer { storageIsCleaning = false; isWorking = false; refreshStorageUsage() }
+        do {
+            try await LocalAIModelManager.shared.removeModel(name)
+            await refreshAIModelAvailability()
+            status = "Модель удалена. Её можно загрузить снова при выборе режима ИИ."
+            return true
+        } catch { errorMessage = "Не удалось удалить модель: \(error.localizedDescription)"; return false }
     }
 
     func revealProject() {
@@ -3182,7 +3469,7 @@ final class AppModel: ObservableObject {
         let primary = timeline.items.filter { $0.overlay == nil }.sorted { $0.timelineStart < $1.timelineStart }
         guard primary.count > 1 else { return }
         let incomingIndex: Int? = {
-            if let selected = selectedTimelineItem,
+            if requestedTime == nil, let selected = selectedTimelineItem,
                let index = primary.firstIndex(where: { $0.id == selected.id }), index > 0 { return index }
             let targetTime = requestedTime ?? timelinePlayheadTime
             return primary.indices.dropFirst().min { lhs, rhs in
@@ -4104,16 +4391,24 @@ final class AppModel: ObservableObject {
     }
 
     var shouldHandleTimelineUndo: Bool {
-        !isPresentingNewProject && openingProjectURL == nil && timeline != nil && editorialComparison == nil && !showEditorialStyle && !isTextEntryFocused
+        !intro.blocksEditorInput && !isPresentingNewProject && openingProjectURL == nil && timeline != nil && editorialComparison == nil && !showEditorialStyle && !isTextEntryFocused
     }
 
     var shouldHandleTimelineShortcuts: Bool {
-        !isPresentingNewProject && openingProjectURL == nil && section == .timeline && !isTextEntryFocused
+        !intro.blocksEditorInput && !isPresentingNewProject && openingProjectURL == nil && section == .timeline && !isTextEntryFocused
     }
 
     func handleTimelineKeyDown(_ event: NSEvent) -> Bool {
         guard shouldHandleTimelineShortcuts else { return false }
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        // Boundary navigation belongs to the editor, even without menu items.
+        if modifiers == .command {
+            switch event.keyCode {
+            case 123: seekTimeline(to: 0); return true
+            case 124: seekTimeline(to: timeline?.duration ?? 0); return true
+            default: break
+            }
+        }
         if modifiers.contains(.command) {
             let character = event.charactersIgnoringModifiers?.lowercased()
             switch character {
@@ -4133,7 +4428,8 @@ final class AppModel: ObservableObject {
         case 51, 117:
             deleteTimelineSelection()
         case 53:
-            clearTimelineSelection()
+            // Let the view close previews or cancel work before clearing selection.
+            return false
         case 49:
             toggleTimelinePlayback()
         case 123:
@@ -4224,7 +4520,11 @@ final class AppModel: ObservableObject {
             defer { self.isCreatingFilm = false }
             self.activityTitle = "Понимаю монтажную правку"
             self.status = "Локальный ИИ переводит пожелание в безопасный план действий"
-            var context = self.directorContext(selection: (selectedItemID, edit.playheadTime))
+            var context = EditorCommandParser().parseComplete(clean, hasSelection: selectedItemID != nil) != nil
+                ? DirectorContext(assetCount: 0, videoCount: 0, photoCount: 0, analyzedCount: 0, candidateCount: 0,
+                    currentTimelineItemCount: previousTimeline?.items.count ?? 0, targetDuration: edit.targetDuration ?? 0,
+                    preset: edit.preset, currentOperation: "Точная правка", selectedItemSummary: selectedItemID?.uuidString)
+                : self.directorContext(selection: (selectedItemID, edit.playheadTime))
             if !explicitlyUsesSelection {
                 context.selectedItemSummary = nil
                 context.neighboringItemSummaries = []
@@ -4238,6 +4538,11 @@ final class AppModel: ObservableObject {
             )
             try Task.checkCancellation()
             self.editTrace?.event("edit.plan.ready")
+            guard !reply.planningFailed else {
+                self.status = reply.text
+                self.setDirectorResponseRecord(edit.replyID, receipt: .init(failure: reply.text))
+                return
+            }
             guard !self.needsTimelineAIRetryAfterManualEdit else { return }
             self.directorRuntimeStatus = reply.runtimeLabel
             self.progress = 0.16
@@ -4268,6 +4573,7 @@ final class AppModel: ObservableObject {
             var finalExecution: NaturalLanguageEditResult?
             var didRebuild = false
             var refinementFailure: String?
+            var previewReady = false
 
             if planningPlan?.requiresBackgroundRefinement == true {
                 self.progress = 0.36
@@ -4364,10 +4670,12 @@ final class AppModel: ObservableObject {
                     resumePlayback: shouldResumePlayback
                 )
                 self.showViewer = true
+                previewReady = previewUpdated
                 if !previewUpdated {
                     refinementFailure = "правка сохранена, но просмотр не обновлён: \(self.errorMessage ?? "повторите подготовку просмотра")"
                 }
-                PerformanceTrace.current?.event("comment.preview-available")
+                self.editTrace?.event(previewUpdated ? "director.preview-ready" : "director.preview-failed")
+                PerformanceTrace.current?.event(previewUpdated ? "comment.preview-available" : "comment.preview-failed")
             }
 
             if (changed || didRebuild),
@@ -4375,18 +4683,15 @@ final class AppModel: ObservableObject {
                 self.prompt += "\n\(clean)"
             }
             self.progress = 1
-            let pendingSuffix = self.hasPendingFilmChanges
-                ? " · другие отложенные пожелания сохранены"
-                : ""
-            if let refinementFailure {
-                self.status = "Основная правка применена; глубокое уточнение не завершено: \(refinementFailure)\(pendingSuffix)"
-            } else if didRebuild {
-                let ignored = finalExecution?.commandReport.ignored ?? []
-                self.status = "Режиссёрская правка сохранена, Timeline и Preview обновлены\(pendingSuffix)"
-                    + (ignored.isEmpty ? "" : ". Не выполнено: \(ignored.joined(separator: "; "))")
-            } else {
-                self.status = "\(finalExecution?.userSummary ?? "Запрос не потребовал изменений Timeline")\(pendingSuffix)"
-            }
+            let applied = (finalExecution?.commandReport.applied ?? [])
+                + (finalExecution?.toolReport.applied.map(\.reason) ?? [])
+            let omitted = (finalExecution?.commandReport.ignored ?? []) + (finalExecution?.toolReport.rejected ?? [])
+                + (finalExecution?.safetyViolations ?? []) + (finalExecution?.plan.rejectedReasons ?? [])
+            let receipt = DirectorExecutionReceipt(requested: finalExecution?.plan.commands ?? reply.commands,
+                applied: applied, omitted: omitted, saved: changed || didRebuild, previewReady: previewReady,
+                cancelled: Task.isCancelled, failure: refinementFailure)
+            self.status = DirectorResponseComposer.execution(receipt)
+            self.setDirectorResponseRecord(edit.replyID, receipt: receipt)
             if changed { self.scheduleFilmVerification() }
         }
     }
@@ -4408,10 +4713,17 @@ final class AppModel: ObservableObject {
             )
             self.directorRuntimeStatus = reply.runtimeLabel
             try Task.checkCancellation()
+            guard !reply.planningFailed else {
+                self.status = reply.text
+                self.setDirectorResponseRecord(edit.replyID, receipt: .init(failure: reply.text))
+                return
+            }
             guard !self.needsTimelineAIRetryAfterManualEdit else { return }
             let report = try await pipeline.applyEditorCommands(clean, timelineRange: range, preset: edit.preset, supplementalCommands: reply.commands, modelRequestsReplacement: reply.replacesSelectedFootage)
             guard report.hasChanges else {
-                self.status = report.ignored.isEmpty ? "Запрос не потребовал изменений в выделенном диапазоне" : report.ignored.joined(separator: ". ")
+                let receipt = DirectorExecutionReceipt(omitted: report.ignored)
+                self.status = DirectorResponseComposer.execution(receipt)
+                self.setDirectorResponseRecord(edit.replyID, receipt: receipt)
                 return
             }
             guard !self.needsTimelineAIRetryAfterManualEdit else { return }
@@ -4426,7 +4738,10 @@ final class AppModel: ObservableObject {
                 resumePlayback: shouldResumePlayback
             )
             self.showViewer = true
-            self.status = report.chatSummary + (previewUpdated ? " Просмотр обновлён." : " Правка сохранена, но просмотр не обновлён: \(self.errorMessage ?? "повторите подготовку просмотра").")
+            let receipt = DirectorExecutionReceipt(requested: reply.commands, applied: report.applied, omitted: report.ignored,
+                saved: true, previewReady: previewUpdated, cancelled: Task.isCancelled)
+            self.status = DirectorResponseComposer.execution(receipt) + " Только в выделенном диапазоне."
+            self.setDirectorResponseRecord(edit.replyID, receipt: receipt)
             self.scheduleFilmVerification()
         }
     }
@@ -5219,7 +5534,9 @@ final class AppModel: ObservableObject {
         deleteTimelineSelection()
     }
 
-    func cancelOperation() {
+    func cancelOperation() { guard !storageIsCleaning else { return }; cancelOperation(preservingProgress: false) }
+
+    private func cancelOperation(preservingProgress: Bool) {
         for edit in pendingTimelineAIEdits {
             updateTimelineDirectorExchange(edit.replyID, status: "Правка отменена до выполнения")
         }
@@ -5245,21 +5562,45 @@ final class AppModel: ObservableObject {
         status = "Операция отменена"
         if let pipeline {
             Task {
-                try? await pipeline.store.cancelAutonomousJob()
+                if !preservingProgress { try? await pipeline.store.cancelAutonomousJob() }
                 await pipeline.cancelAllAnalysis()
             }
         }
     }
 
-    func stopForApplicationTermination() async {
+    func waitForCurrentWork() async {
+        while hasActiveWork && !Task.isCancelled {
+            await activeTask?.value
+            await directorTask?.value
+            await projectOpenTask?.value
+            if hasActiveWork { try? await Task.sleep(for: .milliseconds(100)) }
+        }
+    }
+
+    func stopForApplicationTermination(preserveProgress: Bool = true) async -> Bool {
+        let jobBeforeExit = await pipeline?.store.manifest.autonomousJob
+        let shouldResume = jobBeforeExit?.state.resumesAutomatically == true && jobBeforeExit?.explicitCancellation != true
+        let work = activeTask
+        let reply = directorTask
         previewSeeker.reset()
         previewPosterTask?.cancel()
-        cancelOperation()
+        cancelOperation(preservingProgress: preserveProgress)
+        projectOpenTask?.cancel()
         projectRestoreTask?.cancel()
         filmVerificationTask?.cancel()
         previewRebuildTask?.cancel()
-        // Cancel before saving; no detached reply may publish after window close.
-        if let pipeline { try? await pipeline.store.cancelAutonomousJob() }
+        if let pipeline { await pipeline.cancelAllAnalysis() }
+        await work?.value
+        await reply?.value
+        await projectOpenTask?.value
+        if let pipeline {
+            do {
+                if preserveProgress && shouldResume { try await pipeline.store.prepareAutonomousJobForRestart() }
+                else if !preserveProgress { try await pipeline.store.cancelAutonomousJob() }
+            }
+            catch { errorMessage = "Не удалось сохранить задание для продолжения: \(error.localizedDescription)"; return false }
+        }
+        return true
     }
 
     func useNewMaterialsInFilm() {
@@ -5290,6 +5631,7 @@ final class AppModel: ObservableObject {
         try? await pipeline.migrateLegacyBuiltInBackgroundAssets()
         let previousMode = aiPowerMode
         let previousAdvancedSettings = advancedAISettings
+        try? await pipeline.refreshMediaAvailability()
         var refreshed = await pipeline.snapshot()
         guard self.pipeline === pipeline else { return }
         if preserveVisibleTimeline || hasUnpersistedTimelineEdits || needsTimelineAIRetryAfterManualEdit || timelineEditRevision != refreshRevision,
@@ -5378,11 +5720,27 @@ final class AppModel: ObservableObject {
     }
 
     func openSection(_ destination: WorkspaceSection) {
-        guard !isCreatingProject else { return }
-        guard hasProjectWorkspace || destination == .home else { return }
+        intro.accept(.projectCommand)
+        guard !isCreatingProject, !storageIsCleaning else { return }
+        guard hasProjectWorkspace || destination == .home || destination == .settings else { return }
         cancelProjectCreation()
         if destination != .timeline { showViewer = false }
+        if destination == .settings { isTimelineInspectorPresented = false }
         section = destination
+        if [.media, .timeline].contains(destination), needsCacheRefreshAfterCleanup, let pipeline, !hasActiveWork {
+            needsCacheRefreshAfterCleanup = false
+            projectRestoreTask = Task { [weak self] in
+                _ = await pipeline.generateThumbnails()
+                guard !Task.isCancelled, let self, self.pipeline === pipeline else { return }
+                self.thumbnailURLs = await pipeline.thumbnailURLs()
+                self.timelineFilmstripURLs = await pipeline.timelineFilmstripURLs()
+                self.timelineThumbnailURLs = self.timelineFilmstripURLs
+            }
+        }
+        if destination == .timeline && previewPlayer == nil && timeline != nil && !hasActiveWork {
+            previewRebuildTask?.cancel()
+            previewRebuildTask = Task { [weak self] in _ = await self?.rebuildPlaybackIfPossible(show: false) }
+        }
     }
 
     func toggleTimelineInspector() {
@@ -5415,6 +5773,9 @@ final class AppModel: ObservableObject {
     }
 
     private func resetProjectUI() {
+        directorAdviceContinuation = nil
+        showsMissingMedia = false
+        needsCacheRefreshAfterCleanup = false
         externalResourceWaitTask?.cancel()
         externalResourceWaitTask = nil
         recoverableFilmBuild = nil
@@ -5694,6 +6055,9 @@ final class AppModel: ObservableObject {
             }
 
             do {
+                try await pipeline.refreshMediaAvailability()
+                guard !Task.isCancelled, self.pipeline === pipeline else { return }
+                await self.refresh()
                 var restoreWarning: String?
                 if shouldResolveMusic {
                     do {
@@ -5769,6 +6133,7 @@ final class AppModel: ObservableObject {
         previewPlayer?.pause()
         previewURL = nil
         activePlayback = playback
+        previewPlayerFrameReady = false
         let playerItem = AVPlayerItem(asset: playback.composition)
         if let videoComposition = playback.videoComposition {
             if videoComposition.animationTool == nil {
@@ -5841,9 +6206,9 @@ final class AppModel: ObservableObject {
             )
         }
 
-        // Generate a real composition frame independently of AVPlayer. It is
-        // displayed while the player item is loading or paused, so the viewer
-        // never falls back to an unexplained black rectangle.
+        // Keep a fallback frame while the replacement item loads. Once a seek
+        // succeeds, AVPlayer owns both paused and playing presentation: swapping
+        // to an NSImage after scrubbing can change HDR tone mapping/brightness.
         preparePreviewPoster(
             for: playback,
             playerItem: playerItem,
@@ -5888,17 +6253,7 @@ final class AppModel: ObservableObject {
                             self.pendingPlaybackSeekTimelineTime = nil
                             self.timelinePlayheadTime = restoredTimelineTime
                         }
-                        if finished,
-                           !self.previewPosterMatches(
-                               playback,
-                               playbackTime: requestedPlaybackTime,
-                               frameRate: frameRate
-                           ) {
-                            // Once AVPlayer has reached the requested frame,
-                            // never leave a poster from another time or an old
-                            // composition covering the real video surface.
-                            self.isPreviewPosterVisible = false
-                        }
+                        if finished { self.showReadyPreviewPlayerFrame() }
                         if finished, shouldPlay { player.play() }
                     }
                 }
@@ -5964,18 +6319,26 @@ final class AppModel: ObservableObject {
                 self.previewPosterImage = NSImage(cgImage: generatedImage, size: .zero)
                 self.previewPosterPlaybackID = ObjectIdentifier(playback)
                 self.previewPosterPlaybackTime = safeTime
-                self.isPreviewPosterVisible = self.previewPlayer?.timeControlStatus != .playing
-                if self.previewEditRevision == self.timelineEditRevision,
-                   let started = self.previewEditStarted, self.isPreviewPosterVisible {
-                    let latency = (ProcessInfo.processInfo.systemUptime - started) * 1_000
-                    self.previewEditTrace?.event("edit.preview.pixels-published", values: ["milliseconds": latency])
-                    let sample = InteractionLatencySample(name: "paused composition frame",
-                        stateUpdateMilliseconds: self.previewStateLatency ?? 0, visualFeedbackMilliseconds: latency)
-                    Task { await self.interactionLatencyRecorder.record(sample) }
-                    self.previewEditStarted = nil
-                }
+                self.isPreviewPosterVisible = !self.previewPlayerFrameReady && self.previewPlayer?.timeControlStatus != .playing
+                if self.isPreviewPosterVisible { self.recordPreviewFramePublished() }
             }
         }
+    }
+
+    private func showReadyPreviewPlayerFrame() {
+        previewPlayerFrameReady = true
+        if isPreviewPosterVisible { isPreviewPosterVisible = false }
+        recordPreviewFramePublished()
+    }
+
+    private func recordPreviewFramePublished() {
+        guard previewEditRevision == timelineEditRevision, let started = previewEditStarted else { return }
+        let latency = (ProcessInfo.processInfo.systemUptime - started) * 1_000
+        previewEditTrace?.event("edit.preview.pixels-published", values: ["milliseconds": latency])
+        let sample = InteractionLatencySample(name: "paused composition frame",
+            stateUpdateMilliseconds: previewStateLatency ?? 0, visualFeedbackMilliseconds: latency)
+        Task { await interactionLatencyRecorder.record(sample) }
+        previewEditStarted = nil
     }
 
     private func hidePreviewPosterIfStale(
@@ -6266,6 +6629,7 @@ final class AppModel: ObservableObject {
     ) {
         guard let index = directorMessages.firstIndex(where: { $0.id == replyID }) else { return }
         directorMessages[index].text = reply.text
+        directorAgent.restoreConversation(directorMessages)
         if mode == .advisory {
             directorRuntimeStatus = reply.runtimeLabel
             directorStatus = "Совет готов · исходник и Timeline не изменены"
@@ -6493,10 +6857,170 @@ final class AppModel: ObservableObject {
 
     private func updateTimelineDirectorExchange(_ replyID: UUID, status: String) {
         guard let index = directorMessages.firstIndex(where: { $0.id == replyID }) else { return }
-        let source = directorMessages[index].text.components(separatedBy: "\n").first ?? "Монтаж"
-        directorMessages[index].text = "\(source)\n\(status)"
+        directorMessages[index].text = status
         directorStatus = status
+        activeTimelineAIEdit?.trace?.event("director.full-displayed", fields: ["state": directorMessages[index].response?.state.rawValue ?? "status"])
         directorAgent.restoreConversation(directorMessages)
+    }
+
+    /// All three composers route discussion here before touching a brief, queue
+    /// or editing transaction. Every await consumes one send-to-display budget.
+    private func submitDirectorAdvice(_ text: String, range: ClosedRange<Double>? = nil) {
+        // A question does not cancel an already authorized film-building task.
+        // Timeline editing owns a separate ordered operation; this guard is
+        // for the initial director task before a movie exists.
+        if isDirectorResponding, directorAdviceReplyID == nil, directorTask != nil {
+            directorMessages.append(DirectorMessage(role: .user, text: text))
+            var reply = DirectorMessage(role: .assistant,
+                text: "Режиссёр ещё обрабатывает предыдущую задачу. Для оценки готового момента пока недостаточно данных.")
+            reply.response = .init(state: .proposed, projectID: project?.id, revision: directorContextRevision,
+                advisory: true, fallback: true)
+            directorMessages.append(reply)
+            scheduleWorkspaceAutosave()
+            return
+        }
+        if ["да, сделай", "да сделай", "давай так", "сделай так", "примени совет"].contains(text.lowercased().trimmingCharacters(in: .punctuationCharacters)) {
+            if let proposal = directorMessages.last(where: { $0.role == .assistant })?.response?.proposal,
+               let project, proposal.isApplicable(to: project, selectedID: selectedTimelineItemID), range == nil {
+                submitTimelineAIEdit("Установи длительность выбранного клипа \(String(format: "%.6f", proposal.duration)) секунд", proposal: proposal)
+                return
+            }
+        }
+        let submittedAt = ProcessInfo.processInfo.systemUptime
+        let followsPrevious = ["продолжи ожидание", "подожди", "подробнее", "объясни подробнее"].contains(
+            text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)))
+        let continuation = followsPrevious ? directorAdviceContinuation.flatMap {
+            $0.projectID == project?.id && $0.revision == directorContextRevision ? $0 : nil
+        } : nil
+        let requestPrompt = continuation.map { $0.prompt + "\nПользователь просит: " + text } ?? text
+        let capturedRange = followsPrevious ? continuation?.range : range
+        if !followsPrevious { directorAdviceContinuation = nil }
+        let projectID = project?.id
+        let revision = directorContextRevision
+        let selection = selectedTimelineItemID
+        let playhead = timelinePlayheadTime
+        let snapshot = project
+        let indexTask = directorMomentIndexTask
+        let capturedPreset = preset
+        let capturedDuration = targetMinutes * 60
+        let trace = PerformanceTrace(name: "director.advice", projectID: projectID, revision: String(revision))
+        trace.event("director.submitted")
+        if let previous = directorAdviceReplyID,
+           let i = directorMessages.firstIndex(where: { $0.id == previous }), directorMessages[i].text.isEmpty {
+            directorMessages[i].text = "Ожидание отменено новым вопросом."
+            directorMessages[i].response = .init(state: .cancelled, projectID: projectID, advisory: true)
+        }
+        directorTask?.cancel()
+        directorGeneration &+= 1
+        let generation = directorGeneration
+        let replyID = UUID()
+        directorAdviceReplyID = replyID
+        directorMessages.append(DirectorMessage(role: .user, text: text))
+        directorMessages.append(DirectorMessage(id: replyID, role: .assistant, text: ""))
+        directorStatus = "Обдумываю момент · совет"
+        isDirectorResponding = true
+        trace.event("director.ui-accepted")
+        let knownReply: String? = {
+            if followsPrevious, continuation == nil {
+                return "Нет актуального вопроса для продолжения. Повторите вопрос о нужном фрагменте."
+            }
+            if let reason = DirectorResponseComposer.recordedDurationReason(prompt: text,
+                reasons: snapshot?.timelines.last?.directorRun?.decisionReasons ?? []) { return reason }
+            let query = text.lowercased()
+            if ["какая громкость", "громкость музыки?", "какой уровень музыки"].contains(where: query.contains) {
+                guard let music = snapshot?.timelines.last?.music else { return "В этом монтаже музыка не выбрана." }
+                return "Громкость музыки — \(String(format: "%g", music.volume * 100))%."
+            }
+            if ["готово", "сделано", "ты закончил"].contains(query.trimmingCharacters(in: .punctuationCharacters)) {
+                if isWorking { return "Операция ещё выполняется." }
+                if let response = directorMessages.dropLast(2).reversed().compactMap(\.response).first(where: { !$0.advisory }) {
+                    if response.saved { return response.previewReady ? "Правка сохранена, просмотр готов." : "Правка сохранена. Просмотр пока не обновлён." }
+                    return "Подтверждённой сохранённой правки пока нет."
+                }
+                return "В истории нет подтверждения выполненной правки."
+            }
+            if ["да, сделай", "да сделай", "давай так", "сделай так", "примени совет"].contains(where: query.contains) {
+                return "Уточните, какую правку применить и к какому клипу: в последнем совете нет однозначного исполняемого предложения."
+            }
+            if query.contains("проанализируй") {
+                return "Отдельный анализ этого диапазона пока недоступен. Анализ исходников можно запустить в медиатеке."
+            }
+            return nil
+        }()
+        directorTask = Task {
+            await PerformanceTrace.$current.withValue(trace) {
+                var moment = continuation?.context.moment
+                let fallback = DirectorAIReply(text: "Не успел подготовить оценку за отведённое время. Можно попросить продолжить ожидание.", runtimeLabel: "Ограниченный ответ", normalizedBrief: nil, isFallback: true)
+                let detailed = ["подробнее", "подробно", "подробный", "продолжи ожидание", "подожди"].contains(where: text.lowercased().contains)
+                let reply: DirectorAIReply
+                if let knownReply {
+                    reply = DirectorAIReply(text: knownReply, runtimeLabel: "Данные проекта", normalizedBrief: nil)
+                } else {
+                    reply = await DirectorReplyDeadline.run(seconds: detailed ? 30 : 6, fallback: fallback) {
+                        let index = await indexTask?.value
+                        guard !Task.isCancelled else { return fallback }
+                        moment = continuation?.context.moment ?? index?.resolve(prompt: text, selectedID: selection, playhead: playhead, range: capturedRange)
+                        trace.event("director.context-ready", values: ["cacheBytes": Double(index?.estimatedBytes ?? 0)])
+                        let context = continuation?.context ?? DirectorContext(assetCount: snapshot?.assets.count ?? 0, videoCount: 0, photoCount: 0,
+                            analyzedCount: 0, candidateCount: 0, currentTimelineItemCount: snapshot?.timelines.last?.items.count ?? 0,
+                            currentMusicTrackTitle: snapshot?.timelines.last?.music?.trackTitle,
+                            targetDuration: capturedDuration, preset: capturedPreset, currentOperation: "Совет",
+                            selectedItemSummary: moment?.targetID, playheadTime: playhead, moment: moment,
+                            musicVolume: snapshot?.timelines.last?.music?.volume)
+                        if self.directorGeneration == generation, self.project?.id == projectID,
+                           self.directorContextRevision == revision {
+                            self.directorAdviceContinuation = AdviceContinuation(prompt: continuation?.prompt ?? text,
+                                context: context, range: capturedRange, projectID: projectID, revision: revision)
+                        }
+                        return await self.directorAgent.respond(to: requestPrompt, context: context, mode: .advisory,
+                            recordInHistory: false, submittedAt: submittedAt)
+                    }
+                }
+                guard !Task.isCancelled, self.directorGeneration == generation, self.project?.id == projectID,
+                      let i = self.directorMessages.firstIndex(where: { $0.id == replyID }) else {
+                    trace.finish(status: "cancelled")
+                    if self.directorGeneration == generation {
+                        self.isDirectorResponding = false; self.directorTask = nil
+                    }
+                    return
+                }
+                self.directorMessages[i].text = reply.text
+                self.directorMessages[i].response = .init(state: .proposed, projectID: projectID, revision: revision,
+                    itemIDs: moment?.objects.map(\.itemID) ?? [], advisory: true, fallback: reply.isFallback,
+                    details: (moment?.limitations ?? []) + (moment?.objects.flatMap(\.limitations) ?? []))
+                self.directorMessages[i].response?.range = capturedRange ?? (moment?.objects.count == 1 ? moment?.objects.first?.filmRange : nil)
+                if capturedRange == nil, let snapshot, let objects = moment?.objects, objects.count == 1, let object = objects.first,
+                   (reply.judgment?.stance == .keep || reply.isFallback),
+                   reply.text.contains("слово целиком"),
+                   let proposal = DirectorEditProposal.completingCutWord(project: snapshot, targetID: object.itemID) {
+                    self.directorMessages[i].response?.proposal = proposal
+                }
+                self.directorAgent.restoreConversation(self.directorMessages)
+                self.directorRuntimeStatus = reply.runtimeLabel
+                self.directorStatus = reply.isFallback ? "Совет · ограниченные данные" : "Совет"
+                trace.event("director.first-displayed", fields: ["result": reply.isFallback ? "fallback" : "answer"])
+                trace.event("director.full-displayed")
+                trace.finish(status: reply.isFallback ? "fallback" : "success")
+                self.isDirectorResponding = false
+                self.directorTask = nil
+                self.directorAdviceReplyID = nil
+                self.scheduleWorkspaceAutosave()
+                if !self.queuedDirectorMessages.isEmpty {
+                    let draft = self.directorInput
+                    self.directorInput = self.queuedDirectorMessages.removeFirst()
+                    self.sendDirectorMessage()
+                    self.directorInput = draft
+                } else { self.startNextQueuedTimelineAIEdit() }
+            }
+        }
+    }
+
+    private func setDirectorResponseRecord(_ id: UUID, receipt: DirectorExecutionReceipt) {
+        guard let i = directorMessages.firstIndex(where: { $0.id == id }) else { return }
+        directorMessages[i].response = .init(state: receipt.state, projectID: project?.id, revision: directorContextRevision,
+            itemIDs: activeTimelineAIEdit?.selectedItemID.map { [$0] } ?? [], saved: receipt.saved,
+            previewReady: receipt.previewReady, details: receipt.applied + receipt.omitted + (receipt.failure.map { [$0] } ?? []))
+        directorMessages[i].response?.range = activeTimelineAIEdit?.range
     }
 
     private func directorContext(selection: (id: UUID?, playhead: Double)? = nil) -> DirectorContext {
@@ -6805,7 +7329,10 @@ final class AppModel: ObservableObject {
                 completedSuccessfully = true
             } catch is CancellationError {
                 if operationGeneration == runGeneration {
-                    status = "Операция отменена"
+                    if let id = activeTimelineAIEdit?.replyID,
+                       let response = directorMessages.first(where: { $0.id == id })?.response, response.saved {
+                        status = "Правка сохранена. Ожидание отменено после сохранения." + (response.previewReady ? "" : " Просмотр пока не обновлён.")
+                    } else { status = "Операция отменена до сохранения" }
                 }
             } catch let projectError as ProjectStoreError {
                 if case .staleRevision = projectError,
@@ -6830,7 +7357,8 @@ final class AppModel: ObservableObject {
                 }
             }
             guard operationGeneration == runGeneration else { return }
-            if completedSuccessfully, let notificationTitle {
+            let savedDirectorEdit = activeTimelineAIEdit.flatMap { edit in directorMessages.first(where: { $0.id == edit.replyID })?.response?.saved } ?? false
+            if completedSuccessfully, let notificationTitle, presentation != .editorAI || savedDirectorEdit {
                 AppNotifications.shared.send(title: notificationTitle, body: status)
             }
             if let pipeline { recoverableFilmBuild = await pipeline.store.recoverableFilmBuild() }
@@ -6853,6 +7381,10 @@ final class AppModel: ObservableObject {
             if presentation == .editorAI {
                 if let edit = activeTimelineAIEdit, !retryAfterConflict, !needsTimelineAIRetryAfterManualEdit {
                     let failure = completedSuccessfully ? "" : errorMessage.map { ": \($0)" } ?? ""
+                    if directorMessages.first(where: { $0.id == edit.replyID })?.response == nil {
+                        setDirectorResponseRecord(edit.replyID, receipt: .init(cancelled: Task.isCancelled,
+                            failure: completedSuccessfully ? nil : errorMessage ?? status))
+                    }
                     updateTimelineDirectorExchange(edit.replyID, status: status + failure)
                     _ = await persistWorkspaceState()
                 }
@@ -6906,6 +7438,12 @@ final class AppModel: ObservableObject {
 
     private func startTimelineAIEdit(_ pendingEdit: PendingTimelineAIEdit) {
         let edit = rebasedTimelineAIEdit(pendingEdit)
+        if let proposal = edit.proposal,
+           project.map({ !proposal.isApplicable(to: $0, selectedID: edit.selectedItemID) }) ?? true {
+            updateTimelineDirectorExchange(edit.replyID, status: "Момент изменился после совета — сначала нужно оценить его заново.")
+            Task { @MainActor [weak self] in self?.startNextQueuedTimelineAIEdit() }
+            return
+        }
         activeTimelineAIEdit = edit
         editTrace = edit.trace
         edit.trace?.event("edit.dequeued")
@@ -6963,7 +7501,8 @@ final class AppModel: ObservableObject {
             directorBrief: brief,
             briefChanges: edit.briefChanges,
             retryCount: edit.retryCount,
-            trace: edit.trace
+            trace: edit.trace,
+            proposal: edit.proposal
         )
     }
 

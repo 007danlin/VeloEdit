@@ -80,15 +80,9 @@ struct CachedAdaptiveFilmstripImage: View {
                         let tileRect = CGRect(x: CGFloat(visibleIndex) * tileWidth - slice.lower, y: 0, width: tileWidth, height: size.height)
                         context.drawLayer { layer in
                             layer.clip(to: Path(tileRect))
-                            layer.draw(
-                                swiftUIImage,
-                                in: CGRect(
-                                    x: tileRect.minX - CGFloat(sourceIndex) * tileWidth,
-                                    y: 0,
-                                    width: tileWidth * CGFloat(sourceCount),
-                                    height: size.height
-                                )
-                            )
+                            layer.draw(swiftUIImage, in: FilmstripTileGeometry.imageRect(
+                                imageSize: image.size, sourceCount: sourceCount,
+                                sourceIndex: sourceIndex, tile: tileRect))
                         }
                     }
                 }
@@ -113,6 +107,21 @@ struct CachedAdaptiveFilmstripImage: View {
                 image = loaded
             }
         }
+    }
+}
+
+enum FilmstripTileGeometry {
+    /// Uniformly scale each source cell, then crop it to the visible tile.
+    /// This works for portrait media and for the single-frame loading preview.
+    static func imageRect(imageSize: CGSize, sourceCount: Int, sourceIndex: Int, tile: CGRect) -> CGRect {
+        let count = CGFloat(max(1, sourceCount))
+        let cellWidth = max(1, imageSize.width / count)
+        let cellHeight = max(1, imageSize.height)
+        let scale = max(tile.width / cellWidth, tile.height / cellHeight)
+        let width = cellWidth * scale
+        let height = cellHeight * scale
+        return CGRect(x: tile.midX - width / 2 - CGFloat(sourceIndex) * width,
+                      y: tile.midY - height / 2, width: width * count, height: height)
     }
 }
 

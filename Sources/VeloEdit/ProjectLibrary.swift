@@ -2,9 +2,9 @@ import Foundation
 import VeloEditCore
 
 struct AppUsageStatistics: Equatable, Sendable {
-    var analyzedContentDuration: Double = 0
+    var sourceContentDuration: Double = 0
     var projectCount: Int = 0
-    var analyzedAssetCount: Int = 0
+    var sourceAssetCount: Int = 0
 }
 
 /// The statistics library outlives the bounded list of recent-project cards.
@@ -57,13 +57,14 @@ enum ProjectLibrary {
         var knownURLs = uniqueURLs(urls)
         var projectIDs = Set<UUID>()
         var statistics = AppUsageStatistics()
+        var sourceAssets: [ProjectSourceAsset] = []
         var refreshedSummaries = false
         for url in uniqueURLs(candidates) {
             try Task.checkCancellation()
             guard fileManager.fileExists(atPath: url.appendingPathComponent("project.json").path) else { continue }
             var summary = ProjectSummary.load(from: url)
-            if summary?.statisticsVersion != ProjectSummary.currentStatisticsVersion {
-                _ = try? ProjectStore(open: url)
+            if summary?.statisticsVersion != ProjectSummary.currentStatisticsVersion || summary?.sourceAssets == nil {
+                try? ProjectStore.refreshSummary(at: url)
                 summary = ProjectSummary.load(from: url)
                 refreshedSummaries = true
             }
@@ -71,10 +72,11 @@ enum ProjectLibrary {
             knownURLs.append(url)
             guard projectIDs.insert(summary.projectID).inserted else { continue }
             statistics.projectCount += 1
-            let duration = summary.analyzedContentDuration ?? 0
-            if duration.isFinite { statistics.analyzedContentDuration += max(0, duration) }
-            statistics.analyzedAssetCount += max(0, summary.analyzedAssetCount ?? 0)
+            sourceAssets += summary.sourceAssets ?? []
         }
+        let durations = ProjectSourceAsset.uniqueDurations(sourceAssets)
+        statistics.sourceAssetCount = durations.count
+        statistics.sourceContentDuration = durations.values.sorted().reduce(0, +)
         return Snapshot(urls: uniqueURLs(knownURLs), statistics: statistics,
                         refreshedSummaries: refreshedSummaries)
     }

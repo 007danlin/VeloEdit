@@ -679,6 +679,12 @@ public extension TelemetrySummary {
     /// advertise GPS or lap channels while every decoded value is absent (or
     /// is only a sentinel such as lap -1).
     func supports(_ kind: TelemetryWidgetKind, presentation: TelemetryWidgetPresentation? = nil) -> Bool {
+        // Older saved projects may contain zero-valued motion derived from a
+        // single QuickTime location. It is a capture location, not a GPS track.
+        if sourceFormat == TelemetrySourceFormat.embeddedQuickTime.rawValue {
+            guard [.coordinates, .altitude, .satelliteStatus, .elapsedTime].contains(kind),
+                  presentation != .elevationPlot, presentation != .routePlot else { return false }
+        }
         let values = timedSamples ?? []
         func has(_ keyPath: KeyPath<TelemetrySample, Double?>, where predicate: (Double) -> Bool = { _ in true }) -> Bool {
             values.contains { sample in sample[keyPath: keyPath].map(predicate) == true }

@@ -1,0 +1,32 @@
+{
+  "source": "Docs/Validation/DirectorLiveJudgment/baseline-advice.json",
+  "quantileMethod": "nearest rank",
+  "variants": {
+    "baseline": {
+      "attempts": 3,
+      "modelSuccesses": 3,
+      "fallbacks": 0,
+      "allOutcomeSeconds": {
+        "n": 3,
+        "p50": 8.651188166666543,
+        "p95": 16.227465500000108,
+        "max": 16.227465500000108
+      },
+      "modelSuccessSeconds": {
+        "n": 3,
+        "p50": 8.651188166666543,
+        "p95": 16.227465500000108,
+        "max": 16.227465500000108
+      },
+      "contextSeconds": null,
+      "atMost45Words": 0,
+      "commandsReturned": 0
+    }
+  },
+  "limitations": [
+    "Runtime study, not end-to-end UI or playback measurement.",
+    "Fallbacks are included in allOutcomeSeconds, never counted as model successes.",
+    "No human quality scores inferred from response length, citations or latency.",
+    "Cold/warm designation must come from the run protocol, not the first sample index."
+  ]
+}

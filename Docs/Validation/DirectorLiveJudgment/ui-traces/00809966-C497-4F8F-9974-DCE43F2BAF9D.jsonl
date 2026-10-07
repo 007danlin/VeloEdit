@@ -1,0 +1,11 @@
+{"elapsed":0.0011856666678795591,"event":"operation.begin","fields":{"date":"2026-10-06T18:24:04Z","name":"director.advice","projectID":"AFFF7A95-9BD3-4158-ACB2-D9A3BB220E2D","revision":"4"},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.0014214166658348404,"event":"director.submitted","fields":{},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.0015634583323844709,"event":"director.ui-accepted","fields":{},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.053255458333296701,"event":"director.context-ready","fields":{},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{"cacheBytes":6760}}
+{"elapsed":0.053731624997453764,"event":"director.first-displayed","fields":{"result":"fallback"},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.053766083336086012,"event":"director.full-displayed","fields":{},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.053779374997247942,"event":"operation.end","fields":{"status":"fallback"},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.60735783333075233,"event":"span.begin","fields":{"parent":"","path":"\/private\/tmp\/veloedit-director-live-ui\/test.veloedit\/project.json","projectID":"AFFF7A95-9BD3-4158-ACB2-D9A3BB220E2D","span":"5142E4A5-DBEB-4FD4-B7FC-8D21CA5D6A7E","stage":"project.save"},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.6075237916666083,"event":"span.begin","fields":{"parent":"","span":"5FB7B6E2-D442-438F-B803-2CD880A7BE6D","stage":"project.serialize"},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.60834525000245776,"event":"span.end","fields":{"span":"5FB7B6E2-D442-438F-B803-2CD880A7BE6D","stage":"project.serialize","status":"success"},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}
+{"elapsed":0.61074099999677856,"event":"span.end","fields":{"span":"5142E4A5-DBEB-4FD4-B7FC-8D21CA5D6A7E","stage":"project.save","status":"success"},"operationID":"00809966-C497-4F8F-9974-DCE43F2BAF9D","values":{}}

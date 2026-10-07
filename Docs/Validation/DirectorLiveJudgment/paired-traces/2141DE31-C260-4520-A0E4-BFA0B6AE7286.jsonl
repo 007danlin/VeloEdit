@@ -1,0 +1,6 @@
+{"elapsed":0.0010517083355807699,"event":"operation.begin","fields":{"date":"2026-10-06T18:53:40Z","name":"director.runtime-study.new","projectID":"A6E52DAA-90E7-43E0-8EFB-37F7F35548F6","revision":""},"operationID":"2141DE31-C260-4520-A0E4-BFA0B6AE7286","values":{}}
+{"elapsed":0.0013798333384329453,"event":"director.queue.enter","fields":{},"operationID":"2141DE31-C260-4520-A0E4-BFA0B6AE7286","values":{}}
+{"elapsed":0.0014215416667866521,"event":"director.queue.leave","fields":{},"operationID":"2141DE31-C260-4520-A0E4-BFA0B6AE7286","values":{}}
+{"elapsed":0.0016636250002193265,"event":"director.loading","fields":{},"operationID":"2141DE31-C260-4520-A0E4-BFA0B6AE7286","values":{}}
+{"elapsed":4.8072331250004936,"event":"director.runtime","fields":{},"operationID":"2141DE31-C260-4520-A0E4-BFA0B6AE7286","values":{"generatedTokens":58,"generationSeconds":1.89954,"loadSeconds":0.12620700000000001,"promptSeconds":2.759417,"promptTokens":849}}
+{"elapsed":4.8090041666728212,"event":"operation.end","fields":{"status":"success"},"operationID":"2141DE31-C260-4520-A0E4-BFA0B6AE7286","values":{}}

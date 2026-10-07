@@ -275,3 +275,71 @@ private actor CountingIndependentAnalyzer: VisionModelProtocol {
     #expect(try await pipeline.analyzeMissing() == 0)
     #expect(await analyzer.calls == 1)
 }
+
+@Test func portableAnalysisSurvivesMovingWithoutReanalysisButRejectsChangedMedia() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appendingPathComponent("fixture.jpg")
+    try Data([1, 2, 3]).write(to: source)
+    let modificationDate = Date(timeIntervalSince1970: 1_700_000_000.123)
+    let asset = MediaAsset(originalURL: source, kind: .photo, byteSize: 3,
+        contentHash: try MediaImporter.quickFingerprint(url: source, byteSize: 3, modificationDate: modificationDate),
+        metadata: MediaMetadata(duration: 2, modificationDate: modificationDate))
+    let package = root.appendingPathComponent("project.veloedit")
+    let store = try ProjectStore(createAt: package, name: "Portable analysis")
+    try await store.update { $0.assets = [asset] }
+    let analyzer = CountingIndependentAnalyzer()
+    let pipeline = VeloEditPipeline(store: store, analyzer: analyzer)
+    #expect(try await pipeline.analyzeMissing() == 1)
+    let originalAnalysis = try JSONDecoder.veloEdit.decode([AnalysisResult].self,
+        from: JSONEncoder.veloEdit.encode(await store.manifest.analyses))
+    let copy = root.appendingPathComponent("copy.veloedit")
+    _ = try await pipeline.collectProjectCopy(to: copy)
+    let moved = root.appendingPathComponent("another-computer.veloedit")
+    try FileManager.default.moveItem(at: copy, to: moved)
+    try FileManager.default.removeItem(at: source)
+    try FileManager.default.removeItem(at: package)
+
+    let reopened = try ProjectStore(open: moved, recoveryDirectory: root.appendingPathComponent("FreshRecovery"))
+    #expect(await reopened.manifest.analyses == originalAnalysis)
+    let restoredPipeline = VeloEditPipeline(store: reopened, analyzer: analyzer)
+    #expect(try await restoredPipeline.analyzeMissing() == 0)
+    #expect(await analyzer.calls == 1)
+    let restored = await reopened.manifest
+    let embedded = try #require(restored.assets.first)
+    #expect(embedded.fullContentHash == (try MediaImporter.sha256(url: embedded.originalURL)))
+    #expect(restored.analyses.first?.analyzedSourceIdentity == FrameCacheKey.sourceIdentity(
+        url: embedded.originalURL, contentHash: embedded.contentHash))
+
+    // The new identity is durable; another open also reuses the analysis.
+    let again = try ProjectStore(open: moved)
+    #expect(try await VeloEditPipeline(store: again, analyzer: analyzer).analyzeMissing() == 0)
+    #expect(await analyzer.calls == 1)
+    try Data([4, 5, 6]).write(to: embedded.originalURL, options: .atomic)
+    #expect(try await VeloEditPipeline(store: again, analyzer: analyzer).analyzeMissing() == 1)
+    #expect(await analyzer.calls == 2)
+}
+
+@Test func portableCopyDoesNotRevalidateAnalysisOfAnAlreadyChangedSource() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appendingPathComponent("fixture.jpg")
+    try Data([1, 2, 3]).write(to: source)
+    let asset = MediaAsset(originalURL: source, kind: .photo, byteSize: 3,
+        contentHash: try MediaImporter.quickFingerprint(url: source, byteSize: 3, modificationDate: nil),
+        metadata: MediaMetadata(duration: 2))
+    let store = try ProjectStore(createAt: root.appendingPathComponent("project.veloedit"), name: "Changed source")
+    try await store.update { $0.assets = [asset] }
+    let analyzer = CountingIndependentAnalyzer()
+    let pipeline = VeloEditPipeline(store: store, analyzer: analyzer)
+    #expect(try await pipeline.analyzeMissing() == 1)
+    try Data([4, 5, 6]).write(to: source, options: .atomic)
+    let copy = root.appendingPathComponent("copy.veloedit")
+    _ = try await pipeline.collectProjectCopy(to: copy)
+    let reopened = try ProjectStore(open: copy)
+    #expect(await reopened.manifest.analyses.first?.analyzedSourceIdentity == nil)
+    #expect(try await VeloEditPipeline(store: reopened, analyzer: analyzer).analyzeMissing() == 1)
+    #expect(await analyzer.calls == 2)
+}

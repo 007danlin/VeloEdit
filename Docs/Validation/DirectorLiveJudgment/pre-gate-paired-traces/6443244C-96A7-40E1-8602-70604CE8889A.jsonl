@@ -1,0 +1,2 @@
+{"elapsed":0.0011826666668639518,"event":"operation.begin","fields":{"date":"2026-10-06T18:22:33Z","name":"director.runtime-study.new","projectID":"D74A8AB4-B75D-4F60-AEAF-478DEF90D44B","revision":""},"operationID":"6443244C-96A7-40E1-8602-70604CE8889A","values":{}}
+{"elapsed":0.0013972916713100858,"event":"operation.end","fields":{"status":"fallback"},"operationID":"6443244C-96A7-40E1-8602-70604CE8889A","values":{}}

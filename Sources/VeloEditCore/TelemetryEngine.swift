@@ -306,9 +306,9 @@ private struct ParsedTelemetry {
                 verticalSpeedMetersPerSecond: activity.verticalSpeed[safe: index] ?? nil,
                 torqueNewtonMeters: activity.torque[safe: index] ?? nil,
                 gear: activity.gearPosition[safe: index].flatMap { $0 }.flatMap(Double.init),
-                airPressureHPA: activity.airPressure[safe: index] ?? nil,
+                airPressureHPA: (activity.airPressure[safe: index] ?? nil).map { $0 * 1_000 },
                 strideLengthMeters: activity.strideLength[safe: index] ?? nil,
-                verticalOscillationCentimeters: activity.verticalOscillation[safe: index] ?? nil,
+                verticalOscillationCentimeters: (activity.verticalOscillation[safe: index] ?? nil).map { $0 / 10 },
                 groundContactTimeMilliseconds: activity.groundContactTime[safe: index] ?? nil,
                 leftRightBalancePercent: activity.leftRightBalance[safe: index] ?? nil,
                 strokeRate: activity.strokeRate[safe: index] ?? nil,
@@ -333,7 +333,7 @@ private enum TelemetryNormalizer {
         var cumulativeDistance = 0.0
         var previous: TelemetrySample?
         for var sample in ordered {
-            if let previous {
+            if let previous, format != .embeddedQuickTime {
                 let dt = max(0.001, sample.timestamp - previous.timestamp)
                 if sample.distanceMeters == nil, let a = previous.coordinate, let b = sample.coordinate {
                     cumulativeDistance += haversine(a, b)
@@ -357,7 +357,7 @@ private enum TelemetryNormalizer {
                    let distance = sample.distanceMeters, let oldDistance = previous.distanceMeters, distance > oldDistance {
                     sample.gradientPercent = (altitude - oldAltitude) / (distance - oldDistance) * 100
                 }
-            } else if sample.distanceMeters == nil {
+            } else if sample.distanceMeters == nil, format != .embeddedQuickTime {
                 sample.distanceMeters = 0
             }
             output.append(sample)

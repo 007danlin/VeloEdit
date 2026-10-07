@@ -1,0 +1,92 @@
+[
+  {
+    "id": "pair-0-7",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-0-12",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-0-13",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-0-26",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-0-27",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-0-28",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-1-7",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-1-12",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-1-13",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-1-26",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-1-27",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-1-28",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-2-7",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-2-12",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-2-13",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-2-26",
+    "A": "new",
+    "B": "baseline"
+  },
+  {
+    "id": "pair-2-27",
+    "A": "baseline",
+    "B": "new"
+  },
+  {
+    "id": "pair-2-28",
+    "A": "new",
+    "B": "baseline"
+  }
+]

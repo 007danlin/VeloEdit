@@ -156,8 +156,7 @@ public enum TimelineMutationEngine {
         normalize(item: &item)
         let start = clampedInsertionStart(
             requestedStart,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         guard let base = primaries.first(where: {
             start >= $0.timelineStart && start < $0.timelineStart + $0.timelineDuration
@@ -190,8 +189,7 @@ public enum TimelineMutationEngine {
         clip.timelineDuration = max(0.05, finiteNonNegative(clip.timelineDuration))
         clip.timelineStart = clampedInsertionStart(
             clip.timelineStart,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         clip.timelineDuration = min(clip.timelineDuration, max(0.05, timeline.duration - clip.timelineStart))
         clip.sourceDuration = min(clip.sourceDuration, clip.timelineDuration * clip.effectiveSpeed)
@@ -208,8 +206,7 @@ public enum TimelineMutationEngine {
         item.timelineDuration = max(0.05, finiteNonNegative(item.timelineDuration))
         item.timelineStart = clampedInsertionStart(
             item.timelineStart,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         item.timelineDuration = min(item.timelineDuration, max(0.05, timeline.duration - item.timelineStart))
         timeline.telemetryItems = timeline.effectiveTelemetryItems + [item]
@@ -224,8 +221,7 @@ public enum TimelineMutationEngine {
         effect.duration = max(0.05, finiteNonNegative(effect.duration))
         effect.startTime = clampedInsertionStart(
             effect.startTime,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         effect.duration = min(effect.duration, max(0.05, timeline.duration - effect.startTime))
         effect.intensity = min(max(0, effect.intensity.isFinite ? effect.intensity : 0), 1)
@@ -243,8 +239,7 @@ public enum TimelineMutationEngine {
         title.text = clean
         title.startTime = clampedInsertionStart(
             title.startTime,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         title.duration = min(max(0.05, title.duration), max(0.05, timeline.duration - title.startTime))
         timeline.titleItems = timeline.effectiveTitleItems + [title]
@@ -370,8 +365,7 @@ public enum TimelineMutationEngine {
         items[index].timelineStart = clampedStart(
             items[index].timelineStart,
             duration: items[index].timelineDuration,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         items[index].timelineDuration = min(items[index].timelineDuration, max(0.05, timeline.duration - items[index].timelineStart))
         guard items[index] != before else { return false }
@@ -393,8 +387,7 @@ public enum TimelineMutationEngine {
         items[index].startTime = clampedStart(
             items[index].startTime,
             duration: items[index].duration,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         items[index].duration = min(items[index].duration, max(0.05, timeline.duration - items[index].startTime))
         items[index].intensity = min(max(0, items[index].intensity.isFinite ? items[index].intensity : 0), 1)
@@ -457,8 +450,7 @@ public enum TimelineMutationEngine {
         items[index].startTime = clampedStart(
             items[index].startTime,
             duration: items[index].duration,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         items[index].duration = min(items[index].duration, max(0.05, timeline.duration - items[index].startTime))
         guard items[index] != before else { return false }
@@ -484,8 +476,7 @@ public enum TimelineMutationEngine {
         items[index].timelineStart = clampedStart(
             items[index].timelineStart,
             duration: items[index].timelineDuration,
-            timelineDuration: timeline.duration,
-            frameRate: timeline.frameRate
+            timeline: timeline
         )
         items[index].timelineDuration = min(items[index].timelineDuration, max(0.05, timeline.duration - items[index].timelineStart))
         guard items[index] != before else { return false }
@@ -503,24 +494,16 @@ public enum TimelineMutationEngine {
     private static func clampedStart(
         _ value: Double,
         duration: Double,
-        timelineDuration: Double,
-        frameRate: Double
+        timeline: Timeline
     ) -> Double {
-        TimelineTiming.quantized(
-            min(max(0, value.isFinite ? value : 0), max(0, timelineDuration - duration)),
-            frameRate: frameRate
-        )
+        TimelineTiming.editingTime(value, in: timeline, maximum: timeline.duration - duration)
     }
 
     private static func clampedInsertionStart(
         _ value: Double,
-        timelineDuration: Double,
-        frameRate: Double
+        timeline: Timeline
     ) -> Double {
-        TimelineTiming.quantized(
-            min(max(0, value.isFinite ? value : 0), max(0, timelineDuration - 0.05)),
-            frameRate: frameRate
-        )
+        TimelineTiming.editingTime(value, in: timeline, maximum: timeline.duration - 0.05)
     }
 
     private static func finiteNonNegative(_ value: Double) -> Double {

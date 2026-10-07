@@ -101,6 +101,8 @@ struct TimelineLayoutSnapshot {
         snapTimes += connectedItems.flatMap { [$0.timelineStart, $0.timelineStart + $0.timelineDuration] }
         snapTimes += telemetryItems.flatMap { [$0.timelineStart, $0.timelineEnd] }
         snapTimes += audioClips.flatMap { [$0.timelineStart, $0.timelineEnd] }
+        snapTimes += titleItems.flatMap { [$0.startTime, $0.endTime] }
+        snapTimes += effectBlocks.flatMap { [$0.startTime, $0.endTime] }
         geometry = TimelineHorizontalGeometry(items: primaryItems, duration: timeline.duration, snapTimes: snapTimes)
     }
 

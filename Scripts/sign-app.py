@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 import re
+import plistlib
 import subprocess
 
 MACHO_MAGICS = {bytes.fromhex(value) for value in (
@@ -26,6 +27,15 @@ def developer_identity(identity):
         if name.startswith("Developer ID Application:") and identity in (name, fingerprint):
             return fingerprint
     raise ValueError("A valid Developer ID Application certificate with its private key is required; none matches VELOEDIT_CODESIGN_IDENTITY.")
+
+
+def signing_targets(app):
+    info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    main = app / "Contents/MacOS" / info["CFBundleExecutable"]
+    # codesign recognizes the main executable as its enclosing bundle. A
+    # universal Swift output is initially unsigned, so seal it only after all
+    # helper executables have been signed, via the final bundle operation.
+    return [path for path in code_files(app) if path != main] + [app]
 
 
 def verify(app, release=False):
@@ -65,9 +75,8 @@ def main():
         flags = ["--force", "--sign", identity]
         if identity != "-":
             flags += ["--options", "runtime", "--timestamp"]
-        for path in code_files(args.app):
+        for path in signing_targets(args.app):
             subprocess.run(["codesign", *flags, str(path)], check=True)
-        subprocess.run(["codesign", *flags, str(args.app)], check=True)
     verify(args.app, release=args.release or (not args.verify_only and identity != "-"))
     print("Developer ID signatures verified." if args.release or identity != "-" else "Local ad-hoc signatures verified; not a Developer ID release.")
 

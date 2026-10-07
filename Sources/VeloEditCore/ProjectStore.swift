@@ -5,7 +5,7 @@ import Darwin
 /// manifest that may contain tens of megabytes of analysis and telemetry.
 public struct ProjectSummary: Codable, Equatable, Sendable {
     public static let fileName = "project-summary.json"
-    public static let currentStatisticsVersion = 1
+    public static let currentStatisticsVersion = 2
 
     public var projectID: UUID
     public var name: String
@@ -17,6 +17,7 @@ public struct ProjectSummary: Codable, Equatable, Sendable {
     public var analyzedContentDuration: Double?
     public var analyzedAssetCount: Int?
     public var statisticsVersion: Int?
+    public var sourceAssets: [ProjectSourceAsset]?
     public var hasPlayableTimeline: Bool?
     public var generationStatus: IntentStatus?
 
@@ -511,6 +512,15 @@ public actor ProjectStore {
         return try operation()
     }
 
+    /// Refresh derived metadata without opening a project, recovering jobs or
+    /// rewriting its manifest while another window may be editing it.
+    public static func refreshSummary(at packageURL: URL) throws {
+        let data = try Data(contentsOf: packageURL.appendingPathComponent("project.json"), options: [.mappedIfSafe])
+        let manifest = try JSONDecoder.veloEdit.decode(ProjectManifest.self, from: data)
+        guard manifest.projectVersion <= 1 else { throw ProjectStoreError.unsupportedProjectVersion(manifest.projectVersion) }
+        try writeSummary(for: manifest, at: packageURL)
+    }
+
     private static func writeSummary(for manifest: ProjectManifest, at packageURL: URL) throws {
         let assetsByID = Dictionary(uniqueKeysWithValues: manifest.assets.map { ($0.id, $0) })
         let firstTimelinePair = manifest.timelines.last?.items
@@ -563,7 +573,8 @@ public actor ProjectStore {
             previewRelativePaths: relativePaths,
             analyzedContentDuration: analyzedContentDuration,
             analyzedAssetCount: analyzedAssets.count,
-            statisticsVersion: ProjectSummary.currentStatisticsVersion
+            statisticsVersion: ProjectSummary.currentStatisticsVersion,
+            sourceAssets: manifest.assets.compactMap { ProjectSourceAsset(asset: $0) }
         )
         summary.hasPlayableTimeline = firstTimelinePair != nil
         summary.generationStatus = manifest.intentLedger?.entries.last(where: { $0.normalizedIntent == .createFilm })?.status

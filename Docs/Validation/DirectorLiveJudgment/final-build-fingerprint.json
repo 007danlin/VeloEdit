@@ -1,0 +1,15 @@
+{
+  "containsInitialTaskGuard": true,
+  "containsEvidenceGate": true,
+  "sha256": {
+    "Sources/VeloEditCore/DirectorMomentContext.swift": "646d1bfab26389bb423f6544fa00abfa7eb34a1c6d40907071a2936506ebf5a7",
+    "Sources/VeloEditCore/DirectorLiveJudgment.swift": "3aa42ccb33024374edbb2527c3e632ab124c31f3a9e5feb52e4e9c341f22239a",
+    "Sources/VeloEditCore/DirectorConversation.swift": "dc2f07fb40cf980c06e8a0de5fc1e7ab4193e015e5d65cddf12c0c5695638d1b",
+    "Sources/VeloEditCore/EditorCommandEngine.swift": "dba35ab456ba8d212428823d86c4f7aeaf064377ed6052b6dca429679b9b2c29",
+    "Sources/VeloEdit/DirectorAdviceRequest.swift": "a61fc131f8b49e4b13ad9dc652ebea47b6f753d9064c21dac4103ad4afe10e34",
+    "Sources/VeloEdit/LocalDirectorAgent.swift": "7f4f6d500af171ccb8af72ecef86143238432af8dd8f4f12ad210fdc400e8da5",
+    "Sources/VeloEdit/AppModel.swift": "58b46a95f0e25866389271c76928e390c2916555e4d495b7d0f96fc4008ad2db",
+    "Sources/VeloEdit/ContentView.swift": "38014597dd294037c4334453a5a5ace24ca27752171f5dc2cc575f94722c81d6"
+  },
+  "binarySHA256": "c120d2a6121f40ce3b327d777e3cfac9bf0f9dcbfad660db1903398794c3d003"
+}

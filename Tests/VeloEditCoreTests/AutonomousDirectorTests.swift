@@ -823,4 +823,8 @@ private func p3Fixture(count: Int = 14, energetic: Bool = true) -> ([MediaAsset]
     let reply = DirectorFallbackReply().make(userMessage: "Почему ролик такой длины?", context: context)
     #expect(reply.contains("58"))
     #expect(reply.contains("повторяющиеся"))
+    #expect(reply.contains("сохранённом обосновании"))
+    #expect(DirectorResponseComposer.recordedDurationReason(prompt: "Почему этот клип такой короткий?",
+        reasons: context.autonomousDecisionReasons) == nil)
+    #expect(DirectorResponseComposer.recordedDurationReason(prompt: "Почему фильм такой длины?", reasons: []) == nil)
 }

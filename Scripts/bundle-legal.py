@@ -49,20 +49,23 @@ def main():
     if speech_notices.is_dir():
         shutil.copytree(speech_notices, licenses / "SpeechModels")
 
-    # Cargo metadata is restricted to the actual build host so cross-platform
-    # crates that were never needed for this binary do not trigger downloads.
-    target = next(line.split(": ", 1)[1] for line in subprocess.check_output(
-        ["rustc", "-vV"], text=True).splitlines() if line.startswith("host: "))
+    # Inventory the union of both shipped target dependency graphs.
+    targets = [("aarch64" if arch == "arm64" else arch) + "-apple-darwin"
+               for arch in os.environ.get("VELOEDIT_ARCHS", "arm64 x86_64").split()]
     env = dict(os.environ)
     cache_root = Path(env.get("VELOEDIT_BUILD_CACHE_ROOT", Path.home() / "Library/Caches/VeloEditBuild"))
     env["CARGO_HOME"] = env.get("VELOEDIT_CARGO_HOME", str(cache_root / "cargo-home"))
-    metadata = json.loads(subprocess.check_output([
-        "cargo", "metadata", "--offline", "--locked", "--filter-platform", target,
-        "--format-version", "1", "--manifest-path",
-        str(source / "ThirdParty/OVRLEY/src-tauri/ovrley_core/Cargo.toml"),
-    ], env=env, text=True))
+    target_packages = {}
+    for target in targets:
+        metadata = json.loads(subprocess.check_output([
+            "cargo", "metadata", "--offline", "--locked", "--filter-platform", target,
+            "--format-version", "1", "--manifest-path",
+            str(source / "ThirdParty/OVRLEY/src-tauri/ovrley_core/Cargo.toml"),
+        ], env=env, text=True))
+        for package in metadata["packages"]:
+            target_packages[package["id"]] = package
     packages = []
-    for package in sorted(metadata["packages"], key=lambda p: (p["name"], p["version"])):
+    for package in sorted(target_packages.values(), key=lambda p: (p["name"], p["version"])):
         root = Path(package["manifest_path"]).parent
         candidates = [p for p in root.iterdir() if p.is_file()
                       and p.name.upper().startswith(("LICENSE", "COPYING", "NOTICE", "COPYRIGHT"))]
@@ -80,7 +83,7 @@ def main():
                          "license": package.get("license"), "source": package.get("source"),
                          "repository": package.get("repository"), "notice_files": copied})
     (legal / "RustDependencies.json").write_text(json.dumps({
-        "target": target, "scope": "Cargo metadata; includes build dependencies, not a complete transitive native-code audit",
+        "targets": targets, "scope": "Cargo metadata; includes build dependencies, not a complete transitive native-code audit",
         "packages": packages,
     }, ensure_ascii=False, indent=2) + "\n")
     # SwiftPM checkouts may contain read-only notices. The bundle's copies

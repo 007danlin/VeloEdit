@@ -11,8 +11,14 @@ struct DirectorAIReply: Sendable {
     let normalizedBrief: String?
     let commands: [EditorCommand]
     let replacesSelectedFootage: Bool
+    let judgment: DirectorJudgment?
+    let isFallback: Bool
+    let planningFailed: Bool
 
-    init(text: String, runtimeLabel: String, normalizedBrief: String?, commands: [EditorCommand] = [], replacesSelectedFootage: Bool = false) {
+    init(text: String, runtimeLabel: String, normalizedBrief: String?, commands: [EditorCommand] = [], replacesSelectedFootage: Bool = false, judgment: DirectorJudgment? = nil, isFallback: Bool = false, planningFailed: Bool = false) {
+        self.judgment = judgment
+        self.isFallback = isFallback
+        self.planningFailed = planningFailed
         self.text = text
         self.runtimeLabel = runtimeLabel
         self.normalizedBrief = normalizedBrief
@@ -150,25 +156,20 @@ final class LocalDirectorAgent {
     init(responseProvider: ResponseProvider? = nil) {
         self.responseProvider = responseProvider
     }
-    private static let ollamaModel = "qwen3:4b-instruct"
+    nonisolated static let ollamaModel = "qwen3:4b-instruct"
     private static let ollamaRuntimeLabel = "Qwen3 4B Instruct · локальная нейросеть"
     private static let ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
-    private let fallback = DirectorFallbackReply()
     private var ollamaHistory: [OllamaMessage] = []
-
-    #if canImport(FoundationModels)
-    // The stored type remains deployment-target neutral and is cast only
-    // inside a macOS 26 availability gate.
-    private var appleSession: Any?
-    #endif
+    private var modelRequestActive = false
+    private var conversationGeneration: UInt64 = 0
 
     static func currentRuntimeLabel() -> String {
         "Проверяю локальную нейросеть…"
     }
 
     func runtimeStatus() async -> String {
-        // Merely launching the app must not start Ollama and poll it for four
-        // seconds. The service is started lazily on the first actual AI request.
+        // Status polling does not start Ollama. First-launch model preparation
+        // and actual AI requests own service startup.
         if await hasOllamaModel(startService: false) { return Self.ollamaRuntimeLabel }
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
@@ -179,19 +180,31 @@ final class LocalDirectorAgent {
     }
 
     func reset() {
+        conversationGeneration &+= 1
         ollamaHistory = []
-        #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) { appleSession = nil }
-        #endif
+    }
+
+    var recentConversationContext: String {
+        ollamaHistory.suffix(8).map {
+            "\($0.role == "user" ? "Пользователь" : "Режиссёр"): \($0.content)"
+        }.joined(separator: "\n\n")
+    }
+
+    func recordExchange(user: String, reply: String) {
+        ollamaHistory.append(OllamaMessage(role: "user", content: user))
+        ollamaHistory.append(OllamaMessage(role: "assistant", content: reply))
+        if ollamaHistory.count > 10 { ollamaHistory.removeFirst(ollamaHistory.count - 10) }
     }
 
     func restoreConversation(_ messages: [DirectorMessage]) {
-        reset()
+        ollamaHistory = []
         guard let firstUser = messages.firstIndex(where: { $0.role == .user }) else { return }
         ollamaHistory = messages[firstUser...]
             .filter { !$0.text.isEmpty }
             .map { message in
-                OllamaMessage(role: message.role == .user ? "user" : "assistant", content: message.text)
+                OllamaMessage(role: message.role == .user ? "user" : "assistant", content: message.text + (message.response.map { record in
+                    " [status=\(record.state.rawValue); saved=\(record.saved); objects=\(record.itemIDs.map(\.uuidString).joined(separator: ","))]"
+                } ?? ""))
             }
         if ollamaHistory.count > 10 {
             ollamaHistory.removeFirst(ollamaHistory.count - 10)
@@ -204,18 +217,19 @@ final class LocalDirectorAgent {
         mode: DirectorRequestMode = .edit,
         recordInHistory: Bool = true,
         allowsFootageReplacement: Bool = false,
-        onPartialReply: (@MainActor @Sendable (String) -> Void)? = nil
+        onPartialReply: (@MainActor @Sendable (String) -> Void)? = nil,
+        submittedAt: Double = ProcessInfo.processInfo.systemUptime
     ) async -> DirectorAIReply {
+        if mode == .advisory {
+            return await respondToAdvice(userMessage, context: context, recordInHistory: recordInHistory, submittedAt: submittedAt)
+        }
+        if let commands = EditorCommandParser().parseComplete(userMessage, hasSelection: context.selectedItemSummary != nil) {
+            return DirectorAIReply(text: "Применяю правку.", runtimeLabel: "Точная монтажная команда", normalizedBrief: nil, commands: commands)
+        }
+        do { try await acquireModelSlot() } catch { return DirectorAIReply(text: "", runtimeLabel: "Отменено", normalizedBrief: nil) }
+        defer { modelRequestActive = false }
         if let responseProvider {
             return await responseProvider(userMessage, context, mode, allowsFootageReplacement)
-        }
-        if mode == .edit, let commands = EditorCommandParser().parseComplete(userMessage, hasSelection: context.selectedItemSummary != nil) {
-            let reply = "Применю точную правку и сохраню результат."
-            if recordInHistory {
-                ollamaHistory.append(OllamaMessage(role: "user", content: userMessage))
-                ollamaHistory.append(OllamaMessage(role: "assistant", content: reply))
-            }
-            return DirectorAIReply(text: reply, runtimeLabel: "Точная монтажная команда", normalizedBrief: nil, commands: commands)
         }
         do {
             return try await respondWithOllama(
@@ -227,55 +241,114 @@ final class LocalDirectorAgent {
                 onPartialReply: onPartialReply
             )
         } catch {
-            await LocalAIModelManager.shared.invalidateReadiness()
-            guard !Task.isCancelled else {
-                return DirectorAIReply(text: "", runtimeLabel: Self.currentRuntimeLabel(), normalizedBrief: nil)
+            guard !Task.isCancelled else { return DirectorAIReply(text: "", runtimeLabel: "Отменено", normalizedBrief: nil, planningFailed: true) }
+            return DirectorAIReply(text: "Не удалось получить полный план правки. Изменения не применены.",
+                runtimeLabel: "План не получен", normalizedBrief: nil, isFallback: true, planningFailed: true)
+        }
+    }
+
+    private func acquireModelSlot() async throws {
+        PerformanceTrace.current?.event("director.queue.enter")
+        while modelRequestActive { try await Task.sleep(for: .milliseconds(20)) }
+        try Task.checkCancellation()
+        modelRequestActive = true
+        PerformanceTrace.current?.event("director.queue.leave")
+    }
+
+    private func respondToAdvice(_ prompt: String, context: DirectorContext, recordInHistory: Bool, submittedAt: Double) async -> DirectorAIReply {
+        let detailed = ["подробнее", "подробный", "подробно", "продолжи ожидание", "подожди"].contains(where: prompt.lowercased().contains)
+        let generation = conversationGeneration
+        let asksPastReason = DirectorResponseComposer.asksForPastEditReason(prompt)
+        if responseProvider == nil, asksPastReason, !(context.moment?.facts.contains(where: { $0.kind == .decision }) ?? false) {
+            let text = "В журнале нет отдельного обоснования этой правки. Можно заново оценить текущий монтаж по доступным фактам."
+            if recordInHistory { recordExchange(user: prompt, reply: text) }
+            return DirectorAIReply(text: text, runtimeLabel: "Готовые данные · без модели", normalizedBrief: nil, isFallback: true)
+        }
+        let evidenceGap = context.moment?.adviceEvidenceGap(for: prompt)
+        if responseProvider == nil, (context.moment?.objects.flatMap(\.facts).isEmpty ?? true) || evidenceGap != nil {
+            let text = evidenceGap ?? DirectorResponseComposer.limitedAdvice(prompt: prompt, moment: context.moment)
+            if recordInHistory { recordExchange(user: prompt, reply: text) }
+            return DirectorAIReply(text: text, runtimeLabel: "Готовые данные · без модели", normalizedBrief: nil, isFallback: true)
+        }
+        let fallback = DirectorAIReply(text: DirectorResponseComposer.limitedAdvice(prompt: prompt, moment: context.moment, delayed: true),
+            runtimeLabel: "Ограниченный ответ · модель не ответила", normalizedBrief: nil, isFallback: true)
+        let reply = await DirectorReplyDeadline.run(seconds: max(0, (detailed ? 30 : 6) - (ProcessInfo.processInfo.systemUptime - submittedAt)), fallback: fallback) {
+            do {
+                try await self.acquireModelSlot()
+                defer { self.modelRequestActive = false }
+                try Task.checkCancellation()
+                if let provider = self.responseProvider {
+                    let answer = await provider(prompt, context, .advisory, false)
+                    return DirectorAIReply(text: answer.text, runtimeLabel: answer.runtimeLabel, normalizedBrief: nil,
+                        judgment: answer.judgment, isFallback: answer.isFallback)
+                }
+                return try await self.generateAdvice(prompt, context: context, detailed: detailed)
+            } catch {
+                return DirectorAIReply(text: DirectorResponseComposer.limitedAdvice(prompt: prompt, moment: context.moment),
+                    runtimeLabel: "Ограниченный ответ · готовые данные", normalizedBrief: nil, isFallback: true)
             }
         }
+        guard !Task.isCancelled, generation == conversationGeneration else { return DirectorAIReply(text: "", runtimeLabel: "Отменено", normalizedBrief: nil) }
+        if recordInHistory { recordExchange(user: prompt, reply: reply.text) }
+        return reply
+    }
 
+    private func generateAdvice(_ prompt: String, context: DirectorContext, detailed: Bool) async throws -> DirectorAIReply {
+        let requestData = DirectorAdviceRequest(prompt: prompt, context: context, history: compactAdviceHistory, detailed: detailed)
+        PerformanceTrace.current?.event("director.loading")
+        let available = await hasOllamaModel(startService: true)
+        try Task.checkCancellation()
+        if available {
+            var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
+            request.httpMethod = "POST"
+            request.timeoutInterval = detailed ? 30 : 6
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(requestData)
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+            var stream = DirectorReplyStream()
+            for try await line in bytes.lines where !line.isEmpty {
+                try Task.checkCancellation()
+                _ = try stream.append(line) // Metadata must be validated before any text is shown.
+            }
+            try Task.checkCancellation()
+            return try validatedAdvice(try stream.completedContent(), context: context, detailed: detailed, runtime: Self.ollamaRuntimeLabel, allowsProposedTitle: DirectorAdviceRequest.requestsTitle(prompt))
+        }
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
-            do {
-                let session: LanguageModelSession
-                if recordInHistory {
-                    session = (appleSession as? LanguageModelSession) ?? makeAppleSession()
-                    appleSession = session
-                } else {
-                    session = makeAppleSession()
-                }
-                let replacementInstruction = allowsFootageReplacement && mode == .edit
-                    ? "Для локального выделения определи смысл просьбы. Если нужен другой исходный кусок видео вместо текущего, верни JSON {\"reply\":\"Подберу другой момент\",\"normalizedBrief\":\"\",\"commands\":[{\"action\":\"replace_footage\",\"target\":\"selected\",\"value\":\"\",\"secondaryTarget\":\"\"}]}. Для других просьб верни обычный ответ. Учитывай перефразирования; смена музыки, цвета, титра и удаление без замены не означают смену видео."
-                    : ""
-                let response = try await session.respond(to: """
-                    \(context.modelPrompt)
-
-                    \(replacementInstruction)
-
-                    Последнее сообщение пользователя:
-                    \(userMessage)
-
-                    Режим запроса: \(mode == .advisory ? "только совет; ничего не менять" : "подготовка монтажной правки").
-                    Ответь как режиссёр: конкретно перескажи замысел и назови следующий шаг. Обязательно учитывай точные числа из запроса. Не утверждай, что видел содержание кадров, если анализ не завершён. В режиме совета дай конкретные варианты по данным анализа и явно скажи, что исходник и Timeline не изменены.
-                    """)
-                let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty {
-                    if allowsFootageReplacement && mode == .edit,
-                       let typed = try? Self.decodeReply(text, userMessage: userMessage, runtimeLabel: "Apple Intelligence · локальная нейросеть", allowsFootageReplacement: true) { return typed }
-                    return DirectorAIReply(text: text, runtimeLabel: "Apple Intelligence · локальная нейросеть", normalizedBrief: nil)
-                }
-            } catch {
-                guard !Task.isCancelled else {
-                    return DirectorAIReply(text: "", runtimeLabel: Self.currentRuntimeLabel(), normalizedBrief: nil)
-                }
-            }
+            let session = LanguageModelSession(instructions: DirectorAdviceRequest.instructions)
+            let response = try await session.respond(to: requestData.messages.last!.content + "\nJSON: {\"stance\":\"keep|trim|compare|reorder|clarify|insufficientEvidence\",\"targetID\":\"\",\"evidenceIDs\":[],\"reply\":\"\"}")
+            try Task.checkCancellation()
+            return try validatedAdvice(response.content, context: context, detailed: detailed, runtime: "Apple Intelligence · локальная нейросеть", allowsProposedTitle: DirectorAdviceRequest.requestsTitle(prompt))
         }
         #endif
+        throw URLError(.cannotConnectToHost)
+    }
 
-        return DirectorAIReply(
-            text: fallback.make(userMessage: userMessage, context: context),
-            runtimeLabel: "Базовый алгоритм · это не нейросеть",
-            normalizedBrief: nil
-        )
+    private var compactAdviceHistory: String {
+        // Whole exchanges only; never truncate negations or user constraints.
+        var selected: [OllamaMessage] = []
+        var size = 0
+        for message in ollamaHistory.reversed() {
+            let cost = message.content.utf8.count
+            guard size + cost <= 2_400 else { break }
+            selected.insert(message, at: 0); size += cost
+            if selected.count >= 4 { break }
+        }
+        return selected.map { "\($0.role): \($0.content)" }.joined(separator: "\n")
+    }
+
+    private func validatedAdvice(_ content: String, context: DirectorContext, detailed: Bool, runtime: String, allowsProposedTitle: Bool = false) throws -> DirectorAIReply {
+        var judgment = try JSONDecoder().decode(DirectorJudgment.self, from: Data(Self.cleanedJSON(content).utf8))
+        guard judgment.targetID == (context.moment?.adviceTarget ?? "") else { throw URLError(.cannotParseResponse) }
+        let evidence = context.moment?.adviceEvidence ?? [:]
+        judgment.evidenceIDs = try judgment.evidenceIDs.map { alias in
+            guard let fact = evidence[alias] else { throw URLError(.cannotParseResponse) }
+            return fact.id
+        }
+        judgment.targetID = context.moment?.targetID ?? ""
+        guard judgment.validated(in: context.moment, detailed: detailed, allowsProposedTitle: allowsProposedTitle) else { throw URLError(.cannotParseResponse) }
+        return DirectorAIReply(text: judgment.reply, runtimeLabel: runtime, normalizedBrief: nil, judgment: judgment)
     }
 
     private func respondWithOllama(
@@ -286,7 +359,8 @@ final class LocalDirectorAgent {
         allowsFootageReplacement: Bool,
         onPartialReply: (@MainActor @Sendable (String) -> Void)?
     ) async throws -> DirectorAIReply {
-        guard await hasOllamaModel(startService: true) else { throw URLError(.cannotConnectToHost) }
+        let ollamaAvailable = await hasOllamaModel(startService: true)
+        try Task.checkCancellation()
         let requestModeInstruction = mode == .advisory
             ? "РЕЖИМ СОВЕТА: предложи музыку, название или объясни звук по данным анализа. Ничего не применяй, пиши в настоящем времени, верни commands: [] и пустой normalizedBrief. Обязательно скажи, что исходник и Timeline не изменены."
             : "РЕЖИМ МОНТАЖА: подготовь исполняемый план только для явно запрошенных изменений."
@@ -328,8 +402,21 @@ final class LocalDirectorAgent {
             Сообщение пользователя:
             \(userMessage)
             """)
-        let history = recordInHistory ? Array(ollamaHistory.suffix(8)) : []
+        let history = Array(ollamaHistory.suffix(8))
         let messages = [system] + history + [contextualUser]
+        if !ollamaAvailable {
+            #if canImport(FoundationModels)
+            if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
+                let session = LanguageModelSession(instructions: editingSystem.content)
+                let response = try await session.respond(to: messages.dropFirst().map(\.content).joined(separator: "\n") + "\nВерни полный JSON: {\"reply\":\"\",\"normalizedBrief\":\"\",\"commands\":[{\"action\":\"код\",\"target\":\"selected\",\"value\":\"\",\"secondaryTarget\":\"\"}]}")
+                try Task.checkCancellation()
+                return try Self.decodeReply(response.content, userMessage: userMessage, runtimeLabel: "Apple Intelligence · локальная нейросеть", allowsFootageReplacement: allowsFootageReplacement, mode: mode)
+            }
+            #endif
+            // No generation was attempted. The existing deterministic planner
+            // can still resolve supported commands and reports omissions.
+            return DirectorAIReply(text: "Проверяю доступные монтажные команды.", runtimeLabel: "Базовый алгоритм · это не нейросеть", normalizedBrief: nil, isFallback: true)
+        }
         let payload = OllamaChatRequest(model: Self.ollamaModel, messages: messages)
         var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
@@ -345,9 +432,11 @@ final class LocalDirectorAgent {
         var stream = DirectorReplyStream()
         for try await line in bytes.lines where !line.isEmpty {
             try Task.checkCancellation()
-            if let text = try stream.append(line) {
-                PerformanceTrace.current?.event("director.first-reply", values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
-                onPartialReply?(text)
+            if try stream.append(line) != nil {
+                PerformanceTrace.current?.event("director.reply-field-ready", values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
+                // An unvalidated phrase may contain an invented observation or
+                // claim completion. Keep it off screen until there is a receipt.
+                onPartialReply?("Проверяю полный план правки")
             }
         }
         let content = Self.cleanedJSON(try stream.completedContent())
@@ -356,11 +445,6 @@ final class LocalDirectorAgent {
         let reply = decoded.reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.isEmpty else { throw URLError(.cannotParseResponse) }
 
-        if recordInHistory {
-            ollamaHistory.append(OllamaMessage(role: "user", content: userMessage))
-            ollamaHistory.append(OllamaMessage(role: "assistant", content: reply))
-            if ollamaHistory.count > 10 { ollamaHistory.removeFirst(ollamaHistory.count - 10) }
-        }
         return try Self.decodeReply(content, userMessage: userMessage, runtimeLabel: Self.ollamaRuntimeLabel,
                                     allowsFootageReplacement: allowsFootageReplacement && mode == .edit, mode: mode)
     }

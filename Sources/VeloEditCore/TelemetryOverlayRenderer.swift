@@ -53,7 +53,7 @@ public enum TelemetryOverlayRenderer {
         }
         let sample = telemetry.sample(at: time)
         let sourceProgress = min(max(0, time / max(0.001, telemetry.timedSamples?.last?.timestamp ?? 1)), 1)
-        let widgets = layouts(for: settings)
+        let widgets = layouts(for: settings).filter { telemetry.supports($0.kind, presentation: $0.effectivePresentation) }
         guard !widgets.isEmpty else { return nil }
         let scale: CGFloat = 1
         let pixelRects = widgets.map { layout in
@@ -100,6 +100,19 @@ public enum TelemetryOverlayRenderer {
         size: CGSize
     ) -> CGImage? {
         guard size.width.isFinite, size.height.isFinite, size.width > 1, size.height > 1 else { return nil }
+        let summary = catalogueTelemetry
+        var layout = TelemetryWidgetLayout.presetLayout(kind: kind, presentation: presentation)
+        layout.x = 0.04
+        layout.y = 0.04
+        layout.width = 0.92
+        layout.height = 0.92
+        let settings = TelemetryOverlaySettings(metrics: kind.metric.map { [$0] } ?? [], style: style, widgets: [layout])
+        let renderSize = CGSize(width: max(2, size.width.rounded(.up)), height: max(2, size.height.rounded(.up)))
+        guard let preview = image(settings: settings, telemetry: summary, progress: 0.5, sourceTime: 2.5, renderSize: renderSize) else { return nil }
+        return CIContext(options: nil).createCGImage(preview, from: CGRect(origin: .zero, size: renderSize))
+    }
+
+    static let catalogueTelemetry: TelemetrySummary = {
         let route = [
             TelemetryCoordinate(latitude: 55.7500, longitude: 37.6100),
             TelemetryCoordinate(latitude: 55.7508, longitude: 37.6120),
@@ -146,29 +159,30 @@ public enum TelemetryOverlayRenderer {
             cameraEV: 0.7,
             cameraColorTemperatureKelvin: 5_600
         )
-        let summary = TelemetrySummary(
+        let speeds = [4.0, 8, 10.6, 12, 14]
+        let altitudes = [780.0, 805, 798, 842, 920]
+        let samples = route.enumerated().map { index, coordinate in
+            var point = sample
+            point.timestamp = Double(index) * 1.25
+            point.coordinate = coordinate
+            point.speedMetersPerSecond = speeds[index]
+            point.altitudeMeters = altitudes[index]
+            return point
+        }
+        return TelemetrySummary(
             hasGPMF: true,
-            sampleCount: 2,
+            sampleCount: samples.count,
             maxSpeedMetersPerSecond: 16,
             distanceMeters: 24_800,
             minAltitudeMeters: 780,
             maxAltitudeMeters: 920,
             maxGForce: 2,
             route: route,
-            speedSamplesMetersPerSecond: [4, 8, 10.6, 14],
-            altitudeSamplesMeters: [780, 805, 798, 842, 920],
-            timedSamples: [sample, sample]
+            speedSamplesMetersPerSecond: speeds,
+            altitudeSamplesMeters: altitudes,
+            timedSamples: samples
         )
-        var layout = TelemetryWidgetLayout.presetLayout(kind: kind, presentation: presentation)
-        layout.x = 0.04
-        layout.y = 0.04
-        layout.width = 0.92
-        layout.height = 0.92
-        let settings = TelemetryOverlaySettings(metrics: kind.metric.map { [$0] } ?? [], style: style, widgets: [layout])
-        let renderSize = CGSize(width: max(2, size.width.rounded(.up)), height: max(2, size.height.rounded(.up)))
-        guard let preview = image(settings: settings, telemetry: summary, progress: 0.5, sourceTime: 5, renderSize: renderSize) else { return nil }
-        return CIContext(options: nil).createCGImage(preview, from: CGRect(origin: .zero, size: renderSize))
-    }
+    }()
 
     private static func layouts(for settings: TelemetryOverlaySettings) -> [TelemetryWidgetLayout] {
         if let custom = settings.widgets, !custom.isEmpty { return custom }
@@ -204,44 +218,47 @@ public enum TelemetryOverlayRenderer {
         let style = settings.effectiveStyle
         let palette = colors(layout: layout, style: style)
         let presentation = layout.effectivePresentation
+        let geometry = TelemetryWidgetGeometry(rect: rect, presentation: presentation, showsLabel: layout.showsLabel)
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.setAlpha(layout.opacity)
         if palette.background.alpha > 0.01 || layout.borderWidth > 0 {
             context.saveGState()
             context.setShadow(offset: CGSize(width: 0, height: -2), blur: layout.shadowRadius, color: CGColor(gray: 0, alpha: 0.5))
-            context.setFillColor(palette.background.copy(alpha: palette.background.alpha * layout.opacity) ?? palette.background)
+            context.setFillColor(palette.background.copy(alpha: palette.background.alpha) ?? palette.background)
             let radius = style == .circular ? min(rect.width, rect.height) / 2 : min(18, rect.height * 0.16)
             let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
             context.addPath(path); context.fillPath()
             if layout.borderWidth > 0 {
-                context.addPath(path); context.setStrokeColor(palette.accent.copy(alpha: layout.opacity) ?? palette.accent)
+                context.addPath(path); context.setStrokeColor(palette.accent)
                 context.setLineWidth(layout.borderWidth); context.strokePath()
             }
             context.restoreGState()
         }
+        context.clip(to: rect)
 
+        if layout.showsLabel {
+            draw(lapLabel(presentation) ?? layout.kind.localizedTitle.uppercased(), context: context,
+                 rect: geometry.label, fontName: fontName(for: style, fallback: layout.fontName),
+                 fontSize: rect.height * 0.11, color: palette.accent)
+        }
         if presentation == .routePlot {
             guard let route = telemetry.route, route.count > 1 else { return }
-            drawRoute(route, context: context, rect: rect.insetBy(dx: rect.width * 0.08, dy: rect.height * 0.12), progress: layout.kind == .routeProgress ? progress : 1, color: palette.accent)
-            if style == .whiteVAM, let vertical = sample?.verticalSpeedMetersPerSecond {
-                draw("VAM", context: context, rect: CGRect(x: rect.maxX - rect.width * 0.34, y: rect.minY + rect.height * 0.28, width: rect.width * 0.30, height: rect.height * 0.18), fontName: fontName(for: style, fallback: layout.fontName), fontSize: rect.height * 0.12, color: palette.foreground)
-                draw(String(format: "%.0f M/H", vertical * 3_600), context: context, rect: CGRect(x: rect.maxX - rect.width * 0.34, y: rect.minY + rect.height * 0.06, width: rect.width * 0.32, height: rect.height * 0.26), fontName: fontName(for: style, fallback: layout.fontName), fontSize: rect.height * 0.22, color: palette.foreground)
-            } else if layout.showsLabel {
-                draw(layout.kind.localizedTitle.uppercased(), context: context, rect: labelRect(rect), fontName: fontName(for: style, fallback: layout.fontName), fontSize: rect.height * 0.13, color: palette.foreground)
-            }
+            drawRoute(route, context: context, rect: geometry.graphic, coordinate: sample?.coordinate, color: palette.accent)
             return
         }
         if presentation == .elevationPlot {
             guard let values = telemetry.altitudeSamplesMeters, values.count > 1 else { return }
-            drawSeries(values, context: context, rect: rect.insetBy(dx: rect.width * 0.08, dy: rect.height * 0.18), progress: progress, color: palette.accent)
-            if layout.showsLabel { draw(layout.kind.localizedTitle.uppercased(), context: context, rect: labelRect(rect), fontName: fontName(for: style, fallback: layout.fontName), fontSize: rect.height * 0.13, color: palette.foreground) }
+            drawSeries(values, context: context, rect: geometry.graphic, progress: progress, color: palette.accent)
             return
         }
         guard let display = displayValue(for: layout.kind, sample: sample, telemetry: telemetry, time: time) else { return }
-        let gaugeRect = rect.insetBy(dx: rect.width * 0.12, dy: rect.height * 0.10)
+        let gaugeRect = geometry.graphic
         switch presentation {
         case .linear:
-            drawBar(value: display.normalized, context: context, rect: CGRect(x: rect.minX + rect.width * 0.10, y: rect.maxY - rect.height * 0.24, width: rect.width * 0.80, height: max(6, rect.height * 0.09)), color: palette.accent, segmented: false)
+            drawBar(value: display.normalized, context: context, rect: gaugeRect, color: palette.accent, segmented: false)
         case .linearSegmented:
-            drawBar(value: display.normalized, context: context, rect: CGRect(x: rect.minX + rect.width * 0.08, y: rect.maxY - rect.height * 0.28, width: rect.width * 0.84, height: max(7, rect.height * 0.13)), color: palette.accent, segmented: true)
+            drawBar(value: display.normalized, context: context, rect: gaugeRect, color: palette.accent, segmented: true)
         case .arc:
             drawArcGauge(value: display.normalized, context: context, rect: gaugeRect, color: palette.accent, reverse: false, segments: 0)
         case .arcReverse:
@@ -253,7 +270,7 @@ public enum TelemetryOverlayRenderer {
         case .corner:
             drawCornerGauge(value: display.normalized, context: context, rect: gaugeRect, color: palette.accent)
         case .headingTape:
-            drawHeadingTape(heading: sample?.headingDegrees ?? 0, context: context, rect: rect.insetBy(dx: rect.width * 0.05, dy: rect.height * 0.20), color: palette.accent, labelColor: palette.foreground)
+            drawHeadingTape(heading: sample?.headingDegrees ?? 0, context: context, rect: gaugeRect, color: palette.accent, labelColor: palette.foreground)
         case .gForce:
             drawGForce(x: sample?.gForceX ?? 0, y: sample?.gForceY ?? 0, context: context, rect: gaugeRect, color: palette.accent, foreground: palette.foreground)
         case .leanAngle:
@@ -263,19 +280,39 @@ public enum TelemetryOverlayRenderer {
         case .routePlot, .elevationPlot:
             break
         }
-        if layout.showsLabel {
-            let label = lapLabel(presentation) ?? layout.kind.localizedTitle.uppercased()
-            draw(label, context: context, rect: labelRect(rect), fontName: fontName(for: style, fallback: layout.fontName), fontSize: max(10, rect.height * 0.11), color: palette.accent)
-        }
         if presentation == .lapLog {
-            let base = sample?.lapTimeSeconds ?? time
-            for index in 0..<3 {
-                draw("L\(max(1, Int(sample?.lapNumber ?? 3) - index))   \(String(format: "%.2f", base + Double(index) * 0.42))", context: context, rect: CGRect(x: rect.minX + rect.width * 0.10, y: rect.minY + rect.height * (0.18 + Double(index) * 0.18), width: rect.width * 0.80, height: rect.height * 0.17), fontName: fontName(for: style, fallback: layout.fontName), fontSize: max(10, rect.height * 0.13), color: index == 0 ? palette.accent : palette.foreground)
+            let laps = recordedLaps(telemetry, at: time).suffix(3).reversed()
+            for (index, lap) in laps.enumerated() {
+                let row = CGRect(x: geometry.value.minX, y: geometry.value.maxY - CGFloat(index + 1) * geometry.value.height / 3,
+                                 width: geometry.value.width, height: geometry.value.height / 3)
+                draw(String(format: "L%d   %.2f s", lap.number, lap.seconds), context: context, rect: row,
+                     fontName: fontName(for: style, fallback: layout.fontName), fontSize: rect.height * 0.13,
+                     color: index == 0 ? palette.accent : palette.foreground)
             }
         } else if presentation != .headingTape {
-            let valueRect = CGRect(x: rect.minX + rect.width * 0.07, y: rect.minY + rect.height * 0.20, width: rect.width * 0.86, height: rect.height * 0.48)
-            draw(display.text, context: context, rect: valueRect, fontName: fontName(for: style, fallback: layout.fontName), fontSize: max(15, rect.height * 0.29), color: palette.foreground)
+            var text = display.text
+            let completed = recordedLaps(telemetry, at: time).filter { $0.number < Int(sample?.lapNumber ?? 0) }
+            if presentation == .lapBest {
+                text = completed.map(\.seconds).min().map { String(format: "%.2f s", $0) } ?? "—"
+            } else if presentation == .lapDelta {
+                // A live delta requires a reference at the same position on the lap.
+                // Only show the measured difference between completed laps here.
+                text = completed.last.flatMap { last in
+                    completed.map(\.seconds).min().map { String(format: "%+.2f s", last.seconds - $0) }
+                } ?? "—"
+            }
+            draw(text, context: context, rect: geometry.value, fontName: fontName(for: style, fallback: layout.fontName),
+                 fontSize: rect.height * 0.29, color: palette.foreground)
         }
+    }
+
+    private static func recordedLaps(_ telemetry: TelemetrySummary, at time: Double) -> [(number: Int, seconds: Double)] {
+        var laps: [Int: Double] = [:]
+        for sample in telemetry.timedSamples ?? [] where sample.timestamp <= time {
+            guard let number = sample.lapNumber, let seconds = sample.lapTimeSeconds, number > 0 else { continue }
+            laps[Int(number)] = max(laps[Int(number)] ?? 0, seconds)
+        }
+        return laps.keys.sorted().map { ($0, laps[$0]!) }
     }
 
     private struct Display { var text: String; var normalized: Double }
@@ -283,7 +320,10 @@ public enum TelemetryOverlayRenderer {
         func display(_ value: Double?, _ format: String, normalized: Double) -> Display? { value.map { Display(text: String(format: format, $0), normalized: min(max(0, normalized), 1)) } }
         switch kind {
         case .speedometer, .speedValue, .speedBar: return display(sample?.speedMetersPerSecond.map { $0 * 3.6 }, "%.0f km/h", normalized: (sample?.speedMetersPerSecond ?? 0) / max(1, telemetry.maxSpeedMetersPerSecond ?? 1))
-        case .altitude: return display(sample?.altitudeMeters, "%.0f m", normalized: 0.5)
+        case .altitude:
+            let minimum = telemetry.minAltitudeMeters ?? 0
+            let span = max(1, (telemetry.maxAltitudeMeters ?? minimum + 1) - minimum)
+            return display(sample?.altitudeMeters, "%.0f m", normalized: ((sample?.altitudeMeters ?? minimum) - minimum) / span)
         case .gForce:
             let scalar = sample?.gForce ?? {
                 guard let x = sample?.gForceX, let y = sample?.gForceY else { return nil }
@@ -383,13 +423,15 @@ public enum TelemetryOverlayRenderer {
 
     private static func drawHeadingTape(heading: Double, context: CGContext, rect: CGRect, color: CGColor, labelColor: CGColor) {
         let center = rect.midX
+        let slotWidth = rect.width / 9
+        let labelFontSize = min(rect.height * 0.22, slotWidth / 2.5)
         for offset in -4...4 {
             let x = center + CGFloat(offset) * rect.width / 9
             context.setStrokeColor(offset == 0 ? color : labelColor.copy(alpha: 0.65) ?? labelColor)
             context.setLineWidth(offset == 0 ? 3 : 1.5)
             context.move(to: CGPoint(x: x, y: rect.maxY - rect.height * 0.25)); context.addLine(to: CGPoint(x: x, y: rect.maxY)); context.strokePath()
             let value = (Int(heading.rounded()) + offset * 15 + 360) % 360
-            draw(value % 90 == 0 ? [0: "N", 90: "E", 180: "S", 270: "W"][value] ?? "\(value)" : "\(value)", context: context, rect: CGRect(x: x - 20, y: rect.minY + rect.height * 0.18, width: 40, height: rect.height * 0.28), fontName: "Helvetica Neue", fontSize: rect.height * 0.22, color: offset == 0 ? color : labelColor)
+            draw(value % 90 == 0 ? [0: "N", 90: "E", 180: "S", 270: "W"][value] ?? "\(value)" : "\(value)", context: context, rect: CGRect(x: x - slotWidth * 0.45, y: rect.minY + rect.height * 0.18, width: slotWidth * 0.9, height: rect.height * 0.28), fontName: "Helvetica Neue", fontSize: labelFontSize, color: offset == 0 ? color : labelColor)
         }
     }
 
@@ -431,24 +473,50 @@ public enum TelemetryOverlayRenderer {
         context.setStrokeColor(color); context.setLineWidth(max(2, rect.height * 0.025)); context.strokePath()
     }
 
-    private static func drawRoute(_ route: [TelemetryCoordinate], context: CGContext, rect: CGRect, progress: Double, color: CGColor) {
-        guard let minLat = route.map(\.latitude).min(), let maxLat = route.map(\.latitude).max(), let minLon = route.map(\.longitude).min(), let maxLon = route.map(\.longitude).max() else { return }
-        let latSpan = max(0.000001, maxLat - minLat), lonSpan = max(0.000001, maxLon - minLon)
-        let count = max(2, min(route.count, Int(Double(route.count) * min(max(0, progress), 1))))
-        context.beginPath()
-        for (index, point) in route.prefix(count).enumerated() {
-            let location = CGPoint(x: rect.minX + CGFloat((point.longitude - minLon) / lonSpan) * rect.width, y: rect.minY + CGFloat((point.latitude - minLat) / latSpan) * rect.height)
-            index == 0 ? context.move(to: location) : context.addLine(to: location)
+    private static func drawRoute(_ route: [TelemetryCoordinate], context: CGContext, rect: CGRect, coordinate: TelemetryCoordinate?, color: CGColor) {
+        guard let minLat = route.map(\.latitude).min(), let maxLat = route.map(\.latitude).max(),
+              let minLon = route.map(\.longitude).min(), let maxLon = route.map(\.longitude).max() else { return }
+        let longitudeScale = max(0.01, cos((minLat + maxLat) / 2 * .pi / 180))
+        let latSpan = max(0.000001, maxLat - minLat), lonSpan = max(0.000001, (maxLon - minLon) * longitudeScale)
+        let area = rect.insetBy(dx: 4, dy: 4)
+        let scale = min(area.width / lonSpan, area.height / latSpan)
+        func point(_ coordinate: TelemetryCoordinate) -> CGPoint {
+            CGPoint(x: area.midX + (coordinate.longitude - (minLon + maxLon) / 2) * longitudeScale * scale,
+                    y: area.midY + (coordinate.latitude - (minLat + maxLat) / 2) * scale)
         }
-        context.setStrokeColor(color); context.setLineWidth(max(2, rect.height * 0.025)); context.setLineCap(.round); context.setLineJoin(.round); context.strokePath()
+        context.beginPath()
+        for (index, coordinate) in route.enumerated() {
+            index == 0 ? context.move(to: point(coordinate)) : context.addLine(to: point(coordinate))
+        }
+        context.setStrokeColor(color.copy(alpha: 0.5) ?? color)
+        context.setLineWidth(max(1.5, rect.height * 0.025)); context.setLineCap(.round); context.setLineJoin(.round); context.strokePath()
+        if let coordinate {
+            let location = point(coordinate), radius = max(2.5, min(rect.width, rect.height) * 0.045)
+            context.setFillColor(color)
+            context.fillEllipse(in: CGRect(x: location.x - radius, y: location.y - radius, width: radius * 2, height: radius * 2))
+        }
     }
 
-    private static func labelRect(_ rect: CGRect) -> CGRect { CGRect(x: rect.minX + rect.width * 0.07, y: rect.maxY - rect.height * 0.25, width: rect.width * 0.86, height: rect.height * 0.17) }
     private static func draw(_ text: String, context: CGContext, rect: CGRect, fontName: String, fontSize: CGFloat, color: CGColor) {
-        let font = CTFontCreateWithName(fontName as CFString, fontSize, nil)
-        let attributes: [NSAttributedString.Key: Any] = [NSAttributedString.Key(kCTFontAttributeName as String): font, NSAttributedString.Key(kCTForegroundColorAttributeName as String): color]
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
-        context.textPosition = CGPoint(x: rect.minX, y: rect.minY + max(0, (rect.height - fontSize) / 2)); CTLineDraw(line, context)
+        guard rect.width > 0, rect.height > 0 else { return }
+        func line(at size: CGFloat) -> CTLine {
+            let attributes: [NSAttributedString.Key: Any] = [
+                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName(fontName as CFString, size, nil),
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): color
+            ]
+            return CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
+        }
+        let original = line(at: fontSize)
+        var ascent: CGFloat = 0, descent: CGFloat = 0
+        let width = CTLineGetTypographicBounds(original, &ascent, &descent, nil)
+        let scale = min(1, rect.width / max(1, width), rect.height / max(1, ascent + descent))
+        let fitted = line(at: fontSize * scale)
+        _ = CTLineGetTypographicBounds(fitted, &ascent, &descent, nil)
+        context.saveGState()
+        context.clip(to: rect)
+        context.textPosition = CGPoint(x: rect.minX, y: rect.midY - (ascent + descent) / 2 + descent)
+        CTLineDraw(fitted, context)
+        context.restoreGState()
     }
 
     private struct Palette { var foreground: CGColor; var background: CGColor; var accent: CGColor }

@@ -232,9 +232,10 @@ private func storyFixture() -> ([MediaAsset], [AnalysisResult]) {
         userMessage: "Посоветуй музыку, название и скажи, что за шум — ничего не меняй",
         context: context
     )
-    #expect(reply.contains("Велопрогулка"))
-    #expect(reply.contains("ветер/шум"))
-    #expect(reply.contains("Timeline не изменены"))
+    // Global tags and aggregate DSP hints do not establish local observations.
+    #expect(!reply.contains("Велопрогулка"))
+    #expect(!reply.contains("ветер/шум"))
+    #expect(reply.contains("Укажите клип"))
 }
 
 @Test func storyRespectsDiversityAndCreatesTimeline() {

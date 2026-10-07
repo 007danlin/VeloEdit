@@ -1,0 +1,35 @@
+{
+  "arm64": {
+    "application": {
+      "architecture": "arm64",
+      "directorModel": "qwen3:4b-instruct"
+    },
+    "speech": {
+      "architecture": "arm64",
+      "speechCompute": "MLComputeUnits(rawValue: 3)"
+    },
+    "ovrley": "ready",
+    "ollama": "ollama version is 0.32.14",
+    "video_codecs": [
+      "h264",
+      "aac"
+    ]
+  },
+  "x86_64": {
+    "application": {
+      "architecture": "x86_64",
+      "directorModel": "qwen3:4b-instruct"
+    },
+    "speech": {
+      "architecture": "x86_64",
+      "speechCompute": "MLComputeUnits(rawValue: 1)"
+    },
+    "ovrley": "ready",
+    "ollama": "ollama version is 0.32.14",
+    "video_codecs": [
+      "h264",
+      "aac"
+    ]
+  },
+  "coverage": "Intel slice executed through Rosetta on Apple silicon; physical Intel GPU and model inference require an Intel Mac."
+}

@@ -1,0 +1,48 @@
+{
+  "sampleCount": 711,
+  "samplePeriodSeconds": 1,
+  "compilerPresentSamples": 21,
+  "processes": {
+    "/opt/homebrew/opt/ollama/bin/ollama": {
+      "peakSampledRSSKiB": 52288,
+      "peakSampledCPUPercent": 45.5
+    },
+    "/Users/daniellineckij/VeloEdit/Build/VeloEdit.app/Contents/MacOS/VeloEdit": {
+      "peakSampledRSSKiB": 120752,
+      "peakSampledCPUPercent": 15.1
+    },
+    "/opt/homebrew/Cellar/ollama/0.32.14/libexec/lib/ollama/llama-server": {
+      "peakSampledRSSKiB": 5781200,
+      "peakSampledCPUPercent": 140.8
+    },
+    "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend": {
+      "peakSampledRSSKiB": 1721664,
+      "peakSampledCPUPercent": 100.0
+    },
+    "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift": {
+      "peakSampledRSSKiB": 3888,
+      "peakSampledCPUPercent": 0
+    },
+    "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-test": {
+      "peakSampledRSSKiB": 71296,
+      "peakSampledCPUPercent": 10.1
+    },
+    "/var/folders/cm/7sxc540x6jb6kb5722ntgyvm0000gn/T/TemporaryDirectory.q9EAvK/veloedit-manifest": {
+      "peakSampledRSSKiB": 32,
+      "peakSampledCPUPercent": 2.0
+    },
+    "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec/swift/pm/swiftpm-testing-helper": {
+      "peakSampledRSSKiB": 819984,
+      "peakSampledCPUPercent": 97.3
+    },
+    "Build/VeloEdit.app/Contents/MacOS/VeloEdit": {
+      "peakSampledRSSKiB": 32,
+      "peakSampledCPUPercent": 0
+    }
+  },
+  "limitations": [
+    "Sampling peaks, not guaranteed peak memory or GPU measurement.",
+    "The app process was a separate open application, not a paired production baseline.",
+    "Test runner RSS includes test/framework overhead. Does not establish additional application RSS <=64 MiB."
+  ]
+}

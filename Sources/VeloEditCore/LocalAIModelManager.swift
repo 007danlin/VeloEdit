@@ -29,6 +29,7 @@ public struct InstalledAIModel: Codable, Sendable, Hashable {
         public let parameter_size: String?
     }
     public let name: String
+    public let size: Int64?
     public let digest: String?
     public let details: Details?
     public var quantization: String? { details?.quantization_level }
@@ -126,7 +127,40 @@ public actor LocalAIModelManager {
     }
 
     public func pull(model: String, progress: (@Sendable (LocalModelDownloadProgress) -> Void)? = nil) async throws {
+        try Self.checkDownloadCapacity(requiredBytes: 512_000_000)
         try await Self.recoveringRequest { try await self.pullAttempt(model: model, progress: progress) }
+    }
+
+    public nonisolated static var modelStorageURL: URL {
+        if let path = ProcessInfo.processInfo.environment["OLLAMA_MODELS"], !path.isEmpty {
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ollama/models")
+    }
+
+    public nonisolated static func checkDownloadCapacity(requiredBytes: Int64, availableBytes: Int64? = nil) throws {
+        let available = availableBytes ?? ExportPreflight.availableCapacity(near: modelStorageURL)
+        if let available, available < requiredBytes {
+            throw LocalAIModelError.insufficientStorage(required: requiredBytes, available: available)
+        }
+    }
+
+    public func installedModelList() async throws -> [InstalledAIModel] {
+        guard await installedModels(forceRefresh: true) != nil else { throw LocalAIModelError.serviceUnavailable }
+        return modelDetails.values.sorted { $0.name < $1.name }
+    }
+
+    public func removeModel(_ name: String) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/delete"))
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": name])
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+        tagsSnapshot = nil
+        warmedModels.removeValue(forKey: name)
+        UserDefaults.standard.removeObject(forKey: "VeloEdit.ModelDownloadConsent.\(name)")
     }
 
     private func pullAttempt(model: String, progress: (@Sendable (LocalModelDownloadProgress) -> Void)?) async throws {
@@ -144,6 +178,9 @@ public actor LocalAIModelManager {
             if let error = event.error, !error.isEmpty { throw LocalAIModelError.downloadFailed(error) }
             let fraction: Double
             if let total = event.total, total > 0, let completed = event.completed {
+                // Check remaining bytes so an interrupted download can resume
+                // without requiring enough free space for a second full model.
+                try Self.checkDownloadCapacity(requiredBytes: max(0, total - completed) + 512_000_000)
                 fraction = min(1, max(0, Double(completed) / Double(total)))
             } else {
                 fraction = event.status == "success" ? 1 : 0
@@ -277,6 +314,7 @@ public enum LocalAIModelError: LocalizedError {
     case serviceUnavailable
     case downloadFailed(String)
     case downloadApprovalRequired(String)
+    case insufficientStorage(required: Int64, available: Int64)
 
     public var errorDescription: String? {
         switch self {
@@ -284,6 +322,8 @@ public enum LocalAIModelError: LocalizedError {
         case .serviceUnavailable: return "Не удалось запустить локальный сервис Ollama."
         case .downloadFailed(let message): return "Не удалось загрузить модель: \(message)"
         case .downloadApprovalRequired: return "Для подготовки локального анализа требуется разрешить загрузку модели."
+        case .insufficientStorage(let required, let available):
+            return "Недостаточно места для модели. Нужно ещё \(ByteCountFormatter.string(fromByteCount: required, countStyle: .file)), свободно \(ByteCountFormatter.string(fromByteCount: available, countStyle: .file)). Освободите место и повторите загрузку."
         }
     }
 }

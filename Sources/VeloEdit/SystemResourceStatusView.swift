@@ -6,6 +6,14 @@ struct SystemResourceStatusView: View {
     @State private var snapshot: SystemResourceSnapshot?
     @State private var showsDetails = false
 
+    private enum Summary: String, CaseIterable {
+        case checking = "Проверяю Mac"
+        case nominal = "Нагрев в норме"
+        case fair = "Mac нагревается"
+        case serious = "Высокий нагрев"
+        case critical = "Охлаждение"
+    }
+
     private func loadTint(_ value: Double?) -> Color {
         guard let value else { return .secondary }
         if value >= 85 { return .red }
@@ -22,13 +30,13 @@ struct SystemResourceStatusView: View {
         }
     }
 
-    private var summary: String {
+    private var summary: Summary {
         switch snapshot?.thermalLevel {
-        case .nominal: return "Нагрев в норме"
-        case .fair: return "Mac нагревается"
-        case .serious: return "Высокий нагрев"
-        case .critical: return "Охлаждение"
-        case nil: return "Проверяю Mac"
+        case .nominal: return .nominal
+        case .fair: return .fair
+        case .serious: return .serious
+        case .critical: return .critical
+        case nil: return .checking
         }
     }
 
@@ -39,12 +47,22 @@ struct SystemResourceStatusView: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(thermalTint)
                     .frame(width: 18)
-                Text(summary)
-                    .font(.system(size: 11, weight: .medium))
+                ZStack(alignment: .leading) {
+                    // Reserve every status's width, including before the first sample,
+                    // so updates never move the toolbar item or its CPU meter.
+                    ForEach(Summary.allCases, id: \.self) { status in
+                        Text(status.rawValue).hidden().accessibilityHidden(true)
+                    }
+                    Text(summary.rawValue)
+                }
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+                .fixedSize()
                 VStack(alignment: .leading, spacing: 3) {
                     Text("CPU \(percent(snapshot?.systemCPUPercent))")
                         .font(.system(size: 10, weight: .medium))
                         .monospacedDigit()
+                        .lineLimit(1)
                     loadMeter(snapshot?.systemCPUPercent, processValue: snapshot?.processCPUPercent,
                               label: "Общая нагрузка Mac · CPU", height: 4)
                 }
@@ -59,7 +77,7 @@ struct SystemResourceStatusView: View {
         .fixedSize()
         .help("Нагрузка и нагрев Mac")
         .accessibilityLabel("Состояние компьютера")
-        .accessibilityValue("\(summary), CPU \(percent(snapshot?.systemCPUPercent))")
+        .accessibilityValue("\(summary.rawValue), CPU \(percent(snapshot?.systemCPUPercent))")
         .popover(isPresented: $showsDetails) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 10) {
@@ -70,7 +88,7 @@ struct SystemResourceStatusView: View {
                         .background(thermalTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Состояние Mac").font(.headline)
-                        Text(summary).font(.caption).foregroundStyle(.secondary)
+                        Text(summary.rawValue).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 loadRow("Общая нагрузка Mac · CPU", value: snapshot?.systemCPUPercent,

@@ -53,15 +53,18 @@ struct TimelineDrawingSlice {
 /// Observe AppKit's clip bounds without a SwiftUI geometry preference on every
 /// clip. Publish only when the buffered render window changes.
 struct TimelineViewportReader: NSViewRepresentable {
+    var onOriginChange: ((CGPoint) -> Void)? = nil
     let onChange: (TimelineRenderWindow) -> Void
 
     func makeNSView(context: Context) -> ObserverView {
         let view = ObserverView()
+        view.onOriginChange = onOriginChange
         view.onChange = onChange
         return view
     }
 
     func updateNSView(_ view: ObserverView, context: Context) {
+        view.onOriginChange = onOriginChange
         view.onChange = onChange
         view.scheduleUpdate()
     }
@@ -70,6 +73,8 @@ struct TimelineViewportReader: NSViewRepresentable {
 
     final class ObserverView: NSView {
         var onChange: ((TimelineRenderWindow) -> Void)?
+        var onOriginChange: ((CGPoint) -> Void)?
+        private(set) var canvasOrigin: CGPoint?
         private weak var clipView: NSClipView?
         private var observers: [NSObjectProtocol] = []
         private var previous: TimelineRenderWindow?
@@ -84,6 +89,7 @@ struct TimelineViewportReader: NSViewRepresentable {
             observers.removeAll()
             clipView = nil
             previous = nil
+            canvasOrigin = nil
         }
 
         func scheduleUpdate() {
@@ -111,6 +117,14 @@ struct TimelineViewportReader: NSViewRepresentable {
             }
             let rect = convert(clip.bounds, from: clip)
             guard rect.width > 0, rect.minX.isFinite, rect.maxX.isFinite else { return }
+            // DropInfo uses a top-left origin; a represented NSView normally
+            // has bottom-left coordinates even inside SwiftUI's scroll view.
+            let origin = CGPoint(x: -rect.minX,
+                y: isFlipped ? -rect.minY : rect.maxY - bounds.maxY)
+            if canvasOrigin != origin {
+                canvasOrigin = origin
+                onOriginChange?(origin)
+            }
             let next = TimelineRenderWindow(visibleRect: rect)
             guard previous != next else { return }
             previous = next

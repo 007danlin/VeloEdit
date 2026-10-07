@@ -1,0 +1,13 @@
+{
+  "design_url": "https://www.figma.com/design/cZk2AI5z9zOpCyJKcAU8nF?node-id=2-8",
+  "background": "background.png",
+  "font": "Inter",
+  "window_origin": [200, 160],
+  "window_size": [760, 500],
+  "icon_size": 112,
+  "text_size": 14,
+  "icon_locations": {
+    "VeloEdit.app": [190, 270],
+    "Applications": [570, 270]
+  }
+}

@@ -1,0 +1,5 @@
+{"elapsed":0.0010037916654255241,"event":"operation.begin","fields":{"date":"2026-10-06T18:33:24Z","name":"director.runtime-study.baseline","projectID":"65089499-2A8C-4BAD-85B9-F2236680608F","revision":""},"operationID":"47BEAD95-40B4-4048-B0B4-538999D11A6A","values":{}}
+{"elapsed":9.1281687500013504,"event":"director.first-reply","fields":{},"operationID":"47BEAD95-40B4-4048-B0B4-538999D11A6A","values":{"seconds":9.1241963333304739}}
+{"elapsed":9.2115862499995274,"event":"director.runtime","fields":{},"operationID":"47BEAD95-40B4-4048-B0B4-538999D11A6A","values":{"generatedTokens":167,"generationSeconds":7.7119299999999997,"loadSeconds":0.20831137499999999,"promptSeconds":1.240858,"promptTokens":552}}
+{"elapsed":9.2120052083337214,"event":"director.plan-complete","fields":{},"operationID":"47BEAD95-40B4-4048-B0B4-538999D11A6A","values":{"seconds":9.2080362083288492}}
+{"elapsed":9.2121259583364008,"event":"operation.end","fields":{"status":"success"},"operationID":"47BEAD95-40B4-4048-B0B4-538999D11A6A","values":{}}

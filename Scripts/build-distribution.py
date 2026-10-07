@@ -110,9 +110,15 @@ def build(args):
             return 0
     if args.release and args.skip_build:
         raise ValueError("A public release must rebuild the complete app; --skip-build is for local packaging only.")
+    packaging_python = ROOT / "Build/PackagingPython/bin/python3"
+    if not packaging_python.is_file():
+        raise ValueError("Install DMG build tools first: python3 -m venv Build/PackagingPython && "
+                         "Build/PackagingPython/bin/python3 -m pip install -r Distribution/requirements.txt")
+    run(packaging_python, "-c", "import dmgbuild, ds_store, mac_alias")
     if not args.release:
         env.pop("VELOEDIT_CODESIGN_IDENTITY", None)
     env["CONFIGURATION"] = "release"
+    env["VELOEDIT_ARCHS"] = "arm64 x86_64"
     if not args.skip_build:
         run(ROOT / "Scripts/build-app.sh", env=env, cwd=ROOT)
     original = ROOT / "Build/VeloEdit.app"
@@ -121,7 +127,10 @@ def build(args):
     build_id = info["CFBundleVersion"]
     label = "" if args.release else "-local"
     architectures = subprocess.check_output(["lipo", "-archs", str(original / "Contents/MacOS/VeloEdit")], text=True).split()
-    architecture = "universal" if len(architectures) > 1 else architectures[0]
+    if set(architectures) != {"arm64", "x86_64"}:
+        raise ValueError("The installer requires both arm64 and x86_64. Rebuild with ./Scripts/build-app.sh.")
+    run("python3", ROOT / "Scripts/verify-architectures.py", original)
+    architecture = "universal"
     name = f"VeloEdit-{version}-{build_id}-{architecture}{label}"
     if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
         raise ValueError("Unsafe distribution filename")
@@ -158,8 +167,6 @@ def build(args):
             run("xcrun", "stapler", "staple", app)
             run("xcrun", "stapler", "validate", app)
             run("spctl", "--assess", "--type", "execute", "--verbose=2", app)
-        (payload / "Applications").symlink_to("/Applications", target_is_directory=True)
-        shutil.copytree(app / "Contents/Resources/Legal", payload / "Licenses")
         instructions = (
             "Установка VeloEdit\n\n"
             "1. Перетащите VeloEdit.app на ярлык Applications.\n"
@@ -176,10 +183,13 @@ def build(args):
                 "macOS может блокировать запуск на другом компьютере. Это не готовый публичный релиз.\n"
                 "Проверка условий распространения GPL/LGPL-компонентов и полного набора лицензий ещё не завершена.\n"
             )
-        (payload / "Install.txt").write_text(instructions)
+        # Keep supplementary instructions next to the downloadable DMG. The
+        # Finder window itself only contains the app and its install target;
+        # all legal documents remain in the signed application bundle.
+        (artifacts / "Install.txt").write_text(instructions)
         dmg = artifacts / f"{name}.dmg"
-        run("hdiutil", "create", "-volname", "VeloEdit" + (" Local" if not args.release else ""),
-            "-srcfolder", payload, "-fs", "HFS+", "-format", "UDZO", dmg)
+        run(packaging_python, ROOT / "Scripts/package-dmg.py", app, dmg,
+            "--volume-name", "VeloEdit" + (" Local" if not args.release else ""))
         run("hdiutil", "verify", dmg)
         if args.release:
             identity = env["VELOEDIT_CODESIGN_IDENTITY"]
@@ -196,13 +206,14 @@ def build(args):
         (artifacts / "distribution.json").write_text(json.dumps({
             "version": version, "build": build_id, "architectures": architectures,
             "minimum_macos": info["LSMinimumSystemVersion"], "source_sha256": info.get("VeloEditSourceSHA256"),
+            "director_model": json.loads((app / "Contents/Resources/BuildInfo.json").read_text()).get("directorModel"),
             "mode": "release" if args.release else "local",
             "application_signature": "Developer ID" if args.release else "ad-hoc",
             "disk_image_signed": args.release, "notarized": args.release,
             "notary_submissions": submissions, "sha256": checksum,
+            "installer_design": json.loads((ROOT / "Distribution/Installer/layout.json").read_text()),
             "legal_review": json.loads((ROOT / "Distribution/legal-review.json").read_text()),
         }, ensure_ascii=False, indent=2) + "\n")
-        shutil.copy2(payload / "Install.txt", artifacts / "Install.txt")
         artifacts.rename(final)
     print(f"Created: {final / dmg.name}")
     return 0

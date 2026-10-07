@@ -2742,6 +2742,7 @@ public struct ProjectDirectorMessage: Codable, Identifiable, Hashable, Sendable 
     public var role: ProjectDirectorMessageRole
     public var text: String
     public var createdAt: Date
+    public var response: DirectorResponseRecord? = nil
 
     public init(
         id: UUID = UUID(),

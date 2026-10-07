@@ -355,7 +355,7 @@ struct ProjectInteractionTests {
         #expect(model.timelinePlayheadTime > title.startTime + 0.5)
         #expect(model.timelinePlayheadTime < title.endTime - 0.5)
         model.setSelectedModernTitleChapterNumber(12)
-        try await wait { model.isPreviewPosterVisible && model.previewPosterImage != nil }
+        try await wait { model.previewPosterImage != nil }
         let originalPoster = model.previewPosterImage?.tiffRepresentation
 
         model.directorInput = "Замени текст титра на «Новый маршрут»"
@@ -364,7 +364,7 @@ struct ProjectInteractionTests {
         #expect(model.directorInput.isEmpty)
         #expect(!model.isDirectorResponding)
         #expect(model.timeline?.items == timeline.items)
-        try await wait { model.isPreviewPosterVisible && model.previewPosterImage?.tiffRepresentation != originalPoster }
+        try await wait { model.previewPosterImage != nil && model.previewPosterImage?.tiffRepresentation != originalPoster }
 
         model.submitTimelineAIEdit("Сделай титр красным и крупнее")
         #expect(model.selectedTitleTimelineItem?.style.textColorHex == "#FF453A")

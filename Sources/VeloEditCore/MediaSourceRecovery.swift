@@ -14,7 +14,7 @@ public struct AuthorizedMediaFolder: Codable, Hashable, Sendable {
 }
 
 enum MediaSourceRecovery {
-    static func resolve(_ asset: MediaAsset, folders: [URL], maximumFiles: Int = 4_000) throws -> URL? {
+    static func resolve(_ asset: MediaAsset, folders: [URL], maximumFiles: Int = 4_000, includeOriginalDirectory: Bool = true) throws -> URL? {
         if FileManager.default.isReadableFile(atPath: asset.originalURL.path) { return asset.originalURL }
         if let bookmark = asset.bookmarkData {
             var stale = false
@@ -24,7 +24,7 @@ enum MediaSourceRecovery {
         var visited = Set<URL>()
         var matches = Set<URL>()
         var count = 0
-        let roots = [asset.originalURL.deletingLastPathComponent()] + folders
+        let roots = folders + (includeOriginalDirectory ? [asset.originalURL.deletingLastPathComponent()] : [])
         for root in roots where visited.insert(root.standardizedFileURL).inserted {
             let accessed = root.startAccessingSecurityScopedResource()
             defer { if accessed { root.stopAccessingSecurityScopedResource() } }
@@ -54,6 +54,52 @@ enum MediaSourceRecovery {
 }
 
 extension VeloEditPipeline {
+    /// Availability is operational state; losing a volume must not discard edits.
+    public func refreshMediaAvailability() async throws {
+        let project = await store.manifest
+        let missing = Set(project.assets.filter {
+            !FileManager.default.isReadableFile(atPath: $0.originalURL.path)
+        }.map(\.id))
+        guard project.assets.contains(where: { $0.missing != missing.contains($0.id) }) else { return }
+        try await store.persistOperationalState { manifest in
+            for index in manifest.assets.indices {
+                manifest.assets[index].missing = missing.contains(manifest.assets[index].id)
+            }
+        }
+    }
+
+    public func relinkMedia(assetID: UUID, to url: URL) async throws {
+        let lease = try ProjectOperationLease(package: store.packageURL)
+        defer { withExtendedLifetime(lease) {} }
+        guard let asset = await store.manifest.assets.first(where: { $0.id == assetID }) else { return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        guard try MediaSourceRecovery.matches(url, asset: asset) else {
+            throw MediaRelinkError.differentFile(asset.displayName)
+        }
+        try await applyRecoveredSources([assetID: url.standardizedFileURL])
+    }
+
+    public func relinkMedia(in folder: URL) async throws -> Int {
+        let lease = try ProjectOperationLease(package: store.packageURL)
+        defer { withExtendedLifetime(lease) {} }
+        let project = await store.manifest
+        var replacements: [UUID: URL] = [:]
+        for asset in project.assets where !FileManager.default.isReadableFile(atPath: asset.originalURL.path) {
+            if let found = try MediaSourceRecovery.resolve(asset, folders: [folder], maximumFiles: 100_000, includeOriginalDirectory: false) { replacements[asset.id] = found }
+        }
+        if !replacements.isEmpty {
+            try await applyRecoveredSources(replacements)
+            try await store.persistOperationalState {
+                if !($0.authorizedMediaFolders ?? []).contains(where: { $0.url == folder.standardizedFileURL }) {
+                    $0.authorizedMediaFolders = ($0.authorizedMediaFolders ?? []) + [AuthorizedMediaFolder(url: folder)]
+                }
+            }
+        }
+        try await refreshMediaAvailability()
+        return replacements.count
+    }
+
     @discardableResult
     public func recoverMissingSources() async throws -> Int {
         let project = await store.manifest
@@ -63,16 +109,44 @@ extension VeloEditPipeline {
         for asset in project.assets where !FileManager.default.isReadableFile(atPath: asset.originalURL.path) {
             if let found = try MediaSourceRecovery.resolve(asset, folders: folders) { replacements[asset.id] = found }
         }
-        guard !replacements.isEmpty else { return 0 }
+        guard !replacements.isEmpty else {
+            try await refreshMediaAvailability()
+            return 0
+        }
+        try await applyRecoveredSources(replacements)
+        try await refreshMediaAvailability()
+        return replacements.count
+    }
+
+    private func applyRecoveredSources(_ replacements: [UUID: URL]) async throws {
         try await store.updateAnalysisProgress { manifest in
             for index in manifest.assets.indices {
                 guard let url = replacements[manifest.assets[index].id] else { continue }
+                manifest.packagedFilePaths?.removeValue(forKey: manifest.assets[index].originalURL.absoluteString)
                 manifest.assets[index].originalURL = url
                 manifest.assets[index].missing = false
                 manifest.assets[index].bookmarkData = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+                let asset = manifest.assets[index]
+                let identity = FrameCacheKey.sourceIdentity(url: url, contentHash: asset.contentHash)
+                for analysisIndex in manifest.analyses.indices where manifest.analyses[analysisIndex].assetID == asset.id
+                    && manifest.analyses[analysisIndex].analyzedContentHash == asset.contentHash
+                    && manifest.analyses[analysisIndex].analyzedSourceIdentity != nil {
+                    manifest.analyses[analysisIndex].analyzedSourceIdentity = identity
+                }
+                // A portable package can now point to a recovered external file.
+                // Its former embedded path must not override this choice on open.
+                manifest.packagedMediaPaths?.removeValue(forKey: asset.id)
             }
         }
         try await store.rebindRecoveredMediaInputs()
-        return replacements.count
+    }
+}
+
+public enum MediaRelinkError: LocalizedError {
+    case differentFile(String)
+    public var errorDescription: String? {
+        switch self {
+        case .differentFile(let name): return "Выбранный файл не совпадает с исходником «\(name)». Выберите оригинал или его точную копию — монтаж сохранён."
+        }
     }
 }

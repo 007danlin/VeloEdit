@@ -1,0 +1,23 @@
+<svg width="760" height="500" viewBox="0 0 760 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_2_8)">
+<rect width="760" height="500" fill="#F7F9F5"/>
+<ellipse cx="623" cy="280" rx="235" ry="220" fill="url(#paint0_radial_2_8)"/>
+<text fill="#649F24" style="white-space: pre" xml:space="preserve" font-family="Inter" font-size="16" font-weight="bold" letter-spacing="-0.3px"><tspan x="48" y="53.8182">VeloEdit</tspan></text>
+<text fill="#17251C" style="white-space: pre" xml:space="preserve" font-family="Inter" font-size="30" font-weight="600" letter-spacing="-0.8px"><tspan x="48" y="99.9091">&#x423;&#x441;&#x442;&#x430;&#x43d;&#x43e;&#x432;&#x438;&#x442;&#x435; VeloEdit</tspan></text>
+<text fill="#68746B" style="white-space: pre" xml:space="preserve" font-family="Inter" font-size="15" letter-spacing="0em"><tspan x="48" y="135.955">&#x41f;&#x435;&#x440;&#x435;&#x442;&#x430;&#x449;&#x438;&#x442;&#x435; &#x437;&#x43d;&#x430;&#x447;&#x43e;&#x43a; &#x43f;&#x440;&#x438;&#x43b;&#x43e;&#x436;&#x435;&#x43d;&#x438;&#x44f; &#x432; &#x43f;&#x430;&#x43f;&#x43a;&#x443; &#xab;&#x41f;&#x440;&#x43e;&#x433;&#x440;&#x430;&#x43c;&#x43c;&#x44b;&#xbb;.</tspan></text>
+<path d="M313 273H440M422 291L440 273L422 255" stroke="#649F24" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<text fill="#68746B" style="white-space: pre" xml:space="preserve" font-family="Inter" font-size="13" font-weight="500" letter-spacing="0em"><tspan x="48" y="432.227">&#x41f;&#x43e;&#x441;&#x43b;&#x435; &#x43a;&#x43e;&#x43f;&#x438;&#x440;&#x43e;&#x432;&#x430;&#x43d;&#x438;&#x44f; &#x43e;&#x442;&#x43a;&#x440;&#x43e;&#x439;&#x442;&#x435; VeloEdit &#x438;&#x437; &#xab;&#x41f;&#x440;&#x43e;&#x433;&#x440;&#x430;&#x43c;&#x43c;&#xbb;.</tspan></text>
+<text fill="#68746B" style="white-space: pre" xml:space="preserve" font-family="Inter" font-size="12" letter-spacing="0em"><tspan x="48" y="455.864">&#x41f;&#x43e;&#x441;&#x43b;&#x435; &#x44d;&#x442;&#x43e;&#x433;&#x43e; &#x43e;&#x431;&#x440;&#x430;&#x437; &#x434;&#x438;&#x441;&#x43a;&#x430; &#x43c;&#x43e;&#x436;&#x43d;&#x43e; &#x438;&#x437;&#x432;&#x43b;&#x435;&#x447;&#x44c;.</tspan></text>
+<rect x="48" y="397" width="664" height="1" fill="#E1E8DD"/>
+<text fill="#649F24" style="white-space: pre" xml:space="preserve" font-family="Inter" font-size="12" font-weight="500" letter-spacing="0em"><tspan x="343.057" y="231.864">&#x41f;&#x435;&#x440;&#x435;&#x442;&#x430;&#x449;&#x438;&#x442;&#x435;</tspan></text>
+</g>
+<defs>
+<radialGradient id="paint0_radial_2_8" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(623 280) scale(235 220)">
+<stop stop-color="#DEECCF" stop-opacity="0.76"/>
+<stop offset="1" stop-color="#F7F9F5" stop-opacity="0"/>
+</radialGradient>
+<clipPath id="clip0_2_8">
+<rect width="760" height="500" fill="white"/>
+</clipPath>
+</defs>
+</svg>

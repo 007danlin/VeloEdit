@@ -375,7 +375,7 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
                     settings: settings,
                     telemetry: telemetry,
                     progress: clipProgress,
-                    sourceTime: layer.item.sourceStart + layer.item.sourceDuration * (layer.item.isReversed ? 1 - clipProgress : clipProgress),
+                    sourceTime: layer.item.sourceTime(atTimelineTime: timelineTime),
                     renderSize: instruction.renderSize
                 ) {
                     result = overlay.composited(over: result)

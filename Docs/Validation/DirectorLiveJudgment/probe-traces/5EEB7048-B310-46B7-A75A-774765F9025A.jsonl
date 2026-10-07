@@ -1,0 +1,9 @@
+{"elapsed":0.00049583333020564169,"event":"operation.begin","fields":{"date":"2026-10-06T17:46:29Z","name":"director.advice","projectID":"59A51A03-216D-42FB-B7F1-5952BD694A26","revision":"1"},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}
+{"elapsed":0.00054837499919813126,"event":"director.submitted","fields":{},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}
+{"elapsed":0.00057458333321847022,"event":"director.ui-accepted","fields":{},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}
+{"elapsed":0.00073404166323598474,"event":"director.context-ready","fields":{},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{"cacheBytes":6256}}
+{"elapsed":0.00078191666398197412,"event":"director.queue.enter","fields":{},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}
+{"elapsed":0.0007928333361633122,"event":"director.queue.leave","fields":{},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}
+{"elapsed":0.00086366666801040992,"event":"director.first-displayed","fields":{"result":"answer"},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}
+{"elapsed":0.00087424999946961179,"event":"director.full-displayed","fields":{},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}
+{"elapsed":0.00088391666940879077,"event":"operation.end","fields":{"status":"success"},"operationID":"5EEB7048-B310-46B7-A75A-774765F9025A","values":{}}

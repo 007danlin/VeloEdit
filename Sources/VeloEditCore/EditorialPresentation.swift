@@ -214,7 +214,9 @@ public enum EditorialPresentationPolicy {
         let titles = timeline.effectiveTitleItems
         var missing: [ChapterBlock] = []
         for block in chapterBlocks(in: timeline, plan: plan) {
-            guard block.end - block.start >= 1.25 else { continue }
+            // An interval too short to hold a readable heading still violates
+            // an explicit request for headings; generation cannot repair it.
+            guard block.end - block.start >= 1.25 else { missing.append(block); continue }
             let covered = titles.contains { title in
                 if block.partID != nil && title.kind != .chapter { return false }
                 guard title.enabled, (title.text == block.text || title.userEdited == true),
@@ -258,7 +260,7 @@ public enum EditorialPresentationPolicy {
         var used = Set<UUID>()
         for block in blocks where block.end - block.start >= 1.25 {
             if let manualIndex = titles.firstIndex(where: {
-                $0.kind == .chapter && !AutomatedTitlePolicy.isGenerated($0)
+                ($0.kind == .chapter || $0.userEdited == true) && !AutomatedTitlePolicy.isGenerated($0)
                     && ($0.filmPartID == block.partID && block.partID != nil || abs($0.startTime - block.start) < 0.001)
             }) {
                 titles[manualIndex].filmPartID = block.partID

@@ -1,0 +1,70 @@
+{
+  "source": "Docs/Validation/DirectorLiveJudgment/final-followup.json",
+  "quantileMethod": "nearest rank",
+  "variants": {
+    "baseline": {
+      "attempts": 18,
+      "modelSuccesses": 18,
+      "fallbacks": 0,
+      "limitedWithoutGeneration": 0,
+      "noEvidenceFallbacks": 0,
+      "deadlineFallbacks": 0,
+      "rejectedOrUnavailableFallbacks": 0,
+      "allOutcomeSeconds": {
+        "n": 18,
+        "p50": 5.728287499994622,
+        "p95": 7.481410624997807,
+        "max": 7.481410624997807
+      },
+      "modelSuccessSeconds": {
+        "n": 18,
+        "p50": 5.728287499994622,
+        "p95": 7.481410624997807,
+        "max": 7.481410624997807
+      },
+      "contextSeconds": {
+        "n": 18,
+        "p50": 0.0007699999987380579,
+        "p95": 0.0014612083323299885,
+        "max": 0.0014612083323299885
+      },
+      "atMost45Words": 3,
+      "commandsReturned": 0
+    },
+    "new": {
+      "attempts": 18,
+      "modelSuccesses": 3,
+      "fallbacks": 15,
+      "limitedWithoutGeneration": 12,
+      "noEvidenceFallbacks": 3,
+      "deadlineFallbacks": 0,
+      "rejectedOrUnavailableFallbacks": 3,
+      "allOutcomeSeconds": {
+        "n": 18,
+        "p50": 0.00021166667283978313,
+        "p95": 4.642261749999307,
+        "max": 4.642261749999307
+      },
+      "modelSuccessSeconds": {
+        "n": 3,
+        "p50": 3.304449666662549,
+        "p95": 4.642261749999307,
+        "max": 4.642261749999307
+      },
+      "contextSeconds": {
+        "n": 18,
+        "p50": 0.0007699999987380579,
+        "p95": 0.0014612083323299885,
+        "max": 0.0014612083323299885
+      },
+      "atMost45Words": 18,
+      "commandsReturned": 0
+    }
+  },
+  "limitations": [
+    "Runtime study, not end-to-end UI or playback measurement.",
+    "Fallbacks are included in allOutcomeSeconds, never counted as model successes.",
+    "No human quality scores inferred from response length, citations or latency.",
+    "Cold/warm designation must come from the run protocol, not the first sample index."
+  ]
+}

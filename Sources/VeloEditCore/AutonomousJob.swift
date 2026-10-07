@@ -169,6 +169,16 @@ extension ProjectStore {
         }
     }
 
+    /// Called only after the app has joined its cancelled work. A graceful
+    /// exit preserves resumable checkpoints instead of recording user cancel.
+    public func prepareAutonomousJobForRestart() throws {
+        guard let job = manifest.autonomousJob, job.state != .completed else { return }
+        try updateAutonomousJob {
+            $0.state = .queued
+            $0.explicitCancellation = false
+        }
+    }
+
     /// The same deterministic cause/input/strategy is never tried twice.
     /// Network recovery alone may retry twice with the specified 1s/3s delays.
     func reserveRecovery(error: Error, strategy: String) throws -> TimeInterval? {

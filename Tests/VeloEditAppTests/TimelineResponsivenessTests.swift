@@ -29,7 +29,8 @@ struct TimelineResponsivenessTests {
         #expect(image.size == NSSize(width: 20, height: 30))
     }
 
-    @Test func pausedVideoScrubbingDoesNotRepublishTheEditorAndLandsOnFinalFrame() async throws {
+    @Test(arguments: [false, true])
+    func pausedVideoScrubbingDoesNotRepublishTheEditorAndLandsOnFinalFrame(_ customComposition: Bool) async throws {
         let suite = "VeloEdit.scrub-video.\(UUID())"
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -44,15 +45,16 @@ struct TimelineResponsivenessTests {
             metadata: MediaMetadata(duration: 3, width: 320, height: 180, frameRate: 30, hasAudio: false))
         let timeline = Timeline(storyPlanID: UUID(), width: 320, height: 180, items: [
             TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 3, timelineStart: 0, timelineDuration: 3)
-        ])
+        ], effects: customComposition ? [.init(effectType: .pushIn, startTime: 0, duration: 3, intensity: 0)] : [])
         let url = root.appendingPathComponent("test.veloedit")
         let store = try ProjectStore(createAt: url, name: "Seek test")
         try await store.update { $0.assets = [asset]; $0.timelines = [timeline] }
         let model = AppModel(defaults: UserDefaults(suiteName: suite)!, startBackgroundServices: false,
                              personalTasteStore: LocalPersonalTasteStore(url: root.appendingPathComponent("taste.json")))
         model.openRecentProject(url)
-        try await waitUntil(timeout: 15) { model.isPreviewPosterVisible && model.previewPlayer?.currentItem?.status == .readyToPlay }
+        try await waitUntil(timeout: 15) { model.previewPosterImage != nil && model.previewPlayer?.currentItem?.status == .readyToPlay }
         model.previewPlayer?.pause()
+        let loadingPoster = model.previewPosterImage
         var publications = 0
         let subscription = model.objectWillChange.sink { publications += 1 }
         for frame in 1...75 { model.seekTimeline(to: Double(frame) / 30) }
@@ -61,8 +63,15 @@ struct TimelineResponsivenessTests {
         #expect(publications <= 1)
         subscription.cancel()
         try await waitUntil(timeout: 8) {
-            abs((model.previewPlayer?.currentTime().seconds ?? -1) - 2.5) < 0.001 && model.isPreviewPosterVisible
+            abs((model.previewPlayer?.currentTime().seconds ?? -1) - 2.5) < 0.001
         }
+        // The exact seek is scheduled after the pointer settles. It must keep
+        // the native paused frame, never replace it with a separately rendered
+        // NSImage whose HDR presentation can brighten the viewer a moment later.
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(!model.isPreviewPosterVisible)
+        #expect(model.previewPosterImage === loadingPoster)
+        #expect(model.previewPlayer?.rate == 0)
         #expect(abs(model.timelinePlayheadTime - 2.5) < 0.001)
         await model.stopForApplicationTermination()
         #expect(await model.flushAutosave())

@@ -126,9 +126,12 @@ import Testing
         musicPolicy: .none,
         titlePolicy: .none
     )
-    await #expect(throws: EditorialGenerationError.self) {
-        try await pipeline.createFilm(prompt: "Собери фильм из доступного материала", preset: .story, targetDuration: brief.requestedDuration, directorBrief: brief)
-    }
+    do {
+        _ = try await pipeline.createFilm(prompt: "Собери фильм из доступного материала", preset: .story, targetDuration: brief.requestedDuration, directorBrief: brief)
+        Issue.record("Expected an unavailable-source error")
+    } catch DirectorBriefFulfillmentError.noUsableSourceMaterial {
+        // Source validation precedes editorial generation for missing files.
+    } catch { Issue.record("Unexpected error: \(error)") }
     let snapshot = await pipeline.snapshot()
     #expect(snapshot.timelines.isEmpty)
     #expect(snapshot.intentLedger?.hasRecoverableGeneration == true)
@@ -164,7 +167,11 @@ import Testing
         )
         Issue.record("Expected a readable-source error")
     } catch {
-        #expect(error.localizedDescription.contains("пригодного видеофрагмента"))
+        guard case DirectorBriefFulfillmentError.noUsableSourceMaterial = error else {
+            Issue.record("Expected an unavailable-source error, got \(error)")
+            return
+        }
+        #expect(error.localizedDescription.contains("исходники"))
         #expect(!error.localizedDescription.contains("монтаж длится 0.000"))
     }
 }

@@ -1,10 +1,42 @@
 import Foundation
 
 extension VeloEditPipeline {
+    /// File identities include the volume, inode and path. A byte-identical
+    /// portable source gets a new identity on another Mac; verify its content
+    /// before rebinding saved analysis, without decoding or analyzing it again.
+    func restorePortableAnalysisIdentities() async throws {
+        let snapshot = await store.snapshot()
+        let project = snapshot.manifest
+        guard let paths = project.packagedMediaPaths, !paths.isEmpty else { return }
+        var analyses = project.analyses
+        var changed = false
+        for asset in project.assets {
+            guard let relative = paths[asset.id], relative.hasPrefix("Media/"),
+                  !relative.split(separator: "/").contains(".."),
+                  asset.originalURL.standardizedFileURL == store.packageURL.appendingPathComponent(relative).standardizedFileURL else { continue }
+            let identity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+            let indices = analyses.indices.filter {
+                analyses[$0].assetID == asset.id && analyses[$0].analyzedContentHash == asset.contentHash
+                    && analyses[$0].analyzedSourceIdentity != nil
+                    && analyses[$0].analyzedSourceIdentity != identity
+            }
+            guard !indices.isEmpty else { continue }
+            try Task.checkCancellation()
+            guard (try? MediaSourceRecovery.matches(asset.originalURL, asset: asset)) == true,
+                  identity == FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash) else { continue }
+            for index in indices { analyses[index].analyzedSourceIdentity = identity }
+            changed = true
+        }
+        if changed {
+            try await store.updateFilmBuildAnalyses(analyses, ifRevision: snapshot.revision)
+        }
+    }
+
     public func collectProjectCopy(to destination: URL, progress: (@Sendable (ImportProgress) -> Void)? = nil) async throws -> URL {
         let lease = try ProjectOperationLease(package: store.packageURL)
         defer { withExtendedLifetime(lease) {} }
         _ = try await recoverMissingSources()
+        try await restorePortableAnalysisIdentities()
         var project = await store.manifest
         let tracks = try await musicTracks()
         guard !FileManager.default.fileExists(atPath: destination.path) else { throw CocoaError(.fileWriteFileExists) }
@@ -12,12 +44,19 @@ extension VeloEditPipeline {
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
         let assets = project.assets + (project.removedMedia ?? []).map(\.asset)
+        let sourceIdentities = Dictionary(assets.map {
+            ($0.id, FrameCacheKey.sourceIdentity(url: $0.originalURL, contentHash: $0.contentHash))
+        }, uniquingKeysWith: { first, _ in first })
         var dependencies: [(URL, String)] = assets.map { ($0.originalURL, "Media/\($0.id.uuidString).\($0.originalURL.pathExtension)") }
         dependencies += tracks.map { ($0.localFileURL, "MusicLibrary/Files/\($0.id.uuidString).\($0.localFileURL.pathExtension)") }
         dependencies += project.effectiveTelemetrySources.compactMap { source in
             source.originalURL.map { ($0, "Telemetry/\(source.id.uuidString).\($0.pathExtension)") }
         }
-        dependencies += project.renderJobs.filter { $0.status == .completed }.map { ($0.outputURL, "Exports/\($0.id.uuidString).\($0.outputURL.pathExtension)") }
+        // Export history is optional. Users may move or delete delivered films
+        // without making their editable project impossible to collect.
+        dependencies += project.renderJobs.filter {
+            $0.status == .completed && FileManager.default.isReadableFile(atPath: $0.outputURL.path)
+        }.map { ($0.outputURL, "Exports/\($0.id.uuidString).\($0.outputURL.pathExtension)") }
         let requiredBytes = try dependencies.reduce(Int64(0)) { total, dependency in
             total + Int64(try dependency.0.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
         }
@@ -25,18 +64,44 @@ extension VeloEditPipeline {
             throw CocoaError(.fileWriteOutOfSpace)
         }
         var relocated: [String: String] = [:]
+        var verifiedHashes: [String: String] = [:]
         for (index, dependency) in dependencies.enumerated() {
             try Task.checkCancellation()
             let output = staging.appendingPathComponent(dependency.1)
             try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
             if !FileManager.default.fileExists(atPath: output.path) {
                 try Self.copyPortableFile(from: dependency.0, to: output)
-                guard try MediaImporter.sha256(url: dependency.0) == MediaImporter.sha256(url: output) else { throw CocoaError(.fileReadCorruptFile) }
+                let hash = try MediaImporter.sha256(url: dependency.0)
+                guard try hash == MediaImporter.sha256(url: output) else { throw CocoaError(.fileReadCorruptFile) }
+                verifiedHashes[dependency.1] = hash
             }
             relocated[dependency.0.absoluteString] = destination.appendingPathComponent(dependency.1).absoluteString
             progress?(ImportProgress(completed: index + 1, total: dependencies.count, currentName: "Собираю копию проекта"))
         }
         project.packagedMediaPaths = Dictionary(assets.map { ($0.id, "Media/\($0.id.uuidString).\($0.originalURL.pathExtension)") }, uniquingKeysWith: { a, _ in a })
+        func invalidateStaleIdentities(_ results: inout [AnalysisResult], for asset: MediaAsset) {
+            let identity = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+            // Never turn an already-stale analysis into a reusable one merely
+            // because the current source was successfully copied.
+            for index in results.indices where results[index].assetID == asset.id {
+                if results[index].analyzedSourceIdentity != identity || sourceIdentities[asset.id] != identity {
+                    results[index].analyzedSourceIdentity = nil
+                }
+            }
+        }
+        for index in project.assets.indices {
+            let asset = project.assets[index]
+            project.assets[index].fullContentHash = project.packagedMediaPaths?[asset.id].flatMap { verifiedHashes[$0] }
+            invalidateStaleIdentities(&project.analyses, for: asset)
+        }
+        if var removed = project.removedMedia {
+            for index in removed.indices {
+                let asset = removed[index].asset
+                removed[index].asset.fullContentHash = project.packagedMediaPaths?[asset.id].flatMap { verifiedHashes[$0] }
+                invalidateStaleIdentities(&removed[index].analyses, for: asset)
+            }
+            project.removedMedia = removed
+        }
         project.packagedFilePaths = Dictionary(dependencies.map {
             (destination.appendingPathComponent($0.1).absoluteString, $0.1)
         }, uniquingKeysWith: { a, _ in a })

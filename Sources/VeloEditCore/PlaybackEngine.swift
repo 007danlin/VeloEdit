@@ -1059,20 +1059,26 @@ public actor PlaybackEngine {
               let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
         let sourceDuration = try await source.load(.duration)
         guard sourceDuration.seconds.isFinite, sourceDuration.seconds > 0 else { return nil }
-        var sourceCursor = min(max(0, directive.sourceStart ?? 0), max(0, sourceDuration.seconds - 0.05))
+        let sourceEnd = CMTimeConvertScale(sourceDuration, timescale: TimelineTiming.compositionTimescale, method: .roundTowardZero)
+        var sourceCursor = TimelineTiming.compositionTime(min(max(0, directive.sourceStart ?? 0), max(0, sourceEnd.seconds - 0.05)))
         var cursor = CMTime.zero
         while cursor < duration {
             let remaining = duration - cursor
-            let outputPart = min((sourceDuration.seconds - sourceCursor) / directive.effectiveSpeed, remaining.seconds)
-            let sourcePart = min(sourceDuration.seconds - sourceCursor, outputPart * directive.effectiveSpeed)
-            let inserted = CMTime(seconds: sourcePart, preferredTimescale: 600)
-            let output = CMTime(seconds: outputPart, preferredTimescale: 600)
-            try track.insertTimeRange(CMTimeRange(start: CMTime(seconds: sourceCursor, preferredTimescale: 600), duration: inserted), of: sourceTrack, at: cursor)
-            if abs(sourcePart - outputPart) > 0.000_1 {
+            let availableSource = sourceEnd - sourceCursor
+            let outputPart = min(availableSource.seconds / directive.effectiveSpeed, remaining.seconds)
+            // Use the video composition's clock throughout. A 600 Hz loop
+            // leaves a sub-tick remainder on mixed-camera timelines and then
+            // inserts an empty range, failing the entire preview/export with
+            // AVFoundation -11800 / OSStatus -12780.
+            let inserted = min(availableSource, TimelineTiming.compositionTime(outputPart * directive.effectiveSpeed))
+            let output = min(remaining, TimelineTiming.compositionTime(outputPart))
+            guard inserted > .zero, output > .zero else { break }
+            try track.insertTimeRange(CMTimeRange(start: sourceCursor, duration: inserted), of: sourceTrack, at: cursor)
+            if inserted != output {
                 track.scaleTimeRange(CMTimeRange(start: cursor, duration: inserted), toDuration: output)
             }
             cursor = cursor + output
-            sourceCursor = 0
+            sourceCursor = .zero
         }
         return (track, directive)
     }

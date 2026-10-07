@@ -205,9 +205,13 @@ struct ExportWorkspaceView: View {
                 .foregroundStyle(.secondary)
             VStack(spacing: 0) {
                 formatRow("Субтитры", subtitle: "Текст и таймкоды отдельным файлом", icon: "captions.bubble") {
-                    Menu("Сохранить…") {
+                    Menu {
                         Button("SRT — универсальный формат") { model.exportSubtitles(.srt) }
                         Button("WebVTT — для веб-плееров") { model.exportSubtitles(.vtt) }
+                    } label: {
+                        Text("Сохранить…")
+                    } primaryAction: {
+                        model.exportSubtitles(.srt)
                     }
                     .accessibilityLabel("Сохранить субтитры")
                     .fixedSize()

@@ -7,6 +7,20 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct InstantTimelineInteractionTests {
+    @Test func droppingTransitionUsesHoveredCutInsteadOfOldSelection() async throws {
+        let fixture = try await Fixture(clipCount: 3)
+        defer { fixture.remove() }
+        let items = try #require(fixture.model.timeline?.items)
+        fixture.model.selectTimelineItem(items[1].id)
+        fixture.model.addTimelineTransition(.crossDissolve, at: 20)
+        let transition = try #require(fixture.model.timeline?.effectiveTransitionItems.first)
+        #expect(transition.incomingClipID == items[2].id)
+        #expect(transition.outgoingClipID == items[1].id)
+        fixture.model.undoTimelineEdit()
+        #expect(fixture.model.timeline?.effectiveTransitionItems.isEmpty == true)
+        #expect(await fixture.model.flushAutosave())
+    }
+
     @Test func leadingTrimCutsSourceThenClosesMagneticGapAndSupportsUndo() async throws {
         let fixture = try await Fixture(clipCount: 3)
         defer { fixture.remove() }

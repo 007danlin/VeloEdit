@@ -6,6 +6,19 @@ import VeloEditCore
 
 @Suite(.serialized) @MainActor
 struct TimelineDirectorIntegrationTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_DIRECTOR_UI_FIXTURE"] != nil))
+    func prepareDirectorLiveUIFixture() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let destination = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["VELOEDIT_DIRECTOR_UI_FIXTURE"]))
+        try FileManager.default.copyItem(at: fixture.root, to: destination)
+        let files = FileManager.default.enumerator(at: destination, includingPropertiesForKeys: nil)!
+        for case let file as URL in files where file.pathExtension == "json" {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            try text.replacingOccurrences(of: fixture.root.path, with: destination.path).write(to: file, atomically: true, encoding: .utf8)
+        }
+    }
+
     @Test(arguments: [false, true]) func screenshotRequestUpdatesPreviewAndUndoesAsOneEdit(throughDirector: Bool) async throws {
         let fixture = try await Fixture(commands: [.setOverlay(.greenScreen, .first, .first), .addTitle("путешествие", .beginning)])
         defer { fixture.remove() }
@@ -104,7 +117,8 @@ struct TimelineDirectorIntegrationTests {
         let persistedVisible = try JSONDecoder.veloEdit.decode(Timeline.self, from: JSONEncoder.veloEdit.encode(visible))
         #expect(saved.timelines.last == persistedVisible)
         #expect(saved.workspaceState?.directorMessages?.filter { $0.role == .user && $0.text == request }.count == 1)
-        #expect(saved.workspaceState?.directorMessages?.last?.text.contains("Монтаж\nВыполнено") == true)
+        #expect(saved.workspaceState?.directorMessages?.last?.response?.saved == true)
+        #expect(saved.workspaceState?.directorMessages?.last?.response?.previewReady == true)
     }
 
     @Test func brushChangesMusicOnlyInsideRangeAndRecordsItInDirectorChat() async throws {
@@ -129,8 +143,8 @@ struct TimelineDirectorIntegrationTests {
         #expect(timeline.effectiveTitleItems.contains { $0.text == "Здесь" && $0.startTime >= 1 && $0.endTime <= 2 })
         #expect(timeline.effectiveTitleItems.contains { $0.text == "Вторая глава" })
         #expect(model.previewPlayer?.currentItem != nil)
-        #expect(model.directorMessages.last?.text.contains("Волшебная кисть · 0:01–0:02") == true)
-        #expect(model.directorMessages.last?.text.contains("музыка изменена только внутри выделенного диапазона") == true)
+        #expect(model.directorMessages.last?.response?.range == 1...2)
+        #expect(model.directorMessages.last?.text.contains("Только в выделенном диапазоне") == true)
         let playerItem = try #require(model.previewPlayer?.currentItem)
         let audioTracks = try await playerItem.asset.loadTracks(withMediaType: .audio)
         #expect(audioTracks.count == 3)
@@ -169,7 +183,7 @@ struct TimelineDirectorIntegrationTests {
         print("LOCAL AUDIO MIX: inside \(inside), outside \(outside), regions \(String(describing: fixture.model.timeline?.effectiveAdaptiveSoundtrack?.segments.map { $0.directive.volume }))")
         #expect(inside.rms > 0)
         #expect(abs(inside.rms / outside.rms - 0.05 / 0.18) < 0.03)
-        #expect(fixture.model.directorMessages.last?.text.contains("Просмотр обновлён") == true)
+        #expect(fixture.model.directorMessages.last?.response?.previewReady == true)
     }
 
     private func audioSignature(_ item: AVPlayerItem, start: Double, duration: Double) async throws -> (rms: Double, frequency: Double) {

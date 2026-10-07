@@ -1,0 +1,6 @@
+{"elapsed":0.00086675000056857243,"event":"operation.begin","fields":{"date":"2026-10-06T18:43:34Z","name":"director.runtime-study.new","projectID":"65089499-2A8C-4BAD-85B9-F2236680608F","revision":""},"operationID":"5ABB46F8-B50A-4910-96F8-F75FF4542085","values":{}}
+{"elapsed":0.001125666662119329,"event":"director.queue.enter","fields":{},"operationID":"5ABB46F8-B50A-4910-96F8-F75FF4542085","values":{}}
+{"elapsed":0.0011623333339230157,"event":"director.queue.leave","fields":{},"operationID":"5ABB46F8-B50A-4910-96F8-F75FF4542085","values":{}}
+{"elapsed":0.0014046666619833559,"event":"director.loading","fields":{},"operationID":"5ABB46F8-B50A-4910-96F8-F75FF4542085","values":{}}
+{"elapsed":2.6137605416661245,"event":"director.runtime","fields":{},"operationID":"5ABB46F8-B50A-4910-96F8-F75FF4542085","values":{"generatedTokens":52,"generationSeconds":1.6276809999999999,"loadSeconds":0.14151295799999999,"promptSeconds":0.81527400000000005,"promptTokens":508}}
+{"elapsed":2.6142574999976205,"event":"operation.end","fields":{"status":"fallback"},"operationID":"5ABB46F8-B50A-4910-96F8-F75FF4542085","values":{}}

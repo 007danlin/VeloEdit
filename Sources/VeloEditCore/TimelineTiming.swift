@@ -63,6 +63,22 @@ public enum TimelineTiming {
         return max(0, (time * fps).rounded() / fps)
     }
 
+    /// A magnetic boundary can fall between frames after a speed change.
+    /// Preserve an exact attachment to that boundary; quantize free placement.
+    public static func editingTime(_ requested: Double, in timeline: Timeline, maximum: Double) -> Double {
+        let maximum = max(0, maximum)
+        let time = min(maximum, max(0, requested.isFinite ? requested : 0))
+        var boundaries = timeline.items.flatMap { [$0.timelineStart, $0.timelineStart + $0.timelineDuration] }
+        boundaries += timeline.effectiveTitleItems.flatMap { [$0.startTime, $0.endTime] }
+        boundaries += timeline.effectiveEffects.flatMap { [$0.startTime, $0.endTime] }
+        boundaries += timeline.effectiveAudioClips.flatMap { [$0.timelineStart, $0.timelineEnd] }
+        boundaries += timeline.effectiveTelemetryItems.flatMap { [$0.timelineStart, $0.timelineEnd] }
+        if let boundary = boundaries.first(where: { $0 >= 0 && $0 <= maximum && abs($0 - time) < 0.000_001 }) {
+            return boundary
+        }
+        return min(maximum, quantized(time, frameRate: timeline.frameRate))
+    }
+
     /// AVFoundation renders a transition by overlapping the incoming and
     /// outgoing clips. The editor, however, keeps magnetic clips adjacent so
     /// their visible boundaries remain easy to edit. These helpers provide the

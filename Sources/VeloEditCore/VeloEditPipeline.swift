@@ -1937,6 +1937,7 @@ public actor VeloEditPipeline {
     }
 
     private func analyzeMissingImpl(preferredAssetID: UUID?, progress: (@Sendable (ImportProgress) -> Void)?) async throws -> Int {
+        try await restorePortableAnalysisIdentities()
         let current = await store.manifest
         let baseProfile = AIAnalysisProfile.resolve(
             mode: current.preferences.effectiveAIPowerMode,

@@ -2,20 +2,37 @@
 
 ## Локальная сборка
 
+По умолчанию собирается **Universal 2: arm64 + x86_64**, минимум macOS 14. Приложение, speech worker, OVRLEY, FFmpeg и ffprobe содержат обе архитектуры. Ollama поставляется с универсальными исполняемыми файлами и отдельными подходящими CPU/Metal-плагинами. На Apple Silicon сохраняются нативный ARM-код и Neural Engine; на Intel распознавание речи использует Core ML CPU/GPU. Дополнительный MLX v4 backend рассчитан на macOS 26.2+, при этом в пакете сохранён MLX v3 для более старых систем.
+
 ```bash
 ./Scripts/build-app.sh
 codesign --verify --deep --strict Build/VeloEdit.app
+python3 Scripts/verify-architectures.py Build/VeloEdit.app
+python3 Scripts/smoke-universal.py Build/VeloEdit.app --output Build/UniversalSupport/smoke.json
 ```
+
+Первая сборка скачивает зависимости с проверкой SHA-256 и собирает FFmpeg 9.0.2 из исходников для обеих архитектур. Версии и источники закреплены в `Distribution/native-dependencies.json`; кеш и изолированный Rust toolchain находятся в `Build/NativeDependencies`. Глобальная установка Homebrew/Rust не изменяется. Последующие сборки используют кеш. `VELOEDIT_ARCHS=arm64 ./Scripts/build-app.sh` доступен для локальной разработки, но установщик принимает только полный универсальный пакет.
+
+`ArchitectureReport.json` внутри приложения фиксирует архитектуры, минимальные версии macOS и зависимости каждого Mach-O файла. Упаковка останавливается при отсутствии обязательного среза, внешней библиотеке или несовместимом минимуме macOS. `BuildInfo.json` также фиксирует архитектуры и модель ИИ-режиссёра (`qwen3:4b-instruct`). Intel smoke-check на M-чипе использует Rosetta; он не заменяет проверку GPU и реального распознавания/инференса на физическом Intel Mac.
 
 Без `VELOEDIT_CODESIGN_IDENTITY` создаётся ad-hoc signature для локальной разработки. Это не доверенная подпись разработчика Apple. `sign-app.py` подписывает все Mach-O файлы (включая FFmpeg, Ollama и библиотеки) изнутри наружу, затем приложение; `--deep` используется только при проверке. При Developer ID включаются hardened runtime и secure timestamp. Все вложенные подписи проверяются отдельно, в том числе код в Resources.
 
 ## Локальный установочный образ
 
+Один раз подготовить изолированные инструменты упаковки (они не входят в приложение):
+
+```bash
+python3 -m venv Build/PackagingPython
+Build/PackagingPython/bin/python3 -m pip install -r Distribution/requirements.txt
+```
+
 ```bash
 python3 Scripts/build-distribution.py
 ```
 
-Команда полностью пересобирает приложение и создаёт `Build/Distribution/VeloEdit-<version>-<build>-<arch>-local/` с DMG, SHA-256, инструкцией и `distribution.json`. В образе находятся `VeloEdit.app`, ссылка на `/Applications` и лицензии. Установка — перетаскивание приложения в Applications. Никаких фоновых установочных скриптов или изменений системных настроек нет.
+Команда полностью пересобирает приложение и создаёт `Build/Distribution/VeloEdit-<version>-<build>-<arch>-local/` с DMG, SHA-256, инструкцией и `distribution.json`. Окно Finder открывается в размере 760 × 500 с фоном Retina, значком VeloEdit слева, зелёной стрелкой и ссылкой на `/Applications` справа. В окне видны только два значка; все лицензии сохранены внутри подписанного приложения. `Install.txt` находится рядом с DMG, не в окне установщика. Установка — перетаскивание приложения в Applications. Никаких фоновых установочных скриптов или изменений системных настроек нет.
+
+Редактируемый [макет Figma](https://www.figma.com/design/cZk2AI5z9zOpCyJKcAU8nF?node-id=2-8), экспорт SVG и фон 1×/2× — `Distribution/Installer/`. `layout.json` задаёт размер окна и координаты настоящих значков Finder, которые не нарисованы на фоне. Установочная графика использует Inter; интерфейс приложения сохраняет системный шрифт macOS. `package-dmg.py` собирает `.DS_Store` и переносимый alias фона через dmgbuild, проверяет подпись копии приложения внутри образа. После изменения макета нужно повторно экспортировать фон в обоих масштабах и проверить готовый DMG в Finder.
 
 После уже выполненного `./Scripts/build-app.sh` можно использовать `--skip-build` для локальной упаковки. Публичный выпуск эту опцию не допускает. Локальный DMG не нотариализован, помечен `local` и не предназначен для публичного распространения. Gatekeeper на другом Mac может заблокировать запуск. Скрипт не обходит Gatekeeper и не меняет quarantine у пользователя.
 

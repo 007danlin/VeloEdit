@@ -5,12 +5,16 @@ import hashlib
 import json
 import pathlib
 import plistlib
+import re
+import subprocess
 import sys
 
 source, app = map(pathlib.Path, sys.argv[1:])
 digest = hashlib.sha256()
 paths = [source / "Package.swift"] + list((source / "Sources").rglob("*.swift"))
 paths += [p for p in (source / "Resources").rglob("*") if p.is_file()]
+paths += list((source / "Scripts").glob("*.py")) + list((source / "Scripts").glob("*.sh"))
+paths += [source / "Distribution/native-dependencies.json"]
 for path in sorted(paths):
     digest.update(str(path.relative_to(source)).encode() + b"\0")
     with path.open("rb") as stream:
@@ -18,6 +22,11 @@ for path in sorted(paths):
 now = datetime.datetime.now(datetime.timezone.utc)
 identity = {"builtAt": now.isoformat(), "sourceSHA256": digest.hexdigest(),
             "build": now.strftime("%Y.%j.%H%M%S"), "runtime": "Ollama 0.32.14"}
+identity["architectures"] = subprocess.check_output(["lipo", "-archs", str(app / "Contents/MacOS/VeloEdit")], text=True).split()
+director = (source / "Sources/VeloEdit/LocalDirectorAgent.swift").read_text()
+model = re.search(r'static let ollamaModel = "([^"]+)"', director)
+if model:
+    identity["directorModel"] = model[1]
 plist_path = app / "Contents/Info.plist"
 with plist_path.open("rb") as stream:
     info = plistlib.load(stream)

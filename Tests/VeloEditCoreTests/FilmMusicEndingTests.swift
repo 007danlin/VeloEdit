@@ -4,6 +4,44 @@ import Testing
 @testable import VeloEditCore
 
 @Suite(.serialized) struct FilmMusicEndingTests {
+    @Test(arguments: [0.5, 1.0, 1.7])
+    func loopedMusicCoversFractionalMovieEndWithoutEmptySegments(_ speed: Double) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-music-fractional-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("tone.caf")
+        try writeTone(to: source, duration: 0.744)
+        let track = LocalMusicTrack(title: "Tone", author: "Fixture", bpm: 100, genres: [], moods: [], energy: 0.5,
+                                   duration: 0.744, license: .userFile(), sourceProvider: .user,
+                                   sourcePageURL: source, localFileURL: source, originalFileName: source.lastPathComponent)
+        var music = MusicDirective(style: .calm, bpm: 100, volume: 0.4, trackID: track.id)
+        music.speed = speed
+        music.sourceStart = 0.1379
+        // Real mixed-camera edits retain sub-millisecond precision. Their end
+        // cannot be represented on the old 600 Hz soundtrack loop clock.
+        let duration = 2.001134
+        let item = TimelineItem(kind: .title, sourceDuration: duration, timelineStart: 0,
+                                timelineDuration: duration, title: "Fractional ending")
+        let timeline = Timeline(storyPlanID: UUID(), width: 160, height: 90, frameRate: 30,
+                                items: [item], music: music, originalAudioVolume: 0)
+        let playback = try await PlaybackEngine().build(timeline: timeline, assets: [], musicTracks: [track])
+        let audio = try #require(playback.composition.tracks(withMediaType: .audio).first)
+        let segments = audio.segments.filter { !$0.isEmpty }
+        #expect(segments.count >= 2)
+        #expect(segments.allSatisfy { $0.timeMapping.source.duration > .zero && $0.timeMapping.target.duration > .zero })
+        #expect(zip(segments, segments.dropFirst()).allSatisfy { $0.timeMapping.target.end == $1.timeMapping.target.start })
+        let end = try #require(segments.last).timeMapping.target.end.seconds
+        #expect(abs(end - playback.duration) < 1 / 48_000.0)
+        let reader = try AVAssetReader(asset: playback.composition)
+        let output = AVAssetReaderTrackOutput(track: audio, outputSettings: [AVFormatIDKey: kAudioFormatLinearPCM])
+        reader.add(output)
+        try #require(reader.startReading())
+        var decodedSamples = 0
+        while let sample = output.copyNextSampleBuffer() { decodedSamples += CMSampleBufferGetNumSamples(sample) }
+        #expect(reader.status == .completed)
+        #expect(decodedSamples > 48_000)
+    }
+
     @Test func finishPreservesDuckingAndClipFadesWithoutOverlappingRamps() throws {
         let original = AVMutableAudioMixInputParameters()
         original.trackID = 42
@@ -121,9 +159,9 @@ import Testing
         return a + (b - a) * Float(min(1, max(0, (time - range.start).seconds / range.duration.seconds)))
     }
 
-    private func writeTone(to url: URL) throws {
+    private func writeTone(to url: URL, duration: Double = 10) throws {
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480_000))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount((duration * 48_000).rounded())))
         buffer.frameLength = buffer.frameCapacity
         for i in 0..<Int(buffer.frameLength) {
             buffer.floatChannelData![0][i] = Float(0.2 * sin(2 * .pi * 440 * Double(i) / 48_000))

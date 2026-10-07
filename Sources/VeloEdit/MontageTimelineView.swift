@@ -42,6 +42,9 @@ struct MagneticTimelineView: View {
     @State private var draggedItemID: UUID?
     @State private var dragTranslation: CGFloat = 0
     @State private var dropPrimaryIndex: Int?
+    @State private var libraryInsertion: TimelineInsertionPreview?
+    @State private var canvasOrigin = CGPoint.zero
+    @StateObject private var libraryDropSession = LibraryTimelineDropSession()
     @State private var draggedConnectedID: UUID?
     @State private var connectedDragTranslation: CGFloat = 0
     @State private var draggedAudioID: UUID?
@@ -102,10 +105,14 @@ struct MagneticTimelineView: View {
     private var effectLaneAssignments: [UUID: Int] { layout.effectLaneAssignments }
     private var titleLaneAssignments: [UUID: Int] { layout.titleLaneAssignments }
     private var connectedLaneCount: Int { layout.connectedLaneCount }
-    private var audioLaneCount: Int { layout.audioLaneCount }
-    private var telemetryLaneCount: Int { layout.telemetryLaneCount }
-    private var effectLaneCount: Int { layout.effectLaneCount }
-    private var titleLaneCount: Int { layout.titleLaneCount }
+    private var audioLaneCount: Int { previewLaneCount(.audio, existing: layout.audioLaneCount) }
+    private var telemetryLaneCount: Int { previewLaneCount(.telemetry, existing: layout.telemetryLaneCount) }
+    private var effectLaneCount: Int { previewLaneCount(.effect, existing: layout.effectLaneCount) }
+    private var titleLaneCount: Int { previewLaneCount(.title, existing: layout.titleLaneCount) }
+
+    private func previewLaneCount(_ lane: TimelineInsertionPreview.Lane, existing: Int) -> Int {
+        max(existing, libraryInsertion?.lane == lane ? (libraryInsertion?.laneIndex ?? 0) + 1 : 0)
+    }
 
     private func primaryFrame(at index: Int, includingTrim: Bool = false) -> CGRect {
         let item = primaryItems[index]
@@ -128,24 +135,24 @@ struct MagneticTimelineView: View {
     private var visiblePrimaryIndices: [Int] {
         primaryItems.indices.filter { index in
             let item = primaryItems[index]
-            let frame = primaryFrame(at: index, includingTrim: true)
+            let frame = primaryFrame(at: index, includingTrim: true).offsetBy(dx: libraryOffset(at: index), dy: 0)
             return item.id == draggedItemID || item.id == trimPreview?.itemID || renderWindow.intersects(x: frame.minX, width: frame.width)
         }
     }
     private var visibleTitleItems: [TitleTimelineItem] {
-        titleItems.filter { $0.id == draggedTitleID || rangeTrimPreview?.target == .title($0.id) || renderWindow.intersects(x: xPosition(for: $0.startTime), width: regionWidth($0.duration)) }
+        titleItems.filter { $0.id == draggedTitleID || rangeTrimPreview?.target == .title($0.id) || isRangeVisible(start: $0.startTime, duration: $0.duration) }
     }
     private var visibleEffectBlocks: [EffectTimelineBlock] {
-        effectBlocks.filter { $0.id == draggedEffectID || rangeTrimPreview?.target == .effect($0.id) || renderWindow.intersects(x: xPosition(for: $0.startTime), width: regionWidth($0.duration)) }
+        effectBlocks.filter { $0.id == draggedEffectID || rangeTrimPreview?.target == .effect($0.id) || isRangeVisible(start: $0.startTime, duration: $0.duration) }
     }
     private var visibleConnectedItems: [TimelineItem] {
-        connectedItems.filter { $0.id == draggedConnectedID || trimPreview?.itemID == $0.id || renderWindow.intersects(x: xPosition(for: $0.timelineStart), width: connectedClipWidth($0)) }
+        connectedItems.filter { $0.id == draggedConnectedID || trimPreview?.itemID == $0.id || isRangeVisible(start: $0.timelineStart, duration: $0.timelineDuration) }
     }
     private var visibleAudioClips: [TimelineAudioClip] {
-        audioClips.filter { $0.id == draggedAudioID || rangeTrimPreview?.target == .audio($0.id) || renderWindow.intersects(x: xPosition(for: $0.timelineStart), width: audioClipWidth($0)) }
+        audioClips.filter { $0.id == draggedAudioID || rangeTrimPreview?.target == .audio($0.id) || isRangeVisible(start: $0.timelineStart, duration: $0.timelineDuration) }
     }
     private var visibleTelemetryItems: [TimelineTelemetryItem] {
-        telemetryItems.filter { $0.id == draggedTelemetryID || rangeTrimPreview?.target == .telemetry($0.id) || renderWindow.intersects(x: xPosition(for: $0.timelineStart), width: regionWidth($0.timelineDuration)) }
+        telemetryItems.filter { $0.id == draggedTelemetryID || rangeTrimPreview?.target == .telemetry($0.id) || isRangeVisible(start: $0.timelineStart, duration: $0.timelineDuration) }
     }
     private var visibleRulerTicks: ClosedRange<Int> {
         let lowerTime = timelineTime(at: max(0, renderWindow.range.lowerBound - 60)) ?? 0
@@ -381,12 +388,12 @@ struct MagneticTimelineView: View {
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 5) {
                     ruler
-                    if !titleItems.isEmpty { titleTrack }
+                    if showsTitleTrack { titleTrack }
                     if !connectedItems.isEmpty { connectedTrack }
                     primaryTrack
-                    if !effectItems.isEmpty { effectsTrack }
-                    if !telemetryItems.isEmpty { telemetryTrack }
-                    if !audioClips.isEmpty { audioClipsTrack }
+                    if showsEffectTrack { effectsTrack }
+                    if showsTelemetryTrack { telemetryTrack }
+                    if showsAudioTrack { audioClipsTrack }
                     if timeline.music != nil { musicTrack }
                 }
 
@@ -412,11 +419,12 @@ struct MagneticTimelineView: View {
                     canvasHeight: canvasHeight
                 )
                 TimelineHoverOverlay(state: hoverState, timeline: timeline, canvasHeight: canvasHeight)
+                libraryInsertionOverlay
             }
             .frame(width: totalTimelineWidth, height: canvasHeight, alignment: .topLeading)
             .coordinateSpace(name: "timelineCanvas")
             .environment(\.timelineRenderRange, renderWindow.range)
-            .background(TimelineViewportReader { next in
+            .background(TimelineViewportReader(onOriginChange: { canvasOrigin = $0 }) { next in
                 if renderWindow != next { renderWindow = next }
             })
             .contentShape(Rectangle())
@@ -430,13 +438,10 @@ struct MagneticTimelineView: View {
                         model.seekTimeline(to: snapped(time, includePlayhead: false))
                     }
             )
-            .dropDestination(for: String.self) { values, point in
-                handleLibraryDrop(values, at: point)
-            }
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let location):
-                    guard draggedItemID == nil, draggedConnectedID == nil, draggedAudioID == nil, draggedTelemetryID == nil,
+                    guard libraryInsertion == nil, draggedItemID == nil, draggedConnectedID == nil, draggedAudioID == nil, draggedTelemetryID == nil,
                           draggedEffectID == nil, draggedTitleID == nil,
                           trimPreview == nil, rangeTrimPreview == nil,
                           let time = timelineTime(at: location.x) else { return }
@@ -454,17 +459,38 @@ struct MagneticTimelineView: View {
             .padding(.top, 7)
             .padding(.bottom, 12)
         }
+        .contentShape(Rectangle())
+        // Keep the destination stable when preview lanes appear, and accept
+        // drops in the unused viewport below/after a short timeline too.
+        .onDrop(of: [LibraryDragSession.type], delegate: LibraryTimelineDropDelegate(
+            isEnabled: !model.isTimelineInteractionBlocked,
+            session: libraryDropSession,
+            update: { raw, point in
+                updateLibraryInsertion(raw, at: TimelineDropCoordinates(canvasOrigin: canvasOrigin).canvasPoint(from: point))
+            },
+            clear: { libraryInsertion = nil },
+            perform: { raw, point in
+                handleLibraryDrop([raw], at: TimelineDropCoordinates(canvasOrigin: canvasOrigin).canvasPoint(from: point))
+            }
+        ))
+        .onDisappear { libraryInsertion = nil; libraryDropSession.reset() }
         .scrollIndicators(.visible)
         .background(Color(nsColor: .textBackgroundColor).opacity(0.32))
     }
 
+    private var showsTitleTrack: Bool { !titleItems.isEmpty || libraryInsertion?.lane == .title }
+    private var showsEffectTrack: Bool { !effectItems.isEmpty || libraryInsertion?.lane == .effect }
+    private var showsTelemetryTrack: Bool { !telemetryItems.isEmpty || libraryInsertion?.lane == .telemetry }
+    private var showsAudioTrack: Bool { !audioClips.isEmpty || libraryInsertion?.lane == .audio }
+    private var primaryTrackY: CGFloat {
+        19 + (showsTitleTrack ? CGFloat(max(1, titleLaneCount) * 31 + 5) : 0) +
+        (connectedItems.isEmpty ? 0 : CGFloat(connectedLaneCount * 31 + 5))
+    }
+    private var effectTrackY: CGFloat { primaryTrackY + 85 }
+    private var telemetryTrackY: CGFloat { effectTrackY + (showsEffectTrack ? CGFloat(max(1, effectLaneCount) * 31 + 5) : 0) }
+    private var audioTrackY: CGFloat { telemetryTrackY + (showsTelemetryTrack ? CGFloat(max(1, telemetryLaneCount) * 31 + 5) : 0) }
     private var canvasHeight: CGFloat {
-        14 + 80 +
-        (titleItems.isEmpty ? 0 : CGFloat(titleLaneCount * 31 + 3)) +
-        (connectedItems.isEmpty ? 0 : CGFloat(connectedLaneCount * 31 + 5)) +
-        (effectItems.isEmpty ? 0 : CGFloat(effectLaneCount * 31 + 3)) +
-        (telemetryItems.isEmpty ? 0 : CGFloat(telemetryLaneCount * 31 + 3)) +
-        (audioClips.isEmpty ? 0 : CGFloat(audioLaneCount * 31 + 3)) +
+        audioTrackY + (showsAudioTrack ? CGFloat(max(1, audioLaneCount) * 31 + 5) : 0) +
         (timeline.music == nil ? 0 : 32)
     }
 
@@ -473,7 +499,7 @@ struct MagneticTimelineView: View {
             ForEach(visibleTitleItems) { item in
                 let selected = model.isTitleTimelineItemSelected(item.id)
                 let frame = rangeTrimFrame(for: .title(item.id), start: item.startTime,
-                    duration: item.duration, width: regionWidth(item.duration))
+                    duration: item.duration)
                 HStack(spacing: 6) {
                     Image(systemName: item.kind == .wordLevelCaptions ? "captions.bubble" : "textformat")
                     Text(item.text).lineLimit(1)
@@ -501,7 +527,7 @@ struct MagneticTimelineView: View {
                             titleDragTranslation = value.translation.width
                         }
                         .onEnded { value in
-                            let target = snapped(item.startTime + Double(value.translation.width) / pointsPerSecond)
+                            let target = movedTime(from: item.startTime, translation: value.translation.width)
                             draggedTitleID = nil
                             titleDragTranslation = 0
                             model.moveTitleTimelineItem(item.id, to: target)
@@ -537,7 +563,7 @@ struct MagneticTimelineView: View {
                 let item = block.primary
                 let selected = block.itemIDs.allSatisfy(model.isEffectTimelineItemSelected)
                 let frame = rangeTrimFrame(for: .effect(block.id), start: block.startTime,
-                    duration: block.duration, width: regionWidth(block.duration))
+                    duration: block.duration)
                 HStack(spacing: 6) {
                     Image(systemName: block.presetID == nil ? "wand.and.rays" : "square.stack.3d.up.fill")
                     Text(block.title).lineLimit(1)
@@ -563,7 +589,7 @@ struct MagneticTimelineView: View {
                             effectDragTranslation = value.translation.width
                         }
                         .onEnded { value in
-                            let target = snapped(block.startTime + Double(value.translation.width) / pointsPerSecond)
+                            let target = movedTime(from: block.startTime, translation: value.translation.width)
                             draggedEffectID = nil
                             effectDragTranslation = 0
                             model.moveEffectTimelineItems(block.itemIDs, primaryID: item.id, to: target)
@@ -665,8 +691,7 @@ struct MagneticTimelineView: View {
             ForEach(visibleConnectedItems) { item in
                 let selected = model.isTimelineItemSelected(item.id)
                 let preview = trimPreview?.itemID == item.id ? trimPreview : nil
-                let originalFrame = CGRect(x: xPosition(for: item.timelineStart), y: 0,
-                    width: connectedClipWidth(item), height: 28)
+                let originalFrame = regionFrame(start: item.timelineStart, duration: item.timelineDuration)
                 let frame = preview?.range.previewFrame(
                     from: .init(start: item.timelineStart, duration: item.timelineDuration),
                     frame: originalFrame, pointsPerSecond: pointsPerSecond) ?? originalFrame
@@ -726,7 +751,9 @@ struct MagneticTimelineView: View {
             ZStack(alignment: .topLeading) {
                 ForEach(visiblePrimaryIndices.map { (index: $0, item: primaryItems[$0]) }, id: \.item.id) { entry in
                     timelineClip(entry.item, primaryIndex: entry.index)
-                        .offset(x: primaryFrame(at: entry.index, includingTrim: true).minX)
+                        .offset(x: primaryFrame(at: entry.index, includingTrim: true).minX + libraryOffset(at: entry.index))
+                        .animation(.easeOut(duration: 0.14), value: libraryInsertion?.index)
+                        .animation(.easeOut(duration: 0.14), value: libraryInsertion?.gap)
                         .zIndex(trimPreview?.itemID == entry.item.id ? 1 : 0)
                 }
             }
@@ -785,7 +812,7 @@ struct MagneticTimelineView: View {
             }
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
-            .offset(x: xPosition(for: item.timelineStart) - 9, y: 29)
+            .offset(x: xPosition(for: item.timelineStart) - 9 + libraryOffset(at: layout.primaryIndices[item.id] ?? 0), y: 29)
             .zIndex(20)
             .help("Переход: \(TransitionStyle(rawValue: item.transition ?? "")?.localizedTitle ?? "Редактировать")")
         }
@@ -793,7 +820,7 @@ struct MagneticTimelineView: View {
 
     private var musicTrack: some View {
         let frame = rangeTrimFrame(for: .soundtrack, start: 0,
-            duration: layout.geometry.duration, width: totalTimelineWidth)
+            duration: layout.geometry.duration)
         return Group {
             if let plan = timeline.effectiveAdaptiveSoundtrack {
                 ZStack(alignment: .leading) {
@@ -844,7 +871,7 @@ struct MagneticTimelineView: View {
                     soundtrackDragTranslation = value.translation.width
                 }
                 .onEnded { value in
-                    let start = max(0, Double(value.translation.width) / pointsPerSecond)
+                    let start = movedTime(from: 0, translation: value.translation.width)
                     soundtrackDragTranslation = 0
                     isDraggingSoundtrack = false
                     model.moveSoundtrack(toTimelineStart: snapped(start))
@@ -913,7 +940,7 @@ struct MagneticTimelineView: View {
             ForEach(visibleAudioClips) { clip in
                 let selected = model.isTimelineAudioClipSelected(clip.id)
                 let frame = rangeTrimFrame(for: .audio(clip.id), start: clip.timelineStart,
-                    duration: clip.timelineDuration, width: audioClipWidth(clip))
+                    duration: clip.timelineDuration)
                 let trimWidth = min(14, frame.width / 4)
                 let controlsInset = min(16, frame.width / 3)
                 HStack(spacing: 7) {
@@ -924,7 +951,7 @@ struct MagneticTimelineView: View {
                     MontageWaveform(
                         seed: clip.id.uuidString,
                         color: .white.opacity(0.72),
-                        barCount: min(90, max(10, Int(audioClipWidth(clip) / 5)))
+                        barCount: min(90, max(10, Int(frame.width / 5)))
                     )
                     .frame(maxWidth: .infinity)
                 }
@@ -981,7 +1008,7 @@ struct MagneticTimelineView: View {
             ForEach(visibleTelemetryItems) { item in
                 let selected = model.isTelemetryItemSelected(item.id)
                 let frame = rangeTrimFrame(for: .telemetry(item.id), start: item.timelineStart,
-                    duration: item.timelineDuration, width: max(42, CGFloat(item.timelineDuration * pointsPerSecond)))
+                    duration: item.timelineDuration)
                 HStack(spacing: 6) {
                     Image(systemName: "gauge.with.dots.needle.67percent")
                     Text(item.settings.resolvedWidgets.first?.kind.localizedTitle ?? "Телеметрия")
@@ -1005,7 +1032,7 @@ struct MagneticTimelineView: View {
                             telemetryDragTranslation = value.translation.width
                         }
                         .onEnded { value in
-                            let requested = item.timelineStart + Double(value.translation.width) / pointsPerSecond
+                            let requested = movedTime(from: item.timelineStart, translation: value.translation.width)
                             draggedTelemetryID = nil; telemetryDragTranslation = 0
                             model.moveTelemetryItem(item.id, toTimelineStart: snapped(requested))
                         }
@@ -1043,10 +1070,13 @@ struct MagneticTimelineView: View {
         let croppedLeadingWidth = preview?.edge == .leading
             ? max(0, CGFloat((item.timelineDuration - shownDuration) * pointsPerSecond)) : 0
 
+        let isBackground = item.assetID.flatMap { model.timelineMediaAsset($0) }
+            .flatMap { BackgroundPreset.preset(for: $0) } != nil
+
         return ZStack(alignment: .topLeading) {
             clipFilmstrip(item, width: width + croppedLeadingWidth)
                 .offset(x: -croppedLeadingWidth)
-                .frame(width: width, height: 58, alignment: .topLeading)
+                .frame(width: width, height: isBackground ? 76 : 58, alignment: .topLeading)
                 .clipped()
             if hasSourceAudio(item) {
                 MontageWaveform(
@@ -1208,18 +1238,8 @@ struct MagneticTimelineView: View {
         } else if let assetID = item.assetID,
                   let asset = model.timelineMediaAsset(assetID) {
             if let preset = BackgroundPreset.preset(for: asset) {
-                GeometryReader { proxy in
-                    let slice = TimelineDrawingSlice(width: width,
-                        origin: proxy.frame(in: .named("timelineCanvas")).minX, range: renderWindow.range)
-                    let count = max(1, Int(ceil(width / 59)))
-                    ZStack(alignment: .topLeading) {
-                        ForEach(slice.indices(count: count, fullWidth: CGFloat(count) * 59), id: \.self) { index in
-                            BackgroundPresetPreview(preset: preset)
-                                .frame(width: 58, height: 58)
-                                .offset(x: CGFloat(index) * 59)
-                        }
-                    }
-                }
+                BackgroundPresetArtwork(preset: preset)
+                    .frame(width: width, height: 76)
             } else {
                 if let filmstripURL = model.timelineFilmstripURLs[item.id] {
                     CachedAdaptiveFilmstripImage(
@@ -1323,7 +1343,7 @@ struct MagneticTimelineView: View {
             }
             .onEnded { value in
                 guard draggedConnectedID == item.id else { return }
-                let requested = item.timelineStart + Double(value.translation.width) / pointsPerSecond
+                let requested = movedTime(from: item.timelineStart, translation: value.translation.width)
                 draggedConnectedID = nil
                 connectedDragTranslation = 0
                 model.moveConnectedTimelineItem(item.id, toTimelineStart: snapped(requested))
@@ -1343,7 +1363,7 @@ struct MagneticTimelineView: View {
             }
             .onEnded { value in
                 guard draggedAudioID == clip.id else { return }
-                let requested = clip.timelineStart + Double(value.translation.width) / pointsPerSecond
+                let requested = movedTime(from: clip.timelineStart, translation: value.translation.width)
                 draggedAudioID = nil
                 audioDragTranslation = 0
                 model.moveTimelineAudioClip(clip.id, toTimelineStart: snapped(requested))
@@ -1697,9 +1717,9 @@ struct MagneticTimelineView: View {
     }
 
     private func rangeTrimFrame(
-        for target: RangeTrimTarget, start: Double, duration: Double, width: CGFloat
+        for target: RangeTrimTarget, start: Double, duration: Double
     ) -> CGRect {
-        let frame = CGRect(x: xPosition(for: start), y: 0, width: width, height: 28)
+        let frame = regionFrame(start: start, duration: duration)
         guard let preview = rangeTrimPreview, preview.target == target else { return frame }
         return preview.range.previewFrame(from: .init(start: start, duration: duration),
             frame: frame, pointsPerSecond: pointsPerSecond)
@@ -1835,13 +1855,130 @@ struct MagneticTimelineView: View {
             timelineStart: range.start, timelineDuration: range.duration)
     }
 
+    private var insertionGeometry: TimelineInsertionGeometry {
+        TimelineInsertionGeometry(frames: primaryItems.indices.map { primaryFrame(at: $0) })
+    }
+
+    private func libraryOffset(at index: Int) -> CGFloat {
+        guard let preview = libraryInsertion, let target = preview.index else { return 0 }
+        return index >= target ? preview.gap : 0
+    }
+
+    @ViewBuilder private var libraryInsertionOverlay: some View {
+        if let preview = libraryInsertion {
+            let y: CGFloat = switch preview.lane {
+            case .primary, .transition: primaryTrackY
+            case .title: 19
+            case .effect: effectTrackY
+            case .telemetry: telemetryTrackY
+            case .audio: audioTrackY
+            }
+            let height: CGFloat = preview.index == nil ? 28 : 76
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.accentColor.opacity(0.22))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                }
+                .overlay {
+                    Label(preview.label, systemImage: preview.symbol)
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(5)
+                }
+                .frame(width: preview.width, height: height)
+                .offset(x: preview.x, y: y + CGFloat(preview.laneIndex * 31))
+                .allowsHitTesting(false)
+                .zIndex(25)
+        }
+    }
+
+    private func updateLibraryInsertion(_ raw: String, at point: CGPoint) {
+        let next = libraryPreview(for: raw, at: point)
+        if libraryInsertion != next { libraryInsertion = next }
+        if hoverState.time != nil { hoverState.clear() }
+    }
+
+    private func libraryPreview(for raw: String, at point: CGPoint) -> TimelineInsertionPreview? {
+        let geometry = insertionGeometry
+        let time = timelineTime(at: point.x).map { snapped($0) } ?? 0
+        func primary(_ label: String, symbol: String, duration: Double) -> TimelineInsertionPreview {
+            let index = geometry.insertionIndex(at: point.x)
+            let start = index < primaryItems.count ? primaryItems[index].timelineStart : layout.geometry.duration
+            return .init(lane: .primary, index: index, time: start,
+                         x: geometry.boundaryX(at: index, spacing: clipSpacing),
+                         width: min(180, max(64, duration * pointsPerSecond)), label: label, symbol: symbol)
+        }
+        func overlay(_ lane: TimelineInsertionPreview.Lane, label: String, symbol: String, duration: Double,
+                     at requestedStart: Double? = nil) -> TimelineInsertionPreview {
+            let start = TimelineTiming.editingTime(requestedStart ?? time, in: timeline,
+                maximum: layout.geometry.duration - 0.05)
+            let end = start + min(duration, max(0.05, layout.geometry.duration - start))
+            let ranges: [(Int, Double, Double)] = switch lane {
+            case .title: titleItems.map { (titleLaneAssignments[$0.id] ?? 0, $0.startTime, $0.startTime + $0.duration) }
+            case .effect: effectBlocks.map { (effectLaneAssignments[$0.id] ?? 0, $0.startTime, $0.endTime) }
+            case .telemetry: telemetryItems.map { (telemetryLaneAssignments[$0.id] ?? 0, $0.timelineStart, $0.timelineEnd) }
+            case .audio: audioClips.map { (audioLaneAssignments[$0.id] ?? 0, $0.timelineStart, $0.timelineEnd) }
+            default: []
+            }
+            var laneIndex = 0
+            while ranges.contains(where: { $0.0 == laneIndex && $0.1 < end && $0.2 > start }) { laneIndex += 1 }
+            let frame = layout.geometry.rangeFrame(start: start, duration: end - start,
+                pointsPerSecond: pointsPerSecond, spacing: Double(clipSpacing))
+            return .init(lane: lane, index: nil, time: start, x: frame.minX,
+                         width: frame.width,
+                         label: label, symbol: symbol, laneIndex: laneIndex)
+        }
+        if raw.hasPrefix("background:"), let preset = BackgroundPreset(rawValue: String(raw.dropFirst(11))) {
+            return primary(preset.localizedTitle, symbol: "photo", duration: 4)
+        }
+        if let id = UUID(uuidString: raw), let asset = model.project?.assets.first(where: { $0.id == id }) {
+            return primary(asset.displayName, symbol: asset.kind == .video ? "video" : "photo",
+                           duration: asset.kind == .video ? max(0.25, asset.metadata.duration ?? 5) : 4)
+        }
+        if raw.hasPrefix("transition:"), let style = TransitionStyle(rawValue: String(raw.dropFirst(11))),
+           let index = geometry.transitionIndex(at: point.x) {
+            return .init(lane: .transition, index: index, time: primaryItems[index].timelineStart,
+                         x: geometry.boundaryX(at: index, spacing: clipSpacing), width: 48,
+                         label: style.localizedTitle, symbol: "rectangle.2.swap")
+        }
+        if raw.hasPrefix("music:"), let id = UUID(uuidString: String(raw.dropFirst(6))),
+           let track = model.musicTracks.first(where: { $0.id == id }) {
+            return overlay(.audio, label: track.title, symbol: "waveform", duration: track.duration)
+        }
+        if let payload = TelemetryPresetDragPayload(raw) {
+            let active = timeline.items.filter {
+                $0.kind == .video && $0.assetID != nil && time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration
+            }
+            guard let target = active.last(where: { $0.overlay != nil }) ?? active.first else { return nil }
+            return overlay(.telemetry, label: payload.kind.localizedTitle, symbol: "gauge.with.dots.needle.67percent",
+                           duration: target.timelineDuration, at: target.timelineStart)
+        }
+        if raw.hasPrefix("effect:"), let effect = TimelineEffectType(rawValue: String(raw.dropFirst(7))) {
+            return overlay(.effect, label: effect.localizedTitle, symbol: "wand.and.rays", duration: 2)
+        }
+        if raw.hasPrefix("effect-preset:"), let preset = EffectStackPresetRegistry.preset(id: String(raw.dropFirst(14))) {
+            return overlay(.effect, label: preset.name, symbol: "square.stack.3d.up.fill", duration: 3)
+        }
+        if raw.hasPrefix("title-template:") {
+            let fields = raw.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            guard fields.count == 3, let template = TitleTemplateRegistry.template(id: String(fields[1])) else { return nil }
+            return overlay(.title, label: template.name, symbol: "textformat", duration: template.duration)
+        }
+        if raw.hasPrefix("title:") {
+            return overlay(.title, label: "Титр", symbol: "textformat", duration: 3.2)
+        }
+        return nil
+    }
+
     private func handleLibraryDrop(_ values: [String], at point: CGPoint) -> Bool {
         guard !model.isTimelineInteractionBlocked, let raw = values.first else { return false }
-        let time = timelineTime(at: point.x).map { snapped($0) } ?? 0
+        guard let preview = libraryPreview(for: raw, at: point) else { return false }
+        let time = preview.time
 
         if raw.hasPrefix("background:"),
            let preset = BackgroundPreset(rawValue: String(raw.dropFirst("background:".count))) {
-            model.insertBackgroundIntoTimeline(preset, at: insertionIndex(at: point.x))
+            model.insertBackgroundIntoTimeline(preset, at: backgroundInsertionIndex(at: point.x))
             return true
         }
         if raw.hasPrefix("music:"),
@@ -1861,6 +1998,11 @@ struct MagneticTimelineView: View {
         if raw.hasPrefix("effect:"),
            let effect = TimelineEffectType(rawValue: String(raw.dropFirst("effect:".count))) {
             model.addTimelineEffect(effect, at: time)
+            return true
+        }
+        if raw.hasPrefix("effect-preset:"),
+           let preset = EffectStackPresetRegistry.preset(id: String(raw.dropFirst("effect-preset:".count))) {
+            model.applyEffectStackPreset(preset.id, at: time)
             return true
         }
         if raw.hasPrefix("transition:"),
@@ -1888,7 +2030,7 @@ struct MagneticTimelineView: View {
         }
         if let assetID = UUID(uuidString: raw),
            model.project?.assets.contains(where: { $0.id == assetID }) == true {
-            model.insertAssetIntoTimeline(assetID, at: insertionIndex(at: point.x))
+            model.insertAssetIntoTimeline(assetID, at: insertionGeometry.insertionIndex(at: point.x))
             return true
         }
         return false
@@ -1896,6 +2038,11 @@ struct MagneticTimelineView: View {
 
     private func timelineTime(at x: CGFloat) -> Double? {
         layout.geometry.time(at: Double(x), pointsPerSecond: pointsPerSecond, spacing: Double(clipSpacing))
+    }
+
+    private func movedTime(from start: Double, translation: CGFloat) -> Double {
+        snapped(layout.geometry.movedTime(from: start, translation: Double(translation),
+            pointsPerSecond: pointsPerSecond, spacing: Double(clipSpacing)))
     }
 
     private func snapped(_ time: Double, includePlayhead: Bool = true) -> Double {
@@ -1911,23 +2058,25 @@ struct MagneticTimelineView: View {
         }
     }
 
-    private func insertionIndex(at x: CGFloat) -> Int {
-        guard let index = nearestPrimaryIndex(to: x) else { return timeline.items.count }
+    private func backgroundInsertionIndex(at x: CGFloat) -> Int {
+        let index = insertionGeometry.insertionIndex(at: x)
+        guard index < primaryItems.count else { return timeline.items.count }
         let item = primaryItems[index]
-        let base = timeline.items.firstIndex(where: { $0.id == item.id }) ?? timeline.items.count
-        return x > primaryFrame(at: index).midX ? min(timeline.items.count, base + 1) : base
+        return timeline.items.firstIndex(where: { $0.id == item.id }) ?? timeline.items.count
     }
 
     private func clipWidth(_ item: TimelineItem, duration: Double? = nil) -> CGFloat {
         max(1, CGFloat((duration ?? item.timelineDuration) * pointsPerSecond))
     }
 
-    private func audioClipWidth(_ clip: TimelineAudioClip) -> CGFloat {
-        max(1, CGFloat(clip.timelineDuration * pointsPerSecond))
+    private func regionFrame(start: Double, duration: Double) -> CGRect {
+        layout.geometry.rangeFrame(start: start, duration: duration,
+            pointsPerSecond: pointsPerSecond, spacing: Double(clipSpacing))
     }
 
-    private func regionWidth(_ duration: Double) -> CGFloat {
-        max(28, CGFloat(duration * pointsPerSecond))
+    private func isRangeVisible(start: Double, duration: Double) -> Bool {
+        let frame = regionFrame(start: start, duration: duration)
+        return renderWindow.intersects(x: frame.minX, width: frame.width)
     }
 
     private func effectColor(_ category: TimelineEffectCategory) -> Color {
@@ -1939,11 +2088,6 @@ struct MagneticTimelineView: View {
         case .motion: return .blue
         case .stylized: return .pink
         }
-    }
-
-    private func connectedClipWidth(_ item: TimelineItem) -> CGFloat {
-        let visible = min(item.timelineDuration, max(0.05, layout.geometry.duration - item.timelineStart))
-        return max(1, CGFloat(visible * pointsPerSecond))
     }
 
     private var totalTimelineWidth: CGFloat {
@@ -1958,7 +2102,7 @@ struct MagneticTimelineView: View {
         // moves the clip underneath a stationary pointer, which feels like a
         // shaking or lagging trim handle.
         let visibleDuration = max(layout.geometry.duration, layout.geometry.duration + previewDelta)
-        return max(320, CGFloat(visibleDuration * pointsPerSecond) + gaps)
+        return max(320, CGFloat(visibleDuration * pointsPerSecond) + gaps + (libraryInsertion?.gap ?? 0))
     }
 
     private func xPosition(for time: Double) -> CGFloat {
@@ -2066,7 +2210,7 @@ private struct MontageTimelineThumbnail: View {
     let kind: MediaKind
 
     var body: some View {
-        CachedThumbnailImage(url: url, kind: kind, contentMode: .fill, stretchesToFill: true)
+        CachedAdaptiveFilmstripImage(url: url, kind: kind, sourceFrameCount: 1)
         .clipped()
     }
 }

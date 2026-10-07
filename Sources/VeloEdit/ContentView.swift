@@ -7,7 +7,7 @@ import VeloEditCore
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
-    @Environment(\.openSettings) private var openSettings
+    @EnvironmentObject private var intro: FirstLaunchCoordinator
     @State private var isSidebarVisible = true
     @State private var isRenamingProject = false
     @State private var projectName = ""
@@ -27,10 +27,20 @@ struct ContentView: View {
                 }
 
                 Group {
-                    if !model.hasProjectWorkspace { WelcomeView() }
+                    if !model.hasProjectWorkspace && model.section != .settings { WelcomeView() }
                     else { selectedWorkspace }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if !model.missingMediaAssets.isEmpty && model.openingProjectURL == nil {
+                HStack(spacing: 12) {
+                    Image(systemName: "externaldrive.badge.exclamationmark").foregroundStyle(.orange)
+                    Text("Не найдены исходники: \(model.missingMediaAssets.count). Подключите диск или укажите новое расположение.")
+                        .font(.callout).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Найти исходники…") { model.showsMissingMedia = true }
+                        .disabled(model.hasActiveWork)
+                }.padding(12).background(.regularMaterial)
             }
             if model.openingProjectURL == nil,
                let job = model.project?.autonomousJob, job.state == .waitingForExternalResource {
@@ -58,6 +68,7 @@ struct ContentView: View {
         }
         .toolbarBackground(!model.hasProjectWorkspace || model.section == .home ? .hidden : .automatic, for: .windowToolbar)
         .toolbar {
+            if !intro.isPresented {
             ToolbarItem(placement: .navigation) {
                 windowHeader
             }
@@ -100,7 +111,9 @@ struct ContentView: View {
             ToolbarItem(placement: .primaryAction) {
                 SystemResourceStatusView()
             }
+            }
         }
+        .sheet(isPresented: $model.showsMissingMedia) { MissingMediaView().environmentObject(model) }
         .sheet(item: $model.editorialComparison) { session in
             EditorialComparisonView(session: session).environmentObject(model)
         }
@@ -110,7 +123,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .veloEditToggleSidebar)) { _ in
             toggleSidebar()
         }
-        .alert("VeloEdit", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+        .alert("VeloEdit", isPresented: Binding(get: { !intro.isPresented && model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("Закрыть", role: .cancel) { model.errorMessage = nil }
         } message: { Text(model.errorMessage ?? "") }
         .alert("Переименовать проект", isPresented: $isRenamingProject) {
@@ -146,7 +159,7 @@ struct ContentView: View {
                 .zIndex(1)
 
             WindowHeaderButton(systemImage: "gearshape", label: "Настройки") {
-                openSettings()
+                model.openSection(.settings)
             }
                 .frame(width: 30, height: 32)
                 .zIndex(1)
@@ -261,7 +274,7 @@ struct ContentView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(!model.hasProjectWorkspace && section != .home)
+                    .disabled(model.storageIsCleaning || (!model.hasProjectWorkspace && section != .home && section != .settings))
                 }
             }
             .padding(10)
@@ -320,7 +333,7 @@ struct ContentView: View {
     @ViewBuilder private var selectedWorkspace: some View {
         VStack(spacing: 0) {
             Group {
-                if model.openingProjectURL != nil && model.section != .home && model.section != .media {
+                if model.openingProjectURL != nil && model.section != .home && model.section != .media && model.section != .settings {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(model.section.title).font(.title2.bold()).padding(20)
                         Divider()
@@ -333,6 +346,7 @@ struct ContentView: View {
                     case .director: DirectorPanel()
                     case .timeline: TimelineWorkspaceView(showsResetAllButton: !isSidebarVisible)
                     case .export: ExportWorkspaceView()
+                    case .settings: SettingsWorkspaceView()
                     }
                 }
             }
@@ -1958,7 +1972,7 @@ private struct MontageMediaBrowser: View {
                         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
                         .contentShape(Rectangle())
                         .onTapGesture { model.selectedAssetID = asset.id }
-                        .draggable(asset.id.uuidString)
+                        .libraryDraggable(asset.id.uuidString)
                     }
                 }
                 .padding(10)
@@ -1972,7 +1986,7 @@ private struct MontageMediaBrowser: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Music Source")
+                            Text("Музыка")
                                 .font(.headline)
                             Label(
                                 model.musicLibraryStatus.localizedSummary,
@@ -1985,11 +1999,11 @@ private struct MontageMediaBrowser: View {
                     }
                     HStack(spacing: 6) {
                         musicSourceBadge("VeloEdit Library", count: model.bundledMusicTracks.count, icon: "shippingbox.fill")
-                        musicSourceBadge("My Music", count: model.userMusicTracks.count, icon: "folder.fill")
+                        musicSourceBadge("Моя музыка", count: model.userMusicTracks.count, icon: "folder.fill")
                         musicSourceBadge("Online", count: model.cachedOnlineMusicTracks.count, icon: "network")
                     }
                     HStack(spacing: 8) {
-                        Button("Add Folder", systemImage: "folder.badge.plus", action: model.chooseMusicFolder)
+                        Button("Добавить папку", systemImage: "folder.badge.plus", action: model.chooseMusicFolder)
                         Button("Обновить Online", systemImage: "arrow.triangle.2.circlepath", action: model.prepareOnlineMusicLibrary)
                     }
                     .buttonStyle(.bordered)
@@ -2025,7 +2039,7 @@ private struct MontageMediaBrowser: View {
                         }
                         .padding(8)
                         .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
-                        .draggable("music:\(track.id.uuidString)")
+                        .libraryDraggable("music:\(track.id.uuidString)")
                     }
                 }
             }
@@ -2063,7 +2077,7 @@ private struct MontageMediaBrowser: View {
 
                 LazyVGrid(columns: backgroundColumns, alignment: .leading, spacing: 12) {
                     ForEach(BackgroundPreset.catalogPresets.filter { $0.category == backgroundCategory }) { preset in
-                        Button {
+                        LibraryItemButton {
                             model.insertBackgroundIntoTimeline(preset)
                         } label: {
                             VStack(alignment: .leading, spacing: 5) {
@@ -2096,7 +2110,7 @@ private struct MontageMediaBrowser: View {
                         }
                         .buttonStyle(.plain)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .draggable("background:\(preset.rawValue)")
+                        .libraryDraggable("background:\(preset.rawValue)")
                         .help("Перетащите фон на Timeline или нажмите, чтобы добавить в конец")
                     }
                 }
@@ -2124,7 +2138,7 @@ private struct MontageMediaBrowser: View {
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                             ForEach(TitleTemplateRegistry.all.filter { $0.category == category }) { template in
-                                Button {
+                                LibraryItemButton {
                                     let value = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
                                     model.addModernTitle(value.isEmpty ? template.preview.primaryText : value, templateID: template.id)
                                     titleText = ""
@@ -2147,7 +2161,7 @@ private struct MontageMediaBrowser: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.plain)
-                                .draggable(titleDragPayload(template))
+                                .libraryDraggable(titleDragPayload(template))
                                 .help("Перетащите титр на нужный момент Timeline")
                             }
                         }
@@ -2171,7 +2185,7 @@ private struct MontageMediaBrowser: View {
                         .foregroundStyle(.secondary)
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                         ForEach(EffectStackPresetRegistry.all) { preset in
-                            Button {
+                            LibraryItemButton {
                                 model.applyEffectStackPreset(preset.id)
                             } label: {
                                 VStack(alignment: .leading, spacing: 3) {
@@ -2199,6 +2213,7 @@ private struct MontageMediaBrowser: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .libraryDraggable("effect-preset:\(preset.id)")
                             .disabled(model.isWorking)
                         }
                     }
@@ -2211,7 +2226,7 @@ private struct MontageMediaBrowser: View {
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                             ForEach(TimelineEffectType.allCases.filter { $0.category == category }) { effect in
-                                Button {
+                                LibraryItemButton {
                                     model.addTimelineEffect(effect)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 5) {
@@ -2233,7 +2248,7 @@ private struct MontageMediaBrowser: View {
                                 }
                                 .buttonStyle(.plain)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .draggable("effect:\(effect.rawValue)")
+                                .libraryDraggable("effect:\(effect.rawValue)")
                                 .disabled(model.isWorking)
                                 .help("Перетащите эффект на нужный момент Timeline")
                             }
@@ -2280,7 +2295,7 @@ private struct MontageMediaBrowser: View {
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                             ForEach(TransitionPresetRegistry.presets(in: category)) { preset in
-                                Button {
+                                LibraryItemButton {
                                     model.addTimelineTransition(preset.style)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 5) {
@@ -2304,7 +2319,7 @@ private struct MontageMediaBrowser: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.plain)
-                                .draggable("transition:\(preset.style.rawValue)")
+                                .libraryDraggable("transition:\(preset.style.rawValue)")
                                 .disabled(model.isWorking)
                                 .help("Добавить \(preset.name) как редактируемый объект Timeline")
                             }
@@ -2347,29 +2362,41 @@ private final class BackgroundPreviewImageCache: @unchecked Sendable {
     }
 }
 
+struct BackgroundPresetArtwork: View {
+    let preset: BackgroundPreset
+
+    var body: some View {
+        GeometryReader { proxy in
+            Group {
+                if let image = BackgroundPreviewImageCache.shared.image(for: preset) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: preset.colors.map { Color(red: $0.red, green: $0.green, blue: $0.blue) },
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+    }
+}
+
 struct BackgroundPresetPreview: View {
     let preset: BackgroundPreset
 
     var body: some View {
-        Group {
-            if let image = BackgroundPreviewImageCache.shared.image(for: preset) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                LinearGradient(
-                    colors: preset.colors.map { Color(red: $0.red, green: $0.green, blue: $0.blue) },
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+        BackgroundPresetArtwork(preset: preset)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
             }
-        }
-        .aspectRatio(16 / 9, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        }
     }
 }
 
@@ -3732,7 +3759,7 @@ private struct TimelineInspector: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Label("Timeline = Preview = Export", systemImage: "checkmark.seal")
+            Label("Одинаково при просмотре и экспорте", systemImage: "checkmark.seal")
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.green)
             Button("Удалить переход", systemImage: "trash", role: .destructive, action: model.deleteSelectedTimelineObject)
@@ -3880,7 +3907,7 @@ private struct TimelineInspector: View {
 
     private var musicLibraryButtons: some View {
         HStack(spacing: 8) {
-            Button("My Music", systemImage: "folder.badge.plus", action: model.chooseMusicFolder)
+            Button("Моя музыка", systemImage: "folder.badge.plus", action: model.chooseMusicFolder)
                 .help("Добавить папку с MP3, AAC/M4A, WAV, AIFF или FLAC")
             Button("Online", systemImage: "network", action: model.prepareOnlineMusicLibrary)
                 .help("Необязательно: проверить Free To Use и Openverse; ошибки сети не мешают монтажу")
@@ -4248,7 +4275,6 @@ private struct DirectorChatColumn: View {
 
             DirectorComposer()
                 .padding(14)
-                .background(.bar)
         }
     }
 }
@@ -4807,8 +4833,19 @@ private struct DirectorMessageBubble: View {
                     }
                     .foregroundStyle(.secondary)
                 } else {
-                    Text(message.text)
-                        .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let response = message.response {
+                            Text((response.advisory ? (response.fallback ? "Совет · ограниченные данные" : "Совет") : response.saved ? "Сохранено" : "Результат")
+                                + (response.range.map { String(format: " · %.1f–%.1f с", $0.lowerBound, $0.upperBound) } ?? ""))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text(message.text).textSelection(.enabled)
+                        if let response = message.response, !response.details.isEmpty {
+                            DisclosureGroup("Подробности") {
+                                Text(response.details.joined(separator: "\n")).font(.caption).textSelection(.enabled)
+                            }.font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             .font(.body)
@@ -4918,16 +4955,18 @@ private struct DirectorPlayerColumn: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Player")
+                    Text("Проигрыватель")
                         .font(.title3.weight(.semibold))
                     if let timeline = model.timeline {
-                        Text("\(timeline.items.count) фрагментов · \(duration(timeline.duration))")
+                        Text(duration(timeline.duration))
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     } else {
                         Text("Результат монтажа")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
                 Spacer()
@@ -4998,21 +5037,6 @@ private struct DirectorPlayerColumn: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
 
-            Divider()
-
-            HStack(spacing: 8) {
-                playerStatus
-                Spacer(minLength: 8)
-                if model.isCreatingFilm {
-                    Text(model.activityUnmeasuredStartedAt != nil
-                         ? model.activityProgressLabel
-                         : "\(Int((model.progress * 100).rounded()))%")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
         }
         .animation(.easeInOut(duration: 0.2), value: model.playbackReady)
         .confirmationDialog(
@@ -5023,27 +5047,6 @@ private struct DirectorPlayerColumn: View {
             Button("Отмена", role: .cancel) {}
         } message: {
             Text("Умный режиссёр сохранит анализ исходников, но заново построит историю и постарается выбрать заметно отличающийся монтаж. Текущая версия останется в истории изменений.")
-        }
-    }
-
-    @ViewBuilder private var playerStatus: some View {
-        if model.isCreatingFilm {
-            ProgressView()
-                .controlSize(.small)
-            Text(model.activityTitle.isEmpty ? "Обновляю фильм" : model.activityTitle)
-                .foregroundStyle(.secondary)
-        } else if model.previewPlayer != nil {
-            if !model.hasPendingFilmChanges {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text("Просмотр обновлён")
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            Image(systemName: "circle.dashed")
-                .foregroundStyle(.secondary)
-            Text("Ожидает первого монтажа")
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -5590,37 +5593,30 @@ private struct EmptyTimelineView: View {
     var body: some View { ContentUnavailableView("Монтажная шкала пока пуста", systemImage: "timeline.selection", description: Text("Запустите анализ и нажмите «Создать фильм»." )).frame(minHeight: 145) }
 }
 
-struct SettingsView: View {
+struct GeneralSettingsView: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Настройки")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                        Text("Главное о VeloEdit — без технических параметров")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                SettingsSectionCard("Знакомство с VeloEdit") {
+                    HStack(spacing: 12) {
+                        SettingsActionDescription(icon: "play.rectangle", title: "Первый кадр",
+                                                  description: "Посмотрите вступление ещё раз и вернитесь к текущему экрану.")
+                        Spacer(minLength: 12)
+                        Button("Посмотреть вступление") { model.intro.replay() }
+                            .buttonStyle(.bordered)
                     }
-                    Spacer()
-                    Text("Версия \(model.currentAppVersion)")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.secondary.opacity(0.12), in: Capsule())
                 }
-
                 SettingsSectionCard("Статистика всех проектов") {
                     HStack(spacing: 12) {
                         SettingsStatistic(
-                            value: durationText(model.usageStatistics.analyzedContentDuration),
-                            title: "контента проанализировано",
+                            value: durationText(model.usageStatistics.sourceContentDuration),
+                            title: "исходного видео",
                             icon: "clock.fill",
                             color: .blue
                         )
+                        .help("Полная длительность уникальных исходных видео во всех проектах. Повторное использование и длительность монтажа не влияют на сумму.")
                         SettingsStatistic(
                             value: "\(model.usageStatistics.projectCount)",
                             title: projectWord(model.usageStatistics.projectCount),
@@ -5628,11 +5624,12 @@ struct SettingsView: View {
                             color: .purple
                         )
                         SettingsStatistic(
-                            value: "\(model.usageStatistics.analyzedAssetCount)",
-                            title: materialWord(model.usageStatistics.analyzedAssetCount),
+                            value: "\(model.usageStatistics.sourceAssetCount)",
+                            title: materialWord(model.usageStatistics.sourceAssetCount),
                             icon: "sparkles.rectangle.stack.fill",
                             color: .orange
                         )
+                        .help("Уникальные импортированные видео и фотографии во всех проектах, включая ещё не проанализированные. Встроенные фоны не учитываются.")
                     }
                 }
 
@@ -5698,7 +5695,7 @@ struct SettingsView: View {
             }
             .padding(24)
         }
-        .frame(width: 690, height: 650)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear(perform: model.refreshUsageStatistics)
     }
@@ -5716,7 +5713,7 @@ struct SettingsView: View {
     }
 
     private func materialWord(_ count: Int) -> String {
-        russianCountWord(count, one: "материал изучен", few: "материала изучено", many: "материалов изучено")
+        russianCountWord(count, one: "уникальный материал", few: "уникальных материала", many: "уникальных материалов")
     }
 
     private func russianCountWord(_ count: Int, one: String, few: String, many: String) -> String {

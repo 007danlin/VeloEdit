@@ -1,0 +1,5 @@
+{
+  "epoch": 1791312161.039928,
+  "power": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=23265379)\t31%; discharging; (no estimate) present: true\n",
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n"
+}

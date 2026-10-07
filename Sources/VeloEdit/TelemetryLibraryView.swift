@@ -99,11 +99,19 @@ struct TelemetryLibraryView: View {
                     Text("Перетащите карточку на ролик или кадр")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                    Text("В карточках — примеры. На видео — данные выбранного ролика.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
                 Button(action: model.chooseMedia) { Image(systemName: "plus") }
                     .buttonStyle(.borderless)
                     .help("Импортировать GPX, FIT, SRT, CSV, VBO или видео")
+            }
+            if targetSource?.format == .embeddedQuickTime {
+                Text("В ролике сохранено только место съёмки. Для скорости и маршрута импортируйте GPS-трек.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -289,7 +297,7 @@ struct TelemetryLibraryView: View {
     private func widgetCard(kind: TelemetryWidgetKind, presentation: TelemetryWidgetPresentation) -> some View {
         let payload = TelemetryPresetDragPayload(kind: kind, presentation: presentation, style: selectedStyle)
         let canInsert = model.canInsertTelemetryPreset(kind: kind, presentation: presentation)
-        return Button {
+        return LibraryItemButton {
             model.insertTelemetryPreset(kind: kind, presentation: presentation, style: selectedStyle)
         } label: {
             VStack(alignment: .leading, spacing: 5) {
@@ -312,11 +320,7 @@ struct TelemetryLibraryView: View {
         }
         .buttonStyle(.plain)
         .disabled(!canInsert)
-        .draggable(payload.stringValue) {
-            TelemetryWidgetArtwork(kind: kind, presentation: presentation, style: selectedStyle)
-                .frame(width: 180, height: 110)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
+        .libraryDraggable(payload.stringValue)
         .help(canInsert ? "Добавить на выбранный фрагмент или перетащить" : "В выбранном фрагменте нет этих данных")
     }
 }
@@ -456,25 +460,30 @@ struct TelemetryWidgetArtwork: View {
     let presentation: TelemetryWidgetPresentation
     let style: TelemetryWidgetStyle
 
+    @State private var previewImage: CGImage?
+
     private var palette: TelemetryArtworkPalette { TelemetryArtworkPalette(style) }
     private var sample: (value: String, unit: String) { kind.previewValue }
 
     var body: some View {
         GeometryReader { geometry in
+            let request = TelemetryPreviewCache.Request(kind: kind, presentation: presentation,
+                                                       style: style, size: geometry.size)
             ZStack {
                 palette.canvas
-                if let image = TelemetryOverlayRenderer.previewCGImage(
-                    kind: kind,
-                    presentation: presentation,
-                    style: style,
-                    size: geometry.size
-                ) {
-                    Image(decorative: image, scale: 1)
+                if let previewImage {
+                    Image(decorative: previewImage, scale: 1)
                         .resizable()
                         .scaledToFit()
                 }
             }
             .clipped()
+            .task(id: request) {
+                previewImage = nil
+                let image = await TelemetryPreviewCache.shared.image(for: request)
+                guard !Task.isCancelled else { return }
+                previewImage = image
+            }
         }
         .accessibilityLabel("\(kind.localizedTitle), \(presentation.localizedTitle), \(style.localizedTitle)")
     }

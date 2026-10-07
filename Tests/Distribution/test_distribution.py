@@ -1,6 +1,7 @@
 """Regression checks for distribution failures that must not be called releases."""
 import importlib.util
 import json
+import plistlib
 from pathlib import Path
 import subprocess
 import tempfile
@@ -15,6 +16,19 @@ signing = distribution.signer()
 
 
 class DistributionTests(unittest.TestCase):
+    def test_unsigned_universal_helpers_are_signed_before_the_main_bundle(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            app = Path(scratch) / "VeloEdit.app"
+            macos = app / "Contents/MacOS"
+            macos.mkdir(parents=True)
+            (app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "VeloEdit"}))
+            for name in ("VeloEdit", "VeloEditSpeechWorker", "VeloEditOVRLEY"):
+                (macos / name).write_bytes(bytes.fromhex("cafebabe") + b"fixture")
+            targets = signing.signing_targets(app)
+            self.assertEqual(targets[-1], app)
+            self.assertNotIn(macos / "VeloEdit", targets)
+            self.assertEqual(set(targets[:-1]), {macos / "VeloEditSpeechWorker", macos / "VeloEditOVRLEY"})
+
     def test_apple_development_certificate_is_not_a_developer_id(self):
         fingerprint = "A" * 40
         result = subprocess.CompletedProcess([], 0, f'1) {fingerprint} "Apple Development: Example"\n', "")

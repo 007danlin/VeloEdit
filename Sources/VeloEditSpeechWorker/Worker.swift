@@ -18,8 +18,30 @@ private struct Chunk: Codable {
 }
 
 @main struct SpeechWorker {
+    static var speechComputeOptions: ModelComputeOptions {
+        #if arch(x86_64)
+        // Intel Macs have no Apple Neural Engine. Keep Core ML's CPU/GPU
+        // path available while retaining WhisperKit's ANE defaults on ARM.
+        return ModelComputeOptions(melCompute: .cpuAndGPU, audioEncoderCompute: .cpuAndGPU, textDecoderCompute: .cpuAndGPU)
+        #else
+        return ModelComputeOptions()
+        #endif
+    }
+
     static func main() async {
         do {
+            if CommandLine.arguments == [CommandLine.arguments[0], "--self-check"] {
+                _ = try ORTEnv(loggingLevel: .error)
+                #if arch(x86_64)
+                let architecture = "x86_64"
+                #else
+                let architecture = "arm64"
+                #endif
+                let info = ["architecture": architecture, "speechCompute": String(describing: speechComputeOptions.audioEncoderCompute)]
+                let data = try JSONSerialization.data(withJSONObject: info, options: [.sortedKeys])
+                FileHandle.standardOutput.write(data + Data("\n".utf8))
+                return
+            }
             if CommandLine.arguments.count == 5, CommandLine.arguments[1] == "--sample" {
                 try await sample(requestFile: URL(fileURLWithPath: CommandLine.arguments[2]), start: Double(CommandLine.arguments[3]) ?? 0, duration: Double(CommandLine.arguments[4]) ?? 40)
                 return
@@ -60,7 +82,8 @@ private struct Chunk: Codable {
         var decodeSeconds = 0.0, vadSeconds = 0.0, asrSeconds = 0.0
         var resumedChunks = 0
         let pipe = try await WhisperKit(WhisperKitConfig(modelFolder: request.packageURL.appendingPathComponent("model").path,
-            tokenizerFolder: request.packageURL.appendingPathComponent("tokenizer"), verbose: true, prewarm: true, load: true, download: false))
+            tokenizerFolder: request.packageURL.appendingPathComponent("tokenizer"), computeOptions: speechComputeOptions,
+            verbose: true, prewarm: true, load: true, download: false))
         let vad = try SileroDetector(model: request.packageURL.appendingPathComponent("silero_vad.onnx"))
         let warmupSeconds = (ProcessInfo.processInfo.systemUptime - warmupStart)
         var chunks: [Chunk] = []

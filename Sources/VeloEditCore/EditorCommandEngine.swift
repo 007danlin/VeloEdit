@@ -202,9 +202,19 @@ public struct EditorCommandParser: Sendable {
                 Range(match.range(at: index), in: text).map { String(text[$0]) } ?? ""
             }
         }
-        if let values = captures(#"(?:поставь\s+|установи\s+)?громкость\s+музыки\s+(\d{1,3}(?:[.,]\d+)?)\s*%[.]?"#),
+        if let values = captures(#"(?:(?:поставь\s+|установи\s+)?громкость\s+музыки\s+|музыку\s+на\s+)(\d{1,3}(?:[.,]\d+)?)\s*%[.]?"#),
            let percent = Double(values[0].replacingOccurrences(of: ",", with: ".")), (0...100).contains(percent) {
             return [.setMusicVolume(percent / 100)]
+        }
+        if hasSelection,
+           let values = captures(#"(?:сделай|установи)\s+длительность\s+выбранного\s+клипа\s+(\d+(?:[.,]\d+)?)\s*(?:секунд[уы]?|с)[.]?"#),
+           let duration = Double(values[0].replacingOccurrences(of: ",", with: ".")), duration >= 0.25, duration <= 3600 {
+            return [.setDuration(duration, .selected)]
+        }
+        if let values = captures(#"(?:сделай|установи)\s+длительность\s+клипа\s+(\d+)\s+(\d+(?:[.,]\d+)?)\s*(?:секунд[уы]?|с)[.]?"#),
+           let index = Int(values[0]), index > 0,
+           let duration = Double(values[1].replacingOccurrences(of: ",", with: ".")), duration >= 0.25, duration <= 3600 {
+            return [.setDuration(duration, .number(index))]
         }
         if hasSelection, captures(#"(?:убери|выключи|отключи)\s+звук\s+(?:выделенного|выбранного|этого)\s+(?:клипа|фрагмента)[.]?"#) != nil {
             return [.setClipMuted(true, .selected)]

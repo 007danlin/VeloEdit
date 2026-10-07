@@ -3,6 +3,11 @@ set -euo pipefail
 
 repo_dir="${0:A:h:h}"
 configuration="${CONFIGURATION:-release}"
+architecture_list="${VELOEDIT_ARCHS:-arm64 x86_64}"
+architectures=(${=architecture_list})
+for architecture in "${architectures[@]}"; do
+  [[ "$architecture" == arm64 || "$architecture" == x86_64 ]] || { echo "Unsupported architecture: $architecture" >&2; exit 1; }
+done
 output_dir="$repo_dir/Build"
 app_dir="$output_dir/VeloEdit.app"
 staging_root="$(mktemp -d /tmp/veloedit-app.XXXXXX)"
@@ -14,7 +19,7 @@ trap 'rm -rf "$staging_root" "$publish_new" "$publish_old"' EXIT
 
 cd "$repo_dir"
 build_cache_root="${VELOEDIT_BUILD_CACHE_ROOT:-$HOME/Library/Caches/VeloEditBuild}"
-app_scratch_path="${VELOEDIT_SCRATCH_PATH:-$build_cache_root/swift}"
+app_scratch_path="${VELOEDIT_SCRATCH_PATH:-$build_cache_root/swift-universal}"
 mkdir -p /tmp/veloedit-build-temp "$app_scratch_path/ModuleCache"
 build_package_dir="$repo_dir"
 if [[ "$repo_dir" == "$HOME/Documents/"* || "${VELOEDIT_BUILD_SNAPSHOT:-0}" == "1" ]]; then
@@ -29,6 +34,8 @@ if [[ "$repo_dir" == "$HOME/Documents/"* || "${VELOEDIT_BUILD_SNAPSHOT:-0}" == "
   cp -R "$repo_dir/Tests" "$source_snapshot/Tests"
   cp -R "$repo_dir/Resources" "$source_snapshot/Resources"
   cp -R "$repo_dir/ThirdParty" "$source_snapshot/ThirdParty"
+  cp -R "$repo_dir/Scripts" "$source_snapshot/Scripts"
+  cp -R "$repo_dir/Distribution" "$source_snapshot/Distribution"
   build_package_dir="$source_snapshot"
 fi
 # Build with the active Xcode toolchain. The former Swift 6.2 SDK-compatibility
@@ -37,6 +44,8 @@ fi
 unset SWIFT_EXEC
 export CLANG_MODULE_CACHE_PATH="$app_scratch_path/ModuleCache"
 export TMPDIR="/tmp/veloedit-build-temp"
+export MACOSX_DEPLOYMENT_TARGET=14.0
+export VELOEDIT_ARCHS="${architectures[*]}"
 
 # OVRLEY is an actual vendored GPL Rust component, not a reimplementation.
 # Keep disposable compiler data outside Documents and bundle the local JSON
@@ -45,11 +54,26 @@ ovrley_manifest="$build_package_dir/ThirdParty/OVRLEY/src-tauri/ovrley_core/Carg
 ovrley_target="${VELOEDIT_OVRLEY_TARGET_DIR:-$build_cache_root/ovrley-rust}"
 ovrley_cargo_home="${VELOEDIT_CARGO_HOME:-$build_cache_root/cargo-home}"
 mkdir -p "$ovrley_target" "$ovrley_cargo_home"
-CARGO_HOME="$ovrley_cargo_home" CARGO_TARGET_DIR="$ovrley_target" \
-  cargo build --manifest-path "$ovrley_manifest" --locked --release --bin veloedit_ovrley_bridge
-ovrley_binary="$ovrley_target/release/veloedit_ovrley_bridge"
+python3 "$repo_dir/Scripts/prepare-native.py" --rust-only --architectures "${architectures[@]}"
+if [[ " ${architectures[*]} " == *" x86_64 "* ]]; then
+  rust_sysroot="$(cat "$repo_dir/Build/NativeDependencies/rust-sysroot-path.txt")"
+  export RUSTC="$rust_sysroot/bin/rustc"
+  export RUSTDOC="$rust_sysroot/bin/rustdoc"
+fi
+ovrley_binaries=()
+architecture_args=()
+for architecture in "${architectures[@]}"; do
+  rust_target="$architecture-apple-darwin"
+  [[ "$architecture" == arm64 ]] && rust_target=aarch64-apple-darwin
+  CARGO_HOME="$ovrley_cargo_home" CARGO_TARGET_DIR="$ovrley_target" \
+    cargo build --manifest-path "$ovrley_manifest" --locked --release --target "$rust_target" --bin veloedit_ovrley_bridge
+  ovrley_binaries+=("$ovrley_target/$rust_target/release/veloedit_ovrley_bridge")
+  architecture_args+=(--arch "$architecture")
+done
+ovrley_binary="$staging_root/VeloEditOVRLEY"
+lipo -create "${ovrley_binaries[@]}" -output "$ovrley_binary"
 
-scratch_args=(--scratch-path "$app_scratch_path")
+scratch_args=(--scratch-path "$app_scratch_path" "${architecture_args[@]}")
 binary_path="$(swift build --package-path "$build_package_dir" --disable-sandbox "${scratch_args[@]}" -c "$configuration" --show-bin-path)/VeloEdit"
 product_args=(--product VeloEdit)
 if [[ "${VELOEDIT_BUILD_CLI:-0}" == "1" ]]; then
@@ -87,12 +111,14 @@ if [[ -f "$app_scratch_path/checkouts/onnxruntime-swift-package-manager/LICENSE"
 fi
 cp "$build_package_dir/Resources/Info.plist" "$staging_app/Contents/Info.plist"
 cp "$build_package_dir/Resources/AppIcon.icns" "$staging_app/Contents/Resources/AppIcon.icns"
+cp -R "$build_package_dir/Resources/FirstLaunch" "$staging_app/Contents/Resources/FirstLaunch"
 cp -R "$build_package_dir/Resources/Backgrounds" "$staging_app/Contents/Resources/Backgrounds"
 cp -R "$build_package_dir/Resources/TransitionPreviews" "$staging_app/Contents/Resources/TransitionPreviews"
 cp -R "$build_package_dir/Resources/Music" "$staging_app/Contents/Resources/Music"
 cp -R "$build_package_dir/Resources/Ollama" "$staging_app/Contents/Resources/Ollama"
 cp -R "$build_package_dir/ThirdParty/OVRLEY" "$staging_app/Contents/Resources/OVRLEY-Source"
 python3 "$repo_dir/Scripts/bundle-ffmpeg.py" "$staging_app"
+python3 "$repo_dir/Scripts/verify-architectures.py" "$staging_app" --architectures "${architectures[@]}" --write-report
 python3 "$repo_dir/Scripts/bundle-legal.py" "$build_package_dir" "$staging_app" "$app_scratch_path"
 python3 "$repo_dir/Scripts/write-build-identity.py" "$build_package_dir" "$staging_app"
 if [[ "$configuration" == "release" ]]; then
