@@ -289,6 +289,12 @@ public enum EffectPresetRegistry {
                 RenderParameterDescriptor(key: "barSize", title: "Размер полос", range: 0.04...0.24, defaultValue: 0.12),
                 RenderParameterDescriptor(key: "barColor", title: "Цвет полос", range: 0...1, defaultValue: 0, valueType: .color, supportsKeyframes: false)
             ])
+        case .videoCamera:
+            parameters.append(contentsOf: [
+                RenderParameterDescriptor(key: "barSize", title: "Размер полей", range: 0...0.2, defaultValue: 0.08),
+                RenderParameterDescriptor(key: "blinkREC", title: "Мигание REC", range: 0...1, defaultValue: 1,
+                    valueType: .bool, supportsKeyframes: false)
+            ])
         case .zoomBlur, .radialBlur:
             parameters.append(RenderParameterDescriptor(key: "radius", title: "Радиус", range: 0...80, defaultValue: 24))
         case .tint:
@@ -317,7 +323,7 @@ public enum EffectPresetRegistry {
         case .motion: stage = .transform
         case .cinematic, .stylized: stage = .stylization
         }
-        let guarded = [.glitch, .rgbSplit, .posterize, .halftone, .vhsDistortion].contains(type)
+        let guarded = [.glitch, .rgbSplit, .posterize, .halftone, .vhsDistortion, .videoCamera].contains(type)
         return EffectPreset(
             type: type,
             category: type.category,
@@ -354,6 +360,7 @@ public enum EffectPresetRegistry {
     ]
 
     private static func subtitle(for type: TimelineEffectType) -> String {
+        if type == .videoCamera { return "Чёрно-белый кадр, поля и видоискатель с REC" }
         switch type.category {
         case .basic: return "Базовая коррекция изображения"
         case .cinematic: return "Тонкая обработка киноизображения"
@@ -367,6 +374,7 @@ public enum EffectPresetRegistry {
     private static func tags(for type: TimelineEffectType) -> Set<String> {
         var result: Set<String> = [type.category.rawValue]
         switch type {
+        case .videoCamera: result.formUnion(["camera", "rec", "monochrome", "viewfinder"])
         case .filmGrain, .vignette, .cinematicVignette, .filmBurn: result.formUnion(["film", "memory", "cinematic"])
         case .motionBlur, .directionalBlur, .shake, .cameraDrift, .handheld, .spin, .kenBurns, .parallaxMotion: result.formUnion(["action", "movement"])
         case .glitch, .rgbSplit, .scanlines, .pixelate, .posterize, .vhsDistortion: result.formUnion(["digital", "drop", "high-energy"])

@@ -462,7 +462,7 @@ struct MagneticTimelineView: View {
         .contentShape(Rectangle())
         // Keep the destination stable when preview lanes appear, and accept
         // drops in the unused viewport below/after a short timeline too.
-        .onDrop(of: [LibraryDragSession.type], delegate: LibraryTimelineDropDelegate(
+        .onDrop(of: [LibraryDragSession.type, .fileURL], delegate: LibraryTimelineDropDelegate(
             isEnabled: !model.isTimelineInteractionBlocked,
             session: libraryDropSession,
             update: { raw, point in
@@ -471,6 +471,21 @@ struct MagneticTimelineView: View {
             clear: { libraryInsertion = nil },
             perform: { raw, point in
                 handleLibraryDrop([raw], at: TimelineDropCoordinates(canvasOrigin: canvasOrigin).canvasPoint(from: point))
+            },
+            updateFiles: { point in
+                let point = TimelineDropCoordinates(canvasOrigin: canvasOrigin).canvasPoint(from: point)
+                let index = insertionGeometry.insertionIndex(at: point.x)
+                libraryInsertion = .init(lane: .primary, index: index,
+                    time: index < primaryItems.count ? primaryItems[index].timelineStart : timeline.duration,
+                    x: insertionGeometry.boundaryX(at: index, spacing: clipSpacing), width: 110,
+                    label: "Добавить файлы", symbol: "plus.rectangle.on.rectangle")
+                hoverState.clear()
+            },
+            performFiles: { providers, point in
+                let point = TimelineDropCoordinates(canvasOrigin: canvasOrigin).canvasPoint(from: point)
+                return model.handleTimelineFileDrop(providers,
+                    at: insertionGeometry.insertionIndex(at: point.x),
+                    audioStart: timelineTime(at: point.x).map { snapped($0) } ?? 0)
             }
         ))
         .onDisappear { libraryInsertion = nil; libraryDropSession.reset() }
@@ -1240,13 +1255,12 @@ struct MagneticTimelineView: View {
                 BackgroundPresetArtwork(preset: preset)
                     .frame(width: width, height: 76)
             } else if asset.kind == .photo {
-                // Photo cache entries contain one complete image, not the
-                // 16-frame composite used by video clips. Fill the whole card
-                // with that image, including the space videos use for audio.
-                CachedThumbnailImage(
+                // Repeat the single photo as the clip grows, using the same
+                // bounded, aspect-preserving cells as the video filmstrip.
+                CachedAdaptiveFilmstripImage(
                     url: model.timelineThumbnailURLs[item.id] ?? model.thumbnailURLs[assetID],
                     kind: .photo,
-                    contentMode: .fill
+                    sourceFrameCount: 1
                 )
                 .frame(width: width, height: 76)
                 .clipped()

@@ -6,8 +6,12 @@ public struct MediaImportReport: Codable, Sendable {
         public var url: URL
         public var outcome: Outcome
         public var message: String
-        public init(url: URL, outcome: Outcome, message: String) {
+        /// Resolved identities also cover duplicate files and converted media.
+        public var assetID: UUID?
+        public var musicTrackID: UUID?
+        public init(url: URL, outcome: Outcome, message: String, assetID: UUID? = nil, musicTrackID: UUID? = nil) {
             self.url = url; self.outcome = outcome; self.message = message
+            self.assetID = assetID; self.musicTrackID = musicTrackID
         }
     }
     public var date = Date()

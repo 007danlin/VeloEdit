@@ -8,6 +8,50 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct ProjectInteractionTests {
+    @Test func renamingTheOpenProjectFromItsHomeCardKeepsAutosaveAndReopeningHealthy() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = try fixture.project("Original")
+        let model = fixture.model()
+        let store = try ProjectStore(open: url)
+        model.pipeline = VeloEditPipeline(store: store)
+        model.projectURL = url
+        model.project = await store.manifest
+        model.section = .home
+
+        model.renameRecentProject(url, to: "  Поездка 🚲  ")
+        try await wait { !model.isWorking && model.project?.name == "Поездка 🚲" }
+        #expect(model.projectURL == url)
+        #expect(await model.flushAutosave())
+        #expect(model.errorMessage == nil)
+        #expect(ProjectSummary.load(from: url)?.name == "Поездка 🚲")
+        let reopened = try ProjectStore(open: url)
+        #expect(await reopened.manifest.name == "Поездка 🚲")
+
+        model.renameProject(to: "Следующее имя")
+        try await wait { !model.isWorking && model.project?.name == "Следующее имя" }
+        #expect(await model.flushAutosave())
+        #expect(try await store.verifyDurableState() == .project)
+    }
+
+    @Test func renamingAnInactiveCardDoesNotChangeTheOpenProject() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let activeURL = try fixture.project("Active")
+        let otherURL = try fixture.project("Other")
+        let model = fixture.model()
+        let store = try ProjectStore(open: activeURL)
+        model.pipeline = VeloEditPipeline(store: store)
+        model.projectURL = activeURL
+        model.project = await store.manifest
+        model.renameRecentProject(otherURL, to: "Новое название")
+        try await wait { ProjectSummary.load(from: otherURL)?.name == "Новое название" }
+        #expect(model.project?.name == "Active")
+        #expect(model.projectURL == activeURL)
+        #expect(await model.flushAutosave())
+        #expect(model.errorMessage == nil)
+        let reopened = try ProjectStore(open: otherURL)
+        #expect(await reopened.manifest.name == "Новое название")
+    }
+
     @Test(arguments: [60.0, 120.0, 120_000.0 / 1001])
     func maximumExportUsesOriginalsInLegacyThirtyFPSProjects(high: Double) throws {
         let fixture = try Fixture()

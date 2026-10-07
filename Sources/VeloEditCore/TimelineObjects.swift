@@ -263,6 +263,7 @@ public enum TimelineEffectType: String, Codable, CaseIterable, Identifiable, Sen
     case chromaticAberration = "chromatic-aberration", lensDistortion = "lens-distortion", fisheye, barrelDistortion = "barrel-distortion"
     case glitch, rgbSplit = "rgb-split", scanlines, pixelate, posterize, halftone, vhsDistortion = "vhs-distortion"
     case lightLeak = "light-leak", filmBurn = "film-burn", dust, noise, fogHaze = "fog-haze"
+    case videoCamera = "video-camera"
 
     public var id: String { rawValue }
     public var category: TimelineEffectCategory {
@@ -278,7 +279,7 @@ public enum TimelineEffectType: String, Codable, CaseIterable, Identifiable, Sen
              .spin, .kenBurns, .parallaxMotion: return .motion
         case .chromaticAberration, .lensDistortion, .fisheye, .barrelDistortion,
              .glitch, .rgbSplit, .scanlines, .pixelate, .posterize, .halftone, .vhsDistortion,
-             .lightLeak, .filmBurn, .dust, .noise, .fogHaze, .grain, .light, .flash: return .stylized
+             .lightLeak, .filmBurn, .dust, .noise, .fogHaze, .grain, .light, .flash, .videoCamera: return .stylized
         }
     }
 
@@ -345,11 +346,13 @@ public enum TimelineEffectType: String, Codable, CaseIterable, Identifiable, Sen
         case .dust: return "Пыль"
         case .noise: return "Шум"
         case .fogHaze: return "Туман / дымка"
+        case .videoCamera: return "Видеокамера"
         }
     }
 
     public var defaultIntensity: Double {
         switch self {
+        case .videoCamera: return 1
         case .flash: return 0.55
         case .cinematicVignette, .cinematicMotionBlur, .filmGrain, .dust, .fogHaze: return 0.24
         default: return 0.5

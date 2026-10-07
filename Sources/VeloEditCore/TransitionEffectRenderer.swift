@@ -231,6 +231,12 @@ public enum TransitionEffectRenderer {
                     colorValue: effect.parameterValue("barColor", at: timelineTime),
                     extent: extent
                 )
+            case .videoCamera:
+                let camera = VideoCameraEffectRenderer.render(image,
+                    barSize: effect.parameterValue("barSize", at: timelineTime),
+                    recordingLight: effect.parameterValue("blinkREC", at: timelineTime) < 0.5 ||
+                        max(0, timelineTime - effect.startTime).truncatingRemainder(dividingBy: 1) < 0.65)
+                image = amount >= 1 ? camera : withOpacity(camera, amount).composited(over: image).cropped(to: extent)
             case .zoom, .pushIn, .pullOut, .pan, .shake, .cameraDrift, .handheld,
                  .spin, .kenBurns, .parallaxMotion, .fade, .opacity:
                 break

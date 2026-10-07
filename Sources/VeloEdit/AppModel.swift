@@ -970,14 +970,28 @@ final class AppModel: ObservableObject {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
+        renameRecentProject(url, to: name)
+    }
+
+    func renameRecentProject(_ url: URL, to proposedName: String) {
+        let name = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        // The home screen can still have this project open. A second store
+        // would leave its live manifest and durable fingerprint out of date.
+        if projectURL.map({ StorageMaintenance.sameProject($0, url) }) == true, pipeline != nil {
+            renameProject(to: name)
+            return
+        }
         Task {
             do {
                 let store = try await Task.detached(priority: .userInitiated) {
                     try ProjectStore(open: url)
                 }.value
-                try await store.update { $0.name = name }
-                if projectURL?.standardizedFileURL == url.standardizedFileURL {
+                if projectURL.map({ StorageMaintenance.sameProject($0, url) }) == true, let pipeline {
+                    try await pipeline.renameProject(to: name)
                     await refresh()
+                } else {
+                    try await store.update { $0.name = name }
                 }
                 rememberProject(url)
                 status = "Проект переименован"
@@ -1018,7 +1032,11 @@ final class AppModel: ObservableObject {
 
     private func performRecentProjectDeletion(_ url: URL) {
         guard !hasActiveWork, !storageIsCleaning else { return }
-        if recentProjectFileIsMissing(url) { forgetStoredProject(url); return }
+        if recentProjectFileIsMissing(url) {
+            forgetStoredProject(url)
+            status = "Проект удалён из списка"
+            return
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Переместить проект в Корзину?"
@@ -1287,22 +1305,59 @@ final class AppModel: ObservableObject {
     }
 
     func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard pipeline != nil else { return false }
-        let group = DispatchGroup()
-        let lock = NSLock()
-        var urls: [URL] = []
-        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-            group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                defer { group.leave() }
-                let url: URL?
-                if let data = item as? Data { url = URL(dataRepresentation: data, relativeTo: nil) }
-                else { url = item as? URL }
-                if let url { lock.lock(); urls.append(url); lock.unlock() }
-            }
+        guard let pipeline, !isWorking else { return false }
+        Task {
+            let urls = await FileDropLoader.load(providers)
+            guard self.pipeline === pipeline, !urls.isEmpty else { return }
+            self.importMedia(urls)
         }
-        group.notify(queue: .main) { [weak self] in self?.importMedia(urls) }
         return true
+    }
+
+    func handleTimelineFileDrop(_ providers: [NSItemProvider], at index: Int, audioStart: Double) -> Bool {
+        guard let pipeline, !isWorking,
+              providers.contains(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else { return false }
+        Task {
+            let urls = await FileDropLoader.load(providers)
+            guard self.pipeline === pipeline, !urls.isEmpty else { return }
+            importMediaOntoTimeline(urls, at: index, audioStart: audioStart)
+        }
+        return true
+    }
+
+    func importMediaOntoTimeline(_ urls: [URL], at index: Int, audioStart: Double) {
+        guard let pipeline, !isWorking, !urls.isEmpty else { return }
+        section = .timeline
+        isImporting = true
+        importWarnings = []
+        run("Добавляю файлы на монтажную линию") {
+            defer { self.isImporting = false }
+            let previous = self.timeline
+            let errors = try await pipeline.importMediaIntoTimeline(urls, atPrimaryIndex: index, audioStart: audioStart) { [weak self] item in
+                Task { @MainActor in self?.setProgress(item, base: 0, span: 0.70, phase: "Импорт") }
+            }
+            await self.refresh()
+            if let current = self.timeline, current != previous {
+                var empty = current
+                empty.items = []; empty.audioClips = []
+                self.recordTimelineChange(from: previous ?? empty)
+                let previousIDs = Set(previous?.items.map(\.id) ?? [])
+                if let inserted = current.items.first(where: { !previousIDs.contains($0.id) }) {
+                    self.selectTimelineItem(inserted.id)
+                    self.seekTimeline(to: inserted.timelineStart)
+                } else if let audio = current.effectiveAudioClips.first(where: { clip in
+                    previous?.effectiveAudioClips.contains(where: { $0.id == clip.id }) != true
+                }) { self.selectTimelineAudioClip(audio.id) }
+            }
+            self.importWarnings = await pipeline.generateThumbnails()
+            self.thumbnailURLs = await pipeline.thumbnailURLs()
+            await self.rebuildPlaybackIfPossible(show: false)
+            let added = (self.timeline?.items.count ?? 0) - (previous?.items.count ?? 0)
+                + (self.timeline?.effectiveAudioClips.count ?? 0) - (previous?.effectiveAudioClips.count ?? 0)
+            self.status = "На монтажную линию добавлено: \(added)"
+            if !errors.isEmpty { self.status += " · Не добавлено файлов: \(errors.count)" }
+            if added == 0, errors.isEmpty { self.status += " · Файлы доступны в медиатеке" }
+        }
     }
 
     func importMedia(_ urls: [URL]) {
@@ -5626,6 +5681,7 @@ final class AppModel: ObservableObject {
 
     func refresh() async {
         guard let pipeline else { project = nil; return }
+        await synchronizeProjectLocation(using: pipeline)
         let refreshRevision = timelineEditRevision
         let preserveVisibleTimeline = hasUnpersistedTimelineEdits || needsTimelineAIRetryAfterManualEdit
         try? await pipeline.migrateLegacyBuiltInBackgroundAssets()
@@ -5686,6 +5742,7 @@ final class AppModel: ObservableObject {
             timelineCommitTask = nil
             await pendingTimelineCommit.value
         }
+        if let pipeline, await synchronizeProjectLocation(using: pipeline) { await refresh() }
         previewRebuildTask?.cancel()
         previewRebuildTask = nil
         if timelinePersistenceFailed, let pipeline, let timeline {
@@ -5700,11 +5757,33 @@ final class AppModel: ObservableObject {
             do {
                 let location = try await pipeline.store.verifyDurableState()
                 if location == .localRecovery { status = "Правки сохранены в локальной аварийной копии" }
-            } catch { errorMessage = "Не удалось подтвердить сохранение. Выберите доступное место для копии проекта."; return false }
+            } catch {
+                errorMessage = "Не удалось подтвердить сохранение: \(error.localizedDescription)"
+                return false
+            }
         }
         return true
         // Every store mutation is already durable. A second save re-encodes
         // the entire archive and invalidates in-flight work for no change.
+    }
+
+    @discardableResult
+    private func synchronizeProjectLocation(using pipeline: VeloEditPipeline) async -> Bool {
+        let currentURL = await pipeline.store.packageURL
+        guard let oldURL = projectURL, oldURL.standardizedFileURL != currentURL.standardizedFileURL else { return false }
+        do {
+            try await pipeline.store.synchronizePackageLocation()
+            guard self.pipeline === pipeline else { return false }
+            projectURL = currentURL
+            knownProjectURLs.removeAll { $0.standardizedFileURL == oldURL.standardizedFileURL }
+            recentProjectURLs.removeAll { $0.standardizedFileURL == oldURL.standardizedFileURL }
+            preparedProjectPresentations[oldURL.standardizedFileURL] = nil
+            rememberProject(currentURL)
+            return true
+        } catch {
+            errorMessage = "Не удалось обновить путь проекта: \(error.localizedDescription)"
+            return false
+        }
     }
 
     func showDirector() {

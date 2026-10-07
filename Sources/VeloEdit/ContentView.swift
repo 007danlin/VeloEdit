@@ -954,7 +954,7 @@ private struct RecentProjectsGallery: View {
             }
             .frame(height: 250, alignment: .top)
         }
-        .padding(.top, 8)
+        .padding(.top, 20)
         .padding(.bottom, 8)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .top) { Divider() }
@@ -1791,6 +1791,9 @@ private struct TimelineWorkspaceView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    model.handleTimelineFileDrop(providers, at: 0, audioStart: 0)
+                }
             }
         }
     }
@@ -2603,101 +2606,137 @@ private func rendererImage(_ image: CGImage?) -> some View {
     }
 }
 
-private struct MontagePlayerWorkspace: View {
+private struct ViewerPanelHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct ViewerHeaderHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 64
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+struct MontagePlayerWorkspace: View {
     @EnvironmentObject private var model: AppModel
     let showsResetAllButton: Bool
-    @State private var selectedTool: ViewerAdjustmentTool?
+    @State var selectedTool: ViewerAdjustmentTool?
+    @State private var toolPanelHeight: CGFloat = 0
+    @State private var viewerHeaderHeight: CGFloat = 64
+
+    init(showsResetAllButton: Bool, selectedTool: ViewerAdjustmentTool? = nil) {
+        self.showsResetAllButton = showsResetAllButton
+        _selectedTool = State(initialValue: selectedTool)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) {
-                    Text("Превью").font(.headline)
-                    Spacer(minLength: 4)
-                    viewerTools
-                    previewWindowActions
-                }
-                VStack(spacing: 4) {
-                    HStack {
+        GeometryReader { workspace in
+            VStack(spacing: 0) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
                         Text("Превью").font(.headline)
                         Spacer(minLength: 4)
+                        viewerTools
                         previewWindowActions
                     }
-                    ScrollView(.horizontal) { viewerTools }
-                        .scrollIndicators(.visible)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
-
-            if let selectedTool, let item = model.selectedTimelineItem {
-                viewerToolPanel(selectedTool, item: item)
-                    .frame(minHeight: 64)
-                    .background(Color(nsColor: .underPageBackgroundColor))
-                    .overlay(alignment: .bottom) { Divider() }
-            }
-
-            ZStack {
-                Color(nsColor: .black)
-                VStack(spacing: 0) {
-                    GeometryReader { geometry in
-                        let canvas = aspectFitSize(in: geometry.size, aspectRatio: viewerAspectRatio)
-                        ZStack {
-                            Color.black
-                            ZStack {
-                                if let player = model.previewPlayer {
-                                    TimelinePreviewPlayer(player: player, clock: model.playbackClock)
-                                } else {
-                                    VStack(spacing: 10) {
-                                        Image(systemName: "play.rectangle")
-                                            .font(.system(size: 38, weight: .light))
-                                            .foregroundStyle(.white.opacity(0.7))
-                                        Button("Подготовить просмотр", action: model.renderPreview)
-                                            .buttonStyle(.borderedProminent)
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .background(Color.black)
-                                }
-                                if let telemetry = model.selectedTelemetryItem {
-                                    TelemetryCanvasEditor(item: telemetry)
-                                        .environmentObject(model)
-                                }
-                            }
-                            .frame(width: canvas.width, height: canvas.height)
-                            .clipped()
-                            .dropDestination(for: String.self) { values, point in
-                                guard let value = values.first,
-                                      let payload = TelemetryPresetDragPayload(value) else { return false }
-                                model.insertTelemetryPreset(
-                                    kind: payload.kind,
-                                    presentation: payload.presentation,
-                                    style: payload.style,
-                                    at: model.timelinePlayheadTime,
-                                    normalizedPosition: CGPoint(
-                                        x: min(max(0, point.x / max(1, canvas.width)), 1),
-                                        y: min(max(0, 1 - point.y / max(1, canvas.height)), 1)
-                                    )
-                                )
-                                return true
-                            }
+                    VStack(spacing: 4) {
+                        HStack {
+                            Text("Превью").font(.headline)
+                            Spacer(minLength: 4)
+                            previewWindowActions
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .clipped()
-                    }
-                    .padding(4)
-
-                    if let player = model.previewPlayer {
-                        Divider()
-                        MontagePlaybackControls(player: player, clock: model.playbackClock)
+                        WrappingRowLayout(horizontalSpacing: 1, verticalSpacing: 2) {
+                            viewerToolButtons
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.regular)
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.regularMaterial)
+                .background(GeometryReader { header in
+                    Color.clear.preference(key: ViewerHeaderHeightKey.self, value: header.size.height)
+                })
+                .onPreferenceChange(ViewerHeaderHeightKey.self) { viewerHeaderHeight = $0 }
+
+                if let selectedTool, let item = model.selectedTimelineItem {
+                    ScrollView(.vertical) {
+                        viewerToolPanel(selectedTool, item: item)
+                            .background(GeometryReader { panel in
+                                Color.clear.preference(key: ViewerPanelHeightKey.self, value: panel.size.height)
+                            })
+                    }
+                        .scrollIndicators(.visible)
+                        .scrollBounceBehavior(.basedOnSize)
+                        .frame(height: min(toolPanelHeight > 0 ? toolPanelHeight : 220,
+                                           max(64, workspace.size.height - viewerHeaderHeight - 120), 220))
+                        .onPreferenceChange(ViewerPanelHeightKey.self) { toolPanelHeight = $0 }
+                        .layoutPriority(1)
+                        .background(Color(nsColor: .underPageBackgroundColor))
+                        .overlay(alignment: .bottom) { Divider() }
+                }
+
+                ZStack {
+                    Color(nsColor: .black)
+                    VStack(spacing: 0) {
+                        GeometryReader { geometry in
+                            let canvas = aspectFitSize(in: geometry.size, aspectRatio: viewerAspectRatio)
+                            ZStack {
+                                Color.black
+                                ZStack {
+                                    if let player = model.previewPlayer {
+                                        TimelinePreviewPlayer(player: player, clock: model.playbackClock)
+                                    } else {
+                                        VStack(spacing: 10) {
+                                            Image(systemName: "play.rectangle")
+                                                .font(.system(size: 38, weight: .light))
+                                                .foregroundStyle(.white.opacity(0.7))
+                                            Button("Подготовить просмотр", action: model.renderPreview)
+                                                .buttonStyle(.borderedProminent)
+                                        }
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .background(Color.black)
+                                    }
+                                    if let telemetry = model.selectedTelemetryItem {
+                                        TelemetryCanvasEditor(item: telemetry)
+                                            .environmentObject(model)
+                                    }
+                                }
+                                .frame(width: canvas.width, height: canvas.height)
+                                .clipped()
+                                .dropDestination(for: String.self) { values, point in
+                                    guard let value = values.first,
+                                          let payload = TelemetryPresetDragPayload(value) else { return false }
+                                    model.insertTelemetryPreset(
+                                        kind: payload.kind,
+                                        presentation: payload.presentation,
+                                        style: payload.style,
+                                        at: model.timelinePlayheadTime,
+                                        normalizedPosition: CGPoint(
+                                            x: min(max(0, point.x / max(1, canvas.width)), 1),
+                                            y: min(max(0, 1 - point.y / max(1, canvas.height)), 1)
+                                        )
+                                    )
+                                    return true
+                                }
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                            .clipped()
+                        }
+                        .padding(4)
+
+                        if let player = model.previewPlayer {
+                            Divider()
+                            MontagePlaybackControls(player: player, clock: model.playbackClock)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
             .clipped()
         }
-        .background(Color.black)
-        .clipped()
     }
 
     private var previewWindowActions: some View {
@@ -2729,38 +2768,44 @@ private struct MontagePlayerWorkspace: View {
 
     private var viewerTools: some View {
         HStack(spacing: 1) {
-            Group {
-                Button(action: model.autoEnhanceSelected) {
-                    Label("Автоцвет", systemImage: "wand.and.rays")
-                        .labelStyle(.iconOnly)
-                }
-                .help("Автоматически улучшить цвет")
-
-                ForEach(ViewerAdjustmentTool.allCases) { tool in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.16)) {
-                            selectedTool = selectedTool == tool ? nil : tool
-                        }
-                    } label: {
-                        Image(systemName: tool.icon)
-                            .frame(width: 27, height: 27)
-                            .background(selectedTool == tool ? Color.primary.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                    }
-                    .help(tool.title)
-                }
-
-                if showsResetAllButton {
-                    Button("Сбросить все") { model.resetAllSelectedViewerAdjustments() }
-                        .font(.caption)
-                        .buttonStyle(.plain)
-                        .padding(.leading, 5)
-                }
-            }
-            .disabled(model.selectedTimelineItem == nil || model.isTimelineInteractionBlocked)
-
+            viewerToolButtons
         }
         .buttonStyle(.borderless)
         .controlSize(.regular)
+    }
+
+    private var viewerToolButtons: some View {
+        Group {
+            Button(action: model.autoEnhanceSelected) {
+                Label("Автоцвет", systemImage: "wand.and.rays")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Автоматически улучшить цвет")
+            .disabled(model.selectedTimelineItem?.kind == .title)
+
+            ForEach(ViewerAdjustmentTool.allCases) { tool in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        selectedTool = selectedTool == tool ? nil : tool
+                    }
+                } label: {
+                    Image(systemName: tool.icon)
+                        .frame(width: 27, height: 27)
+                        .background(selectedTool == tool ? Color.primary.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                }
+                .accessibilityLabel(tool.title)
+                .accessibilityIdentifier("viewer-tool-\(tool.rawValue)")
+                .help(tool.title)
+            }
+
+            if showsResetAllButton {
+                Button("Сбросить все") { model.resetAllSelectedViewerAdjustments() }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .padding(.leading, 5)
+            }
+        }
+        .disabled(model.selectedTimelineItem == nil || model.isTimelineInteractionBlocked)
     }
 
     @ViewBuilder
@@ -2791,92 +2836,89 @@ private struct MontagePlayerWorkspace: View {
                     resetButton(model.resetSelectedColorCorrection)
 
                 case .crop:
-                    Text("Стиль:").font(.callout.weight(.semibold))
-                    Picker("Стиль", selection: Binding(
+                    CropStyleControl(selection: Binding(
                         get: { item.effect == ClipEffect.kenBurns.rawValue ? "ken-burns" : video.crop.rawValue },
                         set: model.setSelectedCropMode
-                    )) {
-                        Text("Уместить").tag("fit")
-                        Text("Обрезать до заполнения").tag("fill")
-                        Text("Ken Burns").tag("ken-burns")
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .fixedSize()
+                    ))
                     Button("Влево", systemImage: "rotate.left") { model.rotateSelected(-1) }
                     Button("Вправо", systemImage: "rotate.right") { model.rotateSelected(1) }
                     resetButton(model.resetSelectedCropAndRotation)
 
                 case .stabilization:
-                    Toggle("Снизить дрожание", isOn: Binding(
-                        get: { (video.stabilization ?? 0) > 0.001 },
-                        set: { model.setSelectedStabilization($0 ? max(0.33, video.stabilization ?? 0) : 0) }
-                    ))
-                    ViewerValueSlider(title: "Сила", value: video.stabilization ?? 0, range: 0...1, style: .percent, onCommit: model.setSelectedStabilization)
-                        .disabled((video.stabilization ?? 0) <= 0.001)
-                    Toggle("Rolling shutter", isOn: Binding(
-                        get: { video.rollingShutterCorrection ?? false },
-                        set: model.setSelectedRollingShutterCorrection
-                    ))
-                    resetButton(model.resetSelectedStabilization)
+                    if item.kind == .video && !item.isFreezeFrame {
+                        Toggle("Снизить дрожание", isOn: Binding(
+                            get: { (video.stabilization ?? 0) > 0.001 },
+                            set: { model.setSelectedStabilization($0 ? max(0.33, video.stabilization ?? 0) : 0) }
+                        ))
+                        ViewerValueSlider(title: "Сила", value: video.stabilization ?? 0, range: 0...1, style: .percent, onCommit: model.setSelectedStabilization)
+                            .disabled((video.stabilization ?? 0) <= 0.001)
+                        Toggle("Rolling shutter", isOn: Binding(
+                            get: { video.rollingShutterCorrection ?? false },
+                            set: model.setSelectedRollingShutterCorrection
+                        ))
+                        resetButton(model.resetSelectedStabilization)
+                    } else {
+                        Text("Стабилизация доступна для видео.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
 
                 case .volume:
-                    Toggle("Авто", isOn: Binding(get: { audio.normalize ?? false }, set: model.setSelectedAudioNormalize))
-                        .toggleStyle(.button)
-                    Button {
-                        model.setSelectedClipMuted(!audio.muted)
-                    } label: {
-                        Image(systemName: audio.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    if hasSourceAudio(item) {
+                        Toggle("Авто", isOn: Binding(get: { audio.normalize ?? false }, set: model.setSelectedAudioNormalize))
+                            .toggleStyle(.button)
+                        Button {
+                            model.setSelectedClipMuted(!audio.muted)
+                        } label: {
+                            Image(systemName: audio.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        }
+                        .accessibilityLabel(audio.muted ? "Включить звук клипа" : "Выключить звук клипа")
+                        ViewerValueSlider(title: "Громкость", value: audio.volume, range: 0...2, style: .percent, onCommit: model.setSelectedClipVolume)
+                        Toggle("Снизить громкость др. клипов", isOn: Binding(get: { audio.duckOthers ?? false }, set: model.setSelectedDuckOthers))
+                        ViewerValueSlider(title: "Снижение", value: audio.duckingAmount ?? 0.5, range: 0...1, style: .percent, onCommit: model.setSelectedDuckingAmount)
+                            .disabled(!(audio.duckOthers ?? false))
+                        resetButton(model.resetSelectedVolume)
+                    } else {
+                        Text("В выбранном фрагменте нет звука.")
+                            .font(.callout).foregroundStyle(.secondary)
                     }
-                    ViewerValueSlider(title: "Громкость", value: audio.volume, range: 0...2, style: .percent, onCommit: model.setSelectedClipVolume)
-                    Toggle("Снизить громкость др. клипов", isOn: Binding(get: { audio.duckOthers ?? false }, set: model.setSelectedDuckOthers))
-                    ViewerValueSlider(title: "Снижение", value: audio.duckingAmount ?? 0.5, range: 0...1, style: .percent, onCommit: model.setSelectedDuckingAmount)
-                        .disabled(!(audio.duckOthers ?? false))
-                    resetButton(model.resetSelectedVolume)
 
                 case .noiseReduction:
-                    Toggle("Уменьшить фоновый шум", isOn: Binding(
-                        get: { (audio.noiseReduction ?? 0) > 0.001 },
-                        set: { model.setSelectedNoiseReduction($0 ? max(0.5, audio.noiseReduction ?? 0) : 0) }
-                    ))
-                    ViewerValueSlider(title: "Очистка", value: audio.noiseReduction ?? 0, range: 0...1, style: .percent, onCommit: model.setSelectedNoiseReduction)
-                    Picker("Эквалайзер", selection: Binding(get: { audio.eqPreset ?? .flat }, set: model.setSelectedEQ)) {
-                        ForEach(AudioEQPreset.allCases) { preset in Text(preset.localizedTitle).tag(preset) }
+                    if hasSourceAudio(item) {
+                        Toggle("Уменьшить фоновый шум", isOn: Binding(
+                            get: { (audio.noiseReduction ?? 0) > 0.001 },
+                            set: { model.setSelectedNoiseReduction($0 ? max(0.5, audio.noiseReduction ?? 0) : 0) }
+                        ))
+                        ViewerValueSlider(title: "Очистка", value: audio.noiseReduction ?? 0, range: 0...1, style: .percent, onCommit: model.setSelectedNoiseReduction)
+                        ViewerMenuControl(title: "Эквалайзер", selection: Binding(get: { audio.eqPreset ?? .flat }, set: model.setSelectedEQ)) {
+                            ForEach(AudioEQPreset.allCases) { preset in Text(preset.localizedTitle).tag(preset) }
+                        }
+                        resetButton(model.resetSelectedNoiseProcessing)
+                    } else {
+                        Text("В выбранном фрагменте нет звука.")
+                            .font(.callout).foregroundStyle(.secondary)
                     }
-                    .frame(width: 230)
-                    resetButton(model.resetSelectedNoiseProcessing)
 
                 case .speed:
                     ViewerValueSlider(title: "Скорость", value: item.speed, range: 0.1...20, style: .percent, onCommit: model.setSelectedSpeed)
                     Toggle("Сгладить", isOn: Binding(get: { video.smoothSlowMotion ?? false }, set: model.setSelectedSmoothSlowMotion))
-                        .disabled(item.speed >= 1)
+                        .disabled(item.speed >= 1 || item.kind != .video || item.isFreezeFrame)
                     Toggle("Перевернуть", isOn: Binding(get: { item.isReversed }, set: { _ in model.toggleSelectedReverse() }))
+                        .disabled(item.kind != .video || item.isFreezeFrame)
                     Toggle("Сохр. высоту тона", isOn: Binding(get: { audio.preservePitch ?? true }, set: model.setSelectedPreservePitch))
+                        .disabled(!hasSourceAudio(item))
                     resetButton(model.resetSelectedSpeed)
 
                 case .filters:
-                    HStack(spacing: 8) {
-                        Text("Фильтр клипа")
-                            .font(.callout.weight(.semibold))
-                            .lineLimit(1)
-                        Picker("Фильтр клипа", selection: Binding(get: { video.filter }, set: model.setSelectedFilter)) {
+                    ViewerMenuControl(title: "Фильтр клипа", selection: Binding(get: { video.filter }, set: model.setSelectedFilter)) {
                             ForEach(VideoFilter.allCases) { filter in Text(filter.localizedTitle).tag(filter) }
-                        }
-                        .labelsHidden()
-                        .frame(width: 170)
                     }
                     ViewerValueSlider(title: "Интенсивность", value: video.filterIntensity ?? 1, range: 0...1, style: .percent, onCommit: model.setSelectedFilterIntensity)
                         .disabled(video.filter == .none)
-                    HStack(spacing: 8) {
-                        Text("Аудиоэффект")
-                            .font(.callout.weight(.semibold))
-                            .lineLimit(1)
-                        Picker("Аудиоэффект", selection: Binding(get: { audio.effect ?? AudioEffect.none }, set: model.setSelectedAudioEffect)) {
+                    ViewerMenuControl(title: "Аудиоэффект", selection: Binding(get: { audio.effect ?? AudioEffect.none }, set: model.setSelectedAudioEffect)) {
                             ForEach(AudioEffect.allCases) { effect in Text(effect.localizedTitle).tag(effect) }
-                        }
-                        .labelsHidden()
-                        .frame(width: 170)
                     }
+                    .disabled(!hasSourceAudio(item))
+                    .help(hasSourceAudio(item) ? "Обработка звука клипа" : "В выбранном фрагменте нет звука")
                     resetButton(model.resetSelectedFilters)
 
             case .information:
@@ -2886,6 +2928,11 @@ private struct MontagePlayerWorkspace: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .disabled(model.isTimelineInteractionBlocked)
+    }
+
+    private func hasSourceAudio(_ item: TimelineItem) -> Bool {
+        item.kind == .video && !item.isFreezeFrame &&
+        model.project?.assets.first(where: { $0.id == item.assetID })?.metadata.hasAudio == true
     }
 
     private func resetButton(_ action: @escaping () -> Void) -> some View {
@@ -2900,6 +2947,7 @@ private struct MontagePlayerWorkspace: View {
         if let assetID = item.assetID, let asset = model.project?.assets.first(where: { $0.id == assetID }) {
             Label(asset.displayName, systemImage: asset.kind == .video ? "film" : "photo")
                 .font(.callout.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
             infoValue("Тип", asset.kind == .video ? "Видео" : "Фото")
             infoValue("Исходник", String(format: "%.1f–%.1f с", item.sourceStart, item.sourceStart + item.sourceDuration))
             infoValue("В фильме", String(format: "%.1f с", item.timelineDuration))
@@ -3088,6 +3136,36 @@ private struct MontagePlaybackControls: View {
     }
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                transportButtons
+                seekSlider.frame(minWidth: 60)
+                timeLabel
+                volumeControls
+            }
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    transportButtons
+                    Spacer(minLength: 0)
+                    timeLabel
+                }
+                HStack(spacing: 8) {
+                    seekSlider
+                    volumeControls
+                }
+            }
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.regularMaterial)
+        .onReceive(player.publisher(for: \.timeControlStatus, options: [.initial, .new])) { status in
+            isPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
+        }
+    }
+
+    private var transportButtons: some View {
         HStack(spacing: 8) {
             Button {
                 model.seekTimeline(to: clock.time - 5)
@@ -3114,20 +3192,32 @@ private struct MontagePlaybackControls: View {
             }
             .help("Вперёд на 5 секунд")
 
-            Slider(
-                value: Binding(
-                    get: { min(clock.time, effectiveDuration) },
-                    set: model.seekTimeline
-                ),
-                in: 0...effectiveDuration
-            )
-            .help("Перемотать фильм")
+        }
+        .fixedSize()
+    }
 
-            Text("\(time(clock.time)) / \(time(model.timeline?.duration ?? 0))")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .fixedSize()
+    private var seekSlider: some View {
+        Slider(
+            value: Binding(
+                get: { min(clock.time, effectiveDuration) },
+                set: model.seekTimeline
+            ),
+            in: 0...effectiveDuration
+        )
+        .help("Перемотать фильм")
 
+    }
+
+    private var timeLabel: some View {
+        Text("\(time(clock.time)) / \(time(model.timeline?.duration ?? 0))")
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .fixedSize()
+
+    }
+
+    private var volumeControls: some View {
+        HStack(spacing: 8) {
             Button {
                 isMuted.toggle()
                 player.isMuted = isMuted
@@ -3151,14 +3241,7 @@ private struct MontagePlaybackControls: View {
             .frame(width: 58)
             .help("Громкость просмотра")
         }
-        .buttonStyle(.borderless)
-        .controlSize(.small)
-        .padding(.horizontal, 10)
-        .frame(height: 38)
-        .background(.regularMaterial)
-        .onReceive(player.publisher(for: \.timeControlStatus, options: [.initial, .new])) { status in
-            isPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
-        }
+        .fixedSize()
     }
 
     private var effectiveDuration: Double {
@@ -3171,7 +3254,7 @@ private struct MontagePlaybackControls: View {
     }
 }
 
-private enum ViewerAdjustmentTool: String, CaseIterable, Identifiable {
+enum ViewerAdjustmentTool: String, CaseIterable, Identifiable {
     case colorBalance
     case colorCorrection
     case crop
@@ -3228,6 +3311,29 @@ private enum ViewerSliderStyle {
 }
 
 /// Keeps controls together and wraps them when their column becomes narrower.
+struct CropStyleControl: View {
+    @Binding var selection: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Стиль:").font(.callout.weight(.semibold))
+            ViewThatFits(in: .horizontal) {
+                picker.pickerStyle(.segmented).fixedSize()
+                picker.pickerStyle(.menu).frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var picker: some View {
+        Picker("Стиль кадрирования", selection: $selection) {
+            Text("Уместить").tag("fit")
+            Text("Обрезать до заполнения").tag("fill")
+            Text("Ken Burns").tag("ken-burns")
+        }
+        .labelsHidden()
+    }
+}
+
 private struct WrappingRowLayout: Layout {
     let horizontalSpacing: CGFloat
     let verticalSpacing: CGFloat
@@ -3316,6 +3422,30 @@ private struct WrappingRowLayout: Layout {
     }
 }
 
+private struct ViewerMenuControl<Selection: Hashable, Options: View>: View {
+    let title: String
+    @Binding var selection: Selection
+    @ViewBuilder let options: () -> Options
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Text(title).font(.callout.weight(.semibold)).fixedSize()
+                picker.frame(width: 170)
+            }
+            .fixedSize()
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title).font(.callout.weight(.semibold))
+                picker.frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var picker: some View {
+        Picker(title, selection: $selection, content: options).labelsHidden()
+    }
+}
+
 private struct ViewerValueSlider: View {
     let title: String
     let value: Double
@@ -3335,20 +3465,40 @@ private struct ViewerValueSlider: View {
     }
 
     var body: some View {
-        HStack(spacing: 7) {
-            Text(title).font(.caption).lineLimit(1)
-            Slider(value: $draft, in: range) { editing in
-                isEditing = editing
-                if !editing { onCommit(draft) }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 7) {
+                Text(title).font(.caption).fixedSize()
+                slider.frame(width: 118)
+                valueLabel
             }
-            .frame(width: 118)
-            Text(style.text(draft))
-                .font(.caption.monospacedDigit())
-                .frame(minWidth: 42, alignment: .trailing)
+            .fixedSize()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption)
+                HStack(spacing: 7) {
+                    slider.frame(minWidth: 48)
+                    valueLabel
+                }
+            }
         }
         .onChange(of: value) { _, newValue in
             if !isEditing { draft = newValue }
         }
+    }
+
+    private var slider: some View {
+        Slider(value: $draft, in: range) { editing in
+            isEditing = editing
+            if !editing { onCommit(draft) }
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(style.text(draft))
+    }
+
+    private var valueLabel: some View {
+        Text(style.text(draft))
+            .font(.caption.monospacedDigit())
+            .fixedSize()
+            .frame(minWidth: 42, alignment: .trailing)
     }
 }
 

@@ -7,6 +7,149 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct InstantTimelineInteractionTests {
+    @Test(arguments: ["balance", "correction", "stabilization", "volume", "noise", "speed", "filters", "all"])
+    func everyViewerSectionSupportsIndependentResetUndoRedoAndReopening(section: String) async throws {
+        let fixture = try await Fixture(clipCount: 2); defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.selectTimelineItem(original.items[0].id)
+        model.autoEnhanceSelected()
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.brightness ?? 0 > 0)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.contrast ?? 0 > 1)
+        #expect(model.timeline?.items[1] == original.items[1])
+        model.undoTimelineEdit()
+        #expect(model.timeline == original)
+
+        model.setSelectedBrightness(0.15)
+        model.setSelectedWarmth(0.4)
+        model.setSelectedTint(0.25)
+        model.changeSelectedExposure(by: 0.5)
+        model.setSelectedContrast(1.2)
+        model.setSelectedSaturation(0.7)
+        model.changeSelectedHighlights(by: -0.3)
+        model.changeSelectedShadows(by: 0.2)
+        model.setSelectedCropMode("ken-burns")
+        model.rotateSelected(1)
+        model.setSelectedStabilization(0.4)
+        model.setSelectedRollingShutterCorrection(true)
+        model.setSelectedClipVolume(1.5)
+        model.setSelectedClipMuted(true)
+        model.setSelectedAudioNormalize(true)
+        model.setSelectedDuckOthers(true)
+        model.setSelectedDuckingAmount(0.8)
+        model.setSelectedNoiseReduction(0.6)
+        model.setSelectedEQ(.voice)
+        model.setSelectedSpeed(0.5)
+        model.setSelectedSmoothSlowMotion(true)
+        model.toggleSelectedReverse()
+        model.setSelectedPreservePitch(false)
+        model.setSelectedFilter(.sepia)
+        model.setSelectedFilterIntensity(0.6)
+        model.setSelectedAudioEffect(.room)
+        let edited = try #require(model.timeline)
+        let item = try #require(model.selectedTimelineItem)
+        var video = item.effectiveVideoAdjustments
+        var audio = item.effectiveAudioAdjustments
+        #expect(video.brightness == 0.15 && video.warmth == 0.4 && video.tint == 0.25)
+        #expect(video.exposure == 0.5 && video.contrast == 1.2 && video.saturation == 0.7)
+        #expect(video.highlights == -0.3 && video.shadows == 0.2)
+        #expect(video.rotationQuarterTurns == 1 && item.effect == ClipEffect.kenBurns.rawValue)
+        #expect(video.stabilization == 0.4 && video.rollingShutterCorrection == true)
+        #expect(audio.volume == 1.5 && audio.muted && audio.normalize == true)
+        #expect(audio.duckOthers == true && audio.duckingAmount == 0.8)
+        #expect(audio.noiseReduction == 0.6 && audio.eqPreset == .voice)
+        #expect(item.speed == 0.5 && item.isReversed && video.smoothSlowMotion == true && audio.preservePitch == false)
+        #expect(item.timelineDuration == 20 && edited.items[1].timelineStart == 20)
+        #expect(video.filter == .sepia && video.filterIntensity == 0.6 && audio.effect == .room)
+        switch section {
+        case "balance":
+            model.resetSelectedColorBalance()
+            video.brightness = 0; video.warmth = 0; video.tint = 0
+        case "correction":
+            model.resetSelectedColorCorrection()
+            video.exposure = 0; video.contrast = 1; video.saturation = 1; video.highlights = 0; video.shadows = 0
+        case "stabilization":
+            model.resetSelectedStabilization()
+            video.stabilization = 0; video.rollingShutterCorrection = false
+        case "volume":
+            model.resetSelectedVolume()
+            audio.volume = 1; audio.muted = false; audio.normalize = false; audio.duckOthers = false; audio.duckingAmount = 0.5
+        case "noise":
+            model.resetSelectedNoiseProcessing()
+            audio.noiseReduction = 0; audio.eqPreset = .flat
+        case "speed":
+            model.resetSelectedSpeed()
+            video.smoothSlowMotion = false; audio.preservePitch = true
+        case "filters":
+            model.resetSelectedFilters()
+            video.filter = .none; video.filterIntensity = 1; audio.effect = AudioEffect.none
+        default:
+            model.resetAllSelectedViewerAdjustments()
+            video = VideoAdjustments(); audio = AudioAdjustments()
+        }
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments == video)
+        #expect(model.selectedTimelineItem?.effectiveAudioAdjustments == audio)
+        #expect(model.selectedTimelineItem?.effect == (section == "all" ? nil : item.effect))
+        let resetsSpeed = section == "all" || section == "speed"
+        #expect(model.selectedTimelineItem?.speed == (resetsSpeed ? 1 : 0.5))
+        #expect(model.selectedTimelineItem?.isReversed == !resetsSpeed)
+        #expect(model.timeline?.items[1].timelineStart == (resetsSpeed ? 10 : 20))
+        let reset = model.timeline
+        model.undoTimelineEdit()
+        #expect(model.timeline == edited)
+        model.redoTimelineEdit()
+        #expect(model.timeline == reset)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last == reset)
+    }
+
+    @Test func cropModesRotationsResetUndoAndSavingPreserveUnrelatedAdjustments() async throws {
+        let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
+        let model = fixture.model
+        var video = VideoAdjustments(crop: .fill, rotationQuarterTurns: 1, filter: .sepia)
+        video.brightness = 0.2
+        video.subjectReframe = .init(startCenterX: 0.4, startCenterY: 0.5, endCenterX: 0.6, endCenterY: 0.5,
+            startScale: 1.2, endScale: 1.3, targetAspectRatio: 16.0 / 9, confidence: 0.9)
+        model.project?.timelines[0].items[0].videoAdjustments = video
+        model.project?.timelines[0].items[0].effect = ClipEffect.kenBurns.rawValue
+        model.selectTimelineItem(try #require(model.timeline?.items.first?.id))
+        model.setSelectedCropMode("fit")
+        #expect(model.selectedTimelineItem?.effect == nil)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.subjectReframe == nil)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.crop == .fit)
+        model.setSelectedCropMode("ken-burns")
+        #expect(model.selectedTimelineItem?.effect == ClipEffect.kenBurns.rawValue)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.crop == .fill)
+        model.setSelectedCropMode("fill")
+        #expect(model.selectedTimelineItem?.effect == nil)
+        model.rotateSelected(-1)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.rotationQuarterTurns == 0)
+        model.rotateSelected(-1)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.rotationQuarterTurns == 3)
+        model.rotateSelected(1)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.rotationQuarterTurns == 0)
+        for _ in 0..<4 { model.rotateSelected(1) }
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.rotationQuarterTurns == 0)
+        model.setSelectedCropMode("ken-burns")
+        model.rotateSelected(1)
+        let beforeReset = model.timeline
+        model.resetSelectedCropAndRotation()
+        #expect(model.selectedTimelineItem?.effect == nil)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.crop == .fill)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.rotationQuarterTurns == 0)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.filter == .sepia)
+        #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.brightness == 0.2)
+        let reset = model.timeline
+        model.undoTimelineEdit()
+        #expect(model.timeline == beforeReset)
+        model.redoTimelineEdit()
+        #expect(model.timeline == reset)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last == reset)
+    }
+
     @Test func droppingTransitionUsesHoveredCutInsteadOfOldSelection() async throws {
         let fixture = try await Fixture(clipCount: 3)
         defer { fixture.remove() }

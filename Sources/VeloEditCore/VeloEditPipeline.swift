@@ -64,7 +64,7 @@ public actor VeloEditPipeline {
         self.speechRecognizer = speechRecognizer
         self.renderedProber = renderedProber
         self.analyzer = analyzer
-        let projectMusicLibrary = musicLibrary ?? LocalMusicLibrary(rootURL: store.musicLibraryURL)
+        let projectMusicLibrary = musicLibrary ?? LocalMusicLibrary(rootURLProvider: { store.musicLibraryURL })
         self.musicLibrary = projectMusicLibrary
         let bundledProvider = BundledMusicProvider(library: projectMusicLibrary)
         let localProvider = LocalMusicProvider(library: projectMusicLibrary)
@@ -311,6 +311,7 @@ public actor VeloEditPipeline {
     }
 
     public func snapshot() async -> ProjectManifest {
+        try? await store.synchronizePackageLocation()
         try? await migrateLegacyTimelineAudioSettings()
         return await store.manifest
     }
@@ -1810,24 +1811,28 @@ public actor VeloEditPipeline {
         let results = await importer.importAssets(from: visualURLs, existing: current.assets, conversionDirectory: store.packageURL.appendingPathComponent("Media/Converted"), progress: progress)
         var imported: [MediaAsset] = []
         var seenHashes = Set(current.assets.map(\.contentHash))
+        var assetIDsByHash = Dictionary(current.assets.map { ($0.contentHash, $0.id) }, uniquingKeysWith: { first, _ in first })
         try Task.checkCancellation()
         for (url, result) in zip(visualURLs, results) {
             switch result {
             case .success(let asset):
                 imported.append(asset)
                 let duplicate = !seenHashes.insert(asset.contentHash).inserted
+                let resolvedID = assetIDsByHash[asset.contentHash] ?? asset.id
+                assetIDsByHash[asset.contentHash] = resolvedID
                 report.entries.append(.init(url: url, outcome: duplicate ? .duplicate : .added,
-                    message: duplicate ? "Уже в проекте — повторная копия не добавлена" : "Добавлено"))
+                    message: duplicate ? "Уже в проекте — повторная копия не добавлена" : "Добавлено", assetID: resolvedID))
             case .failure(let error):
                 report.entries.append(.init(url: url, outcome: .failed, message: error.localizedDescription))
             }
         }
         for audioURL in audioURLs {
             do {
-                _ = try await musicLibrary.importUserTrack(audioURL)
-                report.entries.append(.init(url: audioURL, outcome: .added, message: "Добавлено в музыку"))
-            } catch MusicLibraryError.duplicateSource {
-                report.entries.append(.init(url: audioURL, outcome: .duplicate, message: "Уже в музыкальной библиотеке"))
+                let knownIDs = Set(try await musicLibrary.tracks().map(\.id))
+                let track = try await musicLibrary.importUserTrack(audioURL, reusingExisting: true)
+                let duplicate = knownIDs.contains(track.id)
+                report.entries.append(.init(url: audioURL, outcome: duplicate ? .duplicate : .added,
+                    message: duplicate ? "Уже в музыкальной библиотеке" : "Добавлено в музыку", musicTrackID: track.id))
             } catch {
                 report.entries.append(.init(url: audioURL, outcome: .failed, message: error.localizedDescription))
             }

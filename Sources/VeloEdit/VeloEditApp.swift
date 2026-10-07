@@ -34,7 +34,8 @@ struct VeloEditApp: App {
                 }
         }
         .windowStyle(.titleBar)
-        .windowToolbarStyle(.automatic)
+        // Preserve the full-size editor toolbar independently of the traffic lights.
+        .windowToolbarStyle(.unified)
         .commands { VeloEditCommands(model: model) }
         Window("Лицензия и компоненты", id: "legal") {
             LegalInfoView()
@@ -171,18 +172,21 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
                 window.setFrameAutosaveName("VeloEdit.Main")
                 if hasSavedFrame { window.setFrameUsingName("VeloEdit.Main"); didMaximize = true }
                 window.contentMinSize = NSSize(width: 980, height: 700)
-                // SwiftUI and AppKit own the title bar and standard window buttons,
-                // including their native size, spacing, and placement.
+                window.titleVisibility = .hidden
+                window.titlebarAppearsTransparent = true
+                window.styleMask.insert(.fullSizeContentView)
                 didBecomeKeyObserver = NotificationCenter.default.addObserver(
                     forName: NSWindow.didBecomeKeyNotification,
                     object: window,
                     queue: .main
                 ) { [weak self, weak window] _ in
                     guard let window else { return }
+                    WindowTrafficLightSizing.apply(to: window)
                     self?.scheduleMaximize(window)
                 }
             }
 
+            WindowTrafficLightSizing.apply(to: window)
             if window.isKeyWindow {
                 scheduleMaximize(window)
             }

@@ -49,6 +49,7 @@ public actor PlaybackEngine {
         var end: CMTime { start + duration }
         var naturalSize: CGSize
         var preferredTransform: CGAffineTransform
+        var stabilizationReference: CGImage?
     }
 
     private struct AudioPlacement {
@@ -388,6 +389,19 @@ public actor PlaybackEngine {
                     placedItem.effect = nil
                 }
             }
+            var stabilizationReference: CGImage?
+            let adjustments = placedItem.effectiveVideoAdjustments
+            if placedItem.kind == .video,
+               (adjustments.stabilization ?? 0) > 0.0001 || adjustments.rollingShutterCorrection == true {
+                // A fixed source anchor makes arbitrary paused seeks and export
+                // use identical stabilization, independent of request order.
+                let generator = AVAssetImageGenerator(asset: sourceAssets[sourceURL] ?? AVURLAsset(url: sourceURL))
+                generator.appliesPreferredTrackTransform = false
+                generator.maximumSize = CGSize(width: 320, height: 320)
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
+                stabilizationReference = try await generator.image(at: sourceRange.start).image
+            }
             placements.append(Placement(
                 index: placements.count,
                 item: placedItem,
@@ -396,7 +410,8 @@ public actor PlaybackEngine {
                 start: at,
                 duration: targetDuration,
                 naturalSize: metadata.size,
-                preferredTransform: metadata.transform
+                preferredTransform: metadata.transform,
+                stabilizationReference: stabilizationReference
             ))
             if item.overlay == nil { cursor = at + targetDuration }
         }
@@ -785,7 +800,8 @@ public actor PlaybackEngine {
                     duration: placement.duration,
                     naturalSize: placement.naturalSize,
                     transform: Self.displayTransform(for: placement, active: active, renderSize: renderSize),
-                    telemetry: placement.item.assetID.flatMap { telemetry[$0] }
+                    telemetry: placement.item.assetID.flatMap { telemetry[$0] },
+                    stabilizationReference: placement.stabilizationReference
                 )
             }
             let primaries = active.filter { $0.item.overlay == nil }

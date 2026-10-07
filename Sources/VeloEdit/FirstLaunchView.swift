@@ -20,6 +20,8 @@ struct FirstLaunchRoot<Content: View>: View {
                     .zIndex(10)
             }
         }
+        // Removing toolbar items alone leaves the native toolbar strip visible.
+        .toolbar(intro.isPresented ? .hidden : .automatic, for: .windowToolbar)
         .environmentObject(intro)
     }
 }
@@ -86,7 +88,7 @@ struct FirstLaunchView: View {
         let iconHeight = FirstLaunchArtwork.visibleHeight(windowHeight: size.height, scale: displayScale)
         let canvasSide = iconHeight / artworkFraction
         let stackHeight = iconHeight + 32 + 44 + 10 + 28 + 26 + 48
-        let top = max(58, (size.height - stackHeight) / 2 - 12)
+        let top = max(58, (size.height - stackHeight) / 2)
         let center = CGPoint(x: size.width / 2, y: top + iconHeight / 2)
         return ZStack(alignment: .top) {
             background.opacity(frame.backdropOpacity)
@@ -147,9 +149,12 @@ struct FirstLaunchView: View {
             .offset(y: top + iconHeight + 32 + 44 + 10 + 28 + 26)
             .disabled(intro.phase == .exiting)
             if intro.phase == .exiting && intro.usesLightReveal {
-                RadialGradient(colors: [blue.opacity(0.22), blue.opacity(0.06), .clear], center: .center,
+                // Move the light's origin, not its canvas: an offset canvas exposes
+                // a hard lower edge while the expanding glow is still visible.
+                RadialGradient(colors: [blue.opacity(0.22), blue.opacity(0.06), .clear],
+                               center: .init(x: 0.5, y: center.y / size.height),
                                startRadius: 0, endRadius: max(size.width, size.height) * (0.25 + frame.reveal))
-                    .position(center).allowsHitTesting(false).accessibilityHidden(true)
+                    .allowsHitTesting(false).accessibilityHidden(true)
             }
             HStack {
                 Spacer()

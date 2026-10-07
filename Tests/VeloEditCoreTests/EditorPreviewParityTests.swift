@@ -7,6 +7,51 @@ import Testing
 @testable import VeloEditCore
 
 @Suite(.serialized) struct EditorPreviewParityTests {
+    @Test func viewerColorFiltersStabilizationAndSlowMotionReachPreviewAndExport() async throws {
+        let fixture = try await Fixture.make(duration: 1); defer { fixture.remove() }
+        let settings: [(String, VideoAdjustments)] = [
+            ("brightness", .init(brightness: 0.2)), ("temperature", .init(warmth: 0.8)),
+            ("tint", .init(tint: 0.6)), ("exposure", .init(exposure: 1)),
+            ("contrast", .init(contrast: 1.5)), ("saturation", .init(saturation: 0)),
+            ("highlights", .init(highlights: -0.8)), ("shadows", .init(shadows: 0.8)),
+            ("stabilization", .init(stabilization: 0.8)),
+            ("rolling-shutter", .init(rollingShutterCorrection: true)),
+            ("smooth-slow-motion", .init(smoothSlowMotion: true))
+        ] + VideoFilter.allCases.filter { $0 != .none }.map { ($0.rawValue, .init(filter: $0)) }
+        var timeline = fixture.timeline
+        timeline.items = [TimelineItem(assetID: fixture.asset.id, kind: .video, sourceDuration: 0.5,
+                                       timelineStart: 0, timelineDuration: 0.5)]
+        for (index, setting) in settings.enumerated() {
+            let slow = setting.0 == "smooth-slow-motion"
+            timeline.items.append(TimelineItem(assetID: fixture.asset.id, kind: .video,
+                sourceDuration: slow ? 0.25 : 0.5, timelineStart: Double(index + 1) * 0.5,
+                timelineDuration: 0.5, speed: slow ? 0.5 : 1, videoAdjustments: setting.1))
+        }
+        let playback = try await PlaybackEngine().build(timeline: timeline, assets: [fixture.asset], preferStableRealtimePreview: true)
+        let live = Self.generator(playback)
+        let baseline = try Self.pixels(live, at: 0.25)
+        let destination = fixture.root.appendingPathComponent("viewer-adjustments.mp4")
+        let report = try await RenderEngine().render(timeline: timeline, assets: [fixture.asset], quality: .maximum, destination: destination)
+        #expect(report.skippedItemIDs.isEmpty)
+        let encoded = AVURLAsset(url: destination)
+        #expect(abs(try await encoded.load(.duration).seconds - timeline.duration) < 0.051)
+        let movie = Self.generator(asset: encoded)
+        for (index, setting) in settings.enumerated() {
+            let start = Double(index + 1) * 0.5
+            // Supply the registration reference before sampling stabilization.
+            _ = try Self.pixels(live, at: start + 0.05)
+            let preview = try Self.pixels(live, at: start + 0.3)
+            let exported = try Self.pixels(movie, at: start + 0.3)
+            #expect(Self.difference(preview, baseline) > 0.0005, "\(setting.0) must change actual preview pixels")
+            #expect(Self.difference(preview, exported) < 0.04, "\(setting.0) must match the encoded film")
+            if setting.0 == "stabilization" || setting.0 == "rolling-shutter" {
+                let freshSeek = try Self.pixels(Self.generator(playback), at: start + 0.3)
+                #expect(Self.difference(preview, freshSeek) < 0.001,
+                        "Seeking directly into \(setting.0) must use the same source anchor")
+            }
+        }
+    }
+
     @Test func speechCaptionUsesAudioClockAfterTwoTransitionsInPreviewAndMP4() async throws {
         let fixture = try await Fixture.make(duration: 6); defer { fixture.remove() }
         var timeline = fixture.timeline

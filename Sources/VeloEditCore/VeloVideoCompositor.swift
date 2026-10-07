@@ -23,8 +23,9 @@ final class VeloCompositorLayer {
     let naturalSize: CGSize
     let transform: CGAffineTransform
     let telemetry: TelemetrySummary?
+    let stabilizationReference: CGImage?
 
-    init(trackID: CMPersistentTrackID, item: TimelineItem, start: CMTime, duration: CMTime, naturalSize: CGSize, transform: CGAffineTransform, telemetry: TelemetrySummary? = nil) {
+    init(trackID: CMPersistentTrackID, item: TimelineItem, start: CMTime, duration: CMTime, naturalSize: CGSize, transform: CGAffineTransform, telemetry: TelemetrySummary? = nil, stabilizationReference: CGImage? = nil) {
         self.trackID = trackID
         self.item = item
         self.start = start
@@ -32,6 +33,7 @@ final class VeloCompositorLayer {
         self.naturalSize = naturalSize
         self.transform = transform
         self.telemetry = telemetry
+        self.stabilizationReference = stabilizationReference
     }
 }
 
@@ -267,8 +269,6 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
     private let lock = NSLock()
     private var renderContext: AVVideoCompositionRenderContext?
     private var cancellationGeneration: UInt64 = 0
-    private var stabilizationReferences: [UUID: CVPixelBuffer] = [:]
-    private var stabilizationReferenceOrder: [UUID] = []
 
     public func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
         lock.lock()
@@ -458,8 +458,6 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
     public func cancelAllPendingVideoCompositionRequests() {
         lock.lock()
         cancellationGeneration &+= 1
-        stabilizationReferences.removeAll()
-        stabilizationReferenceOrder.removeAll()
         lock.unlock()
     }
 
@@ -474,31 +472,27 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
             return smoothedSlowMotion(source, item: layer.item, motion: .identity)
         }
 
-        lock.lock()
-        let reference = stabilizationReferences[layer.item.id]
-        if reference == nil {
-            stabilizationReferences[layer.item.id] = buffer
-            stabilizationReferenceOrder.removeAll { $0 == layer.item.id }
-            stabilizationReferenceOrder.append(layer.item.id)
-            while stabilizationReferenceOrder.count > 4 {
-                stabilizationReferences.removeValue(forKey: stabilizationReferenceOrder.removeFirst())
+        var detected = CGAffineTransform.identity
+        if let reference = layer.stabilizationReference {
+            // Register ungraded thumbnails in the same raster space; scaling
+            // back also handles proxies and non-square camera pixels.
+            let raw = CIImage(cvPixelBuffer: buffer)
+            let scaleX = CGFloat(reference.width) / raw.extent.width
+            let scaleY = CGFloat(reference.height) / raw.extent.height
+            let thumbnail = raw.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+            if let current = context.createCGImage(thumbnail, from: thumbnail.extent) {
+                let request = VNTranslationalImageRegistrationRequest(targetedCGImage: current)
+                request.regionOfInterest = CGRect(x: 0.15, y: 0.15, width: 0.7, height: 0.7)
+                let handler = VNImageRequestHandler(cgImage: reference)
+                if (try? handler.perform([request])) != nil,
+                   let observation = request.results?.first as? VNImageTranslationAlignmentObservation {
+                    detected = CGAffineTransform(translationX: observation.alignmentTransform.tx / scaleX,
+                                                 y: observation.alignmentTransform.ty / scaleY)
+                }
             }
-        }
-        lock.unlock()
-        guard let reference else { return smoothedSlowMotion(source, item: layer.item, motion: .identity) }
-
-        // The targeted image is the floating/current frame. Vision returns the
-        // transform that maps it onto the reference frame supplied to handler.
-        let request = VNTranslationalImageRegistrationRequest(targetedCVPixelBuffer: buffer)
-        request.regionOfInterest = CGRect(x: 0.15, y: 0.15, width: 0.7, height: 0.7)
-        let handler = VNImageRequestHandler(cvPixelBuffer: reference)
-        guard (try? handler.perform([request])) != nil,
-              let observation = request.results?.first as? VNImageTranslationAlignmentObservation else {
-            return smoothedSlowMotion(source, item: layer.item, motion: .identity)
         }
 
         let extent = source.extent
-        let detected = observation.alignmentTransform
         let maximumX = extent.width * 0.075
         let maximumY = extent.height * 0.075
         let correction = CGAffineTransform(

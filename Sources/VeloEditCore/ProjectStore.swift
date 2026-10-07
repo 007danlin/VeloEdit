@@ -64,7 +64,9 @@ public struct ProjectStoreSnapshot: Sendable {
 
 public actor ProjectStore {
     public static let packageExtension = "veloedit"
-    public let packageURL: URL
+    private nonisolated let packageLocation: ProjectPackageLocation
+    public nonisolated var packageURL: URL { packageLocation.url }
+    private var manifestPackageURL: URL
     public private(set) var manifest: ProjectManifest
     private var revision: UInt64 = 0
     private var persistedManifestFingerprint: String?
@@ -83,16 +85,18 @@ public actor ProjectStore {
     public nonisolated var musicLibraryURL: URL { packageURL.appendingPathComponent("MusicLibrary", isDirectory: true) }
 
     public init(createAt packageURL: URL, name: String, recoveryDirectory: URL? = nil) throws {
-        self.packageURL = packageURL
+        self.manifestPackageURL = packageURL
         self.recoveryDirectory = recoveryDirectory ?? LocalProjectRecovery.defaultDirectory
         self.manifest = ProjectManifest(name: name)
         try Self.createDirectories(at: packageURL)
+        self.packageLocation = ProjectPackageLocation(packageURL)
         self.persistedManifestFingerprint = try Self.write(self.manifest, to: packageURL.appendingPathComponent("project.json"))
         try? Self.writeSummary(for: self.manifest, at: packageURL)
     }
 
     public init(open packageURL: URL, recoveryDirectory: URL? = nil) throws {
-        self.packageURL = packageURL
+        self.packageLocation = ProjectPackageLocation(packageURL)
+        self.manifestPackageURL = packageURL
         let recoveryRoot = recoveryDirectory ?? LocalProjectRecovery.defaultDirectory
         self.recoveryDirectory = recoveryRoot
         let projectURL = packageURL.appendingPathComponent("project.json")
@@ -340,6 +344,8 @@ public actor ProjectStore {
     ) throws {
         var next = manifest
         try mutation(&next)
+        let destination = packageURL
+        next = try ProjectPackageLocation.relocate(next, from: manifestPackageURL, to: destination)
         if invalidatingBackgroundWork {
             for index in next.timelines.indices where next.timelines[index].automaticallySelectFrameRate == true {
                 next.timelines[index] = TimelineFrameRatePolicy.applying(to: next.timelines[index], assets: next.assets)
@@ -365,9 +371,10 @@ public actor ProjectStore {
         persistedManifestFingerprint = fingerprint
         persistenceLocation = .project
         if ownsRecoveryJournal {
-            LocalProjectRecovery.clear(package: packageURL, root: recoveryDirectory)
+            LocalProjectRecovery.clear(package: manifestPackageURL, root: recoveryDirectory)
             ownsRecoveryJournal = false
         }
+        manifestPackageURL = destination
         if invalidatingBackgroundWork {
             revision &+= 1
         }
@@ -425,6 +432,7 @@ public actor ProjectStore {
     }
 
     public func verifyDurableState() throws -> ProjectPersistenceLocation {
+        try synchronizePackageLocation()
         if persistenceLocation == .localRecovery {
             guard let recovery = try LocalProjectRecovery.read(package: packageURL, root: recoveryDirectory),
                   recovery.0.projectID == manifest.id else { throw ProjectStoreError.invalidProjectPackage(packageURL) }
@@ -433,6 +441,11 @@ public actor ProjectStore {
             guard EditorialProjectMigration.hash(data) == persistedManifestFingerprint else { throw ProjectStoreError.externalModification }
         }
         return persistenceLocation
+    }
+
+    public func synchronizePackageLocation() throws {
+        guard packageURL.standardizedFileURL != manifestPackageURL.standardizedFileURL else { return }
+        try persist({ _ in }, invalidatingBackgroundWork: false)
     }
 
     public func reload() throws {

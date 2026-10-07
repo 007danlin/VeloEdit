@@ -223,15 +223,23 @@ public actor LocalMusicLibrary {
     public static let shared = LocalMusicLibrary()
     private static let importAnalyzer = LocalAudioAnalyzer()
 
-    private let rootURL: URL
+    private let rootURLProvider: @Sendable () -> URL
+    private var rootURL: URL { rootURLProvider() }
+    private var cachedRootURL: URL?
     private var cachedTracks: [LocalMusicTrack]?
 
     public init(rootURL: URL? = nil) {
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        self.rootURL = rootURL ?? applicationSupport.appendingPathComponent("VeloEdit/MusicLibrary", isDirectory: true)
+        let root = rootURL ?? applicationSupport.appendingPathComponent("VeloEdit/MusicLibrary", isDirectory: true)
+        self.rootURLProvider = { root }
+    }
+
+    public init(rootURLProvider: @escaping @Sendable () -> URL) {
+        self.rootURLProvider = rootURLProvider
     }
 
     public func tracks() throws -> [LocalMusicTrack] {
+        if cachedRootURL != rootURL { cachedTracks = nil; cachedRootURL = rootURL }
         if let cachedTracks { return cachedTracks }
         try createDirectories()
         guard FileManager.default.fileExists(atPath: catalogURL.path) else {
@@ -419,17 +427,20 @@ public actor LocalMusicLibrary {
     }
 
     @discardableResult
-    public func importUserTrack(_ sourceURL: URL) async throws -> LocalMusicTrack {
+    public func importUserTrack(_ sourceURL: URL, reusingExisting: Bool = false) async throws -> LocalMusicTrack {
         var library = try tracks()
         let asset = AVURLAsset(url: sourceURL)
         guard !(try await asset.loadTracks(withMediaType: .audio)).isEmpty else { throw MusicLibraryError.unreadableAudio }
         let measuredDuration = try await asset.load(.duration).seconds
         guard measuredDuration.isFinite, measuredDuration > 0 else { throw MusicLibraryError.unreadableAudio }
-        guard !library.contains(where: {
+        if let existing = library.first(where: {
             $0.sourceProvider == .user &&
             $0.originalFileName == sourceURL.lastPathComponent &&
             abs($0.duration - measuredDuration) < 0.01
-        }) else { throw MusicLibraryError.duplicateSource }
+        }) {
+            if reusingExisting { return existing }
+            throw MusicLibraryError.duplicateSource
+        }
 
         try createDirectories()
         let id = UUID()

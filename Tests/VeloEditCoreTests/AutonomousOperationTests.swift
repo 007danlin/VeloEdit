@@ -19,7 +19,10 @@ struct AutonomousOperationTests {
         let f = Fixture(); defer { f.remove() }
         let store = try f.store()
         let moved = f.root.appendingPathComponent("offline.veloedit")
-        try FileManager.default.moveItem(at: f.package, to: moved)
+        // A rename now follows the package identity. Simulate an unavailable
+        // volume by removing that identity, retaining a separate restore copy.
+        try FileManager.default.copyItem(at: f.package, to: moved)
+        try FileManager.default.removeItem(at: f.package)
         try await store.updateWorkspaceState(ProjectWorkspaceState(prompt: "Последняя правка", preset: .story, targetMinutes: 2))
         #expect(try await store.verifyDurableState() == .localRecovery)
         let duringOutage = try ProjectStore(open: f.package, recoveryDirectory: f.recovery)
@@ -36,7 +39,7 @@ struct AutonomousOperationTests {
         let f = Fixture(); defer { f.remove() }
         let store = try f.store()
         try Data([1]).write(to: f.recovery)
-        try FileManager.default.moveItem(at: f.package, to: f.root.appendingPathComponent("offline"))
+        try FileManager.default.removeItem(at: f.package)
         await #expect(throws: (any Error).self) { try await store.update { $0.name = "Unsaved" } }
         #expect(await store.manifest.name == "Autonomy")
         await #expect(throws: (any Error).self) { _ = try await store.verifyDurableState() }

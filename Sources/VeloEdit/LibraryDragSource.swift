@@ -42,6 +42,27 @@ enum LibraryDragSession {
     }
 }
 
+enum FileDropLoader {
+    static func load(_ providers: [NSItemProvider]) async -> [URL] {
+        // Preserve Finder's order even when providers resolve asynchronously.
+        var urls: [URL] = []
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            let url: URL? = await withCheckedContinuation { continuation in
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    let url: URL?
+                    if let data = item as? Data { url = URL(dataRepresentation: data, relativeTo: nil) }
+                    else if let value = item as? URL { url = value }
+                    else if let text = item as? String { url = URL(string: text) }
+                    else { url = nil }
+                    continuation.resume(returning: url?.isFileURL == true ? url : nil)
+                }
+            }
+            if let url { urls.append(url) }
+        }
+        return urls
+    }
+}
+
 extension View {
     func libraryDraggable(_ payload: String) -> some View {
         modifier(LibraryDragModifier(payload: payload))
@@ -126,9 +147,12 @@ struct LibraryTimelineDropDelegate: DropDelegate {
     let update: (String, CGPoint) -> Void
     let clear: () -> Void
     let perform: (String, CGPoint) -> Bool
+    var updateFiles: ((CGPoint) -> Void)? = nil
+    var performFiles: (([NSItemProvider], CGPoint) -> Bool)? = nil
 
     func validateDrop(info: DropInfo) -> Bool {
-        isEnabled && info.hasItemsConforming(to: [LibraryDragSession.type])
+        isEnabled && (info.hasItemsConforming(to: [LibraryDragSession.type]) ||
+            (performFiles != nil && info.hasItemsConforming(to: [.fileURL])))
     }
 
     func dropEntered(info: DropInfo) { session.reset(); updatePreview(info) }
@@ -143,6 +167,10 @@ struct LibraryTimelineDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         defer { clear() }
+        if isEnabled, info.hasItemsConforming(to: [.fileURL]), let performFiles {
+            session.reset()
+            return performFiles(info.itemProviders(for: [.fileURL]), info.location)
+        }
         guard validateDrop(info: info), let provider = info.itemProviders(for: [LibraryDragSession.type]).first else {
             session.reset()
             return false
@@ -151,6 +179,11 @@ struct LibraryTimelineDropDelegate: DropDelegate {
     }
 
     private func updatePreview(_ info: DropInfo) {
+        if isEnabled, info.hasItemsConforming(to: [.fileURL]), let updateFiles {
+            session.reset()
+            updateFiles(info.location)
+            return
+        }
         guard validateDrop(info: info), let provider = info.itemProviders(for: [LibraryDragSession.type]).first else { return }
         session.update(provider: provider, at: info.location, preview: update)
     }
