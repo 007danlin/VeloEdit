@@ -1,0 +1,50 @@
+name: Diagnose Pages DNS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/pages-diagnostics.yml']
+
+permissions:
+  pages: read
+
+jobs:
+  dns:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Read Pages certificate state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/$GITHUB_REPOSITORY/pages" --jq '{cname, status, https_certificate, https_enforced}'
+      - name: Query DNS from a GitHub runner
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures, json, subprocess
+          resolvers = ['', '8.8.8.8', '1.1.1.1', 'ns1.reg.ru', 'ns2.reg.ru']
+          def query(args):
+              server, host, kind = args
+              command = ['dig'] + (['@' + server] if server else [])
+              command += [host, kind, '+time=3', '+tries=1', '+noall', '+answer', '+authority', '+comments']
+              result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+              return {'server': server or 'runner default', 'host': host, 'type': kind, 'response': result.stdout, 'error': result.stderr}
+          probes = [(s, h, t) for s in resolvers for h in ['veloedit.ru', 'www.veloedit.ru'] for t in ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'SOA', 'CAA']]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+              for result in executor.map(query, probes):
+                  print(json.dumps(result))
+          PY
+      - name: Install official GitHub Pages health checker
+        run: gem install --user-install github-pages-health-check --version 1.19.2 --no-document
+      - name: Run official domain checks
+        run: |
+          timeout 180 ruby <<'RUBY'
+          require 'github-pages-health-check'
+          require 'json'
+          ['veloedit.ru', 'www.veloedit.ru'].each do |host|
+            [:default, :public, :authoritative].each do |ns|
+              domain = GitHubPages::HealthCheck::Domain.new(host, nameservers: ns)
+              puts JSON.generate(domain.to_hash)
+            end
+          end
+          RUBY
