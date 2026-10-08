@@ -8,6 +8,7 @@
 Локальный просмотр: `python3 -m http.server 8765 --directory website`.
 Проверки: `node --test Tests/Website/release.test.mjs` и `python3 -m unittest discover -s Tests/Distribution -v`.
 Workflow `.github/workflows/pages.yml` публикует только содержимое `website/`.
+После публикации релиза workflow запускает отдельное развёртывание из `main`: окружение `github-pages` разрешает эту ветку, а не теги релизов. Только задача запуска получает `actions: write`; правила окружения остаются прежними.
 
 1. Загрузить `website/index.html` и `.github/workflows/pages.yml` в ветку `main`.
 2. Открыть https://github.com/007danlin/VeloEdit/settings/pages и выбрать

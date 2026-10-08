@@ -9,7 +9,7 @@ on:
       - 'Scripts/validate-update-feed.py'
   workflow_dispatch:
   release:
-    types: [published, edited, released]
+    types: [published, edited]
 
 permissions:
   contents: read
@@ -21,7 +21,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  refresh-after-release:
+    if: github.event_name == 'release' && !github.event.release.draft && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # Pages permits deployments from main. A release event runs on its tag,
+      # so request a main-branch deployment without changing environment rules.
+      - name: Request website deployment from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+
   deploy:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
