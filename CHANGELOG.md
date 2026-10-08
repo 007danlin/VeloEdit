@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-08 — Структура проекта
+
+- Документация собрана в `Docs/` по назначению: инструкции, архитектура, функции, интеграции, ТЗ, планы и референсы. Добавлено общее оглавление, названия файлов приведены к читаемому виду.
+- Скрипты проверок, замеров и исследований разнесены по подпапкам `Scripts/`; команды сборки сохранили прежние пути. Обновлены ссылки и пути в тестах.
+- Исходники графики перенесены в `Design/`, инструкция по сайту — в `website/README.md`.
+- Локальные аудиты, отчёты и замеры собраны в игнорируемой папке `Local/` с сохранением содержимого.
+
 ## 2026-10-08 — Экспорт и публичный репозиторий
 
 - Исторические аудиты и отчёты приёмки исключены из Git; локальные копии сохранены на прежних путях. Действующие ТЗ и скрипты сохранены, ссылки на прежние результаты ведут в историю Git.
@@ -179,14 +186,14 @@
 - Титры рендерятся в live preview и MP4 как timed Core Animation title cards, а не пропускаются PlaybackEngine.
 - FCPXML теперь переносит constant speed через `timeMap`, fill/fit, rotation/mirror, opacity, clip volume и сохраняет остальные VeloEdit-настройки в metadata.
 - CLI получил `edit` для headless-проверки AI-команд и `playback-frame` для диагностики compositor.
-- Добавлена проверяемая матрица `IMOVIE_BASELINE.md` и правило: ответ AI считается исполненным только после изменения Timeline, пересборки просмотра и отчёта в чате.
+- Добавлена проверяемая матрица `Docs/Planning/imovie-baseline.md` и правило: ответ AI считается исполненным только после изменения Timeline, пересборки просмотра и отчёта в чате.
 
 - Добавлен JSON-контракт локальной language model: отдельно реплика для чата и однозначный `normalizedBrief` для Story Engine.
 - Подключён вторичный локальный AI-provider через Apple Foundation Models на macOS 26 с weak linking и без отправки медиа в сеть.
 - Добавлен гарантированный контекстный fallback-ответ, если ни Ollama/Qwen3, ни Foundation Models недоступны.
 - Добавлена постоянная карточка готовности фильма с процентом и этапами «Медиа / Анализ / Монтаж / Просмотр», typing-state и финальным сообщением режиссёра о готовом результате.
 - Создан Swift package с независимыми Core, macOS App и CLI targets.
-- Создан поэтапный `IMPLEMENTATION_PLAN.md` по ТЗ 1.0.
+- Создан поэтапный `Docs/Planning/implementation-plan.md` по ТЗ 1.0.
 - Зафиксированы архитектурные инварианты offline-first, non-destructive и no-generative-slop.
 - Реализованы versioned модели `MediaAsset -> AnalysisResult -> Candidate -> Event -> StoryPlan -> Timeline -> RenderJob`.
 - Реализован package-based project store с атомарной записью, URL/bookmarks, content hashes и derived-media cache.

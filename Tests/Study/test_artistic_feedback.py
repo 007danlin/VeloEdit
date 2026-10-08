@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 
-spec = importlib.util.spec_from_file_location("feedback", pathlib.Path(__file__).parents[2] / "Scripts/prepare-artistic-feedback.py")
+spec = importlib.util.spec_from_file_location("feedback", pathlib.Path(__file__).parents[2] / "Scripts/Studies/prepare-artistic-feedback.py")
 feedback = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(feedback)
 

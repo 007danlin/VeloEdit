@@ -4,7 +4,7 @@ import pathlib
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("ranker", ROOT / "Scripts/train-editing-ranker.py")
+SPEC = importlib.util.spec_from_file_location("ranker", ROOT / "Scripts/Studies/train-editing-ranker.py")
 ranker = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ranker)
 

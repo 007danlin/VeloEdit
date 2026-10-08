@@ -12,11 +12,10 @@ __pycache__/
 *.py[cod]
 
 # Local experiments, exports and raw validation evidence are not source inputs.
+/Local/
 /output/
-/Docs/Validation/**
-!/Docs/Validation/**/
-!/Docs/Validation/**/*.py
-# Keep historical audits at their original paths locally, but never track them.
+# Legacy locations remain ignored to prevent accidental reintroduction.
+/Docs/Validation/
 /*_AUDIT.md
 /Docs/UserAudit-*/
 /Docs/Autonomy-20*/

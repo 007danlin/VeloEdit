@@ -13,7 +13,7 @@ source, app = map(pathlib.Path, sys.argv[1:])
 digest = hashlib.sha256()
 paths = [source / "Package.swift"] + list((source / "Sources").rglob("*.swift"))
 paths += [p for p in (source / "Resources").rglob("*") if p.is_file()]
-paths += list((source / "Scripts").glob("*.py")) + list((source / "Scripts").glob("*.sh"))
+paths += list((source / "Scripts").rglob("*.py")) + list((source / "Scripts").rglob("*.sh"))
 paths += [source / "Distribution/native-dependencies.json"]
 for path in sorted(paths):
     digest.update(str(path.relative_to(source)).encode() + b"\0")
