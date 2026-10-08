@@ -1,7 +1,0 @@
-/Users/daniellineckij/VeloEdit/Build/AIModeFixes/short/PerformanceRunner.app: replacing existing signature
-{"mode": "fast", "cache": "cold", "wallSeconds": 19.542871291996562, "exitCode": 0}
-{"mode": "fast", "cache": "warm", "wallSeconds": 0.13162616699992213, "exitCode": 0}
-{"mode": "balanced", "cache": "cold", "wallSeconds": 44.69705033300124, "exitCode": 0}
-{"mode": "balanced", "cache": "warm", "wallSeconds": 0.16276908399595413, "exitCode": 0}
-{"mode": "quality", "cache": "cold", "wallSeconds": 96.60617420800554, "exitCode": 0}
-{"mode": "quality", "cache": "warm", "wallSeconds": 0.15174454199586762, "exitCode": 0}

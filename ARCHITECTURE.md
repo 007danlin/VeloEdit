@@ -1,5 +1,10 @@
 # Архитектура VeloEdit
 
+Лицензии приложения и сторонних движков входят в bundle. При экспорте
+`MusicCredit.requiredForExport` выбирает требующую атрибуции музыку из текущего
+саундтрека, адаптивных сегментов и независимых аудиоклипов. Только эти сведения
+попадают в `music-credits.json`; полная история музыки остаётся в проекте.
+
 ## Поток данных
 
 `Original → metadata/GPMF → adaptive key frames → candidate detection → P2 deep evidence → enriched directorCandidates → P4 Event Intelligence (Project → Event → Scene → Moment → Asset) → P3 ProjectStyle → P7 contextual PersonalTaste blend → event-first duration/story/grammar/music → style-space strategy search → diversity gate → parallel full production variants → music DSP/sync → P6 perceptual review → P7 personalized global score → event safety/weak gates → Pareto front → pairwise global tournament → Preview → Final Render/FCPXML`

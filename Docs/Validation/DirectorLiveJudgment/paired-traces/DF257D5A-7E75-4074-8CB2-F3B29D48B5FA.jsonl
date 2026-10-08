@@ -1,5 +1,0 @@
-{"elapsed":0.00074779166607186198,"event":"operation.begin","fields":{"date":"2026-10-06T18:47:07Z","name":"director.runtime-study.baseline","projectID":"D74A8AB4-B75D-4F60-AEAF-478DEF90D44B","revision":""},"operationID":"DF257D5A-7E75-4074-8CB2-F3B29D48B5FA","values":{}}
-{"elapsed":3.9254069166636327,"event":"director.first-reply","fields":{},"operationID":"DF257D5A-7E75-4074-8CB2-F3B29D48B5FA","values":{"seconds":3.9213164583343314}}
-{"elapsed":4.0036669583278126,"event":"director.runtime","fields":{},"operationID":"DF257D5A-7E75-4074-8CB2-F3B29D48B5FA","values":{"generatedTokens":105,"generationSeconds":3.6929820000000002,"loadSeconds":0.125188416,"promptSeconds":0.16331899999999999,"promptTokens":513}}
-{"elapsed":4.0041236249962822,"event":"director.plan-complete","fields":{},"operationID":"DF257D5A-7E75-4074-8CB2-F3B29D48B5FA","values":{"seconds":4.0000421666627517}}
-{"elapsed":4.0043522916603251,"event":"operation.end","fields":{"status":"success"},"operationID":"DF257D5A-7E75-4074-8CB2-F3B29D48B5FA","values":{}}

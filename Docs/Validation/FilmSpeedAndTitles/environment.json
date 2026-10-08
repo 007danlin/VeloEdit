@@ -1,5 +1,0 @@
-{
-  "hardware": "Hardware:\n\n    Hardware Overview:\n\n      Model Name: MacBook Air\n      Model Identifier: Mac16,13\n      Model Number: Z1H2000J3LL/A\n      Chip: Apple M4\n      Total Number of Cores: 10 (4 Performance and 6 Efficiency)\n      Memory: 32 GB\n      System Firmware Version: 20457.1.29\n      OS Loader Version: 20457.1.29\n      Serial Number (system): LFQGFX67RQ\n      Hardware UUID: 746F9A23-9093-5CA3-A122-02C0F0D7FF1B\n      Provisioning UDID: 00008132-001650310AD9801C\n\n",
-  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t27.0\nBuildVersion:\t\t26A428\n",
-  "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=7536739)\t37%; discharging; 4:51 remaining present: true\n"
-}

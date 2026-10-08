@@ -1,9 +1,0 @@
-◇ Test run started.
-↳ Testing Library Version: 2084
-↳ Target Platform: arm64e-apple-macos14.0
-◇ Suite RequestFulfillmentTests started.
-◇ Test finalRealExportRequirementReceipt() started.
-REQUEST QA receipt: savedWithUnmetRequirements; movie available; duration and export pass
-✔ Test finalRealExportRequirementReceipt() passed after 1.614 seconds.
-✔ Suite RequestFulfillmentTests passed after 1.614 seconds.
-✔ Test run with 1 test in 1 suite passed after 1.615 seconds.

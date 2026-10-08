@@ -1,6 +1,0 @@
-{
-  "status": "interrupted-after-eight-minute-budget",
-  "reason": "large debug integration scenarios still running; not a full-suite pass",
-  "completedTestLines": 737,
-  "timestamp": 1789748816.6218822
-}

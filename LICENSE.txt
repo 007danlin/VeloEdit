@@ -1,12 +1,56 @@
-Copyright © 2026 Daniel L. All rights reserved in original VeloEdit components.
+VELOEDIT — PROPRIETARY SOURCE-AVAILABLE TERMS
+Version 1.0, 8 October 2026
+Copyright © 2026 Daniel L. All rights reserved in original VeloEdit materials.
 
-The original VeloEdit source code and original resources owned by Daniel L are
-proprietary. No permission to redistribute this source code or create and
-distribute derivative versions is granted by possession of this repository.
-End-user terms are prepared from Resources/Legal/LICENSE.txt during app builds.
+1. Scope
+These terms apply only to original VeloEdit code, documentation, artwork and
+other materials whose copyright is owned by Daniel L (the "Original Materials").
+Public availability of this repository is not an open-source license.
 
-This notice does not claim ownership of third-party code, models, music, fonts,
-or other third-party materials. Their copyright notices and licenses remain
-in effect and take precedence for those components. In particular, OVRLEY and
-the modifications to its GPL-covered bridge retain their GPL terms. Nothing
-in this notice restricts rights granted by those licenses or applicable law.
+2. Repository access
+You may view the Original Materials for inspection. Rights to view and fork
+this public repository granted under GitHub's Terms of Service are preserved.
+No additional right to copy, modify, publish, sublicense, sell, redistribute
+or incorporate the Original Materials into another product or service is
+granted without the copyright holder's prior written permission, except as
+required by applicable law or an independently applicable license.
+
+3. Redistribution and derivative products
+Without that permission, you may not redistribute the Original Materials in
+source or binary form, in whole or substantial part, or distribute modified,
+rebranded or translated versions containing them. This includes commercial
+and noncommercial copies, derivative applications and hosted services using
+the Original Materials. Copyright and attribution notices must be preserved
+in copies permitted under these terms. Rights not expressly granted are
+reserved. These terms do not claim ownership of ideas or independently
+written implementations.
+
+4. Name and artwork
+No right to market another product as VeloEdit, use its original logo as that
+product's branding, or imply endorsement by Daniel L is granted. Truthful
+identification, attribution and uses permitted by law remain allowed. This
+clause does not assert that any name or mark is registered.
+
+5. Third-party rights take precedence
+Third-party code, models, music, fonts and other materials are excluded from
+the Original Materials and retain their own licenses and copyright notices.
+In particular, ThirdParty/OVRLEY and its GPL-covered VeloEdit bridge remain
+under GPL-3.0-or-later. No restriction in this document overrides rights to
+copy, modify, redistribute, reverse engineer or obtain corresponding source
+under GPL, LGPL, MIT, Apache, BSD, CC0 or another applicable third-party license.
+If copyleft obligations apply to a combined or derived work, this document
+does not waive them or authorize distribution under incompatible terms.
+Keeping helpers in separate processes does not by itself settle that issue.
+
+6. Official application and user content
+Use of a lawfully supplied official application is governed by the end-user
+terms assembled from Resources/Legal/LICENSE.txt. These repository terms do
+not claim rights to your media, projects or exported films. Licenses on music
+and other material used in those films continue to apply independently.
+
+7. Warranty and mandatory rights
+To the extent permitted by law, the Original Materials are supplied "as is",
+without warranties of merchantability, fitness for a particular purpose or
+noninfringement. The copyright holder is not liable for loss arising from use
+of them to the extent such liability may lawfully be excluded. Mandatory
+consumer rights, legal exceptions and third-party license rights are retained.

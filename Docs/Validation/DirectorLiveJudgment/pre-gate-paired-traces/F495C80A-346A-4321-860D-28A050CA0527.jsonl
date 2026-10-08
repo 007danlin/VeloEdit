@@ -1,5 +1,0 @@
-{"elapsed":0.00064145833312068135,"event":"operation.begin","fields":{"date":"2026-10-06T18:31:12Z","name":"director.runtime-study.new","projectID":"A6E52DAA-90E7-43E0-8EFB-37F7F35548F6","revision":""},"operationID":"F495C80A-346A-4321-860D-28A050CA0527","values":{}}
-{"elapsed":0.0007696249958826229,"event":"director.queue.enter","fields":{},"operationID":"F495C80A-346A-4321-860D-28A050CA0527","values":{}}
-{"elapsed":0.00079454166552750394,"event":"director.queue.leave","fields":{},"operationID":"F495C80A-346A-4321-860D-28A050CA0527","values":{}}
-{"elapsed":0.0009459583307034336,"event":"director.loading","fields":{},"operationID":"F495C80A-346A-4321-860D-28A050CA0527","values":{}}
-{"elapsed":6.0047566666689818,"event":"operation.end","fields":{"status":"fallback"},"operationID":"F495C80A-346A-4321-860D-28A050CA0527","values":{}}

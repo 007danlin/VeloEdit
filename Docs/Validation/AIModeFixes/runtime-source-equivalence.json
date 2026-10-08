@@ -1,7 +1,0 @@
-{
-  "aiRuntimeBuildSHA256": "491ff89d2d499d1fe3cefd08217f968d9967aaca8475c52e04f3db130d15d9f7",
-  "onlySubsequentApplicationSourceChange": "Sources/VeloEdit/LocalDirectorAgent.swift",
-  "verifiedByReconstructingCompleteSourceAndResourceHash": true,
-  "finalCLIIsByteIdenticalToLiveTestedCLI": true,
-  "cliSHA256": "e3c4a3345368be1a34d44fd18262fd83461373d432c8b16f05e0916faad7cee0"
-}

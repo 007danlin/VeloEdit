@@ -1,9 +1,0 @@
-    Finished `release` profile [optimized] target(s) in 0.22s
-Building for production...
-[1 / 5]
-[2 / 3] VeloEdit-product
-[4 / 4] veloedit-cli-product
-[5 / 7] veloedit-cli-product
-Build complete! (11,23 с)
-/tmp/veloedit-app.tXyP9P/VeloEdit.app: replacing existing signature
-/Users/daniellineckij/VeloEdit/Build/VeloEdit.app

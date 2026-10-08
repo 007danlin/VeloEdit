@@ -1,6 +1,0 @@
-◇ Test run started.
-↳ Testing Library Version: 2084
-↳ Target Platform: arm64e-apple-macos14.0
-◇ Test measureDirectorLiveAdvice() started.
-✔ Test measureDirectorLiveAdvice() passed after 750.188 seconds.
-✔ Test run with 1 test in 0 suites passed after 750.188 seconds.

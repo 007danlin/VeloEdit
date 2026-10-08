@@ -1,6 +1,0 @@
-{"elapsed":0.0011848333379020914,"event":"operation.begin","fields":{"date":"2026-10-06T18:23:41Z","name":"director.runtime-study.new","projectID":"65089499-2A8C-4BAD-85B9-F2236680608F","revision":""},"operationID":"1951CDCB-BD55-40CD-800E-79D42E74275C","values":{}}
-{"elapsed":0.0015436250032507814,"event":"director.queue.enter","fields":{},"operationID":"1951CDCB-BD55-40CD-800E-79D42E74275C","values":{}}
-{"elapsed":0.0016099999993457459,"event":"director.queue.leave","fields":{},"operationID":"1951CDCB-BD55-40CD-800E-79D42E74275C","values":{}}
-{"elapsed":0.0018405833325232379,"event":"director.loading","fields":{},"operationID":"1951CDCB-BD55-40CD-800E-79D42E74275C","values":{}}
-{"elapsed":4.7425456249984563,"event":"director.runtime","fields":{},"operationID":"1951CDCB-BD55-40CD-800E-79D42E74275C","values":{"generatedTokens":55,"generationSeconds":2.0155110000000001,"loadSeconds":0.1268475,"promptSeconds":2.576546,"promptTokens":880}}
-{"elapsed":4.7436377083358821,"event":"operation.end","fields":{"status":"success"},"operationID":"1951CDCB-BD55-40CD-800E-79D42E74275C","values":{}}

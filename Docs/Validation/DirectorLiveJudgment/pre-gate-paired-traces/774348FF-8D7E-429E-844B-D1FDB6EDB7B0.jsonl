@@ -1,5 +1,0 @@
-{"elapsed":0.00041975000203819945,"event":"operation.begin","fields":{"date":"2026-10-06T18:31:41Z","name":"director.runtime-study.new","projectID":"A6E52DAA-90E7-43E0-8EFB-37F7F35548F6","revision":""},"operationID":"774348FF-8D7E-429E-844B-D1FDB6EDB7B0","values":{}}
-{"elapsed":0.00050391667173244059,"event":"director.queue.enter","fields":{},"operationID":"774348FF-8D7E-429E-844B-D1FDB6EDB7B0","values":{}}
-{"elapsed":0.00052291667088866234,"event":"director.queue.leave","fields":{},"operationID":"774348FF-8D7E-429E-844B-D1FDB6EDB7B0","values":{}}
-{"elapsed":0.00063775000307941809,"event":"director.loading","fields":{},"operationID":"774348FF-8D7E-429E-844B-D1FDB6EDB7B0","values":{}}
-{"elapsed":6.0054820000004838,"event":"operation.end","fields":{"status":"fallback"},"operationID":"774348FF-8D7E-429E-844B-D1FDB6EDB7B0","values":{}}

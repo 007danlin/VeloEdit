@@ -114,6 +114,24 @@ public struct MusicCredit: Codable, Identifiable, Hashable, Sendable {
         sourceURL = track.sourcePageURL
         license = track.license
     }
+
+    /// Software licenses belong to the app. Export sidecars only carry music
+    /// attribution needed by this timeline, never the project's edit history.
+    public static func requiredForExport(timeline: Timeline, tracks: [LocalMusicTrack]) -> [MusicCredit] {
+        let trackIDs = Set([timeline.music?.trackID].compactMap { $0 }
+            + (timeline.effectiveAdaptiveSoundtrack?.segments.compactMap(\.directive.trackID) ?? [])
+            + timeline.effectiveAudioClips.compactMap(\.trackID))
+        var seen = Set<String>()
+        return tracks.compactMap { track in
+            guard trackIDs.contains(track.id) else { return nil }
+            // Older imported records may have attribution text but no flag.
+            let required = track.license.requiresAttribution
+                ?? (track.sourceProvider.isOnline || !(track.license.attributionText ?? "").isEmpty)
+            guard required else { return nil }
+            let credit = MusicCredit(track: track)
+            return seen.insert(credit.id).inserted ? credit : nil
+        }
+    }
 }
 
 /// A local, user-acquired music file. VeloEdit never republishes this file and

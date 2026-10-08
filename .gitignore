@@ -10,3 +10,18 @@ Build/
 *.veloedit/Cache/
 __pycache__/
 *.py[cod]
+
+# Local experiments, exports and raw validation evidence are not source inputs.
+/output/
+/Docs/Validation/**
+!/Docs/Validation/**/
+!/Docs/Validation/**/*.md
+!/Docs/Validation/**/*.py
+*.log
+*.jsonl
+*.xcresult/
+*.veloedit/
+*.fcpbundle/
+.env
+.env.*
+!.env.example

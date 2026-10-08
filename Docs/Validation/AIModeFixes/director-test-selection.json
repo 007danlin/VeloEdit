@@ -1,8 +1,0 @@
-{
-  "filter": "AICompletionStatusTests|actualDirectorModelAndExactCommandHaveDistinctExecutionPaths|BrushSemanticReplyTests|streamedReplyNeverPublishesAnIncompletePlan|truncatedOrFailedModelStreamsCannotBecomeCommands|invalidActionRejectsEntireCompoundPlan|ProjectInteractionTests",
-  "passedTests": 14,
-  "environment": {
-    "VELOEDIT_AI_AUDIT_OUTPUT": "Docs/Validation/AIModeFixes/director-live-final.json",
-    "VELOEDIT_TRACE_DIRECTORY": "Build/AIModeFixes/director-final-traces"
-  }
-}

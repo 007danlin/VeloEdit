@@ -241,7 +241,15 @@ struct AutonomousOperationTests {
         let asset = try await MediaImporter().makeAsset(url: source)
         let timeline = Timeline(storyPlanID: UUID(), width: 320, height: 180, frameRate: 15,
             items: [TimelineItem(assetID: asset.id, kind: .photo, sourceDuration: 0.6, timelineStart: 0, timelineDuration: 0.6)])
-        try await store.update { $0.assets = [asset]; $0.timelines = [timeline] }
+        let oldTrack = LocalMusicTrack(title: "Removed soundtrack", author: "Artist", bpm: 100,
+            genres: [], moods: [], energy: 0.5, duration: 10,
+            license: .freeToUse(title: "Removed soundtrack", author: "Artist"),
+            sourceProvider: .freeToUse, sourcePageURL: URL(string: "https://freetouse.com/music")!,
+            localFileURL: f.root.appendingPathComponent("unused.mp3"), originalFileName: "unused.mp3")
+        try await store.update {
+            $0.assets = [asset]; $0.timelines = [timeline]
+            $0.musicCredits = [MusicCredit(track: oldTrack)]
+        }
         let copy = f.root.appendingPathComponent("copy.veloedit")
         _ = try await VeloEditPipeline(store: store).collectProjectCopy(to: copy)
         let moved = f.root.appendingPathComponent("moved.veloedit")
@@ -256,6 +264,8 @@ struct AutonomousOperationTests {
         let report = try await VeloEditPipeline(store: reopened).render(to: output, quality: .maximum)
         #expect(report.videoInfo?.width == 320)
         #expect(report.skippedItemIDs.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: output.deletingPathExtension().appendingPathExtension("music-credits.json").path))
+        #expect(await reopened.manifest.effectiveMusicCredits.count == 1)
         let again = try ProjectStore(open: moved, recoveryDirectory: f.recovery)
         #expect(await again.manifest.renderJobs.last?.status == .completed)
         let movedAgain = f.root.appendingPathComponent("moved-again.veloedit")

@@ -1,8 +1,0 @@
-{
-  "status": "incomplete-core-host-signal-10",
-  "exitCode": 1,
-  "seconds": 12.581252916999802,
-  "command": "./Scripts/dev-test.sh --skip-build",
-  "excluded": [],
-  "appTests": "19 passed"
-}

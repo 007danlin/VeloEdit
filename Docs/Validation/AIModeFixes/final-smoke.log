@@ -1,6 +1,0 @@
-fast 1 0.583 {'visualAnalysisCompleted': True, 'audioAnalysisCompleted': True, 'modelQuantization': 'Q4_K_M', 'modelAvailable': True, 'plannedScenes': 1, 'evaluatedRechecks': 0, 'evaluatedScenes': 1, 'plannedRechecks': 0}
-balanced 1 0.541 {'evaluatedScenes': 1, 'modelQuantization': 'Q4_K_M', 'audioAnalysisCompleted': True, 'plannedRechecks': 0, 'modelAvailable': True, 'visualAnalysisCompleted': True, 'plannedScenes': 1, 'evaluatedRechecks': 0}
-quality 1 0.541 {'plannedScenes': 1, 'visualAnalysisCompleted': True, 'evaluatedRechecks': 0, 'audioAnalysisCompleted': True, 'modelAvailable': True, 'evaluatedScenes': 1, 'modelQuantization': 'Q4_K_M', 'plannedRechecks': 0}
-legacy-mlx 1 0.112 {'plannedScenes': 1, 'plannedRechecks': 0, 'evaluatedRechecks': 0, 'visualAnalysisCompleted': True, 'audioAnalysisCompleted': True, 'evaluatedScenes': 1, 'modelAvailable': True, 'modelQuantization': 'Q4_K_M'}
-missing-model 1 0.107 {'evaluatedScenes': 0, 'evaluatedRechecks': 0, 'modelAvailable': False, 'plannedScenes': 1, 'plannedRechecks': 0, 'audioAnalysisCompleted': True, 'visualAnalysisCompleted': True}
-missing-model 2 0.485 {'evaluatedRechecks': 0, 'visualAnalysisCompleted': True, 'audioAnalysisCompleted': True, 'plannedScenes': 1, 'evaluatedScenes': 0, 'plannedRechecks': 0, 'modelAvailable': False}

@@ -1,6 +1,0 @@
-◇ Test run started.
-↳ Testing Library Version: 2084
-↳ Target Platform: arm64e-apple-macos14.0
-◇ Test measureExactDirectorCommandLatencyAndAccuracy() started.
-✔ Test measureExactDirectorCommandLatencyAndAccuracy() passed after 133.559 seconds.
-✔ Test run with 1 test in 0 suites passed after 133.560 seconds.

@@ -1,6 +1,0 @@
-Source: Docs/Validation/FilmSpeedAndTitles/baseline-production-regressions.log
-✘ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() recorded an issue at DeepMediaUnderstandingTests.swift:685:21: Issue recorded
-✘ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() recorded an issue at DeepMediaUnderstandingTests.swift:690:5: Expectation failed: committed.timelines.isEmpty
-✘ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() recorded an issue at DeepMediaUnderstandingTests.swift:692:5: Expectation failed: generation?.status == .recoverableFailure
-✘ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() recorded an issue at DeepMediaUnderstandingTests.swift:693:5: Expectation failed: generation?.failureReason?.contains("Минимальная длительность фильма") == true
-✘ Test productionPhotoPathUsesLocalRenderedSemanticsAndRejectsAnUndersizedFilm() failed after 9.640 seconds with 4 issues.

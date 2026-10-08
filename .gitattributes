@@ -3,7 +3,3 @@ Resources/Ollama/**/*.so filter=lfs diff=lfs merge=lfs -text
 Resources/Ollama/**/*.metallib filter=lfs diff=lfs merge=lfs -text
 Resources/Ollama/ollama filter=lfs diff=lfs merge=lfs -text
 Resources/Ollama/llama-* filter=lfs diff=lfs merge=lfs -text
-Docs/Validation/**/*.tar.gz filter=lfs diff=lfs merge=lfs -text
-Docs/Validation/**/*.zip filter=lfs diff=lfs merge=lfs -text
-Docs/Validation/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
-output/**/*.mp4 filter=lfs diff=lfs merge=lfs -text

@@ -1,4 +1,0 @@
-{"elapsed":0.00099391667026793584,"event":"operation.begin","fields":{"date":"2026-10-06T18:24:48Z","name":"edit.manual","projectID":"AFFF7A95-9BD3-4158-ACB2-D9A3BB220E2D","revision":"2"},"operationID":"66644390-AE39-4984-9EA3-D5D8BFD5DF41","values":{}}
-{"elapsed":0.0011312083370285109,"event":"edit.state.applied","fields":{},"operationID":"66644390-AE39-4984-9EA3-D5D8BFD5DF41","values":{"milliseconds":0.12199999764561653}}
-{"elapsed":0.17396004166948842,"event":"edit.saved","fields":{},"operationID":"66644390-AE39-4984-9EA3-D5D8BFD5DF41","values":{}}
-{"elapsed":0.19878541666548699,"event":"edit.preview.pixels-published","fields":{},"operationID":"66644390-AE39-4984-9EA3-D5D8BFD5DF41","values":{"milliseconds":198.91604166332399}}

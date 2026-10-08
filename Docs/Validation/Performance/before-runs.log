@@ -1,5 +1,0 @@
-{"mode": "fast", "cache": "cold", "wallSeconds": 108.40826304100005, "exitCode": 0}
-{"mode": "fast", "cache": "warm", "wallSeconds": 33.326382792000004, "exitCode": 0}
-{"mode": "balanced", "cache": "cold", "wallSeconds": 216.374730666, "exitCode": 0}
-{"mode": "balanced", "cache": "warm", "wallSeconds": 32.382169291999844, "exitCode": 0}
-{"mode": "quality", "cache": "cold", "wallSeconds": 21.370159374999957, "exitCode": -6}

@@ -3829,9 +3829,10 @@ public actor VeloEditPipeline {
                             _ = try FileManager.default.replaceItemAt(url, withItemAt: staged)
                         } else { try FileManager.default.moveItem(at: staged, to: url) }
                     }
-                    if !current.effectiveMusicCredits.isEmpty {
+                    let exportCredits = MusicCredit.requiredForExport(timeline: delivery, tracks: tracks)
+                    if !exportCredits.isEmpty {
                         let credits = url.deletingPathExtension().appendingPathExtension("music-credits.json")
-                        try LocalProjectRecovery.durableWrite(JSONEncoder.veloEdit.encode(current.effectiveMusicCredits), to: credits)
+                        try LocalProjectRecovery.durableWrite(JSONEncoder.veloEdit.encode(exportCredits), to: credits)
                     }
                     job.status = .completed
                     job.progress = 1

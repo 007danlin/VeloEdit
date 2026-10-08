@@ -1,5 +1,0 @@
-{"elapsed":0.0013552916643675417,"event":"operation.begin","fields":{"date":"2026-10-06T18:48:30Z","name":"director.runtime-study.baseline","projectID":"A6E52DAA-90E7-43E0-8EFB-37F7F35548F6","revision":""},"operationID":"ED803EDA-1FE9-4DE6-ABB6-F9230BBFE35E","values":{}}
-{"elapsed":6.3212587916641496,"event":"director.first-reply","fields":{},"operationID":"ED803EDA-1FE9-4DE6-ABB6-F9230BBFE35E","values":{"seconds":6.3168027499996242}}
-{"elapsed":6.3925367083284073,"event":"director.runtime","fields":{},"operationID":"ED803EDA-1FE9-4DE6-ABB6-F9230BBFE35E","values":{"generatedTokens":149,"generationSeconds":5.182938,"loadSeconds":0.1242545,"promptSeconds":1.0652459999999999,"promptTokens":561}}
-{"elapsed":6.3932886666661943,"event":"director.plan-complete","fields":{},"operationID":"ED803EDA-1FE9-4DE6-ABB6-F9230BBFE35E","values":{"seconds":6.3888357916657696}}
-{"elapsed":6.3936163749967818,"event":"operation.end","fields":{"status":"success"},"operationID":"ED803EDA-1FE9-4DE6-ABB6-F9230BBFE35E","values":{}}

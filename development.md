@@ -8,7 +8,23 @@
 .build/arm64-apple-macosx/debug/veloedit-cli help
 ```
 
-На текущем macOS 26 host frontend Swift и SDK отличаются patch-версией. Скрипты используют локальный read-only compatibility wrapper и workspace module cache. На актуальном полном Xcode допустимы обычные `swift build` / `swift test`.
+Скрипты используют активный Xcode toolchain и кэш в `~/Library/Caches/VeloEditBuild`.
+Полный bundle после изменений кода или ресурсов обязательно пересобирается:
+
+```bash
+./Scripts/build-app.sh
+```
+
+Результат находится в `Build/VeloEdit.app`. Для исходников нужен Git LFS:
+бинарные ресурсы Ollama должны быть загружены командой `git lfs pull`.
+
+`output/` содержит только локальные эксперименты. В `Docs/Validation/` Git
+хранит текстовые выводы и Python-скрипты; сырые логи, JSON/JSONL, скриншоты,
+экспорты и архивы создаются локально. Ссылки из исторических отчётов на них
+не означают, что эти данные входят в свежий checkout. Тестовые входные данные
+следует помещать в `Tests/Fixtures/`, а ресурсы приложения — в `Resources/`.
+Не удаляйте `Package.resolved`, Cargo lockfiles, исходники `ThirdParty/` и их
+лицензии при очистке: они нужны для воспроизводимой сборки и уведомлений.
 
 ## Targets
 

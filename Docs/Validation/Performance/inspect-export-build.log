@@ -1,9 +1,0 @@
-Scripts/inspect-export.swift:24:39: warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
-22 |         for time in [0.5, 10, 30, 60, 90, min(118, duration - 0.5)] where time >= 0 && time < duration {
-23 |             var actual = CMTime.zero
-24 |             let image = try generator.copyCGImage(at: CMTime(seconds: time, preferredTimescale: 600), actualTime: &actual)
-   |                                       `- warning: 'copyCGImage(at:actualTime:)' was deprecated in macOS 15.0: Use generateCGImageAsynchronouslyForTime:completionHandler: instead [#DeprecatedDeclaration]
-25 |             let target = root.appendingPathComponent("frame-\(time).jpg")
-26 |             guard let destination = CGImageDestinationCreateWithURL(target as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { throw URLError(.cannotCreateFile) }
-
-[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>

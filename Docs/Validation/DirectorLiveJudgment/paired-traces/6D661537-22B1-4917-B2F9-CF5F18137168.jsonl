@@ -1,2 +1,0 @@
-{"elapsed":0.00088279166811844334,"event":"operation.begin","fields":{"date":"2026-10-06T18:54:02Z","name":"director.runtime-study.new","projectID":"65089499-2A8C-4BAD-85B9-F2236680608F","revision":""},"operationID":"6D661537-22B1-4917-B2F9-CF5F18137168","values":{}}
-{"elapsed":0.0010189583335886709,"event":"operation.end","fields":{"status":"fallback"},"operationID":"6D661537-22B1-4917-B2F9-CF5F18137168","values":{}}
