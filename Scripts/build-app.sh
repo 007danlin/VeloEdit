@@ -14,8 +14,10 @@ staging_root="$(mktemp -d /tmp/veloedit-app.XXXXXX)"
 staging_app="$staging_root/VeloEdit.app"
 source_snapshot="$staging_root/source"
 publish_new="$output_dir/.VeloEdit.app.publish-$$"
-publish_old="$output_dir/.VeloEdit.app.previous-$$"
-trap 'rm -rf "$staging_root" "$publish_new" "$publish_old"' EXIT
+publish_old="$output_dir/.VeloEdit.app.previous-$(uuidgen)"
+# Never unconditionally delete a retired bundle: a running process still needs
+# its executable on disk for macOS authorization and Sparkle's installer.
+trap 'rm -rf "$staging_root" "$publish_new"' EXIT
 
 cd "$repo_dir"
 build_cache_root="${VELOEDIT_BUILD_CACHE_ROOT:-$HOME/Library/Caches/VeloEditBuild}"
@@ -145,7 +147,7 @@ python3 "$repo_dir/Scripts/sign-app.py" "$staging_app"
 # package can be materialized again. Prepare and validate a hidden sibling,
 # then publish it with same-volume renames so old and new bundle contents can
 # never be mixed.
-rm -rf "$publish_new" "$publish_old"
+rm -rf "$publish_new"
 cp -R "$staging_app" "$publish_new"
 xattr -cr "$publish_new"
 cmp "$staging_app/Contents/MacOS/VeloEdit" "$publish_new/Contents/MacOS/VeloEdit"
@@ -176,6 +178,6 @@ fi
 # copied package non-strict by re-attaching Finder metadata, while the embedded
 # signature and sealed resources remain valid.
 codesign --verify --deep "$app_dir"
-rm -rf "$publish_old"
+python3 "$repo_dir/Scripts/cleanup-retired-apps.py" "$output_dir"
 
 echo "$app_dir"
