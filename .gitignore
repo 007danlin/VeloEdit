@@ -15,8 +15,16 @@ __pycache__/
 /output/
 /Docs/Validation/**
 !/Docs/Validation/**/
-!/Docs/Validation/**/*.md
 !/Docs/Validation/**/*.py
+# Historical audits and acceptance runs belong in local artifacts or Git history.
+/*_AUDIT.md
+/Docs/UserAudit-*/
+/Docs/Autonomy-20*/
+/Docs/DirectorRequestAudit.md
+/Docs/SystemResourceWidgetValidation.md
+/Docs/AutonomousEditingValidation.md
+/Docs/EditorialProductionizationStatus.md
+/Benchmarks/GoPro-M4-32GB.md
 *.log
 *.jsonl
 *.xcresult/

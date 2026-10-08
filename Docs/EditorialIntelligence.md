@@ -75,7 +75,7 @@
 | B | Timeline сохранён | 15.66 с | 6 / 2 | 1080×1920 | 29 | 0 / 0 |
 | C | Timeline сохранён | 26.83 с | 10 / 3 | 1080×1920 | 43 | 0 / 0 |
 
-B/C имеют originalAudioVolume=0 и пустые detached audio clips. Последующий V2-аудит установил: B/C находятся ниже нижней границы рассчитанного Content Budget и не должны были получить pass. См. `EditorialProductionizationStatus.md`. У каждого порядок primary scene scopes не содержит возврата к уже закрытой сцене. Это проверка сохранённой структуры, а не доказательство правильной семантической классификации каждого кадра.
+B/C имеют originalAudioVolume=0 и пустые detached audio clips. Последующий V2-аудит установил: B/C находятся ниже нижней границы рассчитанного Content Budget и не должны были получить pass. См. [архив: EditorialProductionizationStatus.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/EditorialProductionizationStatus.md). У каждого порядок primary scene scopes не содержит возврата к уже закрытой сцене. Это проверка сохранённой структуры, а не доказательство правильной семантической классификации каждого кадра.
 
 Машиночитаемые результаты: [EditorialAcceptance.json](Validation/EditorialAcceptance.json). Реальные контактные листы: [A](../.build/editorial-acceptance/A-contact-sheet.png), [B](../.build/editorial-acceptance/B-contact-sheet.png), [C](../.build/editorial-acceptance/C-contact-sheet.png). Копии проектов находятся в `.build/editorial-acceptance`, исходники не перезаписаны.
 

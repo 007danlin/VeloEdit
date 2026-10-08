@@ -185,8 +185,8 @@
 
 - `README.md` — заявленные функции, требования и сборка.
 - `AGENTS.md` — обязательная сборка полного приложения после изменений исходников или ресурсов.
-- `Docs/UserAudit-2026-09-12/REPORT.md` — исторические наблюдения и сценарии для перепроверки.
-- `Docs/Autonomy-2026-09-13/UI-FOLLOWUP-2026-09-14.md` — исторические проверки интерфейса и ограничения покрытия.
+- [архив: REPORT.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/UserAudit-2026-09-12/REPORT.md) — исторические наблюдения и сценарии для перепроверки.
+- [архив: UI-FOLLOWUP-2026-09-14.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/Autonomy-2026-09-13/UI-FOLLOWUP-2026-09-14.md) — исторические проверки интерфейса и ограничения покрытия.
 - `Docs/Film-Speed-And-Title-Reliability-Spec.md` — отдельное ТЗ по скорости и надёжности титров.
-- `Docs/Validation/` — предыдущие свидетельства; использовать как отправную точку для регрессии, не как результат текущего прогона.
+- `Docs/Validation/` — сохранённые проверочные скрипты. Исторические свидетельства доступны по архивным ссылкам; новые результаты сохранять локально в `Build/` и не подменять ими проверку другой сборки.
 - `Sources/VeloEdit/ContentView.swift`, `NewProjectView.swift`, `MontageTimelineView.swift`, `AppModel.swift` и `Sources/VeloEditCore/` — карта интерфейса и логики для локализации найденных проблем.

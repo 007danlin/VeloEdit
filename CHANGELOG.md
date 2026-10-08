@@ -2,6 +2,8 @@
 
 ## 2026-10-08 — Экспорт и публичный репозиторий
 
+- Из текущего дерева удалены исторические аудиты и отчёты приёмки. Действующие ТЗ и скрипты сохранены, ссылки на прежние результаты ведут в историю Git.
+
 - `music-credits.json` создаётся только для музыки экспортируемого монтажа с обязательной атрибуцией; CC0 и история ранее выбранных треков не добавляют файл к фильму.
 - Уточнены ограничения на распространение собственных компонентов VeloEdit с сохранением прав по лицензиям сторонних компонентов и условиям GitHub.
 - Сырые результаты проверок, кэши, архивы и пробные экспорты исключены из Git; локальные копии, тесты, скрипты и текстовые выводы сохранены.
@@ -39,7 +41,7 @@
 - Interactive preview ограничен long edge 1280, photo/title intermediates кэшируются между сборками и публикуются атомарно.
 - Frame/deep/music memory caches получили LRU bounds; preview disk cache ограничен по числу файлов и объёму.
 - Старый poster сохраняется при замене AVPlayerItem; uniform-black frame автоматически перепроверяется на соседних временах.
-- Добавлены production hardening tests и `PRODUCTION_AUDIT.md` с открытыми release gates.
+- Добавлены production hardening tests и [архив: PRODUCTION_AUDIT.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/PRODUCTION_AUDIT.md) с открытыми release gates.
 
 ## 2026-08-24 — P4 Event Intelligence / AI Memory Timeline
 

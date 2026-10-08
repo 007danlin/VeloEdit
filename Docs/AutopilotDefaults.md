@@ -24,4 +24,4 @@
 Новая контрольная проверка запускается через `Scripts/dev-test.sh --filter AutopilotArchiveAuditTests` с переменными `VELOEDIT_AUTOPILOT_ARCHIVE` (абсолютный путь к project.json) и `VELOEDIT_AUTOPILOT_REPORT` (путь к отчёту вне проекта пользователя).
 
 
-[Проверка самостоятельных фильмов и обучения](AutonomousEditingValidation.md) — 648 регрессионных проверок, реальные экспорты и ограничения художественного качества.
+[Проверка самостоятельных фильмов и обучения](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/AutonomousEditingValidation.md) — 648 регрессионных проверок, реальные экспорты и ограничения художественного качества.

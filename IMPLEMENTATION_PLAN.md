@@ -8,7 +8,7 @@
 - [x] Bounded frame/deep/music caches и disk pruning.
 - [x] Poster preservation, black-frame inspection и nearby-frame recovery.
 - [x] Production-path, stress и cache reuse tests.
-- [x] `PRODUCTION_AUDIT.md` с root cause → fix → verification.
+- [x] [архив: PRODUCTION_AUDIT.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/PRODUCTION_AUDIT.md) с root cause → fix → verification.
 - [ ] Release gate: XCUITest/Instruments на подписанном app и physical 300-video/500-photo corpus.
 - [ ] Release gate: многочасовой soak и cross-version visual regression.
 
@@ -256,7 +256,7 @@ Offline audio-processing для базового noise reduction/EQ выполн
 - [x] Interactive-resolution preview, persistent photo/title cache и bounded memory.
 - [x] Real-frame black detection/recovery и production consistency audit.
 
-Статус: выполнено. Детали и внешние gates описаны в `P5_PRODUCTION_HARDENING.md` и `PRODUCTION_AUDIT.md`.
+Статус: выполнено. Детали и внешние gates описаны в `P5_PRODUCTION_HARDENING.md` и [архив: PRODUCTION_AUDIT.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/PRODUCTION_AUDIT.md).
 
 ### 17. P6 Perceptual Editor / AI Visual Quality Loop
 

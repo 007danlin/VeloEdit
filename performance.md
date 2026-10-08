@@ -39,4 +39,4 @@
 
 На изолированных копиях реальных проектов с 10/50/105 фрагментами подготовка кадра после trim заняла 61/106/246 мс, включая сборку композиции. Повторная сборка проекта на 105 фрагментов сократилась с 5 010 до 212 мс. Открытие JSON размером 38–134 МБ занимает 0,9–3,2 секунды и выполняется вне MainActor. Это debug-замеры подготовки кадра через AVAssetImageGenerator, не измерение экранного FPS.
 
-Отчёт и журналы: [Docs/Validation/EditorPerformance/README.md](Docs/Validation/EditorPerformance/README.md). `ProjectInteractionTests`, `ProcessedAudioCacheTests`, `ProxyPlaybackRegressionTests` и опциональный `EditorPerformanceTests` защищают эти сценарии. В итоговом полном прогоне: 677 тестов в 20 наборах, результат passed.
+Отчёт и журналы: [Docs/Validation/EditorPerformance/README.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/Validation/EditorPerformance/README.md). `ProjectInteractionTests`, `ProcessedAudioCacheTests`, `ProxyPlaybackRegressionTests` и опциональный `EditorPerformanceTests` защищают эти сценарии. В итоговом полном прогоне: 677 тестов в 20 наборах, результат passed.

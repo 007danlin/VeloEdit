@@ -1264,4 +1264,4 @@ Opt-in runner должен проверять не только `productionEligi
 - полный набор из 507 тестов прошёл без ошибок, включая параллельное read-only открытие и reload/CAS fingerprint;
 - финальный `Build/VeloEdit.app` собран штатным `./Scripts/build-app.sh` и прошёл codesign verification.
 
-Human playback и blind evaluation не заявляются как выполненные: в соответствии с разделом 27 они исключены владельцем продукта из текущего блокирующего gate. Фактические per-project метрики, identifiers, audio measurements, backup и результаты сборки записаны в `Docs/EditorialProductionizationStatus.md`.
+Human playback и blind evaluation не заявляются как выполненные: в соответствии с разделом 27 они исключены владельцем продукта из текущего блокирующего gate. Фактические per-project метрики, identifiers, audio measurements, backup и результаты сборки записаны в [архив: EditorialProductionizationStatus.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/EditorialProductionizationStatus.md).

@@ -50,5 +50,5 @@ Production tests проверяют:
 - стабильность cache identity;
 - реальный `PlaybackEngine` miss → hit на photo-derived video.
 
-Полный список выявленных рисков, исправлений и внешних validation gates находится в [PRODUCTION_AUDIT.md](PRODUCTION_AUDIT.md).
+Полный список выявленных рисков, исправлений и внешних validation gates находится в [PRODUCTION_AUDIT.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/PRODUCTION_AUDIT.md).
 

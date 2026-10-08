@@ -41,6 +41,6 @@
 
 Запуск сетевого теста: `VELOEDIT_LIVE_CASCADE_MUSIC_TEST=1 swift test --disable-sandbox --filter MusicCascadeTests.liveNewSourcesEachDownloadTwoDifferentFullTracksThroughCascade`.
 
-Результаты запуска и полной сборки: [Validation/Music-Cascade.md](Validation/Music-Cascade.md).
+Результаты запуска и полной сборки: [Validation/Music-Cascade.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/Validation/Music-Cascade.md).
 
 Сетевые проверки относятся к текущему подключению. VPN, DNS и прокси не менялись; это не измерение доступности у всех операторов. При недоступности всех источников сохраняется локальный резерв. История последних треков продолжает исключать повторы для новых автоматических видео в пределах доступного каталога.

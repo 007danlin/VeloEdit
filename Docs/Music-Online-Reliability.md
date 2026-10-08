@@ -47,6 +47,6 @@
 
 ## Проверка
 
-Результаты тестов и сборки: [Validation/Music-Online-Reliability.md](Validation/Music-Online-Reliability.md).
+Результаты тестов и сборки: [Validation/Music-Online-Reliability.md](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/Validation/Music-Online-Reliability.md).
 
 Недоступность всех внешних сетей не позволяет скачать принципиально новую музыку. На этот случай остаются проверенные файлы кэша и встроенная библиотека; при исчерпании доступных новых записей возможен повтор, чтобы видео не осталось без музыки.

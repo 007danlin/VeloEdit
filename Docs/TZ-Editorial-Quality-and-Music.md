@@ -28,7 +28,7 @@
 
 В просмотренном сохранённом `test6-release` на вступлении крупно показан борт багги; в разных частях встречается общее название «В дороге». Это примеры для улучшения, а не доказательство одинакового недостатка всех фильмов.
 
-Основания: [автоматическая сборка](AutomaticEditorialAssembly.md), [реальные фильмы и ограничения проверки](AutonomousEditingValidation.md), [подбор музыки](ApprovedMusicSelection.md), [текущее оформление](DirectorVisualStyle.md), [эталон глав](ApprovedChapterReference.md), [приёмка автономности](Autonomy-2026-09-13/ACCEPTANCE.md), [окончательный опрос](Autonomy-2026-09-13/UI-FOLLOWUP-2026-09-14.md).
+Основания: [автоматическая сборка](AutomaticEditorialAssembly.md), [реальные фильмы и ограничения проверки](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/AutonomousEditingValidation.md), [подбор музыки](ApprovedMusicSelection.md), [текущее оформление](DirectorVisualStyle.md), [эталон глав](ApprovedChapterReference.md), [приёмка автономности](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/Autonomy-2026-09-13/ACCEPTANCE.md), [окончательный опрос](https://github.com/007danlin/VeloEdit/blob/8646d9df96b31e13cb411fcb6da8ad9be73ade22/Docs/Autonomy-2026-09-13/UI-FOLLOWUP-2026-09-14.md).
 
 Документ развивает действующие механизмы. Он не является заданием написать второй независимый монтажный или музыкальный конвейер.
 
