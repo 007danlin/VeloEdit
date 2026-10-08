@@ -1,6 +1,12 @@
 # Публикация veloedit.ru
 
-Заглушка находится в `website/index.html`. Она работает без сборки и внешних зависимостей.
+Адаптивный сайт находится в `website/index.html`, стили — в `styles.css`. Он работает без сборки и внешних зависимостей.
+
+`site.js` находит последний опубликованный DMG через GitHub API. При недоступности API используется `release.json`, обновляемый workflow при публикации релиза. Без JavaScript ссылка открывает страницу последнего выпуска. Подписанный `appcast.xml` из релиза публикуется в `updates/` после проверки соответствия установщику.
+
+Подготовка обновлений приложения описана в [руководстве по выпуску](../Docs/Guides/release.md).
+Локальный просмотр: `python3 -m http.server 8765 --directory website`.
+Проверки: `node --test Tests/Website/release.test.mjs` и `python3 -m unittest discover -s Tests/Distribution -v`.
 Workflow `.github/workflows/pages.yml` публикует только содержимое `website/`.
 
 1. Загрузить `website/index.html` и `.github/workflows/pages.yml` в ветку `main`.

@@ -138,16 +138,6 @@ private struct TimelineClipboard {
 
 @MainActor
 final class AppModel: ObservableObject {
-    private struct GitHubRelease: Decodable {
-        let tagName: String
-        let htmlURL: URL
-
-        enum CodingKeys: String, CodingKey {
-            case tagName = "tag_name"
-            case htmlURL = "html_url"
-        }
-    }
-
     private struct DirectorBriefFieldChanges: OptionSet {
         let rawValue: Int
 
@@ -404,10 +394,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var usageStatistics = AppUsageStatistics()
     private var knownProjectURLs: [URL] = []
     private var usageStatisticsTask: Task<Void, Never>?
-    @Published private(set) var isCheckingForUpdates = false
-    @Published private(set) var updateStatusText = "Проверка запускается вручную"
-    @Published private(set) var availableUpdateURL: URL?
-    @Published private(set) var availableUpdateVersion: String?
     @Published var editorialComparison: EditorialComparisonSession?
     @Published var showEditorialStyle = false
     private var editorialPreparationTask: Task<Void, Never>?
@@ -2651,63 +2637,6 @@ final class AppModel: ObservableObject {
 
     var currentAppBuild: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
-    }
-
-    func checkForUpdates() {
-        guard !isCheckingForUpdates else { return }
-        isCheckingForUpdates = true
-        updateStatusText = "Проверяю последнюю версию…"
-        availableUpdateURL = nil
-        availableUpdateVersion = nil
-
-        Task {
-            defer { isCheckingForUpdates = false }
-            do {
-                var request = URLRequest(url: URL(string: "https://api.github.com/repos/007danlin/VeloEdit/releases/latest")!)
-                request.timeoutInterval = 15
-                request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-                request.setValue("VeloEdit/\(currentAppVersion)", forHTTPHeaderField: "User-Agent")
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-                if http.statusCode == 404 {
-                    updateStatusText = "Опубликованных обновлений пока нет"
-                    return
-                }
-                guard (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-
-                let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-                let latest = Self.normalizedVersion(release.tagName)
-                if Self.isVersion(latest, newerThan: currentAppVersion) {
-                    availableUpdateURL = release.htmlURL
-                    availableUpdateVersion = latest
-                    updateStatusText = "Доступна версия \(latest)"
-                } else if Self.isVersion(currentAppVersion, newerThan: latest) {
-                    updateStatusText = "Установлена более новая тестовая сборка"
-                } else {
-                    updateStatusText = "У вас последняя версия"
-                }
-            } catch {
-                updateStatusText = "Не удалось проверить обновления"
-            }
-        }
-    }
-
-    func openAvailableUpdate() {
-        guard let availableUpdateURL else {
-            checkForUpdates()
-            return
-        }
-        NSWorkspace.shared.open(availableUpdateURL)
-    }
-
-    private static func normalizedVersion(_ version: String) -> String {
-        var result = version.trimmingCharacters(in: .whitespacesAndNewlines)
-        if result.first == "v" || result.first == "V" { result.removeFirst() }
-        return result
-    }
-
-    private static func isVersion(_ lhs: String, newerThan rhs: String) -> Bool {
-        normalizedVersion(lhs).compare(normalizedVersion(rhs), options: [.numeric, .caseInsensitive]) == .orderedDescending
     }
 
     private static func applicationDiagnostics() -> String {

@@ -53,7 +53,7 @@ def release_blockers(env):
 def validate_payload(app):
     resources = app / "Contents/Resources"
     for relative in ("Legal/LICENSE.txt", "Legal/THIRD_PARTY.txt", "Legal/publisher.json",
-                     "Legal/Licenses/ONNX-Runtime-LICENSE.txt", "Legal/RustDependencies.json",
+                     "Legal/Licenses/ONNX-Runtime-LICENSE.txt", "Legal/Licenses/Sparkle-LICENSE.txt", "Legal/RustDependencies.json",
                      "OVRLEY-Source/LICENSE.md", "FFmpeg-Licenses/build-configuration.txt"):
         if not (resources / relative).is_file():
             raise ValueError(f"Missing distribution resource: {relative}. Rebuild the complete app.")

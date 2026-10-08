@@ -14,6 +14,7 @@ let package = Package(
         .executable(name: "veloedit-cli", targets: ["VeloEditCLI"])
     ],
     dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.0"),
         .package(path: "ThirdParty/ArgmaxOSS"),
         .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git", exact: "1.24.2")
     ],
@@ -34,11 +35,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "VeloEdit",
-            dependencies: ["VeloEditCore"],
+            dependencies: ["VeloEditCore", .product(name: "Sparkle", package: "Sparkle")],
             linkerSettings: [
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("AVKit"),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
                 .unsafeFlags(["-Xlinker", "-weak_framework", "-Xlinker", "FoundationModels"])
             ]
         ),

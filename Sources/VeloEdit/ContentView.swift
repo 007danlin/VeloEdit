@@ -5745,6 +5745,7 @@ private struct EmptyTimelineView: View {
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject private var updater: AppUpdater
 
     var body: some View {
         ScrollView {
@@ -5806,22 +5807,25 @@ struct GeneralSettingsView: View {
                 }
 
                 SettingsSectionCard("Обслуживание") {
-                    HStack(spacing: 12) {
-                        SettingsActionDescription(
-                            icon: "arrow.triangle.2.circlepath",
-                            title: "Обновления",
-                            description: model.updateStatusText
-                        )
-                        Spacer(minLength: 12)
-                        if model.isCheckingForUpdates {
-                            ProgressView()
-                                .controlSize(.small)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
+                            SettingsActionDescription(icon: "arrow.down.circle", title: "Обновления VeloEdit",
+                                                      description: updater.status)
+                            Spacer(minLength: 12)
+                            Button("Проверить обновления…", action: updater.checkForUpdates)
+                                .buttonStyle(.borderedProminent)
+                                .disabled(!updater.canCheckForUpdates)
                         }
-                        Button(action: model.openAvailableUpdate) {
-                            Text(model.availableUpdateURL == nil ? "Проверить" : "Открыть версию \(model.availableUpdateVersion ?? "")")
+                        Toggle("Проверять обновления автоматически", isOn: Binding(
+                            get: { updater.automaticallyChecksForUpdates },
+                            set: { updater.setAutomaticChecks($0) }
+                        ))
+                        Text("Проверяем раз в день. Скачивание и установка — с вашего согласия. Перед перезапуском приложение сохраняет проект.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let date = updater.lastCheckDate {
+                            Text("Последняя проверка: \(date.formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(model.isCheckingForUpdates)
                     }
 
                     Divider()

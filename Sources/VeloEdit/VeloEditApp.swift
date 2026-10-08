@@ -5,6 +5,7 @@ import AppKit
 struct VeloEditApp: App {
     @StateObject private var model = AppModel()
     @StateObject private var directorModelSetup = DirectorModelSetup()
+    @StateObject private var updater = AppUpdater()
     @NSApplicationDelegateAdaptor(VeloEditAppDelegate.self) private var appDelegate
 
     init() {
@@ -22,12 +23,14 @@ struct VeloEditApp: App {
                 .preferredColorScheme(.dark)
                 .environmentObject(model)
                 .environmentObject(directorModelSetup)
+                .environmentObject(updater)
                 .frame(minWidth: 980, minHeight: 700)
                 .background(InitialWindowMaximizer())
                 .onAppear {
                     appDelegate.model = model
                     appDelegate.directorModelSetup = directorModelSetup
                     directorModelSetup.startIfNeeded()
+                    updater.start(model: model)
                 }
                 .onChange(of: directorModelSetup.isInstalled) { _, installed in
                     if installed { Task { await model.refreshDirectorRuntimeStatus() } }
@@ -36,7 +39,7 @@ struct VeloEditApp: App {
         .windowStyle(.titleBar)
         // Preserve the full-size editor toolbar independently of the traffic lights.
         .windowToolbarStyle(.unified)
-        .commands { VeloEditCommands(model: model) }
+        .commands { VeloEditCommands(model: model, updater: updater) }
         Window("Лицензия и компоненты", id: "legal") {
             LegalInfoView()
                 .preferredColorScheme(.dark)
@@ -222,6 +225,7 @@ private struct InitialWindowMaximizer: NSViewRepresentable {
 
 struct VeloEditCommands: Commands {
     @ObservedObject var model: AppModel
+    @ObservedObject var updater: AppUpdater
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -229,6 +233,8 @@ struct VeloEditCommands: Commands {
             Button("Настройки…") { model.openSection(.settings) }.keyboardShortcut(",")
         }
         CommandGroup(after: .appInfo) {
+            Button("Проверить обновления…", action: updater.checkForUpdates)
+                .disabled(!updater.canCheckForUpdates)
             Button("Лицензия и компоненты…") { openWindow(id: "legal") }
         }
         CommandGroup(replacing: .newItem) {

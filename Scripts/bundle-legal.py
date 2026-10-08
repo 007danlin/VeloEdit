@@ -39,6 +39,7 @@ def main():
         "Ollama-LICENSE.txt": resources / "Ollama/LICENSE",
         "Music-LICENSE.txt": resources / "Music/LICENSE.md",
         "ONNX-Runtime-LICENSE.txt": swift_cache / "checkouts/onnxruntime-swift-package-manager/LICENSE",
+        "Sparkle-LICENSE.txt": swift_cache / "checkouts/Sparkle/LICENSE",
     }
     for name, path in required.items():
         if not path.is_file():

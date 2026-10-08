@@ -35,7 +35,11 @@ def signing_targets(app):
     # codesign recognizes the main executable as its enclosing bundle. A
     # universal Swift output is initially unsigned, so seal it only after all
     # helper executables have been signed, via the final bundle operation.
-    return [path for path in code_files(app) if path != main] + [app]
+    bundles = sorted((path for path in app.rglob("*")
+                      if path.is_dir() and not path.is_symlink()
+                      and path.suffix in (".app", ".xpc", ".framework")),
+                     key=lambda path: (-len(path.parts), str(path)))
+    return [path for path in code_files(app) if path != main] + bundles + [app]
 
 
 def verify(app, release=False):

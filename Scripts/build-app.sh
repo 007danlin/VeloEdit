@@ -110,6 +110,16 @@ if [[ -f "$app_scratch_path/checkouts/onnxruntime-swift-package-manager/LICENSE"
   chmod u+w "$staging_app/Contents/Resources/Speech/ONNX-Runtime-LICENSE"
 fi
 cp "$build_package_dir/Resources/Info.plist" "$staging_app/Contents/Info.plist"
+# Preserve Sparkle's versioned framework symlinks and nested installer services.
+sparkle_framework="$app_scratch_path/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+mkdir -p "$staging_app/Contents/Frameworks"
+ditto "$sparkle_framework" "$staging_app/Contents/Frameworks/Sparkle.framework"
+rm -rf "$staging_app/Contents/Frameworks/Sparkle.framework/Versions/B/Headers" \
+       "$staging_app/Contents/Frameworks/Sparkle.framework/Versions/B/PrivateHeaders" \
+       "$staging_app/Contents/Frameworks/Sparkle.framework/Versions/B/Modules" \
+       "$staging_app/Contents/Frameworks/Sparkle.framework/Headers" \
+       "$staging_app/Contents/Frameworks/Sparkle.framework/PrivateHeaders" \
+       "$staging_app/Contents/Frameworks/Sparkle.framework/Modules"
 cp "$build_package_dir/Resources/AppIcon.icns" "$staging_app/Contents/Resources/AppIcon.icns"
 cp -R "$build_package_dir/Resources/FirstLaunch" "$staging_app/Contents/Resources/FirstLaunch"
 cp -R "$build_package_dir/Resources/Backgrounds" "$staging_app/Contents/Resources/Backgrounds"
