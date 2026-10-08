@@ -8,7 +8,7 @@
 
 ## Скачать
 
-[Скачать VeloEdit для macOS](https://github.com/007danlin/VeloEdit-Releases/releases)
+[Скачать VeloEdit для macOS](https://github.com/007danlin/VeloEdit/releases)
 
 Откройте последний релиз и скачайте файл `.dmg` в разделе Assets.
 
