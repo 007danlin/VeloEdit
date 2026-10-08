@@ -1113,6 +1113,9 @@ final class AppModel: ObservableObject {
                 recoverableFilmBuild = recovery
                 finishProjectOpen(restoringSection: false)
                 prepareOpenedProject()
+                // Consume only after a successful open, so an unavailable
+                // project can be retried on the next launch without losing data.
+                clearUpdateRelaunchProject()
 
                 // Cached artwork appears independently; missing frames are
                 // regenerated later by prepareOpenedProject().
@@ -5561,6 +5564,47 @@ final class AppModel: ObservableObject {
             await projectOpenTask?.value
             if hasActiveWork { try? await Task.sleep(for: .milliseconds(100)) }
         }
+    }
+
+    /// Film creation/export have durable checkpoints; other tasks finish first.
+    func waitForUpdateSafePoint() async {
+        while !Task.isCancelled {
+            let job = await pipeline?.store.manifest.autonomousJob
+            let canResume = job?.state.resumesAutomatically == true && job?.explicitCancellation != true
+            let canPauseWork = canResume && (isCreatingFilm || job?.kind == .export)
+            if !storageIsCleaning, downloadingAIPowerMode == nil, !isCreatingProject,
+               openingProjectURL == nil, !hasActiveWork || canPauseWork { return }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    private static let updateRelaunchKey = "updateRelaunchProject.v1"
+
+    /// Only record a reopen request once edits and workspace drafts are durable.
+    func saveProjectForUpdateRelaunch() async -> Bool {
+        defaults.removeObject(forKey: Self.updateRelaunchKey)
+        guard await flushAutosave() else { return false }
+        if let projectURL {
+            defaults.set(["path": projectURL.path, "section": section.rawValue], forKey: Self.updateRelaunchKey)
+        }
+        guard defaults.synchronize() else {
+            defaults.removeObject(forKey: Self.updateRelaunchKey)
+            errorMessage = "Не удалось сохранить состояние для перезапуска. Обновление отложено."
+            return false
+        }
+        return true
+    }
+
+    func restoreProjectAfterUpdateIfNeeded() {
+        guard projectURL == nil, openingProjectURL == nil,
+              let saved = defaults.dictionary(forKey: Self.updateRelaunchKey),
+              let path = saved["path"] as? String else { return }
+        let destination = (saved["section"] as? String).flatMap(WorkspaceSection.init(rawValue:)) ?? .media
+        openProject(at: URL(fileURLWithPath: path), destination: destination)
+    }
+
+    func clearUpdateRelaunchProject() {
+        defaults.removeObject(forKey: Self.updateRelaunchKey)
     }
 
     func stopForApplicationTermination(preserveProgress: Bool = true) async -> Bool {

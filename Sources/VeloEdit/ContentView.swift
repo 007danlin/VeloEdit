@@ -5820,7 +5820,7 @@ struct GeneralSettingsView: View {
                             get: { updater.automaticallyChecksForUpdates },
                             set: { updater.setAutomaticChecks($0) }
                         ))
-                        Text("Проверяем раз в день. Скачивание и установка — с вашего согласия. Перед перезапуском приложение сохраняет проект.")
+                        Text("Проверяем раз в день. После вашего согласия покажем прогресс загрузки, сохраним проект и перезапустим VeloEdit. Открытый проект восстановится автоматически.")
                             .font(.caption).foregroundStyle(.secondary)
                         if let date = updater.lastCheckDate {
                             Text("Последняя проверка: \(date.formatted(date: .abbreviated, time: .shortened))")

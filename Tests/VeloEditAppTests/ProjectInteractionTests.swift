@@ -2,12 +2,134 @@ import Foundation
 import AppKit
 import AVFoundation
 import Testing
-import VeloEditCore
+@testable import VeloEditCore
 @testable import VeloEdit
 
 @Suite(.serialized)
 @MainActor
 struct ProjectInteractionTests {
+    @Test func updateRelaunchRestoresProjectEditsDraftsAndLibraryOnce() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = try fixture.project("Update")
+        let otherURL = try fixture.project("Other")
+        let defaults = UserDefaults(suiteName: fixture.suite)!
+        defaults.set([otherURL.path], forKey: "recentProjectPaths.v1")
+        defaults.set("preserved", forKey: "testUserPreference")
+        let store = try ProjectStore(open: url)
+        let item = TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 10,
+                                timelineStart: 0, timelineDuration: 10)
+        try await store.update { $0.timelines = [Timeline(storyPlanID: UUID(), items: [item])] }
+        let model = fixture.model()
+        model.openRecentProject(url)
+        try await wait { model.projectURL?.path == url.path && model.openingProjectURL == nil }
+        model.section = .timeline
+        model.directorInput = "Продолжить с крупного плана"
+        model.feedback = "Сохранённый черновик"
+        model.trimTimelineItem(id: item.id, sourceStart: 0, timelineDuration: 7)
+        #expect(await model.stopForApplicationTermination())
+        #expect(await model.saveProjectForUpdateRelaunch())
+
+        let relaunched = fixture.model()
+        relaunched.restoreProjectAfterUpdateIfNeeded()
+        try await wait { relaunched.projectURL?.path == url.path && relaunched.openingProjectURL == nil }
+        #expect(relaunched.section == .timeline)
+        #expect(relaunched.directorInput == "Продолжить с крупного плана")
+        #expect(relaunched.feedback == "Сохранённый черновик")
+        #expect(relaunched.timeline?.items.first?.timelineDuration == 7)
+        #expect(relaunched.recentProjectURLs.contains { $0.path == otherURL.path })
+        #expect(defaults.string(forKey: "testUserPreference") == "preserved")
+        #expect(await relaunched.flushAutosave())
+
+        let ordinaryLaunch = fixture.model()
+        ordinaryLaunch.restoreProjectAfterUpdateIfNeeded()
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(ordinaryLaunch.projectURL == nil)
+        #expect(ordinaryLaunch.openingProjectURL == nil)
+    }
+
+    @Test func updateRelaunchRetriesFailedProjectOpen() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = try fixture.project("Retry")
+        let model = fixture.model()
+        model.openRecentProject(url)
+        try await wait { model.projectURL?.path == url.path && model.openingProjectURL == nil }
+        model.directorInput = "Сохранить этот черновик"
+        #expect(await model.saveProjectForUpdateRelaunch())
+        let failed = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: false,
+                              loadProject: { _ in throw CocoaError(.fileReadNoPermission) })
+        failed.restoreProjectAfterUpdateIfNeeded()
+        try await wait { failed.errorMessage != nil && failed.openingProjectURL == nil }
+
+        let retry = fixture.model()
+        retry.restoreProjectAfterUpdateIfNeeded()
+        try await wait { retry.projectURL?.path == url.path && retry.openingProjectURL == nil }
+        #expect(retry.directorInput == "Сохранить этот черновик")
+        #expect(await retry.flushAutosave())
+    }
+
+    @Test func updateRelaunchWaitsForStorageAndNonResumableWork() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let model = fixture.model()
+        model.storageIsCleaning = true
+        model.isWorking = true
+        var ready = false
+        let task = Task { await model.waitForUpdateSafePoint(); ready = true }
+        defer { task.cancel() }
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!ready)
+        model.storageIsCleaning = false
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(!ready)
+        model.isWorking = false
+        try await wait { ready }
+        await task.value
+    }
+
+    @Test func updateRelaunchPreservesResumableJobInsteadOfCancellingIt() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = try fixture.project("Checkpoint")
+        let store = try ProjectStore(open: url)
+        let job = try await store.beginAutonomousJob(kind: .film)
+        let model = fixture.model()
+        model.pipeline = VeloEditPipeline(store: store)
+        model.projectURL = url
+        model.project = await store.manifest
+        model.isWorking = true
+        model.isCreatingFilm = true
+        var ready = false
+        let task = Task { await model.waitForUpdateSafePoint(); ready = true }
+        defer { task.cancel() }
+        try await wait { ready }
+        #expect(await model.stopForApplicationTermination(preserveProgress: true))
+        #expect(await model.saveProjectForUpdateRelaunch())
+        let reopened = try ProjectStore(open: url)
+        #expect(await reopened.manifest.autonomousJob?.id == job.id)
+        #expect(await reopened.manifest.autonomousJob?.explicitCancellation == false)
+        #expect(await reopened.manifest.autonomousJob?.state.resumesAutomatically == true)
+    }
+
+    @Test func updateRelaunchDoesNotProceedWhenSavingFails() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = fixture.root.appendingPathComponent("Failure.veloedit")
+        let recovery = fixture.root.appendingPathComponent("recovery")
+        let store = try ProjectStore(createAt: url, name: "Failure", recoveryDirectory: recovery)
+        let model = fixture.model()
+        model.pipeline = VeloEditPipeline(store: store)
+        model.projectURL = url
+        model.project = await store.manifest
+        model.directorInput = "Несохранённый черновик"
+        // Simulate both the project volume and its fallback becoming unwritable.
+        try Data([1]).write(to: recovery)
+        try FileManager.default.removeItem(at: url)
+        #expect(await model.saveProjectForUpdateRelaunch() == false)
+        #expect(model.errorMessage != nil)
+        let relaunched = fixture.model()
+        relaunched.restoreProjectAfterUpdateIfNeeded()
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(relaunched.projectURL == nil)
+        #expect(relaunched.openingProjectURL == nil)
+    }
+
     @Test func renamingTheOpenProjectFromItsHomeCardKeepsAutosaveAndReopeningHealthy() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let url = try fixture.project("Original")

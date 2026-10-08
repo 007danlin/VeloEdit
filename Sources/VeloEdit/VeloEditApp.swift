@@ -27,6 +27,7 @@ struct VeloEditApp: App {
                 .frame(minWidth: 980, minHeight: 700)
                 .background(InitialWindowMaximizer())
                 .onAppear {
+                    appDelegate.updater = updater
                     appDelegate.model = model
                     appDelegate.directorModelSetup = directorModelSetup
                     directorModelSetup.startIfNeeded()
@@ -50,12 +51,22 @@ struct VeloEditApp: App {
 
 @MainActor
 final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
+    weak var updater: AppUpdater?
     weak var directorModelSetup: DirectorModelSetup?
     weak var model: AppModel? {
         didSet {
-            if let pendingProjectURL, let model { model.openRecentProject(pendingProjectURL); self.pendingProjectURL = nil }
+            guard let model, !didRestoreInitialProject else { return }
+            didRestoreInitialProject = true
+            if let pendingProjectURL {
+                model.clearUpdateRelaunchProject()
+                model.openRecentProject(pendingProjectURL)
+                self.pendingProjectURL = nil
+            } else {
+                model.restoreProjectAfterUpdateIfNeeded()
+            }
         }
     }
+    private var didRestoreInitialProject = false
     private var pendingProjectURL: URL?
     private var isFlushingAutosave = false
     private var waitForWorkTask: Task<Void, Never>?
@@ -78,6 +89,21 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
+        guard !isFlushingAutosave else { return .terminateLater }
+        if updater?.isRestartingForUpdate == true {
+            isFlushingAutosave = true
+            waitForWorkTask?.cancel()
+            waitForWorkTask = nil
+            Task {
+                await model.waitForUpdateSafePoint()
+                let stopped = await model.stopForApplicationTermination(preserveProgress: true)
+                let saved = stopped ? await model.saveProjectForUpdateRelaunch() : false
+                if !saved { updater?.restartWasCancelled() }
+                isFlushingAutosave = false
+                sender.reply(toApplicationShouldTerminate: saved)
+            }
+            return .terminateLater
+        }
         if model.storageIsCleaning {
             let alert = NSAlert()
             alert.messageText = "Завершаем обслуживание хранилища"
@@ -85,7 +111,6 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
             alert.runModal()
             return .terminateCancel
         }
-        guard !isFlushingAutosave else { return .terminateLater }
         waitForWorkTask?.cancel()
         waitForWorkTask = nil
         var preserveProgress = true
@@ -124,7 +149,10 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ sender: NSApplication, open urls: [URL]) {
         guard let url = urls.first(where: { $0.pathExtension.lowercased() == "veloedit" }) else { return }
-        if let model { model.openRecentProject(url) } else { pendingProjectURL = url }
+        if let model {
+            model.clearUpdateRelaunchProject()
+            model.openRecentProject(url)
+        } else { pendingProjectURL = url }
     }
 }
 
