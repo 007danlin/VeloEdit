@@ -16,7 +16,7 @@ __pycache__/
 /Docs/Validation/**
 !/Docs/Validation/**/
 !/Docs/Validation/**/*.py
-# Historical audits and acceptance runs belong in local artifacts or Git history.
+# Keep historical audits at their original paths locally, but never track them.
 /*_AUDIT.md
 /Docs/UserAudit-*/
 /Docs/Autonomy-20*/
