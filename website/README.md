@@ -8,7 +8,7 @@ Push в main автоматически запускает публикацию.
 Домены `veloedit.ru` и `www.veloedit.ru` подключаются через Custom domains проекта,
 затем соответствующие CNAME указывают на `veloedit.pages.dev`. Записи GitHub A и
 TXT `_github-pages-challenge-007danlin` больше не нужны. Почтовые записи сохраняются.
-`www` перенаправляется на основной HTTPS-домен через `website/_redirects`.
+Перенаправление `www` на основной HTTPS-домен настраивается в Cloudflare Rules.
 
 Кнопка скачивания запрашивает последний опубликованный DMG через GitHub API.
 Резервный `/release.json` обслуживает Cloudflare Function из `functions/release.json.js`:
