@@ -104,7 +104,8 @@ public struct MediaImporter: Sendable {
         progress?(ImportProgress(completed: 0, total: 0, currentName: "Сканирую выбранные файлы"))
         let urls = expand(inputURLs)
         progress?(ImportProgress(completed: 0, total: urls.count, currentName: "Подготавливаю метаданные"))
-        let existingByURL = Dictionary(existing.map { (($0.conversionSourceURL ?? $0.originalURL).standardizedFileURL, $0) }, uniquingKeysWith: { first, _ in first })
+        let existingByURL = Dictionary(existing.filter { FileManager.default.isReadableFile(atPath: $0.originalURL.path) }
+            .map { (($0.importSourceURL ?? $0.conversionSourceURL ?? $0.originalURL).standardizedFileURL, $0) }, uniquingKeysWith: { first, _ in first })
         var indexed: [(Int, Result<MediaAsset, Error>)] = []
         indexed.reserveCapacity(urls.count)
         let pending = urls.enumerated().filter { index, url in

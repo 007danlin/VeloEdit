@@ -141,8 +141,18 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
         Task {
             let stopped = await model.stopForApplicationTermination(preserveProgress: preserveProgress)
             let saved = stopped ? await model.flushAutosave() : false
+            var shouldQuit = saved
+            if !saved {
+                let alert = NSAlert()
+                alert.messageText = "Не удалось сохранить проект перед выходом"
+                alert.informativeText = (model.errorMessage ?? "Файл проекта или диск недоступен.")
+                    + "\nМожно остаться и восстановить доступ либо выйти без сохранения последних правок."
+                alert.addButton(withTitle: "Остаться")
+                alert.addButton(withTitle: "Выйти без сохранения")
+                shouldQuit = alert.runModal() == .alertSecondButtonReturn
+            }
             isFlushingAutosave = false
-            sender.reply(toApplicationShouldTerminate: saved)
+            sender.reply(toApplicationShouldTerminate: shouldQuit)
         }
         return .terminateLater
     }
