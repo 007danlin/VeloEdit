@@ -105,6 +105,8 @@ public struct MediaAsset: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var originalURL: URL
     public var conversionSourceURL: URL? = nil
+    /// Provenance only; playback uses the verified copy at originalURL.
+    public var importSourceURL: URL? = nil
     public var bookmarkData: Data?
     public var displayName: String
     public var kind: MediaKind

@@ -17,6 +17,9 @@ final class ProjectPackageLocation: @unchecked Sendable {
 
     var url: URL {
         guard let resolved = referenceURL.flatMap({ CFURLCreateFilePathURL(nil, $0, nil)?.takeRetainedValue() }) as URL? else { return originalURL }
+        // Finder's Trash move is deletion, not a project relocation. Keep the
+        // recovery journal keyed to the path the user can restore later.
+        if ProjectStore.isInTrash(resolved) { return originalURL }
         if resolved.standardizedFileURL.path == originalURL.resolvingSymlinksInPath().standardizedFileURL.path { return originalURL }
         return URL(fileURLWithPath: resolved.path, isDirectory: originalURL.hasDirectoryPath)
     }

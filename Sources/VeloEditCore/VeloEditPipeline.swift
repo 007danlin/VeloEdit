@@ -34,6 +34,7 @@ public actor VeloEditPipeline {
     private let renderedProber: any EditorialRenderedProbing
     private let speechRecognizer: (any LocalSpeechRecognizing)?
     private let importer: MediaImporter
+    let shouldCopyImportedMedia: @Sendable (URL) -> Bool
     private let analyzer: (any VisionModelProtocol)?
     private let musicLibrary: LocalMusicLibrary
     private let musicSystem: MusicLibrary
@@ -57,10 +58,12 @@ public actor VeloEditPipeline {
         musicSystem: MusicLibrary? = nil,
         freeToUseProvider: FreeToUseMusicProvider? = nil,
         musicSelectionHistory: LocalMusicSelectionHistoryStore = .shared,
-        personalTasteStore: LocalPersonalTasteStore = LocalPersonalTasteStore()
+        personalTasteStore: LocalPersonalTasteStore = LocalPersonalTasteStore(),
+        shouldCopyImportedMedia: @escaping @Sendable (URL) -> Bool = { ManagedMediaImport.requiresCopy($0) }
     ) {
         self.store = store
         self.importer = importer
+        self.shouldCopyImportedMedia = shouldCopyImportedMedia
         self.speechRecognizer = speechRecognizer
         self.renderedProber = renderedProber
         self.analyzer = analyzer
@@ -1890,6 +1893,14 @@ public actor VeloEditPipeline {
         // Reimporting duplicates must not invalidate analyses or an AI edit's
         // optimistic revision merely because the receipt has a new timestamp.
         try await store.persistOperationalState { $0.lastImportReport = report }
+        try await secureExternalMedia(progress: progress)
+        let copiedIDs = Set(await store.manifest.assets.filter { $0.importSourceURL != nil }.map(\.id))
+        if !copiedIDs.isEmpty {
+            for index in report.entries.indices where report.entries[index].assetID.map(copiedIDs.contains) == true {
+                report.entries[index].message += " · исходник скопирован в проект"
+            }
+            try await store.persistOperationalState { $0.lastImportReport = report }
+        }
         return report.failures.map { "\($0.url.lastPathComponent): \($0.message)" }
     }
 
@@ -1942,6 +1953,7 @@ public actor VeloEditPipeline {
     }
 
     private func analyzeMissingImpl(preferredAssetID: UUID?, progress: (@Sendable (ImportProgress) -> Void)?) async throws -> Int {
+        try await secureExternalMedia(progress: progress)
         try await restorePortableAnalysisIdentities()
         let current = await store.manifest
         let baseProfile = AIAnalysisProfile.resolve(
@@ -2439,6 +2451,13 @@ public actor VeloEditPipeline {
     private func performFilmJob(_ request: FilmBuildRequest, progress: FilmBuildProgressHandler?) async throws -> Timeline {
         let lease = try ProjectOperationLease(package: store.packageURL)
         defer { withExtendedLifetime(lease) {} }
+        try await FilmBuildReporting.$handler.withValue(progress) {
+            try await FilmBuildReporting.forwarding { report in
+                try await self.secureExternalMedia { update in
+                    report(FilmBuildProgress(.preparing, completed: update.completed, total: update.total, detail: update.currentName))
+                }
+            }
+        }
         if let old = await store.manifest.filmBuildRecovery, old.request != request {
             try await store.updateAutonomousJob { $0.state = .cancelled }
         }
@@ -2507,7 +2526,9 @@ public actor VeloEditPipeline {
     }
 
     private func writeAutonomousDiagnostic(_ error: Error) async {
+        SupportDiagnostics.shared.record("Сборка/экспорт: \(store.packageURL.path)", error: error)
         guard let job = await store.manifest.autonomousJob else { return }
+        guard store.packageIsAvailable else { return }
         let directory = await store.logsURL
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let data = try? JSONEncoder.veloEdit.encode(job) {
@@ -3758,6 +3779,7 @@ public actor VeloEditPipeline {
     private func renderImpl(to url: URL, quality: RenderQuality, frameRate: Double?, replaceExisting: Bool, progress: (@Sendable (ImportProgress) -> Void)?) async throws -> RenderReport {
         let lease = try ProjectOperationLease(package: store.packageURL)
         defer { withExtendedLifetime(lease) {} }
+        try await secureExternalMedia(progress: progress)
         try await migrateLegacyTimelineAudioSettings()
         _ = try await recoverMissingSources()
         let current = await store.manifest
@@ -3893,9 +3915,26 @@ public actor VeloEditPipeline {
 
     public func diagnostics() async -> String {
         let project = await store.manifest
-        let missing = project.assets.filter { !FileManager.default.fileExists(atPath: $0.originalURL.path) }
+        let missing = project.assets.filter { !FileManager.default.isReadableFile(atPath: $0.originalURL.path) }
         let analyzed = Set(project.analyses.map(\.assetID)).count
-        let ovrleyStatus = (try? await OVRLEYBridge().health()) ?? "OVRLEY bridge недоступен"
+        // A support export must not wait for an external bridge to start.
+        let package = store.packageURL
+        let persistence = await store.persistenceLocation
+        let sourceLines = project.assets.map { asset in
+            let embedded = asset.originalURL.standardizedFileURL.path.hasPrefix(package.standardizedFileURL.path + "/")
+            return "\(asset.displayName) · \(asset.kind.rawValue) · \(asset.byteSize) байт · \(embedded ? "внутри проекта" : "внешний исходник (импорт без копирования)") · missing=\(asset.missing) · bookmark=\(asset.bookmarkData != nil)\n"
+                + "Источник импорта: \(asset.importSourceURL?.path ?? asset.conversionSourceURL?.path ?? asset.originalURL.path) · кодек: \(asset.metadata.codec ?? "неизвестно")\n"
+                + SupportDiagnostics.storage(asset.originalURL)
+        }.joined(separator: "\n\n")
+        let logsURL = await store.logsURL
+        let files = (try? FileManager.default.contentsOfDirectory(at: logsURL, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let logs = files.filter { ["txt", "json", "log", "jsonl"].contains($0.pathExtension) }
+            .sorted { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+                > ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+            .prefix(8).map { "\($0.lastPathComponent):\n\(SupportDiagnostics.tail($0))" }.joined(separator: "\n\n")
+        let job = project.autonomousJob.flatMap { try? JSONEncoder.veloEdit.encode($0) }.map { String(decoding: $0, as: UTF8.self) } ?? "нет"
+        let renders = project.renderJobs.suffix(10).map { "\($0.outputURL.path): \($0.status) · \($0.errorMessage ?? "без ошибки")" }.joined(separator: "\n")
+        let imports = (project.lastImportReport?.entries ?? []).map { "\($0.url.path): \($0.outcome) · \($0.message)" }.joined(separator: "\n")
         let sourceMapLines = (project.sourceMap?.activityGroups ?? []).flatMap { group -> [String] in
             let header = "Группа \(group.order + 1) · \(group.title) · confidence \(Int((group.confidence * 100).rounded()))%"
             let entries = (project.sourceMap?.entries ?? [])
@@ -3914,9 +3953,15 @@ public actor VeloEditPipeline {
         Источников телеметрии: \(project.effectiveTelemetrySources.count)
         Карта исходников: \(project.sourceMap?.entries.count ?? 0) файлов, \(project.sourceMap?.activityGroups.count ?? 0) групп
         \(sourceMapLines)
-        Движок: \(ovrleyStatus)
+        Сохранение: \(persistence.rawValue); пакет доступен: \(store.packageIsAvailable)
+        \(SupportDiagnostics.storage(package))
+        Задание сборки:\n\(job)
+        Последние экспорты:\n\(renders)
+        Последний импорт:\n\(imports)
         Тепловое состояние: \(ProcessInfo.processInfo.thermalState.rawValue)
         Отсутствующие файлы:\n\(missing.map { "- \($0.originalURL.path)" }.joined(separator: "\n"))
+        Проверка исходников:\n\(sourceLines)
+        Последние журналы проекта:\n\(logs)
         """
     }
 

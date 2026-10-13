@@ -66,6 +66,13 @@ public actor ProjectStore {
     public static let packageExtension = "veloedit"
     private nonisolated let packageLocation: ProjectPackageLocation
     public nonisolated var packageURL: URL { packageLocation.url }
+    public nonisolated var packageIsAvailable: Bool {
+        !Self.isInTrash(packageURL) && FileManager.default.isReadableFile(atPath: packageURL.appendingPathComponent("project.json").path)
+    }
+
+    static func isInTrash(_ url: URL) -> Bool {
+        url.standardizedFileURL.pathComponents.contains { $0 == ".Trash" || $0 == ".Trashes" }
+    }
     private var manifestPackageURL: URL
     public private(set) var manifest: ProjectManifest
     private var revision: UInt64 = 0
@@ -361,6 +368,9 @@ public actor ProjectStore {
         next.updatedAt = Date()
         let fingerprint: String
         do {
+            guard !Self.isInTrash(packageURL) else {
+                throw ProjectStoreError.persistenceFailure(stage: "project removed", path: packageURL.path, underlying: "Проект перемещён в Корзину")
+            }
             fingerprint = try Self.write(next, to: manifestURL, expectedFingerprint: persistedManifestFingerprint)
         } catch {
             try recoverPersistenceFailure(error, next: next, invalidatingBackgroundWork: invalidatingBackgroundWork)
@@ -383,6 +393,7 @@ public actor ProjectStore {
     // Keep recovery's large value snapshots off the synchronous encoding stack.
     @inline(never)
     private func recoverPersistenceFailure(_ error: Error, next: ProjectManifest, invalidatingBackgroundWork: Bool) throws {
+    SupportDiagnostics.shared.record("Сохранение проекта: \(packageURL.path)", error: error)
     if case ProjectStoreError.externalModification = error,
        let remote = try? Data(contentsOf: manifestURL),
        let merged = try? LocalProjectRecovery.merge(base: ProjectManifestEncoding.encode(manifest), local: ProjectManifestEncoding.encode(next), remote: remote),
@@ -433,6 +444,9 @@ public actor ProjectStore {
 
     public func verifyDurableState() throws -> ProjectPersistenceLocation {
         try synchronizePackageLocation()
+        if !packageIsAvailable, persistenceLocation == .project {
+            try persist({ _ in }, invalidatingBackgroundWork: false)
+        }
         if persistenceLocation == .localRecovery {
             guard let recovery = try LocalProjectRecovery.read(package: packageURL, root: recoveryDirectory),
                   recovery.0.projectID == manifest.id else { throw ProjectStoreError.invalidProjectPackage(packageURL) }
@@ -492,7 +506,10 @@ public actor ProjectStore {
         do {
             try withManifestLock(for: url) {
                 if let expectedFingerprint {
-                    guard let existing = try? Data(contentsOf: url), EditorialProjectMigration.hash(existing) == expectedFingerprint else {
+                    // A missing/unreadable manifest is an I/O outage, not an
+                    // external edit. Allow the local recovery journal to save it.
+                    let existing = try Data(contentsOf: url)
+                    guard EditorialProjectMigration.hash(existing) == expectedFingerprint else {
                         throw ProjectStoreError.externalModification
                     }
                 }

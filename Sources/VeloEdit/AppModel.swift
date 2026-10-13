@@ -384,6 +384,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String? {
         didSet {
             guard let errorMessage, errorMessage != oldValue else { return }
+            SupportDiagnostics.shared.record("Ошибка интерфейса · \(activityTitle) · проект: \(projectURL?.path ?? "не открыт")\n\(errorMessage)")
             AppNotifications.shared.send(title: "Ошибка VeloEdit", body: errorMessage)
         }
     }
@@ -400,6 +401,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var canUndoTimelineEdit = false
     @Published private(set) var canRedoTimelineEdit = false
     var pipeline: VeloEditPipeline?
+    private var unavailableProjectURL: URL?
     private var activePlayback: TimelinePlayback?
     private var playbackTimeObserver: Any?
     private var playbackItemStatusObservation: NSKeyValueObservation?
@@ -796,6 +798,13 @@ final class AppModel: ObservableObject {
         knownProjectURLs = ProjectLibrary.uniqueURLs(libraryPaths.map { URL(fileURLWithPath: $0) } + recentURLs)
         defaults.set(knownProjectURLs.map(\.path), forKey: Self.projectLibraryKey)
         guard startBackgroundServices else { return }
+        Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                guard let self else { return }
+                await self.checkProjectAvailability()
+            }
+        }
         refreshUsageStatistics()
         Task(priority: .utility) { await refreshDirectorRuntimeStatus() }
         Task(priority: .utility) { await refreshLocalVisionModelStatus(startService: false) }
@@ -2556,7 +2565,6 @@ final class AppModel: ObservableObject {
     }
 
     func exportDiagnostics() {
-        let pipeline = pipeline
         let panel = NSSavePanel()
         panel.title = "Экспорт диагностики"
         panel.nameFieldStringValue = "Диагностика VeloEdit.txt"
@@ -2564,18 +2572,55 @@ final class AppModel: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {
             do {
-                var report = Self.applicationDiagnostics()
-                if let pipeline {
-                    report += "\n\n" + (await pipeline.diagnostics())
-                } else {
-                    report += "\nПроект: не открыт"
-                }
+                let report = await diagnosticsReport()
                 try report.write(to: url, atomically: true, encoding: .utf8)
                 status = "Диагностика сохранена"
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    func diagnosticsReport() async -> String {
+        let pipeline = pipeline
+        var report = Self.applicationDiagnostics() + """
+
+
+        Состояние интерфейса: \(status)
+        Операция: \(activityTitle); этап: \(activityProgressLabel); прогресс: \(progress)
+        Работа: \(isWorking); импорт: \(isImporting); анализ: \(isAnalyzing); сборка: \(isCreatingFilm)
+        Последняя ошибка: \(errorMessage ?? "нет")
+        Несохранённые правки: \(hasUnpersistedTimelineEdits); ошибка сохранения: \(timelinePersistenceFailed)
+        Предупреждения импорта: \(importWarnings.joined(separator: "\n"))
+        Папка экспорта:
+        \(videoExportDirectoryURL.map(SupportDiagnostics.storage) ?? "не выбрана")
+        """
+        if let pipeline { report += "\n\n" + (await pipeline.diagnostics()) }
+        else { report += "\nПроект: не открыт. События предыдущих операций доступны в журнале ниже." }
+        report += "\n\n" + SupportDiagnostics.shared.report()
+        return report
+    }
+
+    /// Stop producing derived files after a Finder deletion or volume removal.
+    /// Keep the editor in memory and persist drafts through the local journal.
+    func checkProjectAvailability() async {
+        guard let pipeline, project != nil, openingProjectURL == nil else { return }
+        let store = await pipeline.store
+        guard !store.packageIsAvailable else { unavailableProjectURL = nil; return }
+        guard unavailableProjectURL != store.packageURL else { return }
+        unavailableProjectURL = store.packageURL
+        SupportDiagnostics.shared.record("Открытый проект удалён или недоступен: \(store.packageURL.path)")
+        cancelOperation(preservingProgress: true)
+        projectRestoreTask?.cancel()
+        filmVerificationTask?.cancel()
+        previewRebuildTask?.cancel()
+        previewPlayer?.pause()
+        let saved = await flushAutosave()
+        guard self.pipeline === pipeline else { return }
+        status = saved ? "Проект недоступен · правки сохранены локально" : "Проект недоступен · не удалось сохранить правки"
+        errorMessage = "Файл проекта удалён, перемещён в Корзину или диск отключён. "
+            + (saved ? "Правки сохранены в локальной аварийной копии. Можно закрыть приложение; для продолжения восстановите проект или подключите диск."
+                : "Не удалось сохранить аварийную копию. " + (errorMessage ?? ""))
     }
 
     func exportPersonalTasteProfile() {
@@ -5841,6 +5886,7 @@ final class AppModel: ObservableObject {
     }
 
     private func resetProjectUI() {
+        unavailableProjectURL = nil
         directorAdviceContinuation = nil
         showsMissingMedia = false
         needsCacheRefreshAfterCleanup = false
@@ -7356,6 +7402,7 @@ final class AppModel: ObservableObject {
         activityProgressEstimate = ActivityTimeEstimate()
         activityProgressStage = nil
         status = initialStatus
+        SupportDiagnostics.shared.record("Начало операции: \(initialStatus) · проект: \(projectURL?.path ?? "не открыт")")
         progress = 0
         if isCreatingFilm, presentation == .standard {
             let assets = project?.assets.filter { !$0.excluded && !$0.missing } ?? []
@@ -7380,6 +7427,10 @@ final class AppModel: ObservableObject {
             var completedSuccessfully = false
             var retryAfterConflict = false
             do {
+                if let pipeline = self.pipeline, !(await pipeline.store).packageIsAvailable {
+                    throw ProjectStoreError.persistenceFailure(stage: "project unavailable", path: (await pipeline.store).packageURL.path,
+                        underlying: "Проект удалён или диск отключён. Восстановите проект перед продолжением работы.")
+                }
                 await timelineCommitTask?.value
                 if timelinePersistenceFailed, let pipeline {
                     try await commitTimelineForExport(using: pipeline)
@@ -7403,6 +7454,7 @@ final class AppModel: ObservableObject {
                     } else { status = "Операция отменена до сохранения" }
                 }
             } catch let projectError as ProjectStoreError {
+                SupportDiagnostics.shared.record("Ошибка операции: \(initialStatus)", error: projectError)
                 if case .staleRevision = projectError,
                    presentation == .editorAI,
                    var edit = activeTimelineAIEdit,
@@ -7417,9 +7469,10 @@ final class AppModel: ObservableObject {
                     status = "Ошибка"
                 }
             } catch {
+                SupportDiagnostics.shared.record("Ошибка операции: \(initialStatus) · этап: \(activityTitle) · \(activityProgressLabel)", error: error)
                 if operationGeneration == runGeneration {
                     errorMessage = notificationTitle == "Видео готово"
-                        ? "Нужны доступные исходники и место для сохранения. Проект сохранён — можно продолжить сборку."
+                        ? "Не удалось завершить сборку: \(error.localizedDescription.prefix(700))\nПодробности сохранены в диагностике."
                         : String(error.localizedDescription.prefix(350))
                     status = "Требуется внимание"
                 }
@@ -7460,9 +7513,15 @@ final class AppModel: ObservableObject {
                 needsTimelineAIRetryAfterManualEdit = false
             }
             isWorking = false
+            // The package availability check can fail before the operation's
+            // own defer is entered. Always release its UI busy flags here.
+            isImporting = false
+            isAnalyzing = false
+            isCreatingFilm = false
             activityStartedUptime = nil
             activeTask = nil
-            if let pipeline, await pipeline.store.manifest.autonomousJob?.state == .waitingForExternalResource {
+            if let pipeline, (await pipeline.store).packageIsAvailable,
+               await pipeline.store.manifest.autonomousJob?.state == .waitingForExternalResource {
                 project = await pipeline.store.manifest
                 errorMessage = nil
                 status = project?.autonomousJob?.externalResource ?? "Ожидаю материалы"
