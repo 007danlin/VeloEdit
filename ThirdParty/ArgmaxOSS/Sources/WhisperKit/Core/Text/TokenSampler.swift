@@ -42,7 +42,7 @@ open class GreedyTokenSampler: TokenSampling {
     private func sampleWithMLTensor(logits: MLMultiArray) async -> (token: Int, logprob: Float) {
         // Use MLTensor operations if available for sampling
         // Reference: https://github.com/huggingface/swift-transformers/blob/preview/Sources/Generation/Decoders.swift
-        var logitsTensor = MLTensor(MLShapedArray<FloatType>(logits)).cast(to: Float.self)
+        var logitsTensor = MLTensor(MLShapedArray<FloatType>(converting: logits)).cast(to: Float.self)
         var nextTokenTensor: MLTensor
         var nextLogprobTensor: MLTensor
 
@@ -83,7 +83,9 @@ open class GreedyTokenSampler: TokenSampling {
     }
     #endif
 
-    private func sampleWithBNNS(logits: MLMultiArray) -> (token: Int, logprob: Float) {
+    func sampleWithBNNS(logits: MLMultiArray) -> (token: Int, logprob: Float) {
+        let logits = logits.forFloatTypeComputation()
+        defer { withExtendedLifetime(logits) {} }
         // TODO: BNNS operations here are deprecated, replace with vDSP or MLX
         var softmaxOutput: BNNSNDArrayDescriptor?
         var argmaxOutput: BNNSNDArrayDescriptor?

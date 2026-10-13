@@ -1,6 +1,7 @@
 //  For licensing see accompanying LICENSE.md file.
 //  Copyright © 2024 Argmax, Inc. All rights reserved.
 
+import Accelerate
 import CoreML
 
 // MARK: - MLMultiArray Creation
@@ -32,8 +33,12 @@ public extension MLMultiArray {
                 }
             case .float16:
                 if let value = initialValue as? FloatType {
-                    let typedPointer = dataPointer.bindMemory(to: FloatType.self, capacity: count)
-                    typedPointer.initialize(repeating: value, count: count)
+                    let bits = Self.float16Bits(value)
+                    // IOSurface rows can have padding. Initialize the actual
+                    // storage as 16-bit words, even when FloatType is Float.
+                    withUnsafeMutableBytes { bytes, _ in
+                        bytes.bindMemory(to: UInt16.self).initialize(repeating: bits)
+                    }
                 }
             case .int32:
                 if let value = initialValue as? Int32 {
@@ -70,6 +75,44 @@ public extension MLMultiArray {
 // MARK: - MLMultiArray Indexing & Fill
 
 public extension MLMultiArray {
+    /// Size of the model's stored scalar, independent of the host's FloatType.
+    var scalarByteCount: Int {
+        switch dataType {
+        case .float16: return 2
+        case .float32, .int32: return 4
+        case .double: return 8
+        #if compiler(>=6.2)
+        case .int8: return 1
+        #endif
+        @unknown default: preconditionFailure("Unsupported MLMultiArray storage")
+        }
+    }
+
+    /// BNNS uses the host's arithmetic type; Core ML outputs may still be FP16.
+    func forFloatTypeComputation() -> MLMultiArray {
+        let expected: MLMultiArrayDataType = MemoryLayout<FloatType>.size == 2 ? .float16 : .float32
+        if dataType == expected { return self }
+        return MLMultiArray(MLShapedArray<FloatType>(converting: self))
+    }
+
+    private static func float16Bits(_ value: FloatType) -> UInt16 {
+        #if arch(x86_64)
+        // Swift's native Float16 arithmetic is unavailable on Intel macOS.
+        var source = Float(value)
+        var result: UInt16 = 0
+        withUnsafeMutablePointer(to: &source) { input in
+            withUnsafeMutablePointer(to: &result) { output in
+                var src = vImage_Buffer(data: input, height: 1, width: 1, rowBytes: 4)
+                var dst = vImage_Buffer(data: output, height: 1, width: 1, rowBytes: 2)
+                precondition(vImageConvert_PlanarFtoPlanar16F(&src, &dst, vImage_Flags(kvImageNoFlags)) == kvImageNoError)
+            }
+        }
+        return result
+        #else
+        return value.bitPattern
+        #endif
+    }
+
     /// Computes the linear offset from multi-dimensional indices using strides.
     @inline(__always)
     func linearOffset(for index: [Int], strides strideInts: [Int]? = nil) -> Int {
@@ -91,16 +134,21 @@ public extension MLMultiArray {
     /// Requires shape [1, 1, n].
     func fillLastDimension(indexes: Range<Int>, with value: FloatType) {
         precondition(shape.count == 3 && shape[0] == 1 && shape[1] == 1, "Must have [1, 1, n] shape")
-        withUnsafeMutableBufferPointer(ofType: FloatType.self) { ptr, strides in
-            for index in indexes {
-                ptr[index * strides[2]] = value
+        let validIndexes = indexes.clamped(to: 0..<shape[2].intValue)
+        if dataType == .float16 {
+            let bits = Self.float16Bits(value)
+            withUnsafeMutableBytes { bytes, strides in
+                let words = bytes.bindMemory(to: UInt16.self)
+                for index in validIndexes { words[index * strides[2]] = bits }
             }
+        } else {
+            for index in validIndexes { self[[0, 0, NSNumber(value: index)]] = NSNumber(value: Double(value)) }
         }
     }
 
     /// Fills specific multi-dimensional indices with a value.
     func fill<Value>(indexes: [[Int]], with value: Value) {
-        let pointer = UnsafeMutablePointer<Value>(OpaquePointer(dataPointer))
+        let halfBits = dataType == .float16 ? (value as? FloatType).map(Self.float16Bits) : nil
         let strideInts = strides.map { $0.intValue }
         let shapeInts = shape.map { $0.intValue }
         for index in indexes {
@@ -109,7 +157,14 @@ public extension MLMultiArray {
                 continue
             }
             let linearOffset = linearOffset(for: index, strides: strideInts)
-            pointer[linearOffset] = value
+            if let halfBits {
+                dataPointer.storeBytes(of: halfBits, toByteOffset: linearOffset * 2, as: UInt16.self)
+            } else if let scalar = value as? FloatType, dataType == .float32 {
+                dataPointer.storeBytes(of: Float(scalar), toByteOffset: linearOffset * 4, as: Float.self)
+            } else {
+                let pointer = UnsafeMutablePointer<Value>(OpaquePointer(dataPointer))
+                pointer[linearOffset] = value
+            }
         }
     }
 

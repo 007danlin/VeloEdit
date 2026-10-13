@@ -147,7 +147,9 @@ open class TimestampRulesFilter: LogitsFiltering {
         }
     }
 
-    private func sumOfProbabilityOverTimestampsIsAboveAnyOtherToken(logits: MLMultiArray, timeTokenBegin: Int) -> Bool {
+    func sumOfProbabilityOverTimestampsIsAboveAnyOtherToken(logits: MLMultiArray, timeTokenBegin: Int) -> Bool {
+        let logits = logits.forFloatTypeComputation()
+        defer { withExtendedLifetime(logits) {} }
         let timeTokenBeginOffset = logits.linearOffset(for: [0, 0, timeTokenBegin])
 
         let logprobsInputPointer = UnsafeMutableRawBufferPointer(

@@ -407,6 +407,31 @@ open class SegmentSeeker: SegmentSeeking {
         return wordTimings
     }
 
+    /// Preserve model storage and row padding when selecting word-alignment rows.
+    static func selectAlignmentRows(_ indices: [Int], from weights: MLMultiArray) throws -> MLMultiArray {
+        let columns = weights.shape[1].intValue
+        let output = try MLMultiArray(shape: [indices.count, columns] as [NSNumber], dataType: weights.dataType, initialValue: FloatType(0))
+        let bytes = weights.scalarByteCount
+        weights.withUnsafeBytes { source in
+            output.withUnsafeMutableBytes { destination, strides in
+                let sourceStrides = weights.strides.map { $0.intValue }
+                for (row, original) in indices.enumerated() {
+                    precondition(original >= 0 && original < weights.shape[0].intValue)
+                    let src = source.baseAddress! + original * sourceStrides[0] * bytes
+                    let dst = destination.baseAddress! + row * strides[0] * bytes
+                    if sourceStrides[1] == 1 && strides[1] == 1 {
+                        memcpy(dst, src, columns * bytes)
+                    } else {
+                        for column in 0..<columns {
+                            memcpy(dst + column * strides[1] * bytes, src + column * sourceStrides[1] * bytes, bytes)
+                        }
+                    }
+                }
+            }
+        }
+        return output
+    }
+
     public func addWordTimestamps(
         segments: [TranscriptionSegment],
         alignmentWeights: MLMultiArray,
@@ -443,22 +468,11 @@ open class SegmentSeeker: SegmentSeeking {
 
         // Filter alignmentWeights using filteredIndices
         let shape = alignmentWeights.shape
-        guard let columnCount = shape.last?.intValue else {
+        guard shape.count == 2 else {
             throw WhisperError.segmentingFailed("Invalid shape in alignmentWeights")
         }
 
-        let filteredAlignmentWeights = try MLMultiArray(shape: [filteredIndices.count, columnCount] as [NSNumber], dataType: alignmentWeights.dataType, initialValue: FloatType(0))
-
-        alignmentWeights.withUnsafeMutableBytes { weightsPointer, weightsStride in
-            filteredAlignmentWeights.withUnsafeMutableBytes { filteredWeightsPointer, filteredWeightsStride in
-                for (newIndex, originalIndex) in filteredIndices.enumerated() {
-                    let sourcePointer = weightsPointer.baseAddress!.advanced(by: Int(originalIndex * columnCount * MemoryLayout<FloatType>.stride))
-                    let destinationPointer = filteredWeightsPointer.baseAddress!.advanced(by: Int(newIndex * columnCount * MemoryLayout<FloatType>.stride))
-
-                    memcpy(destinationPointer, sourcePointer, columnCount * MemoryLayout<FloatType>.stride)
-                }
-            }
-        }
+        let filteredAlignmentWeights = try Self.selectAlignmentRows(filteredIndices, from: alignmentWeights)
 
         Logging.debug("Alignment weights shape: \(filteredAlignmentWeights.shape)")
 

@@ -228,8 +228,11 @@ public extension TextDecoding {
     {
         let tensorShape = keyTensor.shape.map { $0.intValue }
         let sliceShape = keySlice.shape.map { $0.intValue }
-        let sliceStrides = keySlice.strides.map { $0.intValue } // same for val
-        let bytesPerSample = MemoryLayout<FloatType>.size
+        let sliceStrides = keySlice.strides.map { $0.intValue }
+        let valueSliceStrides = valueSlice.strides.map { $0.intValue }
+        precondition(keyTensor.dataType == keySlice.dataType && valueTensor.dataType == valueSlice.dataType)
+        let bytesPerSample = keyTensor.scalarByteCount
+        let valueBytesPerSample = valueTensor.scalarByteCount
 
         keyTensor.withUnsafeMutableBytes { keyTensorPointer, keyTargetStrides in
             keySlice.withUnsafeBytes { keySlicePointer in
@@ -263,11 +266,11 @@ public extension TextDecoding {
                                 memcpy(keyDest, keySrc, bytesPerSample)
 
                                 let valDestIndex = j * valueTargetStrides[1] + (index + k) * valueTargetStrides[3]
-                                let valDest = valDestBase + valDestIndex * bytesPerSample
+                                let valDest = valDestBase + valDestIndex * valueBytesPerSample
 
-                                let valSliceIndex = j * sliceStrides[1] + k * sliceStrides[3]
-                                let valSrc = valSrcBase + valSliceIndex * bytesPerSample
-                                memcpy(valDest, valSrc, bytesPerSample)
+                                let valSliceIndex = j * valueSliceStrides[1] + k * valueSliceStrides[3]
+                                let valSrc = valSrcBase + valSliceIndex * valueBytesPerSample
+                                memcpy(valDest, valSrc, valueBytesPerSample)
                             }
                         }
                     }
@@ -283,7 +286,8 @@ public extension TextDecoding {
     ) {
         let tensorShape = alignmentTensor.shape.map { $0.intValue }
         let sliceStrides = alignmentSlice.strides.map { $0.intValue }
-        let bytesPerSample = MemoryLayout<FloatType>.size
+        precondition(alignmentTensor.dataType == alignmentSlice.dataType)
+        let bytesPerSample = alignmentTensor.scalarByteCount
 
         alignmentTensor.withUnsafeMutableBytes { alignmentPointer, alignmentStrides in
             alignmentSlice.withUnsafeBytes { slicePointer in
