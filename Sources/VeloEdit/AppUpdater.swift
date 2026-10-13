@@ -12,6 +12,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published private(set) var lastCheckDate: Date?
     private var sparkleUpdater: SPUUpdater?
     private weak var model: AppModel?
+    private var isCheckingForUpdates = false
     private(set) var isRestartingForUpdate = false
 
     func start(model: AppModel) {
@@ -36,9 +37,14 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func checkForUpdates() {
-        guard canCheckForUpdates else { return }
-        status = "Проверяем обновления…"
-        sparkleUpdater?.checkForUpdates()
+        guard canCheckForUpdates, let sparkleUpdater else { return }
+        // While downloading, this action brings Sparkle's existing window forward.
+        // It must not replace download/install progress with a new check status.
+        if !sparkleUpdater.sessionInProgress {
+            isCheckingForUpdates = true
+            status = "Проверяем обновления…"
+        }
+        sparkleUpdater.checkForUpdates()
     }
 
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
@@ -52,6 +58,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        isCheckingForUpdates = false
         status = "Доступна версия \(item.displayVersionString). После установки VeloEdit сохранит и снова откроет ваш проект."
     }
 
@@ -71,7 +78,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         status = "Подготавливаем загруженное обновление…"
     }
 
-    func updaterUserDidCancelDownload(_ updater: SPUUpdater) {
+    func userDidCancelDownload(_ updater: SPUUpdater) {
+        isCheckingForUpdates = false
         status = "Загрузка обновления отменена"
     }
 
@@ -86,14 +94,45 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        isCheckingForUpdates = false
         status = "Новых совместимых обновлений пока нет"
     }
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        isCheckingForUpdates = false
+        if isRestartingForUpdate { model?.clearUpdateRelaunchProject() }
         isRestartingForUpdate = false
-        if (error as NSError).domain == SUSparkleErrorDomain,
-           (error as NSError).code == SUError.noUpdateError.rawValue { return }
+        if (error as NSError).domain == "app.veloedit.updates", (error as NSError).code == 1 {
+            status = error.localizedDescription
+            return
+        }
+        if (error as NSError).domain == SUSparkleErrorDomain {
+            switch (error as NSError).code {
+            case Int(SUError.noUpdateError.rawValue):
+                updaterDidNotFindUpdate(updater)
+                return
+            case Int(SUError.installationCanceledError.rawValue):
+                status = "Установка обновления отменена"
+                return
+            case Int(SUError.installationAuthorizeLaterError.rawValue):
+                status = "Установка обновления отложена"
+                return
+            default: break
+            }
+        }
         status = "Обновление не завершено: \(error.localizedDescription)"
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
+        // Authorization deferred by the user does not trigger didAbortWithError.
+        if let error {
+            self.updater(updater, didAbortWithError: error)
+        } else if isCheckingForUpdates {
+            status = "Проверка обновлений отменена"
+        }
+        isCheckingForUpdates = false
+        // A successful cycle can leave an installer waiting for termination.
+        // Keep isRestartingForUpdate until an actual abort, including save retries.
     }
 }
 

@@ -126,6 +126,41 @@ struct DirectorLiveInteractionTests {
         model.cancelOperation()
     }
 
+    @Test func initialBriefDoesNotPublishVerboseModelCompletionClaims() async throws {
+        let verbose = "Звук приглушен на 20%. Музыка установлена на мягкий стиль. Все визуальные эффекты настроены на минимальные значения. Видео стабилизировано и обработано для удаления шума и размытия. Аудио-декупаж включен."
+        var calls = 0
+        let agent = LocalDirectorAgent { _, _, _, _ in
+            calls += 1
+            return DirectorAIReply(text: verbose, runtimeLabel: "test", normalizedBrief: "Спокойный фильм",
+                commands: [.setOriginalAudioVolume(0.2)])
+        }
+        let model = fixture(agent: agent)
+        model.project?.timelines = []
+        model.directorInput = "Собери фильм о нашей прогулке"
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding }
+        #expect(calls == 1)
+        #expect(model.directorMessages.last?.text == "Учту пожелания при сборке фильма.")
+        #expect(model.hasPendingFilmChanges)
+        #expect(agent.recentConversationContext.contains("Учту пожелания при сборке фильма."))
+        #expect(!agent.recentConversationContext.contains(verbose))
+        #expect(model.timeline == nil)
+    }
+
+    @Test func initialBriefPlanningFailureStillExplainsTheProblem() async throws {
+        let failure = "Не удалось разобрать запрос. Изменения не применены."
+        let agent = LocalDirectorAgent { _, _, _, _ in
+            DirectorAIReply(text: failure, runtimeLabel: "test", normalizedBrief: nil, planningFailed: true)
+        }
+        let model = fixture(agent: agent)
+        model.project?.timelines = []
+        model.directorInput = "Собери фильм о нашей прогулке"
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding }
+        #expect(model.directorMessages.last?.text == failure)
+        #expect(model.timeline == nil)
+    }
+
     @Test func deadlineDoesNotWaitForUncooperativeRuntimeOrPublishLateResult() async throws {
         var resume: CheckedContinuation<Void, Never>?
         let fallback = DirectorAIReply(text: "Ограниченный ответ", runtimeLabel: "fallback", normalizedBrief: nil)
