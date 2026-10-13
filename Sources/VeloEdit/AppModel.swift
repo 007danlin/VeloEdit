@@ -1854,6 +1854,20 @@ final class AppModel: ObservableObject {
                 self.directorTask = nil
                 return
             }
+            if requestMode == .edit {
+                // This path accepts a brief before a film exists. The model's
+                // prose is not an execution receipt; keep it out of the chat.
+                // Actual music/edit results below replace this acknowledgement.
+                reply = DirectorAIReply(
+                    text: "Учту пожелания при сборке фильма.",
+                    runtimeLabel: reply.runtimeLabel,
+                    normalizedBrief: reply.normalizedBrief,
+                    commands: reply.commands,
+                    replacesSelectedFootage: reply.replacesSelectedFootage,
+                    judgment: reply.judgment,
+                    isFallback: reply.isFallback
+                )
+            }
             if requestMode == .advisory {
                 reply = DirectorAIReply(
                     text: reply.text,
