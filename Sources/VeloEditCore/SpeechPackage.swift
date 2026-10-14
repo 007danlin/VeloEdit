@@ -7,7 +7,9 @@ public enum SpeechComponentError: LocalizedError {
         switch self {
         case .unavailable: return "Для влога нужен локальный речевой пакет. Установите его в параметрах фильма или перенесите с диска. Проект сохранён."
         case .invalidPackage(let detail): return "Речевой пакет не прошёл проверку: \(detail)"
-        case .workerFailed(let detail): return "Распознавание речи не завершено: \(detail). Готовые порции сохранены."
+        case .workerFailed(let detail):
+            let reason = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "Распознавание речи не завершено: \(reason.isEmpty ? "речевой процесс завершился без подробностей" : reason). Готовые порции сохранены."
         }
     }
 }

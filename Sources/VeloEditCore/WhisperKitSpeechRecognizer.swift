@@ -33,29 +33,52 @@ private actor SpeechWorkerCoordinator {
         let requestURL = directory.appendingPathComponent("request.json")
         try JSONEncoder().encode(request).write(to: requestURL, options: .atomic)
         let logURL = directory.appendingPathComponent("worker.log")
+        try await SpeechWorkerProcessRunner.run(executable: executable, arguments: [requestURL.path],
+            logURL: logURL, progressURL: output.appendingPathExtension("progress"), sourceURL: url)
+        return try JSONDecoder().decode(SpeechTranscript.self, from: Data(contentsOf: output))
+    }
+}
+
+enum SpeechWorkerProcessRunner {
+    static func run(executable: URL, arguments: [String], logURL: URL, progressURL: URL, sourceURL: URL,
+                    diagnostics: SupportDiagnostics = .shared) async throws {
+        try Task.checkCancellation()
+        // A resumed job may still have a previous chunk count on disk.
+        try Data("warmup".utf8).write(to: progressURL, options: .atomic)
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
         let log = try FileHandle(forWritingTo: logURL); defer { try? log.close() }
-        let process = Process(); process.executableURL = executable; process.arguments = [requestURL.path]
+        let process = Process(); process.executableURL = executable; process.arguments = arguments
         process.standardOutput = log; process.standardError = log; process.standardInput = FileHandle.nullDevice
         try process.run()
         while process.isRunning {
             if Task.isCancelled {
                 process.terminate()
-                for _ in 0..<20 where process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                // The caller is cancelled, so sleeping in that task returns
+                // immediately. Give the child a real, bounded grace period.
+                await Task.detached {
+                    for _ in 0..<20 where process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
+                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                    process.waitUntilExit()
+                }.value
                 throw CancellationError()
             }
-            let progress = (try? String(contentsOf: output.appendingPathExtension("progress"), encoding: .utf8)) ?? "warmup"
+            let progress = (try? String(contentsOf: progressURL, encoding: .utf8)) ?? "warmup"
             let counts = progress.split(separator: "/").compactMap { Int($0) }
             await FilmBuildReporting.report(FilmBuildProgress(progress == "warmup" ? .speechWarmup : .speech,
-                completed: counts.first, total: counts.count == 2 ? counts[1] : nil, detail: url.lastPathComponent))
+                completed: counts.first, total: counts.count == 2 ? counts[1] : nil, detail: sourceURL.lastPathComponent))
             try? await Task.sleep(for: .milliseconds(250))
         }
         try Task.checkCancellation()
-        guard process.terminationStatus == 0 else {
-            let text = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "worker exit \(process.terminationStatus)"
-            throw SpeechComponentError.workerFailed(String(text.suffix(1000)))
+        guard process.terminationReason == .exit, process.terminationStatus == 0 else {
+            let termination = process.terminationReason == .uncaughtSignal
+                ? "сигнал \(process.terminationStatus)"
+                : "код выхода \(process.terminationStatus)"
+            let progress = (try? String(contentsOf: progressURL, encoding: .utf8)) ?? "неизвестен"
+            let text = SupportDiagnostics.tail(logURL, limit: 8192).trimmingCharacters(in: .whitespacesAndNewlines)
+            let summary = "\(sourceURL.lastPathComponent): речевой процесс завершён, \(termination); этап: \(progress)"
+            diagnostics.record("\(summary)\nЖурнал: \(logURL.path)\n\(text)")
+            let detail = text.isEmpty ? "процесс не записал подробности" : String(text.suffix(1000))
+            throw SpeechComponentError.workerFailed("\(summary)\n\(detail)")
         }
-        return try JSONDecoder().decode(SpeechTranscript.self, from: Data(contentsOf: output))
     }
 }

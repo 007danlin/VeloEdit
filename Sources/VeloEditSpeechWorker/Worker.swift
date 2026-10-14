@@ -20,9 +20,10 @@ private struct Chunk: Codable {
 @main struct SpeechWorker {
     static var speechComputeOptions: ModelComputeOptions {
         #if arch(x86_64)
-        // Intel Macs have no Apple Neural Engine. Keep Core ML's CPU/GPU
-        // path available while retaining WhisperKit's ANE defaults on ARM.
-        return ModelComputeOptions(melCompute: .cpuAndGPU, audioEncoderCompute: .cpuAndGPU, textDecoderCompute: .cpuAndGPU)
+        // Avoid depending on an Intel Mac's GPU/Metal driver when Core ML
+        // specializes the speech models. A native crash here cannot be caught
+        // by Swift. Use the CPU for every model, including the mel extractor.
+        return ModelComputeOptions(melCompute: .cpuOnly, audioEncoderCompute: .cpuOnly, textDecoderCompute: .cpuOnly)
         #else
         return ModelComputeOptions()
         #endif
@@ -37,7 +38,10 @@ private struct Chunk: Codable {
                 #else
                 let architecture = "arm64"
                 #endif
-                let info = ["architecture": architecture, "speechCompute": String(describing: speechComputeOptions.audioEncoderCompute)]
+                let info = ["architecture": architecture,
+                            "speechCompute": String(describing: speechComputeOptions.audioEncoderCompute),
+                            "melCompute": String(describing: speechComputeOptions.melCompute),
+                            "textDecoderCompute": String(describing: speechComputeOptions.textDecoderCompute)]
                 let data = try JSONSerialization.data(withJSONObject: info, options: [.sortedKeys])
                 FileHandle.standardOutput.write(data + Data("\n".utf8))
                 return
@@ -71,7 +75,13 @@ private struct Chunk: Codable {
     }
 
     static func run(_ request: SpeechWorkerRequest) async throws {
+        // Argmax normally writes to OSLog, not stderr. Forward it before model
+        // initialization so a killed worker still leaves useful diagnostics.
+        Logging.shared.loggingCallback = { log($0) }
+        let compute = speechComputeOptions
+        log("Speech worker started; macOS=\(ProcessInfo.processInfo.operatingSystemVersionString); mel=\(compute.melCompute); encoder=\(compute.audioEncoderCompute); decoder=\(compute.textDecoderCompute)")
         let manifest = try JSONDecoder().decode(SpeechPackageManifest.self, from: Data(contentsOf: request.packageURL.appendingPathComponent("package.json")))
+        log("Reading audio track")
         let asset = AVURLAsset(url: request.sourceURL)
         let duration = try await asset.load(.duration).seconds
         guard duration.isFinite && duration > 0, let track = try await asset.loadTracks(withMediaType: .audio).first else { throw SpeechComponentError.workerFailed("нет звуковой дорожки") }
@@ -81,13 +91,18 @@ private struct Chunk: Codable {
         let warmupStart = ProcessInfo.processInfo.systemUptime
         var decodeSeconds = 0.0, vadSeconds = 0.0, asrSeconds = 0.0
         var resumedChunks = 0
+        log("Loading WhisperKit models")
         let pipe = try await WhisperKit(WhisperKitConfig(modelFolder: request.packageURL.appendingPathComponent("model").path,
-            tokenizerFolder: request.packageURL.appendingPathComponent("tokenizer"), computeOptions: speechComputeOptions,
-            verbose: true, prewarm: true, load: true, download: false))
+            tokenizerFolder: request.packageURL.appendingPathComponent("tokenizer"), computeOptions: compute,
+            verbose: true, logLevel: .debug, prewarm: true, load: true, download: false))
+        Logging.shared.logLevel = .info
+        log("Loading Silero VAD")
         let vad = try SileroDetector(model: request.packageURL.appendingPathComponent("silero_vad.onnx"))
         let warmupSeconds = (ProcessInfo.processInfo.systemUptime - warmupStart)
+        log("Speech models ready")
         var chunks: [Chunk] = []
         let count = Int(ceil(duration / 24))
+        try Data("0/\(count)".utf8).write(to: statusURL, options: .atomic)
         for index in 0..<count {
             while await SystemResourceMonitor.shared.snapshot().workLimit == .cooling {
                 try await Task.sleep(for: .milliseconds(500))
@@ -180,6 +195,11 @@ private struct Chunk: Codable {
         let encoded = try JSONEncoder().encode(transcript)
         try encoded.write(to: request.outputURL, options: .atomic)
         try Data(SpeechFileHash.data(encoded).utf8).write(to: request.outputURL.appendingPathExtension("sha256"), options: .atomic)
+    }
+    private static func log(_ message: String) {
+        // FileHandle writes directly; stdio buffering can lose the last stage
+        // when Core ML terminates the process before the catch block runs.
+        FileHandle.standardError.write(Data((message + "\n").utf8))
     }
     private static func append(segments: [TranscriptionSegment], offset: Double, end: Double, core: ClosedRange<Double>, speech: [ClosedRange<Double>], attempt: Int, to chunk: inout Chunk) {
         chunk.rawText += segments.map(\.text).joined(separator: " ")

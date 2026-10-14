@@ -2734,11 +2734,17 @@ final class AppModel: ObservableObject {
         let memoryGB = Double(process.physicalMemory) / 1_073_741_824
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "неизвестна"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "неизвестна"
+        #if arch(x86_64)
+        let architecture = "x86_64"
+        #else
+        let architecture = "arm64"
+        #endif
         return """
         VeloEdit — диагностика приложения
         Создано: \(ISO8601DateFormatter().string(from: Date()))
         Версия: \(version) (\(build))
         macOS: \(process.operatingSystemVersionString)
+        Архитектура приложения: \(architecture)
         Память: \(String(format: "%.1f", memoryGB)) ГБ
         Процессоров: \(process.processorCount)
         """
