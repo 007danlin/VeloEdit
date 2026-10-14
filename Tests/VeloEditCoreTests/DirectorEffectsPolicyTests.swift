@@ -51,7 +51,7 @@ import Testing
         #expect(counts[2] == 6)
     }
 
-    @Test func noEffectsRemovesPhotoMotionTransitionsAndEndingFadeOnDelivery() {
+    @Test func noEffectsRemovesDecorationsButPreservesFilmEndingOnDelivery() {
         let (plan, source, _) = fixture(DirectorEffectsPolicy.none)
         var timeline = source
         timeline.items[0].kind = .photo
@@ -65,7 +65,7 @@ import Testing
         #expect(result.effectiveEffects.isEmpty)
         #expect(result.effectiveTransitionItems.isEmpty)
         #expect(result.items.allSatisfy { $0.effect == nil && $0.transition == nil })
-        #expect(result.endingFadeDuration == 0)
+        #expect(result.endingFadeDuration == 2)
         #expect(result.duration == timeline.duration)
     }
 

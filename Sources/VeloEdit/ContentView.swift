@@ -4713,9 +4713,7 @@ private struct DirectorConversationView: View {
     private func finishSetupQuestion() {
         setupQuestionIndex += 1
         if setupQuestionIndex == setupQuestions.count {
-            model.directorInput = [directorBriefSummary, model.directorInput]
-                .filter { !$0.isEmpty }
-                .joined(separator: "\n")
+            model.finishDirectorSetup(summary: directorBriefSummary)
         }
     }
 

@@ -1060,7 +1060,10 @@ public actor PlaybackEngine {
         }
     }
 
-    private typealias MusicTrack = (track: AVMutableCompositionTrack, directive: MusicDirective)
+    private struct MusicTrack {
+        var directive: MusicDirective
+        var regions: [(track: AVMutableCompositionTrack, window: MusicLoopWindow)]
+    }
 
     private func addMusic(_ directive: MusicDirective?, tracks: [LocalMusicTrack], to composition: AVMutableComposition, duration: CMTime) async throws -> MusicTrack? {
         guard let directive, duration > .zero else { return nil }
@@ -1071,13 +1074,14 @@ public actor PlaybackEngine {
         }
         let url = localTrack.localFileURL
         let source = AVURLAsset(url: url)
-        guard let sourceTrack = try await source.loadTracks(withMediaType: .audio).first,
-              let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
+        guard let sourceTrack = try await source.loadTracks(withMediaType: .audio).first else { return nil }
         let sourceDuration = try await source.load(.duration)
         guard sourceDuration.seconds.isFinite, sourceDuration.seconds > 0 else { return nil }
         let sourceEnd = CMTimeConvertScale(sourceDuration, timescale: TimelineTiming.compositionTimescale, method: .roundTowardZero)
         var sourceCursor = TimelineTiming.compositionTime(min(max(0, directive.sourceStart ?? 0), max(0, sourceEnd.seconds - 0.05)))
         var cursor = CMTime.zero
+        var incomingOverlap = 0.0
+        var regions: [(track: AVMutableCompositionTrack, window: MusicLoopWindow)] = []
         while cursor < duration {
             let remaining = duration - cursor
             let availableSource = sourceEnd - sourceCursor
@@ -1089,14 +1093,21 @@ public actor PlaybackEngine {
             let inserted = min(availableSource, TimelineTiming.compositionTime(outputPart * directive.effectiveSpeed))
             let output = min(remaining, TimelineTiming.compositionTime(outputPart))
             guard inserted > .zero, output > .zero else { break }
+            guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { break }
             try track.insertTimeRange(CMTimeRange(start: sourceCursor, duration: inserted), of: sourceTrack, at: cursor)
             if inserted != output {
                 track.scaleTimeRange(CMTimeRange(start: cursor, duration: inserted), toDuration: output)
             }
-            cursor = cursor + output
+            let end = cursor + output
+            let overlap = end < duration ? min(3, output.seconds * 0.25, sourceEnd.seconds / directive.effectiveSpeed * 0.25) : 0
+            let quantizedOverlap = TimelineTiming.compositionTime(overlap)
+            regions.append((track, .init(start: cursor.seconds, end: end.seconds,
+                fadeIn: incomingOverlap, fadeOut: quantizedOverlap.seconds)))
+            cursor = end - quantizedOverlap
+            incomingOverlap = quantizedOverlap.seconds
             sourceCursor = .zero
         }
-        return (track, directive)
+        return regions.isEmpty ? nil : MusicTrack(directive: directive, regions: regions)
     }
 
     /// Places every semantic music region on its own composition track. The
@@ -1509,7 +1520,8 @@ public actor PlaybackEngine {
             }
         }
         if let music {
-            let value = AVMutableAudioMixInputParameters(track: music.track)
+          for region in music.regions {
+            let value = AVMutableAudioMixInputParameters(track: region.track)
             let normal = Float(music.directive.volume)
             value.setVolume(normal, at: .zero)
             if ducking.enabled {
@@ -1553,14 +1565,15 @@ public actor PlaybackEngine {
                     )
                 }
             }
-            parameters.append(value)
+            parameters.append(region.window.applying(to: value, movieDuration: movieDuration))
+          }
         }
         // Apply to ordinary, adaptive and manually placed music alike, after
         // clip fades and speech ducking. Legacy projects also get the finish;
         // disabling the visual fade does not disable the musical ending.
         if let ending = FilmEndingFade(duration: FilmEndingFade.defaultDuration, movieDuration: movieDuration, frameRate: frameRate) {
             var musicTrackIDs = Set(additionalAudio.filter { $0.clip.role == .music }.map { $0.track.trackID })
-            if let music { musicTrackIDs.insert(music.track.trackID) }
+            if let music { musicTrackIDs.formUnion(music.regions.map { $0.track.trackID }) }
             parameters = parameters.map { value in
                 musicTrackIDs.contains(value.trackID) ? ending.applying(to: value, movieDuration: movieDuration) : value
             }

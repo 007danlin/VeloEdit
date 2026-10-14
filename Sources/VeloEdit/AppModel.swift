@@ -2033,6 +2033,34 @@ final class AppModel: ObservableObject {
         directorRuntimeStatus = await directorAgent.runtimeStatus()
     }
 
+    /// Questionnaire answers already have typed values. Start the first film
+    /// directly instead of asking a language model to interpret those values a
+    /// second time. A free-form addition still uses the ordinary director path.
+    @discardableResult
+    func finishDirectorSetup(summary: String) -> Bool {
+        guard timeline == nil, !isWorking, !isDirectorResponding else { return false }
+        let summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !summary.isEmpty else { return false }
+        var draft = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if draft == summary { draft = "" }
+        else if draft.hasPrefix(summary + "\n") { draft = String(draft.dropFirst(summary.count + 1)) }
+        guard pipeline != nil, project?.assets.contains(where: { !$0.excluded && !$0.missing }) == true else {
+            directorInput = [summary, draft].filter { !$0.isEmpty }.joined(separator: "\n")
+            return false
+        }
+        if draft.isEmpty {
+            directorInput = ""
+            if prompt == Self.defaultDirectorBrief { prompt = summary }
+            else if !prompt.contains(summary) { prompt += "\n" + summary }
+            directorMessages.append(DirectorMessage(role: .user, text: summary))
+            markFilmNeedsRebuild("Анкета заполнена — начинаю сборку")
+        } else {
+            directorInput = summary + "\n" + draft
+        }
+        createFilm()
+        return true
+    }
+
     func createFilm(forceFullRemake: Bool = false) {
         guard let pipeline, !isWorking, !isDirectorResponding else { return }
         let isRebuildingFilm = timeline != nil

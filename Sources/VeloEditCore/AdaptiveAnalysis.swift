@@ -118,6 +118,11 @@ actor AdaptiveFrameSampler {
         try await extract(url: url, sourceHash: sourceHash, timestamps: timestamps, maximumSize: 384, purpose: .aiDirector, frameCache: frameCache).samples
     }
 
+    func selectedContentSamples(url: URL, sourceHash: String, timestamps: [Double], frameCache: FrameCache, maximumSize: Int = 384) async throws -> [VisualFrameSample] {
+        try await extract(url: url, sourceHash: sourceHash, timestamps: timestamps, maximumSize: maximumSize,
+            purpose: .aiDirector, frameCache: frameCache, exactTiming: true).samples
+    }
+
     func samplePhoto(
         url: URL,
         sourceHash: String,
@@ -210,13 +215,14 @@ actor AdaptiveFrameSampler {
         timestamps: [Double],
         maximumSize: Int,
         purpose: FrameProcessingPurpose,
-        frameCache: FrameCache
+        frameCache: FrameCache,
+        exactTiming: Bool = false
     ) async throws -> (samples: [VisualFrameSample], decoded: Int, cacheHits: Int, visionCalls: Int) {
         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: maximumSize, height: maximumSize)
-        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.25, preferredTimescale: 600)
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.25, preferredTimescale: 600)
+        generator.requestedTimeToleranceBefore = exactTiming ? .zero : CMTime(seconds: 0.25, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = exactTiming ? .zero : CMTime(seconds: 0.25, preferredTimescale: 600)
         let sourceIdentity = FrameCacheKey.sourceIdentity(url: url, contentHash: sourceHash)
         var previous: VisualFrameSample?
         var result: [VisualFrameSample] = []
@@ -227,7 +233,9 @@ actor AdaptiveFrameSampler {
         var resourcePacer = ResourceWorkPacer()
         for timestamp in timestamps {
             try Task.checkCancellation()
-            let key = FrameCacheKey(sourceFile: sourceIdentity, timestamp: timestamp, resolution: maximumSize, processingPurpose: purpose, decodeTimeScale: 600)
+            let key = FrameCacheKey(sourceFile: sourceIdentity, timestamp: timestamp, resolution: maximumSize, processingPurpose: purpose,
+                representation: exactTiming ? "preferred-transform|tol=0/600|jpeg=.68|vision-v2" : "preferred-transform|tol=150/600|jpeg=.68|vision-v2",
+                decodeTimeScale: 600)
             try await resourcePacer.checkpoint()
             let trace = PerformanceTrace.current
             let resolved = try await frameCache.resolve(key) {

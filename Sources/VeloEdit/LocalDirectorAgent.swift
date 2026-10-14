@@ -393,6 +393,8 @@ final class LocalDirectorAgent {
 
             \(requestModeInstruction)
 
+            \(CinematicKnowledgeBase.promptContext(request: userMessage, moment: context.moment))
+
             \(allowsFootageReplacement && mode == .edit ? "Пользователь работает Волшебной кистью с выделенным диапазоном. Понимай смысл произвольной формулировки: просьба взять другой материал, неудачный дубль, заменить этот кусок, показать здесь что-то другое означает replace_footage, target selected, пустые value и secondaryTarget. Это реальная замена исходного видео другим моментом той же сцены. Смена музыки, цвета, титра, перестановка и удаление без замены не означают replace_footage. Не подменяй замену настройками звука или эффектами." : "Операция replace_footage недоступна вне Волшебной кисти.")
 
             Верни только JSON по выданной схеме: reply — ответ пользователю; normalizedBrief — краткий русский бриф для подбора истории; commands — полный исполняемый план. На каждое действие создавай отдельный элемент commands. target всегда один из: all, selected, first, last или number:N. Для неиспользуемых value и secondaryTarget передавай пустую строку. secondaryTarget нужен только наложению и использует тот же формат цели.

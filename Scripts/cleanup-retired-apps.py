@@ -25,6 +25,21 @@ def remove_if_unused(app: Path) -> bool:
     # and resources, not just the main application executable.
     if result.returncode != 1 or result.stdout.strip() or result.stderr.strip():
         return False
+    # A just-launched executable can already have a process identity before
+    # lsof reports its mapped text. ps can keep the pre-rename executable path,
+    # so retain retired bundles while either that path or the retired path is
+    # running. An incomplete process scan is not evidence that deletion is safe.
+    try:
+        processes = subprocess.run(
+            ["/bin/ps", "-axo", "comm="], capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if processes.returncode != 0 or processes.stderr.strip() or not processes.stdout.strip():
+        return False
+    prefixes = (str(app.resolve()) + "/", str(app.resolve().with_name("VeloEdit.app")) + "/")
+    if any(line.strip().startswith(prefixes) for line in processes.stdout.splitlines()):
+        return False
     shutil.rmtree(app)
     return True
 

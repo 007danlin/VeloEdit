@@ -33,7 +33,9 @@ struct ReliabilityInteractionTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let model = AppModel(defaults: defaults, startBackgroundServices: false)
         model.isDirectorResponding = true
-        model.directorInput = "Новое пожелание"
+        // An explicit edit is queued; an ambiguous phrase is advisory and uses
+        // a separate reply path without authorizing a film change.
+        model.directorInput = "Собери фильм на 30 секунд"
         #expect(model.canSendDirectorMessage)
         model.sendDirectorMessage()
         #expect(model.directorInput.isEmpty)
@@ -42,7 +44,7 @@ struct ReliabilityInteractionTests {
         #expect(!model.isDirectorResponding)
         #expect(model.canSendDirectorMessage)
         #expect(model.directorInput.contains("После отмены"))
-        #expect(model.directorInput.contains("Новое пожелание"))
+        #expect(model.directorInput.contains("Собери фильм на 30 секунд"))
         model.directorInput = "  \n "
         #expect(!model.canSendDirectorMessage)
     }

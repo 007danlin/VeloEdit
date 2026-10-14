@@ -2,6 +2,24 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
+private actor IncompleteCitationTitleModel: ChapterTitleModel {
+    nonisolated let identity = "incomplete-citation-fixture"
+    var attempts = 0
+    var receivedFeedback = false
+    func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal {
+        attempts += 1
+        receivedFeedback = input.limitations.contains { $0.contains("Previous proposals failed verification") }
+        let ids = input.evidence.filter(\.selected).map(\.id)
+        return .init(theme: "Сплав", setting: "Река", secondaryActivities: [], contradictions: [], unknowns: [],
+            titles: [.init(text: "Сплав по реке", claims: [.init(text: "Сплав по реке", kind: "activity",
+                evidenceIDs: attempts == 1 ? Array(ids.prefix(1)) : ids)])])
+    }
+    func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification {
+        .init(accepted: true, reasons: ["Наблюдаемая гребля в выбранных планах всей части"], unsupportedClaims: [],
+            evidenceIDs: proposal.claims.flatMap(\.evidenceIDs), coversWholePart: true)
+    }
+}
+
 private actor TitleModelProbe: ChapterTitleModel {
     nonisolated let identity: String
     var calls = 0
@@ -29,6 +47,18 @@ private actor TitleModelProbe: ChapterTitleModel {
 
 @Suite(.serialized)
 struct SmartChapterTitlesTests {
+    @Test func rejectedSingleShotCitationGetsOneGroundedRetryBeforeNumberedFallback() async throws {
+        let (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        let model = IncompleteCitationTitleModel()
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: model)
+        #expect(await model.attempts == 2)
+        #expect(await model.receivedFeedback)
+        #expect(result.chapterTitleDecisions?.first?.source == .model)
+        #expect(result.chapterTitleDecisions?.first?.modelCalls == 3)
+        #expect(result.items == timeline.items)
+    }
+
     func fixture(partCount: Int = 2, withActions: Bool = true) -> (Timeline, StoryPlan, [MediaAsset], [AnalysisResult]) {
         var items: [TimelineItem] = [], chapters: [StoryChapter] = [], assets: [MediaAsset] = [], analyses: [AnalysisResult] = []
         for partIndex in 0..<partCount {
@@ -142,14 +172,60 @@ struct SmartChapterTitlesTests {
         #expect(await model.calls == 0)
     }
 
-    @Test func malformedResponsePreservesExistingTitleAndRepairsNoMontage() async throws {
+    @Test func malformedResponseCannotRetainAnUnverifiedAutomaticTitle() async throws {
         var (before, plan, assets, analyses) = fixture(partCount: 1)
         before.titleItems = [.init(kind: .chapter, text: "Сохранённый титр", startTime: 0, duration: 4, explanation: ["Editorial chapter"]) ]
         let after = try await SmartChapterTitleEngine().applying(to: before, plan: plan, assets: assets, analyses: analyses, mode: .fast, model: TitleModelProbe(fails: true))
-        #expect(after.effectiveTitleItems.first?.text == "Сохранённый титр")
-        #expect(after.chapterTitleDecisions?.first?.source == .retained)
+        #expect(after.effectiveTitleItems.first?.text == "Часть 1")
+        #expect(after.chapterTitleDecisions?.first?.source == .fallback)
         #expect(after.chapterTitleDecisions?.first?.fallbackReason != nil)
         #expect(after.items == before.items)
+    }
+
+    private func exactReviews(_ timeline: Timeline, assets: [MediaAsset]) -> [ShotContentAssessment] {
+        timeline.items.map { item in
+            let asset = assets.first { $0.id == item.assetID }!
+            return .init(itemID: item.id, assetID: asset.id, sourceContentHash: asset.contentHash,
+                sourceStart: item.sourceStart, sourceDuration: item.sourceDuration,
+                sampleTimes: [0.02, 0.25, 0.5, 0.75, 0.98].map { item.sourceStart + item.sourceDuration * $0 },
+                phase: "source", model: "fixture", cacheKey: "exact", status: .usable, confidence: 0.95,
+                obstructedSamples: [], observation: "People paddle kayaks along the river", activity: "paddling",
+                editorialPurpose: "action", actionBoundary: .init(startObservation: "People paddle along river",
+                    endObservation: "People continue paddling downstream", followingObservation: "Unselected landing outside the cut",
+                    verdict: .continuous, confidence: 0.95))
+        }
+    }
+
+    @Test func exactSelectedContentSupersedesOldLabelsAndExcludesFollowingContext() async throws {
+        let (before, plan, assets, analyses) = fixture(partCount: 1, withActions: false)
+        let after = try await SmartChapterTitleEngine().applying(to: before, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: TitleModelProbe(), sourceAssessments: exactReviews(before, assets: assets))
+        #expect(after.effectiveTitleItems.first?.text == "Сплав по реке")
+        let evidence = after.chapterTitleDecisions!.flatMap(\.evidence)
+        #expect(evidence.allSatisfy { !$0.observation.contains("bicycle") && !$0.observation.contains("Велосипед") && !$0.observation.contains("landing") })
+        #expect(after.items == before.items)
+    }
+
+    @Test func failedExactProbesCannotBorrowOldSceneCertainty() async throws {
+        let (before, plan, assets, analyses) = fixture(partCount: 1)
+        var reviews = exactReviews(before, assets: assets)
+        for i in reviews.indices { reviews[i].status = .uncertain; reviews[i].confidence = 0 }
+        let model = TitleModelProbe()
+        let after = try await SmartChapterTitleEngine().applying(to: before, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: model, sourceAssessments: reviews)
+        #expect(after.effectiveTitleItems.first?.text == "Часть 1")
+        #expect(await model.calls == 0)
+    }
+
+    @Test func staleHashAndChangedSourceRangeCannotSupplyExactTitleEvidence() async throws {
+        let (before, plan, assets, analyses) = fixture(partCount: 1, withActions: false)
+        var reviews = exactReviews(before, assets: assets)
+        reviews[0].sourceContentHash = "other source"
+        reviews[1].sourceStart += 1
+        reviews[2].sourceDuration -= 1
+        let after = try await SmartChapterTitleEngine().applying(to: before, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: TitleModelProbe(rejects: true), sourceAssessments: reviews)
+        #expect(after.chapterTitleDecisions!.flatMap(\.evidence).allSatisfy { !$0.observation.contains("People paddle") })
     }
 
     @Test func unknownTimezoneAndCopyDatesCannotAppearAsCaptureDates() async throws {
@@ -182,7 +258,8 @@ struct SmartChapterTitlesTests {
         let short = try await SmartChapterTitleEngine().applying(to: before, plan: plan, assets: assets, analyses: analyses, mode: .fast, model: model)
         #expect(short.effectiveTitleItems.isEmpty)
         #expect(short.duration == 0.8)
-        #expect(EditorialPresentationPolicy.missingChapterTitles(in: short, plan: plan).isEmpty)
+        // The mandatory title contract must report an unreadably short part.
+        #expect(EditorialPresentationPolicy.missingChapterTitles(in: short, plan: plan).count == 1)
         #expect(short.chapterTitleDecisions?.first?.fallbackReason?.contains("1.25") == true)
     }
 

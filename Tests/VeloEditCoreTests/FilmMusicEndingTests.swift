@@ -25,21 +25,60 @@ import Testing
         let timeline = Timeline(storyPlanID: UUID(), width: 160, height: 90, frameRate: 30,
                                 items: [item], music: music, originalAudioVolume: 0)
         let playback = try await PlaybackEngine().build(timeline: timeline, assets: [], musicTracks: [track])
-        let audio = try #require(playback.composition.tracks(withMediaType: .audio).first)
-        let segments = audio.segments.filter { !$0.isEmpty }
+        let audio = playback.composition.tracks(withMediaType: .audio)
+        let segments = audio.flatMap(\.segments).filter { !$0.isEmpty }.sorted { $0.timeMapping.target.start < $1.timeMapping.target.start }
         #expect(segments.count >= 2)
         #expect(segments.allSatisfy { $0.timeMapping.source.duration > .zero && $0.timeMapping.target.duration > .zero })
-        #expect(zip(segments, segments.dropFirst()).allSatisfy { $0.timeMapping.target.end == $1.timeMapping.target.start })
+        #expect(zip(segments, segments.dropFirst()).allSatisfy { $0.timeMapping.target.end > $1.timeMapping.target.start })
         let end = try #require(segments.last).timeMapping.target.end.seconds
         #expect(abs(end - playback.duration) < 1 / 48_000.0)
         let reader = try AVAssetReader(asset: playback.composition)
-        let output = AVAssetReaderTrackOutput(track: audio, outputSettings: [AVFormatIDKey: kAudioFormatLinearPCM])
+        let output = AVAssetReaderAudioMixOutput(audioTracks: audio, audioSettings: [AVFormatIDKey: kAudioFormatLinearPCM])
+        output.audioMix = playback.audioMix
         reader.add(output)
         try #require(reader.startReading())
         var decodedSamples = 0
         while let sample = output.copyNextSampleBuffer() { decodedSamples += CMSampleBufferGetNumSamples(sample) }
         #expect(reader.status == .completed)
         #expect(decodedSamples > 48_000)
+    }
+
+    @Test func quietTrackTailDoesNotRestartWithAnAbruptLoudAttack() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-loop-seam-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("quiet-tail.caf")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 6 * 48_000))
+        buffer.frameLength = buffer.frameCapacity
+        for i in 0..<Int(buffer.frameLength) {
+            let time = Double(i) / 48_000
+            buffer.floatChannelData![0][i] = Float(0.2 * min(1, 6 - time))
+        }
+        let file = try AVAudioFile(forWriting: source, settings: format.settings)
+        try file.write(from: buffer)
+        let track = LocalMusicTrack(title: "Quiet tail", author: "Fixture", bpm: 100, genres: [], moods: [], energy: 0.5,
+            duration: 6, license: .userFile(), sourceProvider: .user, sourcePageURL: source, localFileURL: source, originalFileName: source.lastPathComponent)
+        let item = TimelineItem(kind: .title, sourceDuration: 10, timelineStart: 0, timelineDuration: 10, title: "Loop")
+        let timeline = Timeline(storyPlanID: UUID(), width: 160, height: 90, frameRate: 30, items: [item],
+            music: .init(style: .calm, bpm: 100, volume: 0.4, trackID: track.id), originalAudioVolume: 0, audioDucking: .init(enabled: false))
+        let playback = try await PlaybackEngine().build(timeline: timeline, assets: [], musicTracks: [track])
+        let times = stride(from: 4.3, through: 6.3, by: 0.02).map { $0 }
+        let samples = try await levels(asset: playback.composition, mix: playback.audioMix, times: times)
+        #expect(samples.min() ?? 0 > 0.05)
+        #expect(zip(samples, samples.dropFirst()).allSatisfy { abs($0 - $1) < 0.004 })
+    }
+
+    @Test func automaticFinishRepairsOldNoEffectsFadeWithoutChangingSelectedShots() {
+        let plan = StoryPlan(prompt: "Поездка. Без эффектов. Только прямые склейки.", preset: .cinematic, constraints: .init(targetDuration: 20), chapters: [])
+        let item = TimelineItem(kind: .video, sourceStart: 10, sourceDuration: 20, timelineStart: 0, timelineDuration: 20)
+        let original = Timeline(storyPlanID: plan.id, items: [item], endingFadeDuration: 0)
+        let finished = FilmEndingFade.finishing(original, plan: plan)
+        #expect(finished.endingFadeDuration == 3)
+        #expect(finished.items == original.items)
+        #expect(FilmEndingFade.finishing(finished, plan: plan) == finished)
+        var explicit = plan; explicit.prompt += " Без затемнения."
+        #expect(FilmEndingFade.finishing(finished, plan: explicit).endingFadeDuration == 0)
     }
 
     @Test func finishPreservesDuckingAndClipFadesWithoutOverlappingRamps() throws {

@@ -76,7 +76,7 @@ enum EditorialRenderDependencies {
     // Track allocation is part of the render contract, including the audio
     // tracks used by connected clips. Old probes/mixes must be recomputed.
     // v5 also preserves requested source attenuation through export mastering.
-    static let compositionVersion = 10
+    static let compositionVersion = 11
     static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:], visualOnly: Bool = false) -> String {
         var timeline = timeline
         if visualOnly {

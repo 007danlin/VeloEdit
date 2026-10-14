@@ -6,6 +6,71 @@ import ImageIO
 import UniformTypeIdentifiers
 @testable import VeloEditCore
 
+private actor PreparationCounter {
+    var calls = 0
+    func called() { calls += 1 }
+}
+
+private func preparationFixture(cached: Bool) async throws -> ProjectStore {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let store = try ProjectStore(createAt: root, name: "Cached analysis preflight")
+    let image = root.appendingPathComponent("source.png")
+    try AutonomousOperationTests.photo(at: image)
+    var asset = try await MediaImporter().makeAsset(url: image)
+    asset.metadata.creationDate = Date(timeIntervalSince1970: 1_700_000_000)
+    var preferences = UserPreferences()
+    preferences.aiPowerMode = .fast
+    preferences.advancedAISettings = AdvancedAISettings(enabled: true, modelID: "veloedit-uninstalled-preflight-fixture:latest")
+    let profile = AIAnalysisProfile.resolve(mode: .fast, advanced: preferences.effectiveAdvancedAISettings, thermalState: .nominal)
+    var analysis = AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash,
+        sceneTags: ["river", "forest"], candidates: [Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: 8, scores: ClipScores(quality: 0.9, interest: 0.9, action: 0.2, stability: 0.9))], completedDepth: profile.targetDepth)
+    analysis.schemaVersion = await store.manifest.analysisSchemaVersion
+    analysis.deepMediaVersion = DeepAnalysisCache.version
+    analysis.analysisProfileKey = profile.cacheKey
+    analysis.analyzedSourceIdentity = FrameCacheKey.sourceIdentity(url: image, contentHash: asset.contentHash)
+    analysis.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 1,
+        evaluatedScenes: 1, plannedRechecks: 0, evaluatedRechecks: 0, modelAvailable: true)
+    try await store.update { project in
+        project.preferences = preferences
+        project.assets = [asset]
+        project.analyses = cached ? [analysis] : []
+    }
+    return store
+}
+
+@Test func cachedFilmAnalysisDoesNotWarmAnUnusedModel() async throws {
+    let store = try await preparationFixture(cached: true)
+    let root = await store.packageURL
+    defer { try? FileManager.default.removeItem(at: root) }
+    let counter = PreparationCounter()
+    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(),
+        analysisModelPreparer: { _ in
+            await counter.called()
+            throw CocoaError(.fileReadUnknown)
+        })
+    let film = try await pipeline.createFilm(prompt: "Собери фильм. Без музыки. Без титров.", preset: .memories, targetDuration: 8)
+    #expect(await counter.calls == 0)
+    #expect(!film.items.isEmpty)
+    #expect(await store.manifest.filmBuildRecovery == nil)
+}
+
+@Test func missingFilmAnalysisStillRequiresModelPreparation() async throws {
+    let store = try await preparationFixture(cached: false)
+    let root = await store.packageURL
+    defer { try? FileManager.default.removeItem(at: root) }
+    let counter = PreparationCounter()
+    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(),
+        analysisModelPreparer: { _ in
+            await counter.called()
+            throw CocoaError(.fileReadUnknown)
+        })
+    await #expect(throws: (any Error).self) {
+        _ = try await pipeline.createFilm(prompt: "Собери фильм. Без музыки.", preset: .memories, targetDuration: 8)
+    }
+    #expect(await counter.calls == 1)
+    #expect(await store.manifest.timelines.isEmpty)
+}
+
 private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .verifying) async throws -> FilmBuildDraft {
     let request = FilmBuildRequest(kind: .create, prompt: "Собери фильм", preset: .memories)
     _ = try await store.beginEditorialGeneration(prompt: request.prompt, brief: nil)
@@ -177,7 +242,7 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     #expect(after.timelines.isEmpty)
     #expect(after.autonomousJob?.state == .failed)
     let draft = try #require(after.filmBuildRecovery?.draft)
-    #expect(draft.phase == .readyForPlayback)
+    #expect(draft.phase == .checkingContent)
     #expect(draft.timeline.items == saved.timeline.items)
     #expect(draft.timeline.music == saved.timeline.music)
     #expect(draft.timeline.titleItems == saved.timeline.titleItems)
@@ -186,11 +251,12 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     #expect(await again.recoverableFilmBuild()?.draft?.timeline.items == saved.timeline.items)
 }
 
-@Test func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles() async throws {
+@Test(arguments: [FilmBuildDraft.Phase.checkingContent, .readyForPlayback])
+func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: FilmBuildDraft.Phase) async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try ProjectStore(createAt: root, name: "Exact soundtrack recovery")
-    var saved = try await savedBuild(store, phase: .readyForPlayback)
+    var saved = try await savedBuild(store, phase: phase)
     let audio = root.appendingPathComponent("music.caf")
     let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
     let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 96_000))

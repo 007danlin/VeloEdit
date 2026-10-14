@@ -126,6 +126,7 @@ cp "$build_package_dir/Resources/AppIcon.icns" "$staging_app/Contents/Resources/
 cp -R "$build_package_dir/Resources/FirstLaunch" "$staging_app/Contents/Resources/FirstLaunch"
 cp -R "$build_package_dir/Resources/Backgrounds" "$staging_app/Contents/Resources/Backgrounds"
 cp -R "$build_package_dir/Resources/TransitionPreviews" "$staging_app/Contents/Resources/TransitionPreviews"
+cp -R "$build_package_dir/Resources/CinematicKnowledge" "$staging_app/Contents/Resources/CinematicKnowledge"
 cp -R "$build_package_dir/Resources/Music" "$staging_app/Contents/Resources/Music"
 cp -R "$build_package_dir/Resources/Ollama" "$staging_app/Contents/Resources/Ollama"
 cp -R "$build_package_dir/ThirdParty/OVRLEY" "$staging_app/Contents/Resources/OVRLEY-Source"
@@ -138,6 +139,10 @@ if [[ "$configuration" == "release" ]]; then
   /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEditOVRLEY"
   /usr/bin/strip -x "$staging_app/Contents/MacOS/VeloEditSpeechWorker"
 fi
+# Finder metadata occasionally appears in vendored source directories. It is
+# neither a runtime resource nor corresponding source; keep it out of the seal.
+/usr/bin/find "$staging_app" -type f -name .DS_Store -delete
+python3 "$repo_dir/Scripts/Tools/audit-app-footprint.py" "$staging_app" --output "$output_dir/AppFootprint.json"
 xattr -cr "$staging_app"
 
 python3 "$repo_dir/Scripts/sign-app.py" "$staging_app"

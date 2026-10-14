@@ -7,6 +7,22 @@ import AVFoundation
 struct FilmEndingFade {
     static let defaultDuration = 3.0
 
+    /// Only automatic film finishing calls this. The explicit no-fade request
+    /// is separate from the amount of decorative effects or cut transitions.
+    static func finishing(_ source: Timeline, plan: StoryPlan) -> Timeline {
+        let prompt = plan.prompt.lowercased()
+        let disabled = ["без затемнения", "no fade", "without fade"].contains(where: prompt.contains)
+        var result = source
+        result.endingFadeDuration = disabled ? 0 : ((source.endingFadeDuration ?? 0) > 0
+            ? source.endingFadeDuration : defaultDuration)
+        if result.endingFadeDuration != source.endingFadeDuration {
+            result.editorialReview = nil
+            result.filmDeliveryReport = nil
+            result.selectedContentReview = nil
+        }
+        return result
+    }
+
     let start: Double
     let end: Double
 

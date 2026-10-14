@@ -24,6 +24,17 @@ public enum DirectorRequestContract {
         commands.filter { !["music", "telemetry"].contains($0.semanticCategory) }
     }
 
+    public static func commandsAfterGeneration(prompt: String) -> [EditorCommand] {
+        var commands = commandsAfterGeneration(EditorCommandParser().parseExplicitInstructions(prompt))
+        // Questionnaire source audio has its own full-exchange interpreter.
+        // Its values are not commands extracted from loose keywords.
+        if let volume = OriginalAudioPromptInterpreter().volume(prompt: prompt) {
+            commands.removeAll { if case .setOriginalAudioVolume = $0 { return true }; return false }
+            commands.append(.setOriginalAudioVolume(volume))
+        }
+        return commands
+    }
+
     public static func requestsCutaways(_ prompt: String) -> Bool {
         explicitlyRequests(prompt, subjects: ["перебив", "b-roll", "b roll", "cutaway"])
     }
@@ -34,8 +45,17 @@ public enum DirectorRequestContract {
 
     public static func requestsSlowMotion(_ prompt: String) -> Bool {
         let text = prompt.lowercased()
-        guard !["без замедл", "не замедл", "без слоу", "no slow", "without slow"].contains(where: text.contains) else { return false }
+        guard !forbidsSlowMotion(prompt) else { return false }
         return ["замедл", "слоу мо", "slow motion", "slow-motion"].contains(where: text.contains)
+    }
+
+    public static func forbidsSlowMotion(_ prompt: String) -> Bool {
+        let text = prompt.lowercased()
+        if ["без замедл", "не замедл", "без слоу", "без slow motion", "без slow-motion", "no slow", "without slow",
+            "не используй slow motion", "убери slow motion", "отключи slow motion",
+            "не добавляй slow motion", "никакого slow motion", "не нужен slow motion"].contains(where: text.contains) { return true }
+        return text.range(of: #"(?:замедлен\w*|слоумо|slow[ -]motion)[^.!?;\n]{0,40}\b(?:не|not)\b"#,
+                          options: .regularExpression) != nil
     }
 
     public static func requestsEffects(_ prompt: String) -> Bool {

@@ -260,7 +260,8 @@ public enum EditorialPresentationPolicy {
         var used = Set<UUID>()
         for block in blocks where block.end - block.start >= 1.25 {
             if let manualIndex = titles.firstIndex(where: {
-                ($0.kind == .chapter || $0.userEdited == true) && !AutomatedTitlePolicy.isGenerated($0)
+                ![.subtitle, .automaticSubtitles, .wordLevelCaptions].contains($0.kind)
+                    && ($0.kind == .chapter || $0.userEdited == true) && !AutomatedTitlePolicy.isGenerated($0)
                     && ($0.filmPartID == block.partID && block.partID != nil || abs($0.startTime - block.start) < 0.001)
             }) {
                 titles[manualIndex].filmPartID = block.partID

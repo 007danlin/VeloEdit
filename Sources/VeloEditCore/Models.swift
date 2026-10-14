@@ -306,6 +306,9 @@ public struct MomentBoundary: Codable, Hashable, Sendable {
 /// never modified. The optional property on `Candidate` keeps older projects
 /// backward compatible.
 public struct CandidateInsights: Codable, Hashable, Sendable {
+    /// Independent visual observations across a source interval. Technical
+    /// sharpness/exposure and motion are not substitutes for editorial value.
+    public var expressiveMoment: ExpressiveMomentEvidence? = nil
     public var editorialEvidence: EditorialEvidence?
     public var sceneSummary: String?
     public var emotion: String?
@@ -2458,6 +2461,7 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
     /// A playable automatic film may finish with editorial warnings.
     /// Missing on older projects; this never changes the measured review grade.
     public var filmDeliveryReport: FilmDeliveryReport?
+    public var selectedContentReview: SelectedContentReviewReport?
     public var id: UUID
     public var storyPlanID: UUID
     public var width: Int

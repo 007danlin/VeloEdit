@@ -97,11 +97,12 @@ public protocol ChapterTitleModel: Sendable {
 }
 
 public struct SmartChapterTitleEngine: Sendable {
-    public static let rulesVersion = 1
+    public static let rulesVersion = 4
     public init() {}
 
     public func applying(to source: Timeline, plan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult],
-                         mode: AIPowerMode, model: any ChapterTitleModel, force: Bool = false) async throws -> Timeline {
+                         mode: AIPowerMode, model: any ChapterTitleModel, force: Bool = false,
+                         sourceAssessments: [ShotContentAssessment]? = nil) async throws -> Timeline {
         guard !ExplicitDeliveryRequirements(plan: plan).forbidsTitles,
               EditorialPresentationPolicy.requiresChapterTitles(plan) || source.effectiveTitleItems.contains(where: { $0.kind == .chapter }) else { return source }
         var result = FilmPartPolicy.freezing(source, plan: plan)
@@ -129,7 +130,8 @@ public struct SmartChapterTitleEngine: Sendable {
                     ?? byAsset[id].flatMap { plan.chapterTitleReference?.labelsByContentHash[$0.contentHash]?.text }
             }
             let approved = labels.allSatisfy { $0 != nil } && Set(labels.compactMap { $0 }).count == 1 ? labels.first.flatMap { $0 } : nil
-            let allEvidence = Self.collect(items: items, analyses: byAnalysis, frameRate: source.frameRate)
+            let allEvidence = Self.collect(items: items, analyses: byAnalysis, frameRate: source.frameRate,
+                assets: byAsset, assessments: sourceAssessments ?? source.selectedContentReview?.source ?? [])
             let limit: Int
             switch mode { case .fast: limit = 18; case .balanced: limit = 30; case .quality: limit = 48; case .maximum: limit = 60 }
             let evidence = Self.sample(allEvidence, limit: limit)
@@ -190,11 +192,14 @@ public struct SmartChapterTitleEngine: Sendable {
             if manual == nil && approved == nil {
                 do {
                     guard !visual.isEmpty else { throw ChapterTitleFailure.insufficientEvidence }
-                    decision.modelCalls += 1
-                    let theme = try await model.generate(input)
-                    try Task.checkCancellation()
-                    decision.theme = theme
-                    for proposal in theme.titles.prefix(2) {
+                    var generationInput = input
+                    for attempt in 0..<3 {
+                      do {
+                        decision.modelCalls += 1
+                        let theme = try await model.generate(generationInput)
+                        try Task.checkCancellation()
+                        decision.theme = theme
+                        for proposal in theme.titles.prefix(2) {
                         var review = Self.validate(proposal, input: input)
                         if review.accepted {
                             decision.modelCalls += 1
@@ -215,15 +220,27 @@ public struct SmartChapterTitleEngine: Sendable {
                             decision.claims = proposal.claims
                             break
                         }
+                        }
+                        if decision.source == .model { break }
+                        generationInput.limitations.append("Previous proposals failed verification: " + decision.verifications.suffix(2).flatMap(\.reasons).joined(separator: "; ") + ". Propose a supported whole-part activity or setting and cite the relevant observations across the part; do not merely repeat the same title and one evidence ID.")
+                      } catch is CancellationError { throw CancellationError() }
+                      catch {
+                        if attempt >= 1 { throw error }
+                        generationInput.limitations.append("The previous response could not be completed or decoded. Return a compact complete JSON object; keep all required fields and evidence references.")
+                      }
                     }
                     if decision.source == .fallback { decision.fallbackReason = "No proposed title passed grounding and whole-part verification" }
                 } catch is CancellationError { throw CancellationError() }
                 catch {
                     try Task.checkCancellation()
                     decision.fallbackReason = String(describing: error)
-                    // A failed request may not destroy the user's current film.
-                    // Keep provenance explicit: this is not a verified model result.
-                    if let existing, !existing.text.isEmpty {
+                    // Retain only a title previously verified against these
+                    // exact inputs. An old automatic label is not evidence.
+                    // User text and approved references bypass generation.
+                    if let existing, let verified = source.chapterTitleDecisions?.first(where: {
+                        $0.partID == part.id && $0.inputSignature == signature && $0.source == .model
+                            && $0.text == existing.text && $0.verifications.contains(where: \.accepted)
+                    }), !verified.text.isEmpty {
                         decision.text = existing.text
                         decision.source = .retained
                     }
@@ -291,11 +308,41 @@ public struct SmartChapterTitleEngine: Sendable {
                      unsupportedClaims: reasons, evidenceIDs: ids, coversWholePart: enough)
     }
 
-    private static func collect(items: [TimelineItem], analyses: [UUID: AnalysisResult], frameRate: Double) -> [ChapterTitleEvidence] {
+    private static func collect(items: [TimelineItem], analyses: [UUID: AnalysisResult], frameRate: Double,
+                                assets: [UUID: MediaAsset], assessments: [ShotContentAssessment]) -> [ChapterTitleEvidence] {
         var output: [ChapterTitleEvidence] = []
         for item in items {
             guard let asset = item.assetID, let analysis = analyses[asset] else { continue }
             let end = item.sourceStart + item.sourceDuration
+            if let review = assessments.last(where: {
+                $0.phase == "source" && $0.itemID == item.id && $0.assetID == asset
+                    && $0.sourceContentHash == assets[asset]?.contentHash
+                    && abs($0.sourceStart - item.sourceStart) < 0.000_001
+                    && abs($0.sourceDuration - item.sourceDuration) < 0.000_001
+            }) {
+                // A failed exact probe cannot borrow certainty from an older
+                // scene label. A positive exact probe supersedes that label.
+                if review.status == .usable, review.confidence >= 0.75,
+                   review.sampleTimes.count >= 5, review.actionBoundary?.passes == true,
+                   review.sampleTimes.allSatisfy({ $0 >= item.sourceStart && $0 <= end }),
+                   review.editorialPurpose.flatMap(SelectedContentReviewer.EditorialPurpose.init(rawValue:))?.isUseful == true {
+                    output.append(.init(id: "e\(output.count)", assetID: asset, itemID: item.id,
+                        sourceStart: item.sourceStart, sourceEnd: end,
+                        timelineStart: item.timelineStart, timelineEnd: item.timelineStart + item.timelineDuration,
+                        origin: .visualSummary, observation: String(review.observation.prefix(1200)),
+                        selected: true, frameTimes: review.sampleTimes, actionSequence: false))
+                    if review.editorialPurpose == "action", let boundary = review.actionBoundary,
+                       [.complete, .continuous].contains(boundary.verdict) {
+                        output.append(.init(id: "e\(output.count)", assetID: asset, itemID: item.id,
+                            sourceStart: item.sourceStart, sourceEnd: end,
+                            timelineStart: item.timelineStart, timelineEnd: item.timelineStart + item.timelineDuration,
+                            origin: .visualSequence,
+                            observation: String((boundary.startObservation + "; " + boundary.endObservation).prefix(1200)),
+                            selected: true, frameTimes: review.sampleTimes, actionSequence: true))
+                    }
+                }
+                continue
+            }
             let candidates = analysis.candidates.filter { $0.sourceStart < end && $0.sourceStart + $0.sourceDuration > item.sourceStart }
             for candidate in candidates {
                 let start = max(item.sourceStart, candidate.sourceStart), stop = min(end, candidate.sourceStart + candidate.sourceDuration)

@@ -32,3 +32,11 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Personal reference-study exports and machine-specific cinematic QA evidence.
+/tmp/
+/Docs/CinematicKnowledge/*-results.json
+/Docs/CinematicKnowledge/*-verification.json
+/Docs/CinematicKnowledge/acceptance-summary.json
+/Docs/CinematicKnowledge/corpus-annotations.json
+/Docs/CinematicKnowledge/media-inventory.json

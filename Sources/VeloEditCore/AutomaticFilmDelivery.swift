@@ -163,6 +163,24 @@ public enum AutomaticFilmDelivery {
         check("sourceOrder", "Source-time mapping for every shot; embedded clock provenance, uncertainty retained",
               chronology.confirmedErrorCount == 0 && chronology.unresolvedCount == 0,
               "Подтверждённых нарушений: \(chronology.confirmedErrorCount); неопределённостей: \(chronology.unresolvedCount)")
+        // Recheck the actual delivered ranges, independently of an earlier
+        // quality report. Finishing or duration recovery must not cut bounds
+        // which the existing moment policy protects during assembly. Missing
+        // semantic bounds do not become invented completion evidence.
+        let units = Dictionary(uniqueKeysWithValues: EditorialAnalysisContext(analyses: analyses).units.map { ($0.id, $0) })
+        let protectedMoments = timeline.items.filter { $0.overlay == nil }.compactMap { item -> (TimelineItem, EditorialSourceRange)? in
+            guard let id = item.candidateID, let unit = units[id],
+                  let range = EditorialMomentPolicy.protectedRange(unit) else { return nil }
+            return (item, range)
+        }
+        let frameTolerance = 1 / max(1, timeline.frameRate)
+        let interrupted = protectedMoments.filter { item, range in
+            item.sourceStart > range.start + frameTolerance
+                || item.sourceStart + item.sourceDuration < range.end - frameTolerance
+        }
+        check("actionCompletion", "Actual final source intervals against existing confirmed action, reaction and phrase boundaries",
+              interrupted.isEmpty,
+              "Подтверждённых защищённых интервалов: \(protectedMoments.count); обрезанных: \(interrupted.count). Отсутствующие семантические границы не считаются подтверждением завершения.")
         let exported = timeline.editorialReview?.exportVerification
         report.exportVerification = exported
         if let brief = plan.directorBrief, !brief.usesAutomaticCanvasFormat {
@@ -177,6 +195,15 @@ public enum AutomaticFilmDelivery {
             && (requirement.mode == .automatic || videoDuration.map { requirement.accepts(duration: $0, frameRate: timeline.frameRate) } == true)
         check("export", "Independent MP4 video track decode, raster, duration and preview parity", exportPass,
               videoDuration.map { "Видеоряд экспортированного файла: \($0) с" } ?? "Проверка экспортированного файла не завершена")
+        if let content = timeline.selectedContentReview {
+            let actions = content.source
+            check("visualActionCuts", "Exact source cut with before/after visual context; continuous activity is distinguished from a finite action",
+                actions.allSatisfy { $0.actionBoundary?.passes == true },
+                "Визуальные границы действий: проверено \(actions.filter { $0.actionBoundary?.passes == true }.count) из \(actions.count). Это не проверка границ речи или доказательство прибытия.")
+            check("selectedContent", "Local vision model on five exact original samples and five final MP4 samples per shot",
+                content.passes(timeline: timeline, assets: assets),
+                "Проверка содержания: исходных участков \(content.source.count), итоговых \(content.rendered.count); неопределённых/непригодных \((content.source + content.rendered).filter { $0.status != .usable || $0.confidence < 0.75 }.count)")
+        }
         report.requirements = checks
         report.warnings += checks.filter { !$0.passed }.map(\.evidence).filter { !report.warnings.contains($0) }
         return report

@@ -2,6 +2,25 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
+@Test func naturalPlaybackSpeedDoesNotRequireSpeedingFootage() {
+    let interpreter = PromptInterpreter()
+    for prompt in ["Сохрани естественную скорость и порядок действий", "Без замедления, обычная скорость", "Keep natural playback speed"] {
+        #expect(!interpreter.interpret(prompt: prompt, preset: .story).includeTags.contains("high-speed"))
+        #expect(interpreter.interpret(prompt: prompt, preset: .story).pacing == PromptInterpreter.defaults(for: .story).pacing)
+    }
+    #expect(interpreter.interpret(prompt: "Спокойный монтаж. Без замедления", preset: .story).pacing < PromptInterpreter.defaults(for: .story).pacing)
+    #expect(interpreter.interpret(prompt: "Быстрый темп. Без замедления", preset: .story).pacing > PromptInterpreter.defaults(for: .story).pacing)
+    #expect(interpreter.interpret(prompt: "Покажи скоростную езду. Сохрани естественную скорость", preset: .story).includeTags.contains("high-speed"))
+    #expect(interpreter.interpret(prompt: "Не показывай разгон. Сохрани естественную скорость", preset: .story).excludeTags.contains("high-speed"))
+    #expect(!interpreter.interpret(prompt: "Не заполняй фильм случайной землёй, одеждой или поворотами камеры", preset: .story).includeTags.contains("turn"))
+    #expect(!interpreter.interpret(prompt: "Без поворотов камеры", preset: .story).excludeTags.contains("turn"))
+    #expect(interpreter.interpret(prompt: "Покажи повороты дороги. Без поворотов камеры", preset: .story).includeTags.contains("turn"))
+    #expect(!interpreter.interpret(prompt: "Дай пейзажу время для наблюдения", preset: .story).includeTags.contains("people"))
+    #expect(interpreter.interpret(prompt: "В начале наблюдение за пейзажем", preset: .story).preferredIntroTags?.contains("people") != true)
+    #expect(interpreter.interpret(prompt: "Покажи живых людей и пейзажи", preset: .story).includeTags.contains("people"))
+    #expect(interpreter.interpret(prompt: "Не показывай людей. Больше времени для наблюдения", preset: .story).excludeTags.contains("people"))
+}
+
 private func chapterFixture() -> (StoryPlan, Timeline) {
     let fishing = UUID(), riding = UUID(), firstScene = UUID(), secondScene = UUID()
     let candidates = (0..<5).map { _ in UUID() }
@@ -150,4 +169,42 @@ private func chapterFixture() -> (StoryPlan, Timeline) {
     let retained = DirectorRequestContract.commandsAfterGeneration(commands)
     #expect(!retained.contains { $0.semanticCategory == "music" })
     #expect(retained == commands.filter { $0.semanticCategory != "music" && $0.semanticCategory != "telemetry" })
+}
+
+@Test func creativeBriefCannotSlowEveryShotOrDissolveEveryCut() {
+    let prompt = "Собери законченный фильм об этой поездке длительностью от 2 до 3 минут. Используй осмысленные склейки по действию. Плавные переходы и замедления применяй только там, где они помогают рассказу и подходят исходникам. Нужен цельный фильм, а не демонстрация эффектов."
+    let commands = DirectorRequestContract.commandsAfterGeneration(prompt: prompt)
+    #expect(commands.isEmpty)
+    let items = (0..<2).map { TimelineItem(assetID: UUID(), kind: .video, sourceDuration: 75,
+        timelineStart: Double($0) * 75, timelineDuration: 75) }
+    let original = Timeline(storyPlanID: UUID(), items: items)
+    let result = EditorCommandExecutor().apply(commands, to: original).timeline
+    #expect(result.items == original.items)
+    #expect(AutomaticFilmDurationPolicy.renderedDuration(of: result) == 150)
+}
+
+@Test(arguments: [
+    "Замедли все клипы в 2 раза, если это уместно",
+    "Если это уместно, замедли все клипы в 2 раза",
+    "Замедление вообще не в тему. Переходы мне не нравятся",
+    "Не надо замедлять весь фильм",
+    "Добавь эффект камеры в первом видео, но только если он подходит"
+])
+func conditionalAndNegativeFeedbackCannotBecomeGlobalCommands(prompt: String) {
+    #expect(DirectorRequestContract.commandsAfterGeneration(prompt: prompt).isEmpty)
+}
+
+@Test func preciseInstructionsInsideBriefKeepTheirScopeAndDecimalValues() {
+    let prompt = "Собери фильм о поездке. Замедли первый клип в 2 раза. Установи скорость 1.5 во втором клипе."
+    #expect(DirectorRequestContract.commandsAfterGeneration(prompt: prompt) == [.setSpeed(0.5, .first), .setSpeed(1.5, .number(2))])
+    #expect(DirectorRequestContract.commandsAfterGeneration(prompt: "Замедли все клипы в 2 раза") == [.setSpeed(0.5, .all)])
+    #expect(DirectorRequestContract.commandsAfterGeneration(prompt: "Убери замедление во всех клипах") == [.removeSlowMotion(.all)])
+    #expect(!DirectorRequestContract.requestsSlowMotion("Замедление вообще не в тему"))
+    #expect(!PromptInterpreter().interpret(prompt: "Замедление вообще не в тему", preset: .story).allowSlowMotion)
+}
+
+@Test func questionnaireSourceAudioRemainsExplicitWithoutLooseTimelineCommands() {
+    let commands = DirectorRequestContract.commandsAfterGeneration(prompt:
+        "Настроение: киношное. Музыка: подобрать под видео. Звук: приглушить звук исходников.")
+    #expect(commands == [.setOriginalAudioVolume(0.20)])
 }

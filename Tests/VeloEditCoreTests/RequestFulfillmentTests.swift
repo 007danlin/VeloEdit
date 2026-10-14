@@ -81,7 +81,7 @@ struct RequestFulfillmentTests {
         #expect(await analyzer.calls > 0)
         #expect(expanded.allSatisfy { $0.warnings.contains(EditorialCandidateMiner.completionMarker) })
         let rebuilt = AutomaticEditorialAssembly.prepare(timeline: first, plan: plan, analyses: expanded, events: [], assets: assets)
-        #expect(rebuilt.timeline.duration == 120)
+        #expect(rebuilt.timeline.duration == 120, "Recovered duration: \(rebuilt.timeline.duration)")
         let calls = await analyzer.calls
         _ = try await EditorialCandidateMiner().expandIfNeeded(analyses: expanded, assets: assets, requestedDuration: 120, force: true, analyzer: analyzer)
         #expect(await analyzer.calls == calls)

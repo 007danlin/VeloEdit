@@ -37,6 +37,17 @@ class RetiredAppTests(unittest.TestCase):
                 self.assertFalse(retired_apps.remove_if_unused(app))
             self.assertTrue(app.is_dir())
 
+    def test_process_identity_keeps_bundle_before_lsof_sees_mapping(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            app = Path(scratch).resolve() / ".VeloEdit.app.previous-123"
+            app.mkdir()
+            for executable in (app, app.with_name("VeloEdit.app")):
+                results = [subprocess.CompletedProcess([], 1, "", ""),
+                           subprocess.CompletedProcess([], 0, str(executable / "Contents/MacOS/VeloEdit") + "\n", "")]
+                with patch.object(retired_apps.subprocess, "run", side_effect=results):
+                    self.assertFalse(retired_apps.remove_if_unused(app))
+                self.assertTrue(app.is_dir())
+
     def test_current_bundle_and_symlinks_are_never_removed(self):
         with tempfile.TemporaryDirectory() as scratch:
             app = Path(scratch) / "VeloEdit.app"

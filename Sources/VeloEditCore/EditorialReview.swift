@@ -357,7 +357,7 @@ public enum EditorialIntentEnforcer {
         if DirectorEffectsPolicyEngine.policy(for: plan) == DirectorEffectsPolicy.none {
             timeline = DirectorEffectsPolicyEngine.removingEffects(from: timeline)
         }
-        let requested = Set(EditorCommandParser().parse(plan.prompt, preset: plan.preset).map(\.semanticCategory))
+        let requested = Set(DirectorRequestContract.commandsAfterGeneration(prompt: plan.prompt).map(\.semanticCategory))
         if !DirectorRequestContract.requestsColorCorrection(plan.prompt),
            requested.isDisjoint(with: ["filter", "brightness", "contrast", "saturation", "warmth", "exposure", "highlights", "shadows", "auto-enhance"]) {
             for index in timeline.items.indices where !timeline.items[index].locked {
@@ -447,6 +447,7 @@ public enum EditorialRenderSignature {
         var copy = timeline
         copy.editorialReview = nil
         copy.filmDeliveryReport = nil
+        copy.selectedContentReview = nil
         copy.editorialRegeneration = nil
         copy.editorialBeatPlan?.discardedCandidates = nil
         copy.directorRun = nil

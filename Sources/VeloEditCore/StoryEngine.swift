@@ -9,6 +9,21 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
 
     public func interpret(prompt: String, preset: FilmPreset, base: StoryConstraints? = nil) -> StoryConstraints {
         let lower = prompt.lowercased()
+        // Playback cadence is not a requested event. In particular, preserving
+        // natural speed must never require high-speed footage.
+        func speedTopics(_ text: String) -> String {
+            text.replacingOccurrences(
+                of: #"(?:естественн\p{L}*|оригинальн\p{L}*|обычн\p{L}*)\s+скорост\p{L}*|(?:natural|original|normal)\s+(?:playback\s+)?speed|скорост\p{L}*\s+воспроизвед\p{L}*"#,
+                with: "", options: .regularExpression)
+        }
+        let speedTopicText = speedTopics(lower)
+        func peopleTopics(_ text: String) -> String {
+            text.replacingOccurrences(of: #"наблюд\p{L}*"#, with: "", options: .regularExpression)
+        }
+        func cameraIndependentTurns(_ text: String) -> String {
+            text.replacingOccurrences(of: #"поворот\p{L}*\s+(?:самой\s+)?камер\p{L}*"#,
+                with: "", options: .regularExpression)
+        }
         var result = Self.removingOverlayTopic(from: base ?? Self.defaults(for: preset), prompt: prompt)
         if let seconds = Self.duration(from: lower) { result.targetDuration = seconds }
         if let clipCount = Self.requestedClipCount(from: lower) { result.targetClipCount = clipCount }
@@ -49,9 +64,10 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
         var explicitlyIncludedTags = Set<String>()
         var explicitlyReducedTags = Set<String>()
         for (tag, words) in tags {
-            let positivePosition = Self.lastPosition(of: words, in: lower)
-            let negativePosition = lastNegativePosition(for: words, in: lower)
-            let reductionPosition = lastReductionPosition(for: words, in: lower)
+            let topicText = tag == "high-speed" ? speedTopicText : tag == "turn" ? cameraIndependentTurns(lower) : tag == "people" ? peopleTopics(lower) : lower
+            let positivePosition = Self.lastPosition(of: words, in: topicText)
+            let negativePosition = lastNegativePosition(for: words, in: topicText)
+            let reductionPosition = lastReductionPosition(for: words, in: topicText)
             guard positivePosition != nil || negativePosition != nil || reductionPosition != nil else { continue }
             if let negativePosition, negativePosition >= (positivePosition ?? -1) {
                 explicitlyExcludedTags.insert(tag)
@@ -86,7 +102,7 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
             let clauseTags = Set(tags.compactMap { tag, words -> String? in
                 !explicitlyExcludedTags.contains(tag)
                     && !explicitlyReducedTags.contains(tag)
-                    && words.contains(where: clause.contains)
+                    && words.contains(where: (tag == "high-speed" ? speedTopics(clause) : tag == "turn" ? cameraIndependentTurns(clause) : tag == "people" ? peopleTopics(clause) : clause).contains)
                     && lastNegativePosition(for: words, in: clause) == nil
                     ? tag : nil
             })
@@ -102,12 +118,12 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
             }
         }
         if lower.contains("больше фото") || lower.contains("больше фотограф") { result.preferPhotos = true }
-        if [
-            "без slow motion", "не используй slow motion", "убери slow motion", "отключи slow motion",
-            "не добавляй slow motion", "никакого slow motion", "не нужен slow motion",
-            "без слоу", "без замедления", "не замедляй"
-        ].contains(where: lower.contains) { result.allowSlowMotion = false }
-        let pacingDirection = Self.requestedPacingDirection(in: lower)
+        if DirectorRequestContract.forbidsSlowMotion(prompt) { result.allowSlowMotion = false }
+        // Playback retiming and editorial pacing are different instructions.
+        // "Без замедления" prohibits slow motion; it must not make cuts faster.
+        let pacingText = lower.replacingOccurrences(of: #"замедлен\p{L}*|slow\s*motion"#,
+            with: "", options: .regularExpression)
+        let pacingDirection = Self.requestedPacingDirection(in: pacingText)
         if pacingDirection > 0 {
             result.pacing = min(1, result.pacing + 0.2)
         } else if pacingDirection < 0 {
@@ -161,7 +177,7 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
     }
 
     public static func requestedClipCount(from text: String) -> Int? {
-        let pattern = #"(?:из|на|выбери|оставь|используй)?\s*(\d{1,3})\s*(?:лучших\s*)?(?:момент|фрагмент|кадр|эпизод)"#
+        let pattern = #"(?:из|на|выбери|оставь|используй)?\s*\b(\d{1,3})\s*(?:(?:лучш\p{L}*|разн\p{L}*|различн\p{L}*|отдельн\p{L}*)\s+)?(?:момент|фрагмент|кадр|эпизод|план)\p{L}*\b"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
               let match = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
               let range = Range(match.range(at: 1), in: text),

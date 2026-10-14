@@ -1,0 +1,11 @@
+[
+  {
+    "id": "source-audio-pip-aac-export",
+    "operation": "insertOverlay",
+    "variant": "pictureInPicture with source audio",
+    "status": "notCertified",
+    "observed": "First pass exported; next pass failed with software AAC pass / NSURLErrorDomain -1016; subsequent pass hung and was stopped.",
+    "positiveFixture": "Visual PIP tested separately with originalAudioVolume = 0.",
+    "knowledgeExecutionAllowed": false
+  }
+]

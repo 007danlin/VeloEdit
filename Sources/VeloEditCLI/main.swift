@@ -20,6 +20,11 @@ struct VeloEditCLI {
         guard let command = arguments.first else { printHelp(); return }
         switch command {
         case "help", "--help", "-h": printHelp()
+        case "cinematic-catalog":
+            guard arguments.count == 2 else { throw CLIError.usage("cinematic-catalog <capabilities.json>") }
+            let data = try JSONSerialization.data(withJSONObject: CinematicCapabilityCatalog.inventory, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: URL(fileURLWithPath: arguments[1]), options: .atomic)
+            print("Локальный каталог возможностей сохранён; интернет не используется.")
         case "study-film":
             try await runEditorialStudy(arguments)
         case "study-render":
@@ -71,6 +76,10 @@ struct VeloEditCLI {
             )
             print("Editorial evidence подготовлено; добавлено монтажных диапазонов: \(count)")
             print("Всего диапазонов: \(context.units.count); подтверждённая ёмкость: \(String(format: "%.1f", budget.supportedDuration)) сек; целевой монтаж: \(String(format: "%.1f", budget.budget.idealDuration)) сек")
+        case "discover-expressive":
+            let (pipeline, _) = try openPipeline(arguments, minimum: 2, usage: "discover-expressive <project.veloedit>")
+            try await pipeline.prepareExpressiveMoments(progress: printFilmProgress)
+            print("Обзор выразительных моментов сохранён в анализе исходников; таймлайн не изменён.")
         case "benchmark":
             try await benchmark(arguments)
         case "thumbnails":
@@ -94,6 +103,10 @@ struct VeloEditCLI {
                 progress: printFilmProgress
             )
             print("Timeline: \(timeline.items.count) фрагментов, \(String(format: "%.1f", timeline.duration)) сек")
+        case "audit-content":
+            let (pipeline, _) = try openPipeline(arguments, minimum: 2, usage: "audit-content <project.veloedit>")
+            let report = try await pipeline.auditCurrentFilmContent()
+            print(String(decoding: try JSONEncoder.veloEdit.encode(report), as: UTF8.self))
         case "verify-film":
             let (pipeline, _) = try openPipeline(arguments, minimum: 2, usage: "verify-film <project.veloedit>")
             let timeline = try await pipeline.verifyCurrentFilm()
@@ -336,9 +349,11 @@ struct VeloEditCLI {
     static func printHelp() {
         print("""
         VeloEdit CLI
+          cinematic-catalog <capabilities.json> — локальный каталог проверяемых монтажных возможностей
           use-title-reference <project.veloedit> <reference.veloedit> [name]
           refresh-chapter-titles <project.veloedit> [--force]
           learn-approved-reference <approved-project.veloedit> [taste-profile.json]
+          audit-content <project.veloedit>
           create <project.veloedit> [media ...]
           import <project.veloedit> <media ...>
           analyze <project.veloedit>

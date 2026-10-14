@@ -190,6 +190,15 @@ public struct EditorCommandReport: Hashable, Sendable {
 public struct EditorCommandParser: Sendable {
     public init() {}
 
+    /// A creative brief is not a list of literal timeline mutations. Only
+    /// complete instruction sentences may be replayed after composition;
+    /// commas must not detach a command from its condition or qualification.
+    public func parseExplicitInstructions(_ prompt: String, hasSelection: Bool = false) -> [EditorCommand] {
+        commandSegments(prompt, sentencesOnly: true).flatMap {
+            parseComplete($0, hasSelection: hasSelection) ?? []
+        }
+    }
+
     /// A whole-message grammar for exact instructions. Returning nil means the
     /// entire request needs interpretation; no recognized prefix may be applied.
     public func parseComplete(_ prompt: String, hasSelection: Bool) -> [EditorCommand]? {
@@ -668,8 +677,9 @@ public struct EditorCommandParser: Sendable {
         return result
     }
 
-    private func commandSegments(_ prompt: String) -> [String] {
-        guard let regex = try? NSRegularExpression(pattern: #"[,;]\s+|;\s*|,(?!\d)\s*|\n+|[.!?]\s+|\s+(?:и|а также|а)\s+(?=(?:переимен\w*|замени\w*|добав\w*|сделай|убери|поставь|музык\w*|титр\w*|разреж\w*|раздели|ускор\w*|замедл\w*|перемес\w*|дублир\w*|скопир\w*|отдел\w*|включ\w*|выключ\w*|поверн\w*|обреж\w*|сниз\w*|увелич\w*|уменьш\w*|приглуш\w*|установ\w*|удали|налож\w*|примен\w*|хочу|нуж\w*)\b)"#, options: .caseInsensitive) else { return [prompt] }
+    private func commandSegments(_ prompt: String, sentencesOnly: Bool = false) -> [String] {
+        let pattern = sentencesOnly ? #";\s*|\n+|[.!?](?:\s+|$)"# : #"[,;]\s+|;\s*|,(?!\d)\s*|\n+|[.!?]\s+|\s+(?:и|а также|а)\s+(?=(?:переимен\w*|замени\w*|добав\w*|сделай|убери|поставь|музык\w*|титр\w*|разреж\w*|раздели|ускор\w*|замедл\w*|перемес\w*|дублир\w*|скопир\w*|отдел\w*|включ\w*|выключ\w*|поверн\w*|обреж\w*|сниз\w*|увелич\w*|уменьш\w*|приглуш\w*|установ\w*|удали|налож\w*|примен\w*|хочу|нуж\w*)\b)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [prompt] }
         let quotedRanges = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]|плавно замедли и ускорь"#, options: .caseInsensitive))?
             .matches(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)).map(\.range) ?? []
         let range = NSRange(prompt.startIndex..<prompt.endIndex, in: prompt)

@@ -79,6 +79,36 @@ import UniformTypeIdentifiers
         #expect(decisions.first { $0.assetID == assets[2].id }?.reason == .excludedByUser)
     }
 
+    @Test func failedCoverageExploresDistantRangeBeforeAdjacentQualityPeak() {
+        let (timeline, plan, original, assets) = fixture()
+        var analyses = original
+        for (index, start) in [40.0, 52.0, 0.0].enumerated() {
+            analyses[1].candidates[index].sourceStart = start
+            analyses[1].candidates[index].insights?.editorialEvidence?.usableRange = .init(start: start, end: start + 10)
+        }
+        analyses[1].candidates[1].scores.quality = 0.98
+        let rejected = analyses[1].candidates[0].id
+        let result = AutomaticEditorialAssembly.prepare(timeline: timeline, plan: plan,
+            analyses: analyses, events: [], assets: assets, excluded: [rejected])
+        #expect(result.timeline.items.contains { $0.candidateID == analyses[1].candidates[2].id })
+        #expect(!result.timeline.items.contains { $0.candidateID == analyses[1].candidates[1].id || $0.candidateID == rejected })
+        #expect(Set(result.timeline.items.compactMap(\.assetID)) == Set(assets.map(\.id)))
+        #expect(abs(result.timeline.duration - 18) < 0.001)
+        let map = SourceTimelineAnalyzer().analyze(assets: assets, analyses: analyses)
+        #expect(EditorialSourceCoverage.chronologyViolations(timeline: result.timeline, sourceMap: map).isEmpty)
+    }
+
+    @Test func failureInOtherRecordingKeepsNormalCoverageRanking() {
+        let (timeline, plan, original, assets) = fixture()
+        var analyses = original
+        analyses[1].candidates[1].scores.quality = 0.98
+        let result = AutomaticEditorialAssembly.prepare(timeline: timeline, plan: plan,
+            analyses: analyses, events: [], assets: assets, excluded: [analyses[0].candidates[2].id])
+        #expect(result.timeline.items.contains { $0.candidateID == analyses[1].candidates[1].id })
+        #expect(!result.timeline.items.contains { $0.candidateID == analyses[1].candidates[0].id || $0.candidateID == analyses[1].candidates[2].id })
+        #expect(Set(result.timeline.items.compactMap(\.assetID)) == Set(assets.map(\.id)))
+    }
+
     @Test func clipLimitReplacesExtraShotsWithoutLosingExistingSource() {
         let (timeline, original, analyses, assets) = fixture()
         var plan = original

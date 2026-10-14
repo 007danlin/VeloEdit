@@ -342,7 +342,9 @@ public struct DirectorEditingTools: Sendable {
                 guard let index = itemIndex(itemID) else { rejection(call, "клип не найден"); continue }
                 var value = timeline.items[index].effectiveVideoAdjustments
                 value.crop = crop
-                timeline.items[index].videoAdjustments = value.isNeutral ? nil : value
+                // An explicit fill is meaningful even when numerically neutral:
+                // export's automatic framing must not replace it with fit.
+                timeline.items[index].videoAdjustments = value
                 report.applied.append(call)
 
             case .setMotion(let itemID, let effect, _):
@@ -873,7 +875,9 @@ public struct DirectorEditingTools: Sendable {
                         // group when no safe crop can contain its members.
                         adjustments.crop = subjectAware && abs(sourceAspect - targetAspect) > 0.04 ? .fit : .fill
                     }
-                    timeline.items[index].videoAdjustments = adjustments.isNeutral ? nil : adjustments
+                    // Preserve the requested framing on both preview and export.
+                    // nil means automatic, not an explicit neutral fill.
+                    timeline.items[index].videoAdjustments = adjustments
                 }
                 report.applied.append(call)
 

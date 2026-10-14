@@ -476,7 +476,7 @@ public struct TimelineComposer: Sendable {
             audioDucking: audioClips.isEmpty ? nil : AudioDuckingSettings()
         )
         var result = EditorialIntentEnforcer.enforce(
-            DirectorEffectsPolicyEngine.decorate(composed, plan: plan, candidates: candidates), plan: plan)
+            DirectorEffectsPolicyEngine.decorate(composed, plan: plan, candidates: candidates, assets: assets, analyses: analyses), plan: plan)
         result.automaticallySelectFrameRate = true
         return TimelineFrameRatePolicy.applying(to: result, assets: assets)
     }

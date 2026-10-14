@@ -292,6 +292,7 @@ public struct NaturalLanguageDirectorInput: Sendable {
 }
 
 public struct NaturalLanguageEditingPlan: Hashable, Sendable {
+    public var cinematicPlan: CinematicEditingPlan? = nil
     public var request: String
     public var intents: [EditIntent]
     public var toolCalls: [DirectorToolCall]
@@ -402,6 +403,19 @@ public struct NaturalLanguageDirector: Sendable {
         let text = NLText.normalized(input.userRequest)
         let resolver = DirectorTargetResolver(input: input)
         let generalTarget = resolver.resolve(query: input.userRequest)
+        let cinematicScope = CinematicDirector.authorizedScope(input: input)
+        if let cinematic = CinematicDirector.plan(request: input.userRequest, targetIDs: Array(cinematicScope),
+                                                  project: input.currentProject, timeline: input.timeline) {
+            let intent = EditIntent(scope: cinematicScope.count > 1 ? .global : .shot,
+                                    target: EditIntentTarget(itemIDs: Array(cinematicScope), confidence: 1),
+                                    operation: .genericEdit, desiredResult: "Применить проверенный киноприём",
+                                    confidence: 1, executionTier: .instant)
+            var result = NaturalLanguageEditingPlan(request: input.userRequest, intents: [intent], toolCalls: [], commands: [],
+                                                    dependencyPlan: EditDependencyGraph().plan(for: [intent]), executionTier: .instant,
+                                                    confidence: 1)
+            result.cinematicPlan = cinematic
+            return result
+        }
         var intents: [EditIntent] = []
         var calls: [DirectorToolCall] = []
         var rejected: [String] = []
@@ -844,7 +858,16 @@ public struct NaturalLanguageDirector: Sendable {
         input: NaturalLanguageDirectorInput,
         recordHistory: Bool = true
     ) -> NaturalLanguageEditResult {
-        let tools = DirectorEditingTools().apply(
+        let tools = plan.cinematicPlan.map { cinematic in
+            // A cinematic plan owns the whole transaction. Supplemental model
+            // commands may not bypass its validation or create a partial edit.
+            guard plan.commands.isEmpty, plan.toolCalls.isEmpty,
+                  cinematic.request == input.userRequest, plan.request == input.userRequest else {
+                return (timeline: input.timeline, report: DirectorToolExecutionReport(rejected: ["Смешанный непроверенный план отклонён."]))
+            }
+            return CinematicDirector.execute(cinematic, project: input.currentProject, timeline: input.timeline,
+                                             authorizedScope: CinematicDirector.authorizedScope(input: input))
+        } ?? DirectorEditingTools().apply(
             plan.toolCalls,
             to: input.timeline,
             assets: input.assets,
@@ -855,7 +878,7 @@ public struct NaturalLanguageDirector: Sendable {
             input.timeline.items.first(where: { $0.id == id })?.candidateID
         }
         let edited = EditorCommandExecutor().apply(
-            plan.commands,
+            plan.cinematicPlan == nil ? plan.commands : [],
             to: tools.timeline,
             selectedItemID: input.selectedItemID ?? plan.intents.flatMap(\.target.itemIDs).first,
             selectedCandidateID: selectedCandidateID,

@@ -14,7 +14,7 @@ enum AutomaticEditorialAssembly {
         var frames: Int
     }
 
-    static func prepare(timeline source: Timeline, plan original: StoryPlan, analyses: [AnalysisResult], events: [Event], assets: [MediaAsset] = [], excluded: Set<UUID> = [], preferShortShots: Bool = true) -> (timeline: Timeline, plan: StoryPlan) {
+    static func prepare(timeline source: Timeline, plan original: StoryPlan, analyses: [AnalysisResult], events: [Event], assets: [MediaAsset] = [], excluded: Set<UUID> = [], preferShortShots: Bool = true, verifiedSource: [ShotContentAssessment] = []) -> (timeline: Timeline, plan: StoryPlan) {
         // Connected/manual edits and retiming carry their own contracts. This
         // policy owns the plain, automatically generated primary storyline.
         guard original.narrativeBeatPlan != nil, !source.items.isEmpty,
@@ -38,6 +38,23 @@ enum AutomaticEditorialAssembly {
                 && !forbidden.contains { $0.assetID == unit.candidate.assetID && $0.sourceStart < unit.sourceRange.end && $0.sourceStart + $0.sourceDuration > unit.sourceRange.start }
         }
         let fps = max(1, source.frameRate)
+        // Content repair must not invalidate unrelated, already inspected
+        // ranges by redistributing their durations. This applies only to an
+        // automatic exclusion repair, never to the original editorial search.
+        let fixedRanges = Dictionary(source.items.compactMap { item -> (UUID, TimelineItem)? in
+            guard !verifiedSource.isEmpty, let id = item.candidateID, !excluded.contains(id),
+                  abs(item.timelineDuration * fps - (item.timelineDuration * fps).rounded()) < 0.001,
+                  verifiedSource.contains(where: { review in
+                      review.itemID == item.id && review.assetID == item.assetID && review.phase == "source"
+                          && review.status == .usable && review.confidence >= 0.75 && review.sampleTimes.count == 5
+                          && review.cameraAdjustmentSamples?.isEmpty != false
+                          && review.editorialPurpose.flatMap(SelectedContentReviewer.EditorialPurpose.init(rawValue:))?.isUseful == true
+                          && abs(review.sourceStart - item.sourceStart) < 0.000_001
+                          && abs(review.sourceDuration - item.sourceDuration) < 0.000_001
+                          && (assets.isEmpty || assets.contains { $0.id == item.assetID && $0.contentHash == review.sourceContentHash })
+                  }) else { return nil }
+            return (id, item)
+        }, uniquingKeysWith: { first, _ in first })
         let maximumShot: Double = switch DirectorVisualStyle(plan: original).mood {
         case .dynamic: 8
         case .calm: 10
@@ -61,15 +78,70 @@ enum AutomaticEditorialAssembly {
             items.removeAll { $0.candidateID.map(artisticOmissions.contains) ?? false }
         }
         let artisticDuration = artisticOmissions.isEmpty ? source.duration : items.reduce(0) { $0 + $1.timelineDuration }
-        let target = requested ?? max(AutomaticFilmDurationPolicy.minimumDuration, artisticDuration)
+        let observational = ExpressiveMomentPolicy.requested(in: original.prompt)
+        // A recommendation is a ceiling for a spacious edit, never an order
+        // to fill the remaining seconds with weaker or repeated footage.
+        let target = requested ?? (observational ? 225 : max(AutomaticFilmDurationPolicy.minimumDuration, artisticDuration))
         var targetFrames = Int((target * fps).rounded())
         let clusterer = ShotFamilyClusterer()
         func makeSlots(_ media: [TimelineItem]) -> [Slot] {
             let ranges = slots(items: media, units: units, maximumShot: maximumShot, fps: fps, pacing: plan.constraints.pacing, preferShortShots: preferShortShots)
             let sequence = ordered(ranges, plan: original, events: events, sourceMap: sourceMap)
-            return preferShortShots ? limitedRuns(sequence, families: context.families.familyByUnitID, fps: fps) : sequence
+            // Longer measured ranges can recover duration. Repeating the same
+            // setup cannot: retain the family limit in the long-shot fallback.
+            let varied = observational ? ObservationalFramingPolicy.pruning(sequence) : sequence
+            let limited = limitedRuns(varied, families: context.families.familyByUnitID, fps: fps,
+                measuredStaticOnly: !preferShortShots)
+            return limited.map { slot in
+                guard let fixed = fixedRanges[slot.unit.id] else { return slot }
+                var copy = slot
+                copy.item.sourceStart = fixed.sourceStart
+                copy.item.sourceDuration = fixed.sourceDuration
+                copy.frames = Int((fixed.timelineDuration * fps).rounded())
+                copy.capacity = copy.frames
+                return copy
+            }
         }
         var selected = makeSlots(items)
+        if observational && verifiedSource.isEmpty {
+            // Keep protected story actions. Compare source-wide discoveries
+            // before spending the budget on the original technical shortlist.
+            // The existing ordering, family limits and content guard still own
+            // the result; no filenames, screenshot times or scene list enter.
+            var expressiveItems = items.filter { item in item.candidateID.flatMap { units[$0] }.map(protected) ?? false }
+            var expressiveSlots = makeSlots(expressiveItems)
+            let ranked = context.units.filter { unit in
+                allowed(unit) && !rejected.contains(unit.id) && unit.usableDuration >= 3
+                    && unit.candidate.insights?.expressiveMoment?.supportsObservation == true
+            }.sorted {
+                let a = ExpressiveMomentPolicy.selectionValue($0), b = ExpressiveMomentPolicy.selectionValue($1)
+                return a == b ? $0.id.uuidString < $1.id.uuidString : a > b
+            }
+            var represented = Set<UUID>()
+            let representatives = ranked.filter { represented.insert($0.candidate.assetID).inserted }
+            let representativeIDs = Set(representatives.map(\.id))
+            // Coverage across the trip precedes optional extra views from one
+            // photogenic recording. It cannot turn the film into one scene.
+            let search = representatives + ranked.filter { !representativeIDs.contains($0.id) }
+            for unit in search {
+                if original.constraints.targetClipCount.map({ expressiveSlots.count >= $0 }) == true { break }
+                if expressiveSlots.reduce(0, { $0 + $1.frames }) >= targetFrames && !representativeIDs.contains(unit.id) { break }
+                guard !expressiveItems.contains(where: { $0.candidateID == unit.id }),
+                      expressiveSlots.allSatisfy({ !clusterer.isHardDuplicate($0.unit, unit, adjacent: false) }) else { continue }
+                let hold = unit.preferredDuration(pacing: plan.constraints.pacing)
+                let item = TimelineItem(id: EditorialIdentity.uuid("expressive-shot-\(source.id)-\(unit.id)"),
+                    candidateID: unit.id, assetID: unit.candidate.assetID, kind: itemKind(unit),
+                    sourceStart: max(unit.sourceRange.start, unit.evidence.usableRange.start), sourceDuration: hold,
+                    timelineStart: 0, timelineDuration: hold, videoAdjustments: .init(crop: .fit),
+                    eventID: unit.eventID, eventSceneID: unit.sceneID,
+                    explanation: ["Выразительный момент из обзора всего исходника; длительность по содержимому"])
+                let proposed = makeSlots(expressiveItems + [item])
+                if proposed.contains(where: { $0.unit.id == unit.id }), proposed.count > expressiveSlots.count {
+                    expressiveItems = proposed.map(\.item); expressiveSlots = proposed
+                }
+            }
+            if !expressiveSlots.isEmpty { items = expressiveItems; selected = expressiveSlots }
+        }
         let contextMarker = "Context hypothesis v1: earlier observed setting before participants"
         if requested == nil, EditorialCoherenceExperiment.current == .context,
            let first = selected.first, let episodes = plan.episodePlan,
@@ -111,13 +183,25 @@ enum AutomaticEditorialAssembly {
         }
         // A rejected edge shot is replaced from unused measured candidates,
         // never by looping the previous shot or extending beyond its evidence.
-        if selected.reduce(0, { $0 + $1.capacity }) < targetFrames {
-            let ranked = context.units.filter { allowed($0) && !rejected.contains($0.id) && $0.quality >= 0.55 && $0.usableDuration >= 1.5 }
-                .sorted { $0.quality == $1.quality ? $0.id.uuidString < $1.id.uuidString : $0.quality > $1.quality }
+        if selected.reduce(0, { $0 + (observational ? $1.frames : $1.capacity) }) < targetFrames {
+            let ranked = context.units.filter {
+                allowed($0) && !rejected.contains($0.id) && $0.quality >= 0.55 && $0.usableDuration >= 1.5
+                    && (!observational || $0.candidate.insights?.expressiveMoment?.supportsObservation == true)
+            }.sorted {
+                let a = observational ? ExpressiveMomentPolicy.selectionValue($0) : $0.quality
+                let b = observational ? ExpressiveMomentPolicy.selectionValue($1) : $1.quality
+                // Equal-quality overlapping windows can have different safe
+                // capacity. Choosing the short tail first would reject its
+                // longer alternative as a duplicate and lose available time.
+                if a == b, requested != nil, !observational, $0.usableDuration != $1.usableDuration {
+                    return $0.usableDuration > $1.usableDuration
+                }
+                return a == b ? $0.id.uuidString < $1.id.uuidString : a > b
+            }
             for unit in ranked {
-                if selected.reduce(0, { $0 + $1.capacity }) >= targetFrames || original.constraints.targetClipCount.map({ items.count >= $0 }) == true { break }
+                if selected.reduce(0, { $0 + (observational ? $1.frames : $1.capacity) }) >= targetFrames || original.constraints.targetClipCount.map({ items.count >= $0 }) == true { break }
                 guard !items.contains(where: { $0.candidateID == unit.id }),
-                      selected.allSatisfy({ !preferShortShots || !clusterer.isHardDuplicate($0.unit, unit, adjacent: false) }) else { continue }
+                      selected.allSatisfy({ !clusterer.isHardDuplicate($0.unit, unit, adjacent: false) }) else { continue }
                 let item = TimelineItem(id: EditorialIdentity.uuid("automatic-shot-\(source.id)-\(unit.id)"), candidateID: unit.id, assetID: unit.candidate.assetID, kind: itemKind(unit),
                     sourceStart: max(unit.sourceRange.start, unit.evidence.usableRange.start), sourceDuration: min(maximumShot, unit.usableDuration),
                     timelineStart: 0, timelineDuration: min(maximumShot, unit.usableDuration), videoAdjustments: VideoAdjustments(crop: .fit),
@@ -134,12 +218,25 @@ enum AutomaticEditorialAssembly {
         // spending the duration on longer shots from already covered sources.
         // This also runs after a render rejection: try another safe range from
         // that source instead of silently losing the whole recording.
-        let coveragePool = context.units.filter { allowed($0) && EditorialSourceCoverage.eligible($0, rejected: rejected) }
-            .sorted { $0.quality == $1.quality ? $0.id.uuidString < $1.id.uuidString : $0.quality > $1.quality }
+        let coveragePool = context.units.filter { unit in
+            guard allowed(unit), EditorialSourceCoverage.eligible(unit, rejected: rejected) else { return false }
+            // Inspecting every recording does not require including one shot
+            // from every recording. Coverage must not restore a technical
+            // quality peak that failed the requested observational selection.
+            guard observational else { return true }
+            return protected(unit) || fixedRanges[unit.id] != nil
+                || (unit.candidate.insights?.expressiveMoment.map { $0.supportsObservation && $0.covers(unit.candidate) } ?? false)
+        }.sorted {
+            let a = observational ? ExpressiveMomentPolicy.selectionValue($0) : $0.quality
+            let b = observational ? ExpressiveMomentPolicy.selectionValue($1) : $1.quality
+            return a == b ? $0.id.uuidString < $1.id.uuidString : a > b
+        }
         let sourceIDs = Array(Set(coveragePool.map { $0.candidate.assetID })).sorted { a, b in
             let left = coveragePool.first { $0.candidate.assetID == a }!
             let right = coveragePool.first { $0.candidate.assetID == b }!
-            return left.quality == right.quality ? a.uuidString < b.uuidString : left.quality > right.quality
+            let leftValue = observational ? ExpressiveMomentPolicy.selectionValue(left) : left.quality
+            let rightValue = observational ? ExpressiveMomentPolicy.selectionValue(right) : right.quality
+            return leftValue == rightValue ? a.uuidString < b.uuidString : leftValue > rightValue
         }
         func measuredUnit(_ slot: Slot) -> EditorialUnit {
             var unit = slot.unit
@@ -149,10 +246,30 @@ enum AutomaticEditorialAssembly {
         }
         func sourceIDsOf(_ slots: [Slot]) -> Set<UUID> { Set(slots.map { $0.unit.candidate.assetID }) }
         func minimumFrames(_ slots: [Slot]) -> Int {
-            slots.reduce(0) { $0 + (protected($1.unit) ? $1.frames : Int((EditorialSourceCoverage.minimumShotDuration * fps).rounded(.up))) }
+            slots.reduce(0) { $0 + (protected($1.unit) || fixedRanges[$1.unit.id] != nil ? $1.frames : Int((EditorialSourceCoverage.minimumShotDuration * fps).rounded(.up))) }
         }
         for assetID in sourceIDs where !sourceIDsOf(selected).contains(assetID) {
-            for unit in coveragePool where unit.candidate.assetID == assetID {
+            var alternatives = coveragePool.filter { $0.candidate.assetID == assetID }
+            let failed = context.units.filter { $0.candidate.assetID == assetID && rejected.contains($0.id) }
+            if !failed.isEmpty {
+                // A flat quality peak can span minutes of camera handling.
+                // After an observed failure, coverage must explore a different
+                // part of that recording before trying the next adjacent mining
+                // window. This changes trial order, never eligibility, and does
+                // not condemn the whole recording or move events in the film.
+                func distanceFromFailures(_ unit: EditorialUnit) -> Double {
+                    failed.map { prior in
+                        max(0, max(unit.sourceRange.start - prior.sourceRange.end,
+                                   prior.sourceRange.start - unit.sourceRange.end))
+                    }.min() ?? 0
+                }
+                alternatives.sort { left, right in
+                    let a = distanceFromFailures(left), b = distanceFromFailures(right)
+                    if a != b { return a > b }
+                    return left.quality == right.quality ? left.id.uuidString < right.id.uuidString : left.quality > right.quality
+                }
+            }
+            for unit in alternatives {
                 guard selected.allSatisfy({ !clusterer.isHardDuplicate(measuredUnit($0), unit, adjacent: false) }) else { continue }
                 let item = TimelineItem(id: EditorialIdentity.uuid("automatic-coverage-\(source.id)-\(unit.id)"), candidateID: unit.id,
                     assetID: assetID, kind: itemKind(unit), sourceStart: max(unit.sourceRange.start, unit.evidence.usableRange.start),
@@ -183,6 +300,24 @@ enum AutomaticEditorialAssembly {
             }
         }
         guard !selected.isEmpty else { return (source, original) }
+        // Source discovery, opening repair and coverage share the explicit
+        // shot-count contract. They may replace optional views, but cannot
+        // silently expand a two-shot request into a longer montage. Preserve
+        // required actions/phrases rather than truncate them to force a count.
+        if let limit = original.constraints.targetClipCount, limit > 0 {
+            while selected.count > limit {
+                let counts = Dictionary(grouping: selected, by: { $0.unit.candidate.assetID }).mapValues(\.count)
+                let optional = selected.indices.filter { !protected(selected[$0].unit) }
+                let extras = optional.filter { counts[selected[$0].unit.candidate.assetID, default: 0] > 1 }
+                let choices = extras.isEmpty ? optional : extras
+                guard let index = choices.min(by: {
+                    let a = observational ? ExpressiveMomentPolicy.selectionValue(selected[$0].unit) : selected[$0].unit.quality
+                    let b = observational ? ExpressiveMomentPolicy.selectionValue(selected[$1].unit) : selected[$1].unit.quality
+                    return a == b ? selected[$0].unit.id.uuidString > selected[$1].unit.id.uuidString : a < b
+                }) else { return (source, original) }
+                selected.remove(at: index)
+            }
+        }
         // Skip a weak chronological prefix only when the remaining measured
         // ranges can still fulfill the request and no required moment is lost.
         // Do this after refill so duration recovery cannot reinsert that prefix.
@@ -211,13 +346,27 @@ enum AutomaticEditorialAssembly {
                 selected = Array(selected[...best])
             }
         }
-        let capacity = selected.reduce(0) { $0 + $1.capacity }
-        if requested != nil, capacity < targetFrames, preferShortShots {
+        var capacity = selected.reduce(0) { $0 + $1.capacity }
+        if requested != nil, capacity < targetFrames, preferShortShots, !observational {
             let expanded = prepare(timeline: source, plan: original, analyses: analyses, events: events,
-                                   assets: assets, excluded: excluded, preferShortShots: false)
+                                   assets: assets, excluded: excluded, preferShortShots: false, verifiedSource: verifiedSource)
             if expanded.timeline.duration > Double(capacity) / fps + 1 / fps { return expanded }
         }
-        let desired = min(targetFrames, capacity)
+        // Soft observational requests retain measured preferred holds. They
+        // neither expand a weak detail to fill a deficit nor shrink every
+        // strong scene merely to hit an exact clock time.
+        if observational && requested == nil {
+            while selected.reduce(0, { $0 + $1.frames }) > targetFrames {
+                let counts = Dictionary(grouping: selected, by: { $0.unit.candidate.assetID }).mapValues(\.count)
+                guard let index = selected.indices.filter({ !protected(selected[$0].unit) && fixedRanges[selected[$0].unit.id] == nil
+                    && counts[selected[$0].unit.candidate.assetID, default: 0] > 1 }).min(by: {
+                    ExpressiveMomentPolicy.selectionValue(selected[$0].unit) < ExpressiveMomentPolicy.selectionValue(selected[$1].unit)
+                }) else { break }
+                selected.remove(at: index)
+            }
+            capacity = selected.reduce(0) { $0 + $1.capacity }
+        }
+        let desired = observational && requested == nil ? selected.reduce(0, { $0 + $1.frames }) : min(targetFrames, capacity)
         guard selected.filter({ protected($0.unit) }).reduce(0, { $0 + $1.frames }) <= desired else { return (source, original) }
         // Balanced water filling on the output frame grid avoids one long
         // shot receiving the whole deficit and keeps exact duration stable.
@@ -231,7 +380,7 @@ enum AutomaticEditorialAssembly {
             selected[index].frames += 1
         }
         while selected.reduce(0, { $0 + $1.frames }) > desired {
-            guard let index = selected.indices.filter({ selected[$0].frames > Int(0.5 * fps) && !protected(selected[$0].unit) }).max(by: { selected[$0].frames < selected[$1].frames }) else { break }
+            guard let index = selected.indices.filter({ selected[$0].frames > Int(0.5 * fps) && !protected(selected[$0].unit) && fixedRanges[selected[$0].unit.id] == nil }).max(by: { selected[$0].frames < selected[$1].frames }) else { break }
             selected[index].frames -= 1
         }
         let prepared = selected
@@ -241,7 +390,7 @@ enum AutomaticEditorialAssembly {
             item.timelineStart = Double(cursor) / fps
             item.timelineDuration = Double(slot.frames) / fps
             item.sourceDuration = item.timelineDuration
-            if index == prepared.count - 1, !protected(slot.unit), EditorialMomentPolicy.closingValue(slot.unit) >= 0.5 {
+            if index == prepared.count - 1, fixedRanges[slot.unit.id] == nil, !protected(slot.unit), EditorialMomentPolicy.closingValue(slot.unit) >= 0.5 {
                 let end = min(slot.unit.sourceRange.end, slot.unit.evidence.usableRange.end)
                 item.sourceStart = max(item.sourceStart, (end * fps).rounded(.down) / fps - item.sourceDuration)
             }
@@ -288,6 +437,9 @@ enum AutomaticEditorialAssembly {
         timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true)
         timeline = PhotoPresentationPolicy.applying(to: timeline, plan: plan, assets: assets, analyses: analyses)
         timeline = AutomaticTelemetryPolicy.rebuilding(in: timeline, plan: plan, analyses: analyses)
+        timeline = DirectorEffectsPolicyEngine.refreshAutomaticDecoration(timeline, plan: plan,
+            candidates: Dictionary(units.map { ($0.key, $0.value.candidate) }, uniquingKeysWith: { a, _ in a }),
+            assets: assets, analyses: analyses)
         if !artisticOmissions.isEmpty {
             plan.episodePlan?.limitations.append("Experimental route compression omitted \(artisticOmissions.count) shots; technical quality is not the reason. Human A/B review required.")
         }
@@ -297,13 +449,22 @@ enum AutomaticEditorialAssembly {
     /// Joint run capacity matters as well as each individual shot. Two safe
     /// eight-second shots from the same setup are not a safe sixteen-second
     /// run. Reserve the verifier's twelve-second ceiling before allocating.
-    static func limitedRuns(_ slots: [Slot], families: [UUID: String], fps: Double) -> [Slot] {
+    static func limitedRuns(_ slots: [Slot], families: [UUID: String], fps: Double, measuredStaticOnly: Bool = false) -> [Slot] {
         var result: [Slot] = []
         var run = 0
         var lastFamily: String?
+        var runAnchor: EditorialUnit?
+        let clusterer = ShotFamilyClusterer()
         for var slot in slots {
             let family = families[slot.unit.id] ?? slot.unit.id.uuidString
-            run = family == lastFamily ? run + 1 : 1
+            let repeats = measuredStaticOnly
+                ? runAnchor.map { clusterer.measuredStaticSetup($0, slot.unit) } ?? false
+                : family == lastFamily || (runAnchor.map { clusterer.measuredStaticSetup($0, slot.unit) } ?? false)
+            run = repeats ? run + 1 : 1
+            // A person shifting within the shot must not reset the series.
+            // Compare to its first setup, avoiding a transitive chain of
+            // slightly changing camera views as well as label drift.
+            if !repeats { runAnchor = slot.unit }
             lastFamily = family
             guard run <= 2 || protected(slot.unit) else { continue }
             if run == 2, !protected(slot.unit), let prior = result.last {

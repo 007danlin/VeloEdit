@@ -1,0 +1,5383 @@
+{
+  "automaticPolicy" : "Киношное настроение и Эффекты: Нормально\/Много; только пригодный актуальный анализ; без изменения времени и звука; локальные правки не запускают декоратор",
+  "commands" : [
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "cut",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "split",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "sourceStart >= текущего начала; sourceDuration >= 0.05; только сокращение текущего диапазона; речь и фазы действия сохраняются",
+      "id" : "trim",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+        "trim"
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "rippleDelete",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "reorder",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "insert",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "replace",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "duplicate",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "format",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "subtitles",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "crop",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "zoom",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "pan",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "kenBurns",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "rate 0.1...8; slow motion < 1, fast motion > 1; исходный FPS * rate >= FPS фильма для замедления; речь, фиксированный хронометраж и блокировки сохраняются",
+      "id" : "speedChange",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+        "setSpeed"
+      ],
+      "verification" : "CinematicKnowledgeTests; CinematicAcceptanceTests"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "rate 0.1...8; slow motion < 1, fast motion > 1; исходный FPS * rate >= FPS фильма для замедления; речь, фиксированный хронометраж и блокировки сохраняются",
+      "id" : "slowMotion",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+        "setSpeed"
+      ],
+      "verification" : "CinematicKnowledgeTests; CinematicAcceptanceTests"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "speedRamp",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "duration 0.25...30; стоп в середине текущего диапазона; без значимой речи; запрет изменения фиксированной длительности",
+      "id" : "freezeFrame",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+        "freezeFrame"
+      ],
+      "verification" : "CinematicKnowledgeTests; CinematicAcceptanceTests"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "stabilization",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "exposure",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "color",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "contrast",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "saturation",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "sharpening",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "videoDenoise",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "Только cut; существующий незаблокированный основной клип; пустые numeric parameters",
+      "id" : "transitions",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+        "setTransition"
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "dissolve",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "fade",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "dipToBlack",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "wipe",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "lightTransition",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "music",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "trimMusic",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "audioFade",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "volume",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "ducking",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "noiseReduction",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "eq",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "detachAudio",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "bRoll",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "overlay",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "pictureInPicture",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "splitScreen",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "titles",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "telemetry",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "beatSynchronization",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "duration 0.05...длина цели; startTime внутри цели; только film-grain\/vignette; параметры preset по умолчанию; AI-бюджет",
+      "id" : "addEffect",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : true,
+      "knowledgeCommandIDs" : [
+        "addEffect"
+      ],
+      "verification" : "CinematicKnowledgeTests; CinematicAcceptanceTests"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "removeEffect",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "moveEffect",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "trimEffect",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "setEffectParameter",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "animateParameter",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "addKeyframe",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "removeKeyframe",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "applyEffectPreset",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "editTitle",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "removeTitle",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "Соседние основные клипы внутри области правки; исходный звук обоих отключён либо аудиодорожек нет; duration в диапазоне preset и <= половины каждого клипа; направление из запроса; фиксированный хронометраж и блокировки сохраняются",
+      "id" : "addTransition",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+        "addTransition"
+      ],
+      "verification" : "CinematicKnowledgeTests; CinematicAcceptanceTests"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "removeTransition",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    },
+    {
+      "applicationAIAdvertised" : true,
+      "contract" : "",
+      "id" : "syncToBeat",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "knowledgeCommandIDs" : [
+
+      ],
+      "verification" : "Не сертифицировано для исполнения базой знаний"
+    }
+  ],
+  "effects" : [
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "zoom",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Масштабирование",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "push-in",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Наезд",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "pull-out",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Отъезд",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "pan",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Панорама",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "direction",
+          "keyframes" : false,
+          "options" : [
+            "Влево",
+            "Вправо"
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "enumeration"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "shake",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Дрожание",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.41999999999999998,
+          "id" : "amplitude",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 13,
+          "id" : "frequency",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            30
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -12,
+            12
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "motion-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Размытие в движении",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "angle",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -3.1415926535897931,
+            3.1415926535897931
+          ],
+          "type" : "angle"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Размытие",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "directional-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Направленное размытие",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "angle",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -3.1415926535897931,
+            3.1415926535897931
+          ],
+          "type" : "angle"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "background-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Размытие фона",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "exposure",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Экспозиция",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "contrast",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Контраст",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "saturation",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Насыщенность",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "temperature",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Температура",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "vignette",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : true,
+      "name" : "Виньетка",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "grain",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Зерно",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "fade",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Затемнение",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "light",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Свет",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "flash",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Вспышка",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "glow",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Свечение",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "brightness",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Яркость",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "vibrance",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Живость цвета",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "tint",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Оттенок",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.57999999999999996,
+          "id" : "color",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "color"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "highlights",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Света",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "shadows",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Тени",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "sharpness",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Резкость",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "opacity",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Прозрачность",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "film-grain",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : true,
+      "name" : "Плёночное зерно",
+      "parameters" : [
+        {
+          "default" : 0.23999999999999999,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "cinematic-vignette",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Мягкая виньетка",
+      "parameters" : [
+        {
+          "default" : 0.23999999999999999,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "cinematic-motion-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Мягкое размытие движения",
+      "parameters" : [
+        {
+          "default" : 0.23999999999999999,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "angle",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -3.1415926535897931,
+            3.1415926535897931
+          ],
+          "type" : "angle"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "bloom",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Bloom",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "lens-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Lens Blur",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "soft-focus",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Мягкий фокус",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "letterbox",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Киношные полосы",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.12,
+          "id" : "barSize",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.040000000000000001,
+            0.23999999999999999
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "barColor",
+          "keyframes" : false,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "color"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "color-grade",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Color Grade",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "look",
+          "keyframes" : false,
+          "options" : [
+            "Natural",
+            "Cinematic",
+            "Warm",
+            "Cool"
+          ],
+          "range" : [
+            0,
+            3
+          ],
+          "type" : "enumeration"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "cinematic-contrast",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Киноконтраст",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "teal-orange-grade",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Teal & Orange",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "vintage",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Vintage",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "film-look",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Film Look",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "camera-drift",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Дрейф камеры",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "direction",
+          "keyframes" : false,
+          "options" : [
+            "Влево",
+            "Вправо"
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "enumeration"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "handheld",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Ручная камера",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.17999999999999999,
+          "id" : "amplitude",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 6,
+          "id" : "frequency",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            30
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -12,
+            12
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "spin",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Вращение",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "ken-burns",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Ken Burns",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "parallax-motion",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Параллакс",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "direction",
+          "keyframes" : false,
+          "options" : [
+            "Влево",
+            "Вправо"
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "enumeration"
+        },
+        {
+          "default" : 0,
+          "id" : "positionX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "positionY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -1,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "scaleY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            4
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -360,
+            360
+          ],
+          "type" : "angle"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0.5,
+          "id" : "anchorY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "point"
+        },
+        {
+          "default" : 0,
+          "id" : "cropX",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 0,
+          "id" : "cropY",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.94999999999999996
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropWidth",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "cropHeight",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.050000000000000003,
+            1
+          ],
+          "type" : "rect"
+        },
+        {
+          "default" : 1,
+          "id" : "opacity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "zoom-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Zoom Blur",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 24,
+          "id" : "radius",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            80
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "radial-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Радиальное размытие",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 24,
+          "id" : "radius",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            80
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "chromatic-aberration",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Хроматическая аберрация",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "lens-distortion",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Искажение объектива",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.62,
+          "id" : "radius",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "fisheye",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Рыбий глаз",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.62,
+          "id" : "radius",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "barrel-distortion",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Бочкообразное искажение",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.62,
+          "id" : "radius",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0.10000000000000001,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "glitch",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Glitch",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 12,
+          "id" : "frequency",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            30
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "rgb-split",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "RGB Split",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "scanlines",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Строки сканирования",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 8,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            40
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "pixelate",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Пикселизация",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "posterize",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Постеризация",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 8,
+          "id" : "levels",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            2,
+            30
+          ],
+          "type" : "int"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "halftone",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Полутон",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 8,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            40
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "vhs-distortion",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "VHS",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "light-leak",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Light Leak",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "film-burn",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Film Burn",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "dust",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Пыль",
+      "parameters" : [
+        {
+          "default" : 0.23999999999999999,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "noise",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Шум",
+      "parameters" : [
+        {
+          "default" : 0.5,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "fog-haze",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Туман \/ дымка",
+      "parameters" : [
+        {
+          "default" : 0.23999999999999999,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    },
+    {
+      "exportDeclared" : true,
+      "fcpxml" : "rendered-fallback",
+      "id" : "video-camera",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Видеокамера",
+      "parameters" : [
+        {
+          "default" : 1,
+          "id" : "intensity",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.080000000000000002,
+          "id" : "barSize",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            0.20000000000000001
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 1,
+          "id" : "blinkREC",
+          "keyframes" : false,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "bool"
+        }
+      ],
+      "previewDeclared" : true,
+      "verification" : "EditorPreviewParityTests.everyEffectAndStackChangesPreviewAndSurvivesVideoExport"
+    }
+  ],
+  "knowledgeCommands" : [
+    {
+      "contract" : "duration 0.05...длина цели; startTime внутри цели; только film-grain\/vignette; параметры preset по умолчанию; AI-бюджет",
+      "enabled" : true,
+      "id" : "addEffect"
+    },
+    {
+      "contract" : "Соседние основные клипы внутри области правки; исходный звук обоих отключён либо аудиодорожек нет; duration в диапазоне preset и <= половины каждого клипа; направление из запроса; фиксированный хронометраж и блокировки сохраняются",
+      "enabled" : true,
+      "id" : "addTransition"
+    },
+    {
+      "contract" : "duration 0.25...30; стоп в середине текущего диапазона; без значимой речи; запрет изменения фиксированной длительности",
+      "enabled" : true,
+      "id" : "freezeFrame"
+    },
+    {
+      "contract" : "rate 0.1...8; slow motion < 1, fast motion > 1; исходный FPS * rate >= FPS фильма для замедления; речь, фиксированный хронометраж и блокировки сохраняются",
+      "enabled" : true,
+      "id" : "setSpeed"
+    },
+    {
+      "contract" : "Только cut; существующий незаблокированный основной клип; пустые numeric parameters",
+      "enabled" : false,
+      "id" : "setTransition"
+    },
+    {
+      "contract" : "sourceStart >= текущего начала; sourceDuration >= 0.05; только сокращение текущего диапазона; речь и фазы действия сохраняются",
+      "enabled" : false,
+      "id" : "trim"
+    }
+  ],
+  "knowledgeEdition" : "2026-10-09",
+  "transitions" : [
+    {
+      "duration" : [
+        0.080000000000000002,
+        0.12
+      ],
+      "id" : "cut",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Склейка",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        2.5
+      ],
+      "id" : "cross-dissolve",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Растворение",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        2.5
+      ],
+      "id" : "fade",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Мягкое затухание",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        2.5
+      ],
+      "id" : "fade-through-black",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Через чёрный",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        2.5
+      ],
+      "id" : "fade-to-white",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Через белый",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        2.5
+      ],
+      "id" : "dip-to-color",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Через цвет",
+      "parameters" : [
+        {
+          "default" : 0.57999999999999996,
+          "id" : "colorHue",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        1.8
+      ],
+      "id" : "blur-dissolve",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Размытие",
+      "parameters" : [
+        {
+          "default" : 0.71999999999999997,
+          "id" : "blur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        1.8
+      ],
+      "id" : "light-flash",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Световая вспышка",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "slide-left",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Сдвиг влево",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "slide-right",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Сдвиг вправо",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "slide-up",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Сдвиг вверх",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "slide-down",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Сдвиг вниз",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "push",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Push",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "push-left",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Push влево",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "push-right",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Push вправо",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "push-up",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Push вверх",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "push-down",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Push вниз",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "zoom",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Zoom",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.5,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "zoom-in",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Zoom In",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.5,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "zoom-out",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Zoom Out",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.5,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "whip-left",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Whip влево",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "whip-right",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Whip вправо",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "whip-up",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Whip вверх",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "whip-down",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Whip вниз",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "spin",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Вращение",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.5,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "camera-push",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Camera Push",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.5,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.12,
+        1.2
+      ],
+      "id" : "camera-pull",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Camera Pull",
+      "parameters" : [
+        {
+          "default" : 0.55000000000000004,
+          "id" : "motionBlur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0.5,
+          "id" : "scale",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "wipe-left",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Шторка влево",
+      "parameters" : [
+        {
+          "default" : 0.080000000000000002,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "wipe-right",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Шторка вправо",
+      "parameters" : [
+        {
+          "default" : 0.080000000000000002,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "wipe-up",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Шторка вверх",
+      "parameters" : [
+        {
+          "default" : 0.080000000000000002,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.14000000000000001,
+        1.5
+      ],
+      "id" : "wipe-down",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Шторка вниз",
+      "parameters" : [
+        {
+          "default" : 0.080000000000000002,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        1.8
+      ],
+      "id" : "film-dissolve",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Плёночное растворение",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        1.8
+      ],
+      "id" : "film-burn",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Film Burn",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        1.8
+      ],
+      "id" : "light-leak",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Light Leak",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        1.8
+      ],
+      "id" : "lens-blur",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Lens Blur",
+      "parameters" : [
+        {
+          "default" : 0.71999999999999997,
+          "id" : "blur",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.17999999999999999,
+        1.8
+      ],
+      "id" : "exposure-flash",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Exposure Flash",
+      "parameters" : [
+
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.10000000000000001,
+        1
+      ],
+      "id" : "glitch",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Glitch",
+      "parameters" : [
+        {
+          "default" : 0.52000000000000002,
+          "id" : "amount",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 12,
+          "id" : "frequency",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            32
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.10000000000000001,
+        1
+      ],
+      "id" : "rgb-split",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "RGB Split",
+      "parameters" : [
+        {
+          "default" : 0.52000000000000002,
+          "id" : "amount",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.10000000000000001,
+        1
+      ],
+      "id" : "digital-distortion",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Цифровое искажение",
+      "parameters" : [
+        {
+          "default" : 0.52000000000000002,
+          "id" : "amount",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 12,
+          "id" : "frequency",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            32
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.10000000000000001,
+        1
+      ],
+      "id" : "pixelate",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Пикселизация",
+      "parameters" : [
+        {
+          "default" : 0.52000000000000002,
+          "id" : "amount",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.10000000000000001,
+        1
+      ],
+      "id" : "shatter",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Осколки",
+      "parameters" : [
+        {
+          "default" : 0.52000000000000002,
+          "id" : "amount",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.10000000000000001,
+        1
+      ],
+      "id" : "ripple",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Рябь",
+      "parameters" : [
+        {
+          "default" : 0.52000000000000002,
+          "id" : "amount",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 12,
+          "id" : "frequency",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            32
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.10000000000000001,
+        1
+      ],
+      "id" : "wave",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Волна",
+      "parameters" : [
+        {
+          "default" : 0.52000000000000002,
+          "id" : "amount",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 12,
+          "id" : "frequency",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            1,
+            32
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.16,
+        1.6000000000000001
+      ],
+      "id" : "circle",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Круг",
+      "parameters" : [
+        {
+          "default" : 0.12,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.16,
+        1.6000000000000001
+      ],
+      "id" : "iris",
+      "knowledgeAIAvailable" : true,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Ирис",
+      "parameters" : [
+        {
+          "default" : 0.12,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -180,
+            180
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.16,
+        1.6000000000000001
+      ],
+      "id" : "radial",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Радиальный",
+      "parameters" : [
+        {
+          "default" : 0.12,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -180,
+            180
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.16,
+        1.6000000000000001
+      ],
+      "id" : "geometric-wipe",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Геометрическая шторка",
+      "parameters" : [
+        {
+          "default" : 0.12,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -180,
+            180
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    },
+    {
+      "duration" : [
+        0.16,
+        1.6000000000000001
+      ],
+      "id" : "mask-reveal",
+      "knowledgeAIAvailable" : false,
+      "knowledgeAutomaticAvailable" : false,
+      "name" : "Проявление маской",
+      "parameters" : [
+        {
+          "default" : 0.12,
+          "id" : "softness",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            0,
+            1
+          ],
+          "type" : "float"
+        },
+        {
+          "default" : 0,
+          "id" : "rotation",
+          "keyframes" : true,
+          "options" : [
+
+          ],
+          "range" : [
+            -180,
+            180
+          ],
+          "type" : "float"
+        }
+      ],
+      "verification" : "CinematicAcceptanceTests.allRegisteredTransitionsExecutePreviewAndExport; TransitionPlaybackRegressionTests.everyPresetUsesTheFullRendererInStablePreviewAndExport"
+    }
+  ],
+  "typedExecutorInventory" : "Docs\/CinematicKnowledge\/application-operations.json"
+}

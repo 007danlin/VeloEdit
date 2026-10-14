@@ -19,6 +19,7 @@ enum FilmDurationRecovery {
         }
         var windows: [Window] = []
         let candidates = analyses.flatMap(\.directorCandidates)
+        let rejected = Set((original.editorialBeatPlan?.discardedCandidates ?? [:]).filter { $0.value == .unsafeCrop }.keys)
         let sourceMap = SourceTimelineAnalyzer().analyze(assets: assets, analyses: analyses)
         let ranks = Dictionary(uniqueKeysWithValues: sourceMap.entries.map { ($0.assetID, $0.order) })
         let last = original.items.filter { $0.overlay == nil && $0.kind != .title }.max { $0.timelineStart < $1.timelineStart }
@@ -27,7 +28,7 @@ enum FilmDurationRecovery {
             if let lastRank, let rank = ranks[asset.id], rank < lastRank { continue }
             let used = original.items.filter { $0.assetID == asset.id }
             let forbidden = candidates.filter { $0.assetID == asset.id && ($0.excluded || !plan.constraints.excludeTags.isDisjoint(with: $0.tags)) }
-            let measured = candidates.filter { $0.assetID == asset.id && !$0.excluded && plan.constraints.excludeTags.isDisjoint(with: $0.tags) }
+            let measured = candidates.filter { $0.assetID == asset.id && !$0.excluded && !rejected.contains($0.id) && plan.constraints.excludeTags.isDisjoint(with: $0.tags) }
                 .map { EditorialUnit(candidate: $0) }.filter { $0.evidence.confidence >= 0.55 && $0.quality >= 0.55 && !$0.evidence.hasHardOcclusion }
             // Requested runtime is not evidence that unselected raw footage is
             // useful. Only independently measured ranges can extend the film.

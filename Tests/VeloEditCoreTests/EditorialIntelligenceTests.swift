@@ -222,6 +222,151 @@ private struct EIFailingMinerAnalyzer: EditorialEvidenceAnalyzing {
     #expect(ShotFamilyClusterer().isHardDuplicate(a, sameStart))
 }
 
+private func eiMeasuredStaticCandidate(assetID: UUID, setup: String, start: Double,
+                                       region: NormalizedRegion = .init(x: 0.2, y: 0.2, width: 0.4, height: 0.6)) -> Candidate {
+    var candidate = eiCandidate(assetID: assetID, setup: setup, start: start)
+    var evidence = candidate.insights!.editorialEvidence!
+    evidence.samples = (0..<12).map { index in
+        EditorialTemporalSample(sourceTime: start + Double(index) * 8 / 11,
+            subjectRegions: [region], subjectKinds: [.person], actionState: [],
+            composition: Array(repeating: 1.0 / 16, count: 16), motionEnergy: 0.02,
+            quality: 0.9, confidence: 0.9)
+    }
+    candidate.insights?.editorialEvidence = evidence
+    return candidate
+}
+
+@Test func editorialMeasuredStaticSetupSurvivesDriftingLabels() {
+    let asset = UUID()
+    let candidates = ["camping", "foliage", "land", "outdoor"].enumerated().map {
+        eiMeasuredStaticCandidate(assetID: asset, setup: $0.element, start: Double($0.offset) * 30)
+    }
+    let units = candidates.map { EditorialUnit(candidate: $0) }
+    let clusterer = ShotFamilyClusterer()
+    #expect(clusterer.relation(units[0], units[1]) == .sameSetup)
+    #expect(clusterer.cluster(units: units).families.count == 1)
+    #expect(!clusterer.isHardDuplicate(units[0], units[1]))
+}
+
+@Test func editorialBrightnessAloneCannotMergeDifferentFraming() {
+    let asset = UUID()
+    let a = EditorialUnit(candidate: eiMeasuredStaticCandidate(assetID: asset, setup: "camping", start: 0))
+    let b = EditorialUnit(candidate: eiMeasuredStaticCandidate(assetID: asset, setup: "foliage", start: 30,
+        region: .init(x: 0.75, y: 0.75, width: 0.15, height: 0.15)))
+    #expect(!ShotFamilyClusterer().measuredStaticSetup(a, b))
+    #expect(ShotFamilyClusterer().cluster(units: [a, b]).families.count == 2)
+}
+
+@Test func editorialMeasuredStaticRuleDoesNotEraseActionProgression() {
+    let asset = UUID()
+    let a = EditorialUnit(candidate: eiMeasuredStaticCandidate(assetID: asset, setup: "camping", start: 0))
+    var candidate = eiMeasuredStaticCandidate(assetID: asset, setup: "foliage", start: 30)
+    candidate.insights?.editorialEvidence?.actionDelta = 0.8
+    candidate.insights?.editorialEvidence?.completion = 0.9
+    #expect(!ShotFamilyClusterer().measuredStaticSetup(a, EditorialUnit(candidate: candidate)))
+}
+
+@Test func editorialLongDurationFallbackKeepsMeasuredSetupLimit() {
+    let asset = UUID()
+    let candidates = ["camping", "foliage", "land", "outdoor"].enumerated().map {
+        eiMeasuredStaticCandidate(assetID: asset, setup: $0.element, start: Double($0.offset) * 30)
+    }
+    var plan = eiPlan(duration: 60)
+    plan.narrativeBeatPlan = NarrativeBeatPlan(pattern: .minimalMontage, beats: [], reasons: [])
+    let timeline = Timeline(storyPlanID: plan.id, items: candidates.enumerated().map { index, candidate in
+        TimelineItem(candidateID: candidate.id, assetID: asset, kind: .video, sourceStart: candidate.sourceStart,
+            sourceDuration: 8, timelineStart: Double(index) * 8, timelineDuration: 8)
+    })
+    let repaired = AutomaticEditorialAssembly.prepare(timeline: timeline, plan: plan,
+        analyses: eiAnalysis(candidates), events: [], preferShortShots: false)
+    #expect(repaired.timeline.items.count == 2)
+    #expect(repaired.timeline.duration <= 12)
+}
+
+@Test func editorialMeasuredRepeatLimitAlsoSurvivesSplitFamilyIDs() {
+    let asset = UUID()
+    let candidates = ["camping", "foliage", "land", "outdoor"].enumerated().map {
+        eiMeasuredStaticCandidate(assetID: asset, setup: $0.element, start: Double($0.offset) * 30)
+    }
+    let slots = candidates.map { candidate in
+        AutomaticEditorialAssembly.Slot(item: TimelineItem(candidateID: candidate.id, assetID: asset,
+            kind: .video, sourceStart: candidate.sourceStart, sourceDuration: 4,
+            timelineStart: 0, timelineDuration: 4), unit: EditorialUnit(candidate: candidate), capacity: 120, frames: 120)
+    }
+    let split = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0.id.uuidString) })
+    #expect(AutomaticEditorialAssembly.limitedRuns(slots, families: split, fps: 30).count == 2)
+}
+
+private func eiStaticRun(_ candidates: [Candidate], long: Bool = false) -> [AutomaticEditorialAssembly.Slot] {
+    let slots = candidates.map { candidate in
+        AutomaticEditorialAssembly.Slot(item: TimelineItem(candidateID: candidate.id, assetID: candidate.assetID,
+            kind: .video, sourceStart: candidate.sourceStart, sourceDuration: 4,
+            timelineStart: 0, timelineDuration: 4), unit: EditorialUnit(candidate: candidate), capacity: 120, frames: 120)
+    }
+    return AutomaticEditorialAssembly.limitedRuns(slots,
+        families: Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0.id.uuidString) }),
+        fps: 30, measuredStaticOnly: long)
+}
+
+@Test func editorialStaticRunSurvivesModestSubjectMovementAndSplitGroups() {
+    let asset = UUID()
+    var candidates = [0.2, 0.235, 0.16, 0.18].enumerated().map { index, x in
+        eiMeasuredStaticCandidate(assetID: asset, setup: "label-\(index)", start: Double(index) * 30,
+            region: .init(x: x, y: 0.2, width: 0.4, height: 0.6))
+    }
+    candidates[1].insights?.editorialEvidence?.informationGain = 0.123
+    for index in candidates[1].insights!.editorialEvidence!.samples.indices {
+        candidates[1].insights?.editorialEvidence?.samples[index].motionEnergy = 0.113
+    }
+    let units = candidates.map { EditorialUnit(candidate: $0) }
+    #expect(ShotFamilyClusterer().measuredStaticSetup(units[0], units[1]))
+    #expect(!ShotFamilyClusterer().measuredStaticSetup(units[1], units[2]))
+    #expect(eiStaticRun(candidates).map { $0.unit.id } == Array(candidates.prefix(2)).map(\.id))
+    #expect(eiStaticRun(candidates, long: true).count == 2)
+}
+
+@Test func editorialMeasuredNoveltyStillStartsANewRun() {
+    let asset = UUID()
+    var candidates = (0..<4).map {
+        eiMeasuredStaticCandidate(assetID: asset, setup: "label-\($0)", start: Double($0) * 30)
+    }
+    candidates[1].insights?.editorialEvidence?.informationGain = 0.22
+    #expect(eiStaticRun(candidates, long: true).count == 4)
+}
+
+@Test func editorialStaticRunAnchorDoesNotFollowChangingFraming() {
+    let asset = UUID()
+    let candidates = [0.1, 0.14, 0.18, 0.21].enumerated().map { index, x in
+        eiMeasuredStaticCandidate(assetID: asset, setup: "label-\(index)", start: Double(index) * 30,
+            region: .init(x: x, y: 0.2, width: 0.4, height: 0.6))
+    }
+    let units = candidates.map { EditorialUnit(candidate: $0) }
+    #expect(ShotFamilyClusterer().measuredStaticSetup(units[1], units[2]))
+    #expect(!ShotFamilyClusterer().measuredStaticSetup(units[0], units[2]))
+    #expect(eiStaticRun(candidates, long: true).count == 4)
+}
+
+@Test func fixedMeasuredFacesKeepOneSetupAcrossChangingBodyPostures() {
+    let asset = UUID()
+    var candidates = [0.65, 0.4, 0.55, 0.35].enumerated().map { index, height in
+        eiMeasuredStaticCandidate(assetID: asset, setup: "pose-\(index)", start: Double(index) * 30,
+            region: .init(x: 0.15, y: 0.15, width: 0.65, height: height))
+    }
+    for index in candidates.indices {
+        for sample in candidates[index].insights!.editorialEvidence!.samples.indices {
+            candidates[index].insights?.editorialEvidence?.samples[sample].subjectKinds.append(.face)
+            candidates[index].insights?.editorialEvidence?.samples[sample].subjectRegions.append(.init(x: 0.59, y: 0.5, width: 0.04, height: 0.07))
+        }
+    }
+    #expect(eiStaticRun(candidates, long: true).count == 2)
+    for sample in candidates[2].insights!.editorialEvidence!.samples.indices {
+        candidates[2].insights?.editorialEvidence?.samples[sample].subjectRegions[0].x = 0.35
+        candidates[2].insights?.editorialEvidence?.samples[sample].subjectRegions[0].width = 0.5
+        candidates[2].insights?.editorialEvidence?.samples[sample].subjectRegions[1].x = 0.8
+    }
+    #expect(!ShotFamilyClusterer().measuredStaticSetup(EditorialUnit(candidate: candidates[0]), EditorialUnit(candidate: candidates[2])))
+}
+
 @Test func editorialLabelsCannotInventClimaxAndEmptyFilmCannotWin() {
     let candidates = [eiCandidate(setup: "quiet river"), eiCandidate(setup: "tree canopy")]
     let context = EditorialAnalysisContext(analyses: eiAnalysis(candidates))

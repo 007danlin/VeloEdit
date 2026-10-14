@@ -1,0 +1,929 @@
+[
+  {
+    "id": "split",
+    "signature": "split(itemID: UUID, fraction: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 23,
+    "executionGuards": [
+      "let index = itemIndex(itemID), !timeline.items[index].locked, fraction.isFinite, fraction >= 0.1, fraction <= 0.9, timeline.items[index].kind != .title"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "split.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "split",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "trim",
+    "signature": "trim(itemID: UUID, sourceStart: Double, sourceDuration: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 24,
+    "executionGuards": [
+      "let index = itemIndex(itemID), !timeline.items[index].locked, start.isFinite, duration.isFinite, start >= 0, duration >= 0.05",
+      "start + duration <= assetEnd + 0.001"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 3.4,
+      "executed": true,
+      "export": "trim.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "trim",
+      "previewExportPixelError": 0.012580422794117647,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "rippleDelete",
+    "signature": "rippleDelete(itemID: UUID, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 25,
+    "executionGuards": [
+      "let index = itemIndex(itemID), !timeline.items[index].locked"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 2,
+      "executed": true,
+      "export": "rippleDelete.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "rippleDelete",
+      "previewExportPixelError": 0.013952397365196078,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "reorder",
+    "signature": "reorder(itemID: UUID, beforeItemID: UUID?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 26,
+    "executionGuards": [
+      "let index = itemIndex(itemID), !timeline.items[index].locked, timeline.items[index].overlay == nil"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "reorder.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "reorder",
+      "previewExportPixelError": 0.013952397365196078,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "swap",
+    "signature": "swap(itemID: UUID, withItemID: UUID, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 27,
+    "executionGuards": [
+      "itemID != otherItemID, let firstIndex = itemIndex(itemID), let secondIndex = itemIndex(otherItemID), !timeline.items[firstIndex].locked, !timeline.items[secondIndex].locked, timeline.items[firstIndex].overlay == nil, timeline.items[secondIndex].overlay == nil"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "swap.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "swap",
+      "previewExportPixelError": 0.013952397365196078,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "insert",
+    "signature": "insert(candidateID: UUID, sourceStart: Double, sourceDuration: Double, afterItemID: UUID?, role: StoryRole, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 28,
+    "executionGuards": [
+      "let candidate = candidatesByID[candidateID], !candidate.excluded, let item = makeItem(candidate: candidate, start: start, duration: duration, role: role, reason: call.reason)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 5,
+      "executed": true,
+      "export": "insert.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "insert",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "replace",
+    "signature": "replace(itemID: UUID, candidateID: UUID, sourceStart: Double, sourceDuration: Double, role: StoryRole, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 29,
+    "executionGuards": [
+      "let index = itemIndex(itemID), !timeline.items[index].locked, let candidate = candidatesByID[candidateID], !candidate.excluded, var replacement = makeItem(candidate: candidate, start: start, duration: duration, role: role, reason: call.reason)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 3,
+      "executed": true,
+      "export": "replace.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "replace",
+      "previewExportPixelError": 0.013952397365196078,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "duplicate",
+    "signature": "duplicate(itemID: UUID, afterItemID: UUID?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 30,
+    "executionGuards": [
+      "let index = itemIndex(itemID), timeline.items[index].kind != .title"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 6,
+      "executed": true,
+      "export": "duplicate.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "duplicate",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setCrop",
+    "signature": "setCrop(itemID: UUID, crop: CropStyle, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 31,
+    "executionGuards": [
+      "let index = itemIndex(itemID)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setCrop.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setCrop",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setMotion",
+    "signature": "setMotion(itemID: UUID, effect: ClipEffect?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 32,
+    "executionGuards": [
+      "let index = itemIndex(itemID)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setMotion.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setMotion",
+      "previewExportPixelError": 0.012699780433006536,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setSpeed",
+    "signature": "setSpeed(itemID: UUID, rate: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 33,
+    "executionGuards": [
+      "let index = itemIndex(itemID), !timeline.items[index].locked, rate.isFinite, rate >= 0.1, rate <= 8"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": true,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 3.3333333333333335,
+      "executed": true,
+      "export": "setSpeed.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setSpeed",
+      "previewExportPixelError": 0.014862260008169934,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setSpeedRamp",
+    "signature": "setSpeedRamp(itemID: UUID, ramp: SpeedRamp?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 34,
+    "executionGuards": [
+      "let index = itemIndex(itemID), !timeline.items[index].locked"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 5.1,
+      "executed": true,
+      "export": "setSpeedRamp.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setSpeedRamp",
+      "previewExportPixelError": 0.010451133578431372,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "freezeFrame",
+    "signature": "freezeFrame(itemID: UUID, duration: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 35,
+    "executionGuards": [
+      "let index = itemIndex(itemID), duration.isFinite, duration >= 0.25, duration <= 30"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": true,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4.5,
+      "executed": true,
+      "export": "freezeFrame.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "freezeFrame",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setVideoAdjustments",
+    "signature": "setVideoAdjustments(itemID: UUID, adjustments: VideoAdjustments, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 36,
+    "executionGuards": [
+      "let index = itemIndex(itemID)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setVideoAdjustments.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setVideoAdjustments",
+      "previewExportPixelError": 0.013108170785675381,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setTransition",
+    "signature": "setTransition(itemID: UUID, transition: TransitionStyle?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 37,
+    "executionGuards": [
+      "let index = itemIndex(itemID), timeline.items[index].overlay == nil",
+      "AIEffectBudgetPolicy.canAddTransition(to: timeline, budget: effectBudget)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 3.45,
+      "executed": true,
+      "export": "setTransition.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setTransition",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setAudioAdjustments",
+    "signature": "setAudioAdjustments(itemID: UUID, adjustments: AudioAdjustments, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 38,
+    "executionGuards": [
+      "let index = itemIndex(itemID), timeline.items[index].kind != .title"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setAudioAdjustments.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setAudioAdjustments",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setDucking",
+    "signature": "setDucking(AudioDuckingSettings?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 39,
+    "executionGuards": [],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setDucking.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setDucking",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "detachAudio",
+    "signature": "detachAudio(itemID: UUID, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 40,
+    "executionGuards": [
+      "let index = itemIndex(itemID), let assetID = timeline.items[index].assetID, assetsByID[assetID]?.metadata.hasAudio == true"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "detachAudio.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "detachAudio",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "insertOverlay",
+    "signature": "insertOverlay(candidateID: UUID, baseItemID: UUID, sourceStart: Double, sourceDuration: Double, style: OverlayStyle, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 41,
+    "executionGuards": [
+      "let baseIndex = itemIndex(baseItemID), timeline.items[baseIndex].overlay == nil, let candidate = candidatesByID[candidateID], !candidate.excluded, var overlay = makeItem(candidate: candidate, start: start, duration: duration, role: .bRoll, reason: call.reason)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4.004,
+      "executed": true,
+      "export": "insertOverlay.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "explicitly muted; unmuted AAC export not certified",
+      "id": "insertOverlay",
+      "previewExportPixelError": 0.01354985787717865,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setTelemetry",
+    "signature": "setTelemetry(itemID: UUID, settings: TelemetryOverlaySettings?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 42,
+    "executionGuards": [
+      "let index = itemIndex(itemID), let assetID = timeline.items[index].assetID, settings == nil || analyses.first(where: { $0.assetID == assetID })?.telemetry?.hasTelemetry == true"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setTelemetry.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setTelemetry",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "addTitle",
+    "signature": "addTitle(text: String, atEnd: Bool, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 43,
+    "executionGuards": [
+      "!clean.isEmpty"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "addTitle.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "addTitle",
+      "previewExportPixelError": 0.012911475354030501,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "addEffect",
+    "signature": "addEffect(type: TimelineEffectType, startTime: Double, duration: Double, targetClipID: UUID?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 44,
+    "executionGuards": [
+      "startTime.isFinite, duration.isFinite, startTime >= 0, duration >= 0.05, targetClipID.map({ itemIndex($0) != nil }) ?? true",
+      "AIEffectBudgetPolicy.canAddEffect(type, targetClipID: targetClipID, to: timeline, budget: effectBudget, explicitCreativeRequest: explicitCreative)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": true,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "addEffect.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "addEffect",
+      "previewExportPixelError": 0.005883310355392157,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "addAnimatedEffect",
+    "signature": "addAnimatedEffect(type: TimelineEffectType, startTime: Double, duration: Double, targetClipID: UUID?, keyframes: [EffectKeyframe], reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 45,
+    "executionGuards": [
+      "startTime.isFinite, duration.isFinite, startTime >= 0, duration >= 0.05, targetClipID.map({ itemIndex($0) != nil }) ?? true, AIEffectBudgetPolicy.canAddEffect(type, targetClipID: targetClipID, to: timeline, budget: effectBudget)",
+      "let descriptor = preset.parameter(named: frame.parameter), descriptor.supportsKeyframes, frame.time.isFinite, frame.time >= 0, frame.time <= duration",
+      "keyframes.count >= 2"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "addAnimatedEffect.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "addAnimatedEffect",
+      "previewExportPixelError": 0.009119583163126362,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "applyEffectPreset",
+    "signature": "applyEffectPreset(presetID: String, startTime: Double, duration: Double, targetClipID: UUID?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 46,
+    "executionGuards": [
+      "let preset = EffectStackPresetRegistry.preset(id: presetID), startTime.isFinite, duration.isFinite, duration >= 0.05, targetClipID.map({ itemIndex($0) != nil }) ?? true",
+      "allowed"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "applyEffectPreset.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "applyEffectPreset",
+      "previewExportPixelError": 0.019975915713507625,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "removeEffect",
+    "signature": "removeEffect(effectID: UUID, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 47,
+    "executionGuards": [
+      "effects.contains(where: { $0.id == effectID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "removeEffect.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "removeEffect",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "moveEffect",
+    "signature": "moveEffect(effectID: UUID, startTime: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 48,
+    "executionGuards": [
+      "startTime.isFinite, startTime >= 0, let index = effects.firstIndex(where: { $0.id == effectID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "moveEffect.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "moveEffect",
+      "previewExportPixelError": 0.008137382557189543,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "trimEffect",
+    "signature": "trimEffect(effectID: UUID, duration: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 49,
+    "executionGuards": [
+      "duration.isFinite, duration >= 0.05, let index = effects.firstIndex(where: { $0.id == effectID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "trimEffect.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "trimEffect",
+      "previewExportPixelError": 0.007701971847766885,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setEffectParameter",
+    "signature": "setEffectParameter(effectID: UUID, name: String, value: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 50,
+    "executionGuards": [
+      "value.isFinite, !cleanName.isEmpty, let index = effects.firstIndex(where: { $0.id == effectID }), let descriptor = EffectPresetRegistry.preset(for: effects[index].effectType).parameter(named: cleanName)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setEffectParameter.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setEffectParameter",
+      "previewExportPixelError": 0.007701971847766885,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "animateParameter",
+    "signature": "animateParameter(effectID: UUID, parameter: String, fromValue: Double, toValue: Double, startTime: Double, endTime: Double, easing: KeyframeEasing, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 51,
+    "executionGuards": [
+      "let index = effects.firstIndex(where: { $0.id == effectID }), let descriptor = EffectPresetRegistry.preset(for: effects[index].effectType).parameter(named: parameter), descriptor.supportsKeyframes, startTime.isFinite, endTime.isFinite, startTime >= 0, endTime > startTime, endTime <= effects[index].duration"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "animateParameter.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "animateParameter",
+      "previewExportPixelError": 0.009119583163126362,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "addEffectKeyframe",
+    "signature": "addEffectKeyframe(effectID: UUID, keyframe: EffectKeyframe, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 52,
+    "executionGuards": [
+      "let index = effects.firstIndex(where: { $0.id == effectID }), keyframe.time <= effects[index].duration, let descriptor = EffectPresetRegistry.preset(for: effects[index].effectType).parameter(named: keyframe.parameter), descriptor.supportsKeyframes"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "addEffectKeyframe.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "addEffectKeyframe",
+      "previewExportPixelError": 0.009830835546023965,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "removeEffectKeyframe",
+    "signature": "removeEffectKeyframe(effectID: UUID, keyframeID: UUID, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 53,
+    "executionGuards": [
+      "let index = effects.firstIndex(where: { $0.id == effectID }), effects[index].keyframes.contains(where: { $0.id == keyframeID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "removeEffectKeyframe.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "removeEffectKeyframe",
+      "previewExportPixelError": 0.005883310355392157,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "addTitleObject",
+    "signature": "addTitleObject(text: String, kind: TitleTimelineKind, templateID: String?, startTime: Double, duration: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 54,
+    "executionGuards": [
+      "!clean.isEmpty, startTime.isFinite, duration.isFinite, startTime >= 0, duration >= 0.05"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "addTitleObject.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "addTitleObject",
+      "previewExportPixelError": 0.012902220349945533,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "editTitleObject",
+    "signature": "editTitleObject(titleID: UUID, text: String?, style: TitleStyle?, animation: TitleAnimation?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 55,
+    "executionGuards": [
+      "let index = titles.firstIndex(where: { $0.id == titleID })",
+      "!clean.isEmpty"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "editTitleObject.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "editTitleObject",
+      "previewExportPixelError": 0.012983706937636166,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "removeTitleObject",
+    "signature": "removeTitleObject(titleID: UUID, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 56,
+    "executionGuards": [
+      "titles.contains(where: { $0.id == titleID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "removeTitleObject.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "removeTitleObject",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "addTransitionObject",
+    "signature": "addTransitionObject(outgoingClipID: UUID, incomingClipID: UUID, style: TransitionStyle, duration: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 57,
+    "executionGuards": [
+      "duration.isFinite, duration >= 0.08, duration <= 4, let outgoingIndex = itemIndex(outgoingID), let incomingIndex = itemIndex(incomingID), outgoingIndex < incomingIndex, timeline.items[outgoingIndex].overlay == nil, timeline.items[incomingIndex].overlay == nil",
+      "AIEffectBudgetPolicy.canAddTransition(to: timeline, budget: effectBudget)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": true,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 3.5,
+      "executed": true,
+      "export": "addTransitionObject.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "addTransitionObject",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "editTransitionObject",
+    "signature": "editTransitionObject(transitionID: UUID, duration: Double?, intensity: Double?, direction: TransitionDirection?, easing: KeyframeEasing?, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 58,
+    "executionGuards": [
+      "let index = transitions.firstIndex(where: { $0.id == transitionID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 3.3,
+      "executed": true,
+      "export": "editTransitionObject.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "editTransitionObject",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "removeTransitionObject",
+    "signature": "removeTransitionObject(transitionID: UUID, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 59,
+    "executionGuards": [
+      "let transition = transitions.first(where: { $0.id == transitionID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "removeTransitionObject.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "removeTransitionObject",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "syncToBeat",
+    "signature": "syncToBeat(bpm: Double, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 60,
+    "executionGuards": [
+      "bpm.isFinite, bpm >= 40, bpm <= 240"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "syncToBeat.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "syncToBeat",
+      "previewExportPixelError": 0.012702014399509805,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "setCanvas",
+    "signature": "setCanvas(width: Int, height: Int, subjectAware: Bool, reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 61,
+    "executionGuards": [
+      "(64...8_192).contains(width), (64...8_192).contains(height)"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "setCanvas.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "setCanvas",
+      "previewExportPixelError": 0.008629493464052288,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  },
+  {
+    "id": "replaceSubtitles",
+    "signature": "replaceSubtitles(items: [TitleTimelineItem], reason: String)",
+    "source": "Sources/VeloEditCore/AIDirectorEngine.swift",
+    "line": 62,
+    "executionGuards": [
+      "source.kind == .automaticSubtitles || source.kind == .wordLevelCaptions, !source.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, source.startTime.isFinite, source.duration.isFinite, source.startTime >= 0, source.duration >= 0.05, source.startTime < timeline.duration + 0.001, source.targetClipID.map(validClipIDs.contains) ?? true",
+      "let incoming = timeline.items.first(where: { $0.id == transition.incomingClipID })"
+    ],
+    "applicationAIAvailable": true,
+    "knowledgeAIAvailable": false,
+    "status": "execution/preview/export verified for recorded example",
+    "verification": {
+      "duration": 4,
+      "executed": true,
+      "export": "replaceSubtitles.mp4",
+      "exportVerified": true,
+      "fixtureAudioPolicy": "preserve source audio",
+      "id": "replaceSubtitles",
+      "previewExportPixelError": 0.013504221132897603,
+      "telemetrySourceAvailable": true
+    },
+    "notes": "Associated value constructors may constrain values further. Knowledge permission is a separate allowlist."
+  }
+]

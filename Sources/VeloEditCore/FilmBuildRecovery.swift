@@ -15,7 +15,7 @@ public struct FilmBuildRequest: Codable, Equatable, Sendable {
 }
 
 public struct FilmBuildDraft: Codable, Sendable {
-    public enum Phase: String, Codable, Sendable { case finishing, verifying, readyForPlayback }
+    public enum Phase: String, Codable, Sendable { case finishing, verifying, checkingContent, readyForPlayback }
     public var phase: Phase
     public var timeline: Timeline
     public var plan: StoryPlan
@@ -27,6 +27,10 @@ public struct FilmBuildDraft: Codable, Sendable {
     public var resolvedMusicTrackID: UUID?
     public var directorBrief: DirectorBrief?
     public var checkpointReason: String
+    // Exact, positively reviewed source ranges survive native repair/resume.
+    // This is not a delivery certificate; the final encoded file is reviewed
+    // separately after all finishing changes.
+    public var verifiedSourceContent: [ShotContentAssessment]? = nil
 }
 
 public struct FilmBuildRecovery: Codable, Sendable {
@@ -40,7 +44,7 @@ public struct FilmBuildRecovery: Codable, Sendable {
     public var stageTitle: String {
         switch draft?.phase {
         case .finishing: return "Доработка выбранного монтажа"
-        case .verifying, .readyForPlayback: return "Проверка готового фильма и звука"
+        case .verifying, .checkingContent, .readyForPlayback: return "Проверка готового фильма и звука"
         case nil: return "Сборка фильма с сохранённым анализом"
         }
     }

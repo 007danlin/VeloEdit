@@ -157,6 +157,8 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
         }
         if speechSeconds > 0 { return min(range, speechSeconds) }
         if evidence.hasProgression { return evidence.completion >= 0.65 && evidence.unchangedSeconds <= 15 ? range : min(range, 15) }
+        if let observation = candidate.insights?.expressiveMoment, observation.supportsObservation,
+           observation.covers(candidate), evidence.confidence >= 0.55 { return min(range, 10) }
         if evidence.atmosphereValue >= 0.65 && evidence.confidence >= 0.55 { return min(range, 12) }
         // A good still composition supports a short observation, not the
         // remaining minutes of the camera recording.
@@ -167,6 +169,7 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
         if candidate.tags.contains("photo") { return min(usableDuration, PhotoPresentationPolicy.duration) }
         if speechSeconds > 0 || (candidate.momentBoundary?.confirmedActionConfidence ?? 0) >= 0.65 { return usableDuration }
         if evidence.hasProgression && evidence.completion >= 0.65 { return usableDuration }
+        if let duration = ExpressiveMomentPolicy.duration(self, pacing: pacing) { return duration }
         let base = evidence.atmosphereValue >= 0.65 ? 4.2 : evidence.actionDelta >= 0.18 ? 1.6 : 2.5
         return min(usableDuration, max(1.2, base + 1.7 * evidence.informationGain + 1.3 * quality - pacing * 0.7))
     }
@@ -211,8 +214,15 @@ public protocol ShotFamilyClustering: Sendable {
 public struct ShotFamilyClusterer: ShotFamilyClustering {
     public init() {}
 
+    static func sourceOverlap(_ a: EditorialUnit, _ b: EditorialUnit) -> Double {
+        guard a.candidate.assetID == b.candidate.assetID else { return 0 }
+        return max(0, min(a.sourceRange.end, b.sourceRange.end) - max(a.sourceRange.start, b.sourceRange.start))
+            / max(0.05, min(a.sourceRange.duration, b.sourceRange.duration))
+    }
+
     public func relation(_ a: EditorialUnit, _ b: EditorialUnit) -> EditorialPairRelation {
         if isHardDuplicate(a, b, adjacent: false) { return .hardDuplicate }
+        if measuredStaticSetup(a, b) { return .sameSetup }
         let pair = similarity(a, b)
         if pair.combined >= 0.78 { return addsState(b, after: a) ? .relatedScene : .sameSetup }
         if addsState(b, after: a), min(a.evidence.confidence, b.evidence.confidence) >= 0.55 { return .distinctEditorialUnit }
@@ -226,7 +236,7 @@ public struct ShotFamilyClusterer: ShotFamilyClustering {
 
     public func similarity(_ a: EditorialUnit, _ b: EditorialUnit) -> EditorialPairSimilarity {
         let sameSource = a.candidate.assetID == b.candidate.assetID
-        let overlap = sameSource ? max(0, min(a.sourceRange.end, b.sourceRange.end) - max(a.sourceRange.start, b.sourceRange.start)) / max(0.05, min(a.sourceRange.duration, b.sourceRange.duration)) : 0
+        let overlap = Self.sourceOverlap(a, b)
         func tokens(_ unit: EditorialUnit) -> Set<String> {
             let summary = unit.candidate.insights?.sceneSummary ?? ""
             let technical: Set<String> = ["4k", "1080p", "720p", "horizontal", "vertical", "landscape", "portrait", "hdr", "sdr", "video", "photo", "high-fps", "60fps", "120fps", "stable", "sharp"]
@@ -292,6 +302,74 @@ public struct ShotFamilyClusterer: ShotFamilyClustering {
         return b.evidence.hasProgression && (!to.subtracting(from).isEmpty || b.evidence.completion > a.evidence.completion + 0.18)
     }
 
+    // Label-only observations can give the same stationary view different
+    // families ("camping" versus "foliage"). Repeated measured framing may
+    // establish a setup, never a hard duplicate or completed action. Require
+    // the same recording, low change, matching subjects AND their placement;
+    // a brightness histogram alone cannot prove the camera view is repeated.
+    func measuredStaticSetup(_ a: EditorialUnit, _ b: EditorialUnit) -> Bool {
+        guard a.candidate.assetID == b.candidate.assetID,
+              min(a.evidence.confidence, b.evidence.confidence) >= 0.55,
+              max(a.evidence.informationGain, b.evidence.informationGain) < 0.18,
+              !a.evidence.hasProgression, !b.evidence.hasProgression else { return false }
+        func summary(_ unit: EditorialUnit) -> (histogram: [Double], region: NormalizedRegion, kinds: Set<SubjectKind>, faces: [NormalizedRegion])? {
+            let samples = unit.evidence.samples.filter {
+                $0.confidence >= 0.55 && $0.composition.count == 16
+                    && $0.composition.allSatisfy { $0.isFinite && $0 >= 0 }
+                    && abs($0.composition.reduce(0, +) - 1) < 0.01
+                    && $0.motionEnergy.isFinite
+            }
+            guard samples.count >= 3,
+                  // Modest subject movement inside an otherwise matching
+                  // stationary composition does not establish a new setup.
+                  // The novelty ceiling matches the content-budget policy;
+                  // confirmed progression and substantial movement stay out.
+                  samples.reduce(0, { $0 + $1.motionEnergy }) / Double(samples.count) <= 0.15 else { return nil }
+            let kinds = Set(samples.flatMap(\.subjectKinds))
+            let regions = samples.compactMap { $0.subjectRegions.max { $0.area < $1.area } }.filter {
+                [$0.x, $0.y, $0.width, $0.height].allSatisfy { $0.isFinite }
+                    && $0.x >= 0 && $0.y >= 0 && $0.width > 0 && $0.height > 0
+                    && $0.x + $0.width <= 1.01 && $0.y + $0.height <= 1.01
+            }
+            guard !kinds.isEmpty, regions.count >= 3 else { return nil }
+            let histogram = (0..<16).map { index in samples.reduce(0, { $0 + $1.composition[index] }) / Double(samples.count) }
+            let count = Double(regions.count)
+            let region = NormalizedRegion(x: regions.reduce(0, { $0 + $1.x }) / count,
+                y: regions.reduce(0, { $0 + $1.y }) / count,
+                width: regions.reduce(0, { $0 + $1.width }) / count,
+                height: regions.reduce(0, { $0 + $1.height }) / count)
+            let faces = samples.flatMap { sample in
+                zip(sample.subjectKinds, sample.subjectRegions).compactMap { kind, region in
+                    kind == .face ? region : nil
+                }
+            }
+            // Posture changes can move the combined person box while the
+            // camera and seated faces remain in the same positions. A
+            // transient passing face cannot relax the framing test.
+            func nearby(_ a: NormalizedRegion, _ b: NormalizedRegion) -> Bool {
+                abs(a.x + a.width / 2 - b.x - b.width / 2) < 0.045
+                    && abs(a.y + a.height / 2 - b.y - b.height / 2) < 0.045
+            }
+            let stableFaces = faces.filter { face in faces.filter { nearby(face, $0) }.count >= 3 }
+            return (histogram, region, kinds, stableFaces)
+        }
+        guard let left = summary(a), let right = summary(b), left.kinds == right.kinds else { return false }
+        let histogramAgreement = 1 - zip(left.histogram, right.histogram).reduce(0) { $0 + abs($1.0 - $1.1) } / 2
+        let l = left.region, r = right.region
+        let width = max(0, min(l.x + l.width, r.x + r.width) - max(l.x, r.x))
+        let height = max(0, min(l.y + l.height, r.y + r.height) - max(l.y, r.y))
+        let intersection = width * height
+        let union = l.area + r.area - intersection
+        func matches(_ a: NormalizedRegion, _ b: NormalizedRegion) -> Bool {
+            abs(a.x + a.width / 2 - b.x - b.width / 2) < 0.045
+                && abs(a.y + a.height / 2 - b.y - b.height / 2) < 0.045
+        }
+        let fixedFaces = !left.faces.isEmpty && !right.faces.isEmpty
+            && left.faces.allSatisfy { face in right.faces.contains { matches(face, $0) } }
+            && right.faces.allSatisfy { face in left.faces.contains { matches(face, $0) } }
+        return histogramAgreement >= 0.93 && union > 0 && (intersection / union >= 0.75 || fixedFaces)
+    }
+
     private final class FamilyCacheEntry: NSObject {
         let units: [EditorialUnit]
         let index: ShotFamilyIndex
@@ -315,7 +393,7 @@ public struct ShotFamilyClusterer: ShotFamilyClustering {
         var groups: [[EditorialUnit]] = []
         for unit in units.sorted(by: { $0.quality == $1.quality ? $0.id.uuidString < $1.id.uuidString : $0.quality > $1.quality }) {
             // Complete-link avoids a transitive chain merging unrelated setups.
-            if let index = groups.firstIndex(where: { $0.allSatisfy { similarity($0, unit).combined >= 0.78 } }) {
+            if let index = groups.firstIndex(where: { $0.allSatisfy { similarity($0, unit).combined >= 0.78 || measuredStaticSetup($0, unit) } }) {
                 groups[index].append(unit)
             } else { groups.append([unit]) }
         }
@@ -383,7 +461,7 @@ public struct ContentBudgetEngine: ContentBudgeting {
             for unit in ranked {
                 let hardRepeat = accepted.first { clusterer.isHardDuplicate($0, unit, adjacent: false) }
                 let measuredNovelContinuation = requested != nil && unit.evidence.informationGain >= 0.18 && accepted.allSatisfy {
-                    $0.candidate.assetID != unit.candidate.assetID || clusterer.similarity($0, unit).sourceOverlap < 0.18
+                    ShotFamilyClusterer.sourceOverlap($0, unit) < 0.18
                 }
                 guard hardRepeat == nil || measuredNovelContinuation else { continue }
                 let progresses = retained.contains { clusterer.addsState(unit, after: $0) || clusterer.addsState($0, after: unit) }
@@ -395,7 +473,7 @@ public struct ContentBudgetEngine: ContentBudgeting {
                     clusterer.similarity($0, unit).combined < 0.90
                 }
                 let temporallyNovel = requested != nil && unit.evidence.informationGain >= 0.18 && retained.allSatisfy {
-                    $0.candidate.assetID != unit.candidate.assetID || clusterer.similarity($0, unit).sourceOverlap < 0.18
+                    ShotFamilyClusterer.sourceOverlap($0, unit) < 0.18
                 }
                 // A long journey can legitimately remain on one camera mount:
                 // new places and observable visual change still add story.
