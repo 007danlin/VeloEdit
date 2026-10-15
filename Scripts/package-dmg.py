@@ -2,12 +2,22 @@
 """Package the signed app in a branded, drag-to-install Finder window."""
 import argparse
 import json
+import math
 from pathlib import Path
 import subprocess
 
 import dmgbuild
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def image_size(app):
+    # The universal payload with two speech models needs explicit HFS+ headroom.
+    # Budget logical file lengths plus allocation blocks, Finder artwork and
+    # filesystem metadata; do not count symlink targets a second time.
+    payload = sum(path.stat().st_size for path in app.rglob("*")
+                  if path.is_file() and not path.is_symlink())
+    return f"{math.ceil(payload * 1.1 / (1024 * 1024)) + 128}m"
 
 
 def verify_copied_app(mount_point, options):
@@ -34,6 +44,7 @@ def main():
     dmgbuild.build_dmg(str(args.dmg.resolve()), args.volume_name, settings={
         "format": "UDZO",
         "filesystem": "HFS+",
+        "size": image_size(args.app),
         "files": [(str(args.app.resolve()), "VeloEdit.app")],
         "symlinks": {"Applications": "/Applications"},
         "background": str(design / layout["background"]),
