@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "id": "vlog-speech-1",
-  "runtime": "whisperkit-f4e5d6b+ort-1.24.2",
-  "model": "large-v3-turbo-626MB",
+  "id": "vlog-speech-2",
+  "runtime": "whisperkit-f4e5d6b+whisper.cpp-1.8.3+ort-1.24.2",
+  "model": "large-v3-turbo-coreml-626MB+ggml-q5_0",
   "revision": "0f63a7800b00dd0226abd051b906c246e1907482",
   "tokenizerRevision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
   "vadRevision": "1e261b036686cd0017d500ee96acd1c4ba572a9d",
@@ -163,6 +163,24 @@
       "url": "https://huggingface.co/openai/whisper-large-v3-turbo/resolve/41f01f3fe87f28c78e2fbf8b568835947dd65ed9/README.md",
       "sha256": "aaef74a740faca90fa1899c4233ebe17f2093b9846d0acf16d9131bf650e9585",
       "bytes": 21196
+    },
+    {
+      "path": "cpu/ggml-large-v3-turbo-q5_0.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin",
+      "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+      "bytes": 574041195
+    },
+    {
+      "path": "notices/OpenAI-Whisper-LICENSE",
+      "url": "https://raw.githubusercontent.com/openai/whisper/31243bad24cc746f07d4c8bfdd2d974872cb1803/LICENSE",
+      "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d",
+      "bytes": 1063
+    },
+    {
+      "path": "notices/GGML-model-card.md",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/README.md",
+      "sha256": "21fd967098804f33fc84e803fb0e5ab7666d71801f4027cf28a65e7af09c1758",
+      "bytes": 3196
     }
   ]
 }

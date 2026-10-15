@@ -2,7 +2,16 @@
 
 ## Локальная сборка
 
-По умолчанию собирается **Universal 2: arm64 + x86_64**, минимум macOS 14. Приложение, speech worker, OVRLEY, FFmpeg и ffprobe содержат обе архитектуры. Ollama поставляется с универсальными исполняемыми файлами и отдельными подходящими CPU/Metal-плагинами. На Apple Silicon сохраняются нативный ARM-код и Neural Engine; на Intel все речевые модели используют Core ML CPU-only для совместимости с разными GPU. Дополнительный MLX v4 backend рассчитан на macOS 26.2+, при этом в пакете сохранён MLX v3 для более старых систем.
+По умолчанию собирается **Universal 2: arm64 + x86_64**, минимум macOS 14. Приложение, speech worker, OVRLEY, FFmpeg и ffprobe содержат обе архитектуры. Ollama поставляется с универсальными исполняемыми файлами и отдельными подходящими CPU/Metal-плагинами. На Apple Silicon сохраняются WhisperKit и Neural Engine; на Intel распознавание выполняет встроенный whisper.cpp 1.8.3 на CPU без Core ML/BNNS. CPU-сборка использует AVX2/F16C/FMA, доступные на Intel Mac, официально поддерживающих macOS 14, включая Mac mini 2018. Дополнительный MLX v4 backend рассчитан на macOS 26.2+, при этом в пакете сохранён MLX v3 для более старых систем.
+
+Перед полной сборкой подготовьте речевой пакет: `python3 Scripts/prepare-speech-package.py`.
+`Resources/Speech/package.json` закрепляет Core ML и GGML large-v3-turbo Q5_0,
+контрольные суммы и лицензии. Оба варианта модели входят в Universal-приложение;
+выбор движка происходит по архитектуре процесса. Исходники CPU-движка и рецепт
+SwiftPM находятся в `ThirdParty/WhisperCPP` и включаются в приложение.
+Проверка настоящего распознавания и возобновления с запрещённой сетью:
+`python3 Scripts/Validation/smoke-speech-engines.py /path/to/short-spoken.wav --output Build/SpeechSmoke`.
+Для сравнения ARM с сохранённым эталоном добавьте `--baseline-arm64 /path/to/transcript.json`.
 
 ```bash
 ./Scripts/build-app.sh

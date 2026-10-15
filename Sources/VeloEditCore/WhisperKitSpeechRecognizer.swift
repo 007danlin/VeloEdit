@@ -3,7 +3,7 @@ import Foundation
 /// The app process never loads Core ML/ONNX alongside a visual model. One
 /// killable worker owns speech inference and checkpoints completed source chunks.
 public struct WhisperKitSpeechRecognizer: LocalSpeechRecognizing, Sendable {
-    public let modelIdentifier = "vlog-whisperkit-turbo-silero-v4"
+    public let modelIdentifier = "vlog-turbo-silero-v5-" + SpeechRuntimeSelection.identifier
     public let cacheURL: URL
     public init(cacheURL: URL) { self.cacheURL = cacheURL }
     public func transcribe(url: URL, localeIdentifier: String? = "ru") async throws -> SpeechTranscript? {
@@ -21,7 +21,7 @@ private actor SpeechWorkerCoordinator {
         guard let package = await SpeechAssetStore.shared.installedURL(manifest: manifest) else { throw SpeechComponentError.unavailable }
         try await SpeechAssetStore.shared.verify(package, manifest: manifest)
         let hash = try SpeechFileHash.file(url)
-        let key = SpeechFileHash.data(Data("speech-v4|\(hash)|\(manifest.identity)|track0|mono|\(locale)|chunk24-context2|alignment2".utf8))
+        let key = SpeechFileHash.data(Data("speech-v5|\(SpeechRuntimeSelection.identifier)|\(hash)|\(manifest.identity)|track0|mono|\(locale)|chunk24-context2|alignment2".utf8))
         let directory = cache.appendingPathComponent("Speech/" + key, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let output = directory.appendingPathComponent("transcript.json")

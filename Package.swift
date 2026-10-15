@@ -16,6 +16,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.0"),
         .package(path: "ThirdParty/ArgmaxOSS"),
+        .package(path: "ThirdParty/WhisperCPP"),
         .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git", exact: "1.24.2")
     ],
     targets: [
@@ -49,10 +50,14 @@ let package = Package(
             // description before the on-device ASR authorization request.
             .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", cliInfoPlist])
         ]),
-        .executableTarget(name: "VeloEditSpeechWorker", dependencies: ["VeloEditCore", .product(name: "WhisperKit", package: "ArgmaxOSS"), .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager")]),
+        .executableTarget(name: "VeloEditSpeechWorker", dependencies: ["VeloEditCore", .product(name: "WhisperKit", package: "ArgmaxOSS"), .product(name: "CWhisper", package: "WhisperCPP"), .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager")]),
         .testTarget(
             name: "VeloEditCoreTests",
             dependencies: ["VeloEditCore"]
+        ),
+        .testTarget(
+            name: "VeloEditSpeechWorkerTests",
+            dependencies: ["VeloEditSpeechWorker"]
         ),
         .testTarget(
             name: "VeloEditAppTests",

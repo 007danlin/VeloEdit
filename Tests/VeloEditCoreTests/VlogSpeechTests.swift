@@ -232,7 +232,10 @@ final class VlogSpeechTests: XCTestCase {
 
     func testCorruptModelAndTraversalAreRejected() async throws {
         let manifest = try SpeechPackageManifest.bundled()
-        XCTAssertEqual(manifest.totalBytes, 632068998)
+        XCTAssertEqual(manifest.totalBytes, 1_206_114_452)
+        let cpuModel = try XCTUnwrap(manifest.files.first { $0.path == "cpu/ggml-large-v3-turbo-q5_0.bin" })
+        XCTAssertEqual(cpuModel.bytes, 574_041_195)
+        XCTAssertEqual(cpuModel.sha256, "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2")
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }

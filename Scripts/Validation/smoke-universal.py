@@ -27,9 +27,9 @@ def main():
             speech = json.loads(run(arch, app / "Contents/MacOS/VeloEditSpeechWorker", "--self-check").stdout)
             assert speech["architecture"] == arch, speech
             if arch == "x86_64":
-                for key in ("speechCompute", "melCompute", "textDecoderCompute"):
-                    # Core ML's Objective-C enum uses raw-value descriptions.
-                    assert speech[key] == "MLComputeUnits(rawValue: 0)", speech
+                assert speech["speechRuntime"] == "whisper.cpp-1.8.3-cpu-q5_0-v1", speech
+            else:
+                assert speech["speechRuntime"] == "whisperkit-f4e5d6b-coreml-v4", speech
             bridge = json.loads(run(arch, app / "Contents/MacOS/VeloEditOVRLEY", "health").stdout)
             assert bridge["ok"] and bridge["result"]["ready"], bridge
             runtime = run(arch, app / "Contents/Resources/Ollama/ollama", "--version")

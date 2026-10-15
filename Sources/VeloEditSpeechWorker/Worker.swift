@@ -18,17 +18,6 @@ private struct Chunk: Codable {
 }
 
 @main struct SpeechWorker {
-    static var speechComputeOptions: ModelComputeOptions {
-        #if arch(x86_64)
-        // Avoid depending on an Intel Mac's GPU/Metal driver when Core ML
-        // specializes the speech models. A native crash here cannot be caught
-        // by Swift. Use the CPU for every model, including the mel extractor.
-        return ModelComputeOptions(melCompute: .cpuOnly, audioEncoderCompute: .cpuOnly, textDecoderCompute: .cpuOnly)
-        #else
-        return ModelComputeOptions()
-        #endif
-    }
-
     static func main() async {
         do {
             if CommandLine.arguments == [CommandLine.arguments[0], "--self-check"] {
@@ -38,10 +27,7 @@ private struct Chunk: Codable {
                 #else
                 let architecture = "arm64"
                 #endif
-                let info = ["architecture": architecture,
-                            "speechCompute": String(describing: speechComputeOptions.audioEncoderCompute),
-                            "melCompute": String(describing: speechComputeOptions.melCompute),
-                            "textDecoderCompute": String(describing: speechComputeOptions.textDecoderCompute)]
+                let info = ["architecture": architecture, "speechRuntime": SpeechRuntimeSelection.identifier]
                 let data = try JSONSerialization.data(withJSONObject: info, options: [.sortedKeys])
                 FileHandle.standardOutput.write(data + Data("\n".utf8))
                 return
@@ -78,8 +64,7 @@ private struct Chunk: Codable {
         // Argmax normally writes to OSLog, not stderr. Forward it before model
         // initialization so a killed worker still leaves useful diagnostics.
         Logging.shared.loggingCallback = { log($0) }
-        let compute = speechComputeOptions
-        log("Speech worker started; macOS=\(ProcessInfo.processInfo.operatingSystemVersionString); mel=\(compute.melCompute); encoder=\(compute.audioEncoderCompute); decoder=\(compute.textDecoderCompute)")
+        log("Speech worker started; macOS=\(ProcessInfo.processInfo.operatingSystemVersionString); runtime=\(SpeechRuntimeSelection.identifier)")
         let manifest = try JSONDecoder().decode(SpeechPackageManifest.self, from: Data(contentsOf: request.packageURL.appendingPathComponent("package.json")))
         log("Reading audio track")
         let asset = AVURLAsset(url: request.sourceURL)
@@ -91,10 +76,14 @@ private struct Chunk: Codable {
         let warmupStart = ProcessInfo.processInfo.systemUptime
         var decodeSeconds = 0.0, vadSeconds = 0.0, asrSeconds = 0.0
         var resumedChunks = 0
+        let pipe: any SpeechPipeline
+        #if arch(x86_64)
+        log("Loading whisper.cpp CPU model; Core ML and GPU inference disabled")
+        pipe = try CPUSpeechPipeline(package: request.packageURL)
+        #else
         log("Loading WhisperKit models")
-        let pipe = try await WhisperKit(WhisperKitConfig(modelFolder: request.packageURL.appendingPathComponent("model").path,
-            tokenizerFolder: request.packageURL.appendingPathComponent("tokenizer"), computeOptions: compute,
-            verbose: true, logLevel: .debug, prewarm: true, load: true, download: false))
+        pipe = try await CoreMLSpeechPipeline(package: request.packageURL)
+        #endif
         Logging.shared.logLevel = .info
         log("Loading Silero VAD")
         let vad = try SileroDetector(model: request.packageURL.appendingPathComponent("silero_vad.onnx"))
@@ -111,7 +100,9 @@ private struct Chunk: Codable {
             let digestFile = file.appendingPathExtension("sha256")
             if let data = try? Data(contentsOf: file), let hash = try? String(contentsOf: digestFile, encoding: .utf8),
                hash == SpeechFileHash.data(data), let chunk = try? JSONDecoder().decode(Chunk.self, from: data), chunk.index == index {
-                chunks.append(chunk); resumedChunks += 1; continue
+                chunks.append(chunk); resumedChunks += 1
+                try Data("\(index + 1)/\(count)".utf8).write(to: statusURL, options: .atomic)
+                continue
             }
             let coreStart = Double(index) * 24; let coreEnd = min(duration, coreStart + 24)
             let start = max(0, coreStart - 2); let end = min(duration, coreEnd + 2)
@@ -126,17 +117,14 @@ private struct Chunk: Codable {
             chunk.silence = ranges(activity.silence, frame: 0.032, offset: start, lower: coreStart, upper: coreEnd)
             // Always run ASR on audio, including low-energy voice. VAD is a second
             // independent signal, never a gate that drops quiet recordings.
-            var language = request.locale
-            if activity.speech.contains(true), let detected = try? await pipe.detectLangauge(audioArray: samples), (detected.langProbs[detected.language] ?? 0) >= 0.85 {
-                language = detected.language
-            }
-            chunk.language = language
-            let options = DecodingOptions(task: .transcribe, language: language, temperatureFallbackCount: 2, detectLanguage: false, skipSpecialTokens: true, wordTimestamps: true, concurrentWorkerCount: 1)
+            log("Recognizing chunk \(index + 1)/\(count); audio=\(samples.count) samples")
             let asrStart = ProcessInfo.processInfo.systemUptime
-            let results = try await pipe.transcribe(audioArray: samples, decodeOptions: options)
+            let result = try await pipe.transcribe(samples, language: request.locale, detectLanguage: activity.speech.contains(true))
+            let language = result.language
+            chunk.language = language
             asrSeconds += (ProcessInfo.processInfo.systemUptime - asrStart)
             let speech = ranges(activity.speech, frame: 0.032, offset: start, lower: start, upper: end)
-            append(segments: results.flatMap(\.segments), offset: start, end: end, core: coreStart...coreEnd, speech: speech, attempt: 0, to: &chunk)
+            append(segments: result.segments, offset: start, end: end, core: coreStart...coreEnd, speech: speech, attempt: 0, to: &chunk)
             // Retry only a chunk with detected voice and no publishable words.
             // Shorter overlapping contexts recover long-window alignment failures;
             // accepted chunks are never sent through a second full-file recognizer.
@@ -146,9 +134,9 @@ private struct Chunk: Codable {
                     let lo = max(start, part - 1); let hi = min(end, part + 13)
                     let slice = Array(samples[Int(((lo - start) * 16000).rounded())..<min(samples.count, Int(((hi - start) * 16000).rounded()))])
                     let retryStart = ProcessInfo.processInfo.systemUptime
-                    let result = try await pipe.transcribe(audioArray: slice, decodeOptions: options)
+                    let result = try await pipe.transcribe(slice, language: language, detectLanguage: false)
                     asrSeconds += (ProcessInfo.processInfo.systemUptime - retryStart)
-                    append(segments: result.flatMap(\.segments), offset: lo, end: hi, core: part...min(coreEnd, part + 12), speech: speech, attempt: 1, to: &retry)
+                    append(segments: result.segments, offset: lo, end: hi, core: part...min(coreEnd, part + 12), speech: speech, attempt: 1, to: &retry)
                 }
                 if !retry.words.isEmpty || !retry.phrases.isEmpty {
                     retry.diagnostics = (chunk.diagnostics ?? []) + (retry.diagnostics ?? [])
@@ -186,6 +174,10 @@ private struct Chunk: Codable {
             sentences: sentences.sorted { $0.startTime < $1.startTime }, silenceBoundaries: merge(chunks.flatMap(\.silence)),
             confidence: words.isEmpty ? 0 : words.map(\.confidence).reduce(0,+) / Double(words.count))
         transcript.provenance = SpeechProvenance(manifest: manifest, sourceHash: request.sourceHash)
+        transcript.provenance?.runtime = SpeechRuntimeSelection.identifier
+        #if arch(x86_64)
+        transcript.provenance?.alignment = "whisper.cpp-dtw-word-v1"
+        #endif
         transcript.speechRanges = merge(chunks.flatMap(\.speech)); transcript.rawText = chunks.map(\.rawText).joined(separator: "\n")
         transcript.warnings = warnings
         transcript.status = !warnings.isEmpty ? .partial : (sentences.isEmpty ? .noSpeech : .ready)

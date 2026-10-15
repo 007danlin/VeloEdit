@@ -36,6 +36,16 @@ ONNX Runtime — выполнение локальных моделей
 Лицензия: Legal/Licenses/ONNX-Runtime-LICENSE.txt.
 Проект: https://github.com/microsoft/onnxruntime
 
+whisper.cpp 1.8.3 / GGML — локальное распознавание речи на Intel CPU
+Авторы: Georgi Gerganov и участники whisper.cpp / GGML.
+Лицензия: MIT.
+Исходники, лицензии и описание сборки: WhisperCPP-Source/.
+Ревизия: 2eeeba56e9edd762b4b38467bab96c2517163158.
+Проект: https://github.com/ggml-org/whisper.cpp
+Модель OpenAI Whisper large-v3-turbo в формате GGML Q5_0: ggerganov/whisper.cpp.
+Ревизия модели и контрольная сумма закреплены в Speech/package.json;
+лицензия исходных весов OpenAI — MIT, сохранена в Speech/ModelsPackage/notices/.
+
 Ollama — локальный запуск языковых и визуальных моделей
 Авторы: Ollama и авторы зависимостей, включая llama.cpp, GGML и MLX.
 Лицензия Ollama: MIT. Лицензии зависимостей учитываются отдельно.

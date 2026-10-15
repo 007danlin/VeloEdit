@@ -107,6 +107,7 @@ if [[ -f "$repo_dir/Build/SpeechPackage/package.json" ]]; then
   cp -R "$repo_dir/Build/SpeechPackage" "$staging_app/Contents/Resources/Speech/ModelsPackage"
 fi
 cp -R "$build_package_dir/ThirdParty/ArgmaxOSS" "$staging_app/Contents/Resources/ArgmaxOSS-Source"
+cp -R "$build_package_dir/ThirdParty/WhisperCPP" "$staging_app/Contents/Resources/WhisperCPP-Source"
 if [[ -f "$app_scratch_path/checkouts/onnxruntime-swift-package-manager/LICENSE" ]]; then
   cp "$app_scratch_path/checkouts/onnxruntime-swift-package-manager/LICENSE" "$staging_app/Contents/Resources/Speech/ONNX-Runtime-LICENSE"
   chmod u+w "$staging_app/Contents/Resources/Speech/ONNX-Runtime-LICENSE"
