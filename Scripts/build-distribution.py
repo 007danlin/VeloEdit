@@ -70,7 +70,7 @@ def validate_payload(app):
             raise ValueError(f"Credential-like file must not be shipped: {path}")
         if path.suffix.lower() in (".swift", ".rs", ".py", ".ts", ".js", ".c", ".h", ".sh"):
             relative = path.relative_to(resources) if path.is_relative_to(resources) else path.relative_to(app)
-            if relative.parts[0] not in ("OVRLEY-Source", "ArgmaxOSS-Source"):
+            if relative.parts[0] not in ("OVRLEY-Source", "ArgmaxOSS-Source", "WhisperCPP-Source"):
                 raise ValueError(f"Unexpected source code in distribution: {relative}")
 
 
