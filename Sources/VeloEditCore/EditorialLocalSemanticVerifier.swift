@@ -5,7 +5,7 @@ import Foundation
 /// The observations are heuristic, but unlike the previous empty production
 /// boundary they are localized, reproducible and tied to a render signature.
 public enum EditorialLocalSemanticVerifier {
-    public static let version = 3
+    public static let version = 4
 
     public static func claims(
         timeline: Timeline,
@@ -172,6 +172,14 @@ public enum EditorialLocalSemanticVerifier {
                 retained.append(item)
                 continue
             }
+            if item.kind == .photo || unit(for: item)?.candidate.tags.contains("photo") == true {
+                let hash = analyses.first { $0.assetID == item.assetID }?.analyzedContentHash
+                if let hash, retained.contains(where: { earlier in
+                    (earlier.kind == .photo || unit(for: earlier)?.candidate.tags.contains("photo") == true)
+                        && analyses.first(where: { $0.assetID == earlier.assetID })?.analyzedContentHash == hash
+                }) { duplicateItems.insert(item.id) } else { retained.append(item) }
+                continue
+            }
             let lowGain = unit(for: item).map { max($0.evidence.informationGain, $0.evidence.actionDelta) < 0.16 } ?? true
             let duplicatesRetained = lowGain && retained.last.map { earlier in
                 guard let previous = representatives[earlier.id] else { return false }
@@ -189,15 +197,19 @@ public enum EditorialLocalSemanticVerifier {
         let duplicateTimelineItems = items.filter { duplicateItems.contains($0.id) }
         if let value = claim(.visualNovelty, selected: duplicateItems.isEmpty ? items : duplicateTimelineItems, passed: duplicateItems.isEmpty, observation: duplicateItems.isEmpty ? "Соседние планы различимы по фактической композиции или изменению состояния" : "Найдены соседние визуально взаимозаменяемые планы без нового состояния", kind: .hardDuplicate, repair: .removeDuplicate) { result.append(value) }
 
-        let progressing = items.filter { item in unit(for: item).map { $0.evidence.hasProgression || $0.evidence.visualDelta >= 0.12 || $0.evidence.informationGain >= 0.14 || $0.speechSeconds > 0 } == true }
-        let allStill = items.allSatisfy { $0.kind == .photo || $0.isFreezeFrame }
-        let stillObservation = allStill && items.allSatisfy { item in unit(for: item).map { $0.quality >= 0.5 } ?? false }
-        let progressionPass = stillObservation || !progressing.isEmpty && Double(progressing.count) / Double(items.count) >= 0.25
-        let stagnant = items.filter { item in !progressing.contains(where: { $0.id == item.id }) }
-        if let value = claim(.actionProgression, selected: progressionPass ? items : stagnant, passed: progressionPass, observation: progressionPass ? (stillObservation ? "Атмосферная still-последовательность подтверждена качеством и изменением композиции" : "Последовательность содержит измеримые изменения действия/состояния") : "Последовательность не подтверждает развитие действия", kind: .falseNarrativeRole) { result.append(value) }
+        func isStill(_ item: TimelineItem) -> Bool {
+            item.kind == .photo || item.isFreezeFrame || unit(for: item)?.candidate.tags.contains("photo") == true
+        }
+        let videoItems = items.filter { !isStill($0) }
+        let progressing = videoItems.filter { item in unit(for: item).map { $0.evidence.hasProgression || $0.evidence.visualDelta >= 0.12 || $0.evidence.informationGain >= 0.14 || $0.speechSeconds > 0 } == true }
+        let allStill = videoItems.isEmpty
+        let stillObservation = allStill
+        let progressionPass = stillObservation || !progressing.isEmpty && Double(progressing.count) / Double(max(1, videoItems.count)) >= 0.25
+        let stagnant = videoItems.filter { item in !progressing.contains(where: { $0.id == item.id }) }
+        if let value = claim(.actionProgression, selected: progressionPass ? (allStill ? items : videoItems) : stagnant, passed: progressionPass, observation: progressionPass ? (stillObservation ? "Для исходных фотографий развитие и границы действия не применяются" : "Последовательность содержит измеримые изменения действия/состояния") : "Последовательность не подтверждает развитие действия", kind: .falseNarrativeRole) { result.append(value) }
 
-        let complete = stillObservation || items.contains { item in unit(for: item).map { $0.evidence.completion >= 0.45 || $0.evidence.exitQuality >= 0.58 || $0.speechSeconds > 0 } == true }
-        if let value = claim(.momentCompletion, passed: complete, observation: complete ? "В фильме присутствует завершённый момент, результат или реакция" : "Выбранные ranges не подтверждают завершение момента", kind: .incompleteMoment) { result.append(value) }
+        let complete = stillObservation || videoItems.contains { item in unit(for: item).map { $0.evidence.completion >= 0.45 || $0.evidence.exitQuality >= 0.58 || $0.speechSeconds > 0 } == true }
+        if let value = claim(.momentCompletion, selected: allStill ? items : videoItems, passed: complete, observation: complete ? "В фильме присутствует завершённый момент, результат или реакция" : "Выбранные ranges не подтверждают завершение момента", kind: .incompleteMoment) { result.append(value) }
 
         let first = Array(items.prefix(1)), last = Array(items.suffix(1))
         let hookPass = first.first.flatMap { unit(for: $0) }.map { $0.evidence.entryQuality >= 0.34 || $0.evidence.actionDelta >= 0.12 || $0.quality >= 0.62 } ?? false

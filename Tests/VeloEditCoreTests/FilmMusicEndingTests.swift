@@ -184,6 +184,37 @@ import Testing
         }
     }
 
+    @Test func detachedSourceAudioFadesAtMovieEndAfterReorderAndTrim() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-source-finish-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("tone.caf")
+        try writeTone(to: source, duration: 12)
+        let track = LocalMusicTrack(title: "Source tone", author: "Fixture", bpm: 100, genres: [], moods: [], energy: 0.5,
+            duration: 12, license: .userFile(), sourceProvider: .user, sourcePageURL: source, localFileURL: source, originalFileName: source.lastPathComponent)
+        let items = (0..<3).map { TimelineItem(kind: .title, sourceDuration: 4, timelineStart: Double($0) * 4, timelineDuration: 4, title: "\($0)") }
+        var timeline = Timeline(storyPlanID: UUID(), width: 160, height: 90, frameRate: 30, items: items,
+            audioClips: [.init(trackID: track.id, title: "Detached source", role: .detached, sourceDuration: 12, timelineStart: 0, timelineDuration: 12)],
+            endingFadeDuration: 3, audioDucking: .init(enabled: false))
+        #expect(TimelineMutationEngine.movePrimaryItem(in: &timeline, id: items[2].id, toPrimaryIndex: 1))
+        for shortened in [false, true] {
+            if shortened {
+                timeline.items[2].sourceDuration = 2
+                timeline.items[2].timelineDuration = 2
+            }
+            let end = timeline.duration
+            let playback = try await PlaybackEngine().build(timeline: timeline, assets: [], musicTracks: [track])
+            let destination = root.appendingPathComponent("finished-\(shortened).mp4")
+            _ = try await RenderEngine().render(timeline: timeline, assets: [], musicTracks: [track], quality: .maximum, destination: destination)
+            for pair in [(playback.composition as AVAsset, playback.audioMix), (AVURLAsset(url: destination) as AVAsset, nil)] {
+                let samples = try await levels(asset: pair.0, mix: pair.1, times: [4.2, 6.2, end - 2.8, end - 1.5, end - 0.1])
+                #expect(abs(samples[0] - samples[1]) < 0.005)
+                #expect(samples[2] > samples[3] && samples[3] > samples[4])
+                #expect(samples[4] < samples[0] * 0.02)
+            }
+        }
+    }
+
     private func range(_ start: Double, _ end: Double) -> CMTimeRange {
         CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 48_000),
                     end: CMTime(seconds: end, preferredTimescale: 48_000))

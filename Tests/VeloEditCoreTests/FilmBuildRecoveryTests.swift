@@ -11,12 +11,13 @@ private actor PreparationCounter {
     func called() { calls += 1 }
 }
 
-private func preparationFixture(cached: Bool) async throws -> ProjectStore {
+private func preparationFixture(cached: Bool, kind: MediaKind = .photo) async throws -> ProjectStore {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let store = try ProjectStore(createAt: root, name: "Cached analysis preflight")
     let image = root.appendingPathComponent("source.png")
     try AutonomousOperationTests.photo(at: image)
     var asset = try await MediaImporter().makeAsset(url: image)
+    asset.kind = kind
     asset.metadata.creationDate = Date(timeIntervalSince1970: 1_700_000_000)
     var preferences = UserPreferences()
     preferences.aiPowerMode = .fast
@@ -26,6 +27,7 @@ private func preparationFixture(cached: Bool) async throws -> ProjectStore {
         sceneTags: ["river", "forest"], candidates: [Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: 8, scores: ClipScores(quality: 0.9, interest: 0.9, action: 0.2, stability: 0.9))], completedDepth: profile.targetDepth)
     analysis.schemaVersion = await store.manifest.analysisSchemaVersion
     analysis.deepMediaVersion = DeepAnalysisCache.version
+    analysis.photoAnalysisVersion = PhotoSourceAnalysis.version
     analysis.analysisProfileKey = profile.cacheKey
     analysis.analyzedSourceIdentity = FrameCacheKey.sourceIdentity(url: image, contentHash: asset.contentHash)
     analysis.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 1,
@@ -54,8 +56,8 @@ private func preparationFixture(cached: Bool) async throws -> ProjectStore {
     #expect(await store.manifest.filmBuildRecovery == nil)
 }
 
-@Test func missingFilmAnalysisStillRequiresModelPreparation() async throws {
-    let store = try await preparationFixture(cached: false)
+@Test func missingVideoAnalysisStillRequiresModelPreparation() async throws {
+    let store = try await preparationFixture(cached: false, kind: .video)
     let root = await store.packageURL
     defer { try? FileManager.default.removeItem(at: root) }
     let counter = PreparationCounter()
@@ -305,4 +307,44 @@ func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: F
         #expect(after.filmBuildRecovery?.draft?.timeline.music == saved.timeline.music)
         #expect(after.autonomousJob?.state == .failed)
     }
+}
+
+@Test func filmBuildRecoveryRestoresVerifiedBestAfterReplacementFails() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Best available recovery")
+    var draft = try await savedBuild(store, phase: .checkingContent)
+    let best = try await VeloEditPipeline(store: store).resumeFilmBuild()
+    #expect(AutomaticFilmDelivery.technicalFailures(timeline: best).isEmpty)
+    let request = FilmBuildRequest(kind: .create, prompt: "Собери фильм", preset: .memories)
+    _ = try await store.beginEditorialGeneration(prompt: request.prompt, brief: nil)
+    _ = try await store.beginFilmBuildRecovery(request)
+    var state = FilmContentRepairState()
+    _ = state.retain(timeline: best, plan: draft.plan, defects: 1)
+    draft.contentRepairState = state
+    draft.timeline = best
+    draft.timeline.items[0].assetID = UUID() // Interrupted replacement has lost its source.
+    draft.phase = .checkingContent
+    try await store.checkpointFilmBuild(draft, ifRevision: await store.snapshot().revision)
+    let reopened = try ProjectStore(open: root)
+    let restored = try await VeloEditPipeline(store: reopened).resumeFilmBuild()
+    #expect(EditorialRenderSignature.signature(restored) == EditorialRenderSignature.signature(best))
+    #expect(AutomaticFilmDelivery.technicalFailures(timeline: restored).isEmpty)
+    #expect(restored.filmDeliveryReport?.warnings.contains { $0.contains("восстановлен лучший") } == true)
+    #expect(await reopened.manifest.timelines.count == 2)
+    #expect(await reopened.manifest.filmBuildRecovery == nil)
+}
+
+@Test func freshPhotosDoNotPrepareAVideoLanguageModel() async throws {
+    let store = try await preparationFixture(cached: false)
+    let root = await store.packageURL
+    defer { try? FileManager.default.removeItem(at: root) }
+    let counter = PreparationCounter()
+    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(), analysisModelPreparer: { _ in
+        await counter.called()
+        throw CocoaError(.fileReadUnknown)
+    })
+    let film = try await pipeline.createFilm(prompt: "Собери фильм. Без музыки. Без титров.", preset: .memories, targetDuration: 8)
+    #expect(await counter.calls == 0)
+    #expect(!film.items.isEmpty)
 }

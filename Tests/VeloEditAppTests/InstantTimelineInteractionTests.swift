@@ -7,6 +7,49 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct InstantTimelineInteractionTests {
+    @Test func movingWatchedClipKeepsPreviewAtItsNewPositionAndPreservesFinish() async throws {
+        let fixture = try await Fixture(clipCount: 3); defer { fixture.remove() }
+        let model = fixture.model
+        model.project?.timelines[0].endingFadeDuration = 3
+        model.project?.timelines[0].movieEndingAudioVersion = nil
+        model.project?.timelines[0].items[2].candidateID = UUID()
+        model.project?.timelines[0].items[2].audioAdjustments = .init(fadeOut: 3)
+        let last = try #require(model.timeline?.items.last)
+        model.seekTimeline(to: 28)
+        model.movePrimaryTimelineItem(last.id, toPrimaryIndex: 1)
+        #expect(model.timelinePlayheadTime == 18)
+        #expect(model.timeline?.items[1].id == last.id)
+        #expect(model.timeline?.items[1].effectiveAudioAdjustments.fadeOut == 0)
+        #expect(model.timeline?.endingFadeDuration == 3)
+        #expect(model.timeline?.movieEndingAudioVersion == 1)
+        // A manually chosen clip fade after migration remains a clip property.
+        model.project?.timelines[0].items[1].audioAdjustments = .init(fadeOut: 1)
+        model.seekTimeline(to: 2)
+        model.movePrimaryTimelineItem(last.id, toPrimaryIndex: 2)
+        #expect(model.timelinePlayheadTime == 2)
+        #expect(model.timeline?.items[2].effectiveAudioAdjustments.fadeOut == 1)
+        #expect(await model.flushAutosave())
+        let store = try ProjectStore(open: fixture.url)
+        #expect(await store.manifest.timelines.last == model.timeline)
+    }
+
+    @Test func titleTypingAndClosingInspectorPreserveEveryCharacter() async throws {
+        let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
+        let model = fixture.model
+        let title = TitleTimelineItem(kind: .title, text: "Было", startTime: 0, duration: 5)
+        model.project?.timelines[0].titleItems = [title]
+        model.selectTitleTimelineItem(title.id)
+        for text in ["Н", "Новый", "Новый текст 🌳\nВторая строка"] { model.setSelectedModernTitleText(text) }
+        model.closeTimelineInspector()
+        #expect(model.selectedTitleTimelineItem?.text == "Новый текст 🌳\nВторая строка")
+        #expect(await model.flushAutosave())
+        let store = try ProjectStore(open: fixture.url)
+        #expect(await store.manifest.timelines.last?.effectiveTitleItems.first?.text == "Новый текст 🌳\nВторая строка")
+        await model.refresh()
+        model.openTimelineInspector()
+        #expect(model.selectedTitleTimelineItem?.text == "Новый текст 🌳\nВторая строка")
+    }
+
     @Test func viewerIndicatorsFollowSelectionPartialResetUndoAndReopening() async throws {
         let fixture = try await Fixture(clipCount: 2); defer { fixture.remove() }
         let model = fixture.model

@@ -31,6 +31,7 @@ public struct FilmBuildDraft: Codable, Sendable {
     // This is not a delivery certificate; the final encoded file is reviewed
     // separately after all finishing changes.
     public var verifiedSourceContent: [ShotContentAssessment]? = nil
+    public var contentRepairState: FilmContentRepairState? = nil
 }
 
 public struct FilmBuildRecovery: Codable, Sendable {

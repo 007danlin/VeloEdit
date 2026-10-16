@@ -44,6 +44,7 @@ struct MagneticTimelineView: View {
     @State private var dropPrimaryIndex: Int?
     @State private var libraryInsertion: TimelineInsertionPreview?
     @State private var canvasOrigin = CGPoint.zero
+    @State private var isSelectingWithMarquee = false
     @StateObject private var libraryDropSession = LibraryTimelineDropSession()
     @State private var draggedConnectedID: UUID?
     @State private var connectedDragTranslation: CGFloat = 0
@@ -384,6 +385,12 @@ struct MagneticTimelineView: View {
     }
 
     private var timelineScroller: some View {
+        GeometryReader { viewport in
+            timelineScroller(viewportSize: viewport.size)
+        }
+    }
+
+    private func timelineScroller(viewportSize: CGSize) -> some View {
         ScrollView([.horizontal, .vertical]) {
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -421,7 +428,8 @@ struct MagneticTimelineView: View {
                 TimelineHoverOverlay(state: hoverState, timeline: timeline, canvasHeight: canvasHeight)
                 libraryInsertionOverlay
             }
-            .frame(width: totalTimelineWidth, height: canvasHeight, alignment: .topLeading)
+            .frame(width: max(totalTimelineWidth, viewportSize.width - 32),
+                   height: max(canvasHeight, viewportSize.height - 19), alignment: .topLeading)
             .coordinateSpace(name: "timelineCanvas")
             .environment(\.timelineRenderRange, renderWindow.range)
             .background(TimelineViewportReader(onOriginChange: { canvasOrigin = $0 }) { next in
@@ -441,7 +449,7 @@ struct MagneticTimelineView: View {
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let location):
-                    guard libraryInsertion == nil, draggedItemID == nil, draggedConnectedID == nil, draggedAudioID == nil, draggedTelemetryID == nil,
+                    guard !isSelectingWithMarquee, libraryInsertion == nil, draggedItemID == nil, draggedConnectedID == nil, draggedAudioID == nil, draggedTelemetryID == nil,
                           draggedEffectID == nil, draggedTitleID == nil,
                           trimPreview == nil, rangeTrimPreview == nil,
                           let time = timelineTime(at: location.x) else { return }
@@ -455,6 +463,24 @@ struct MagneticTimelineView: View {
                     .updating($magnification) { value, state, _ in state = value }
                     .onEnded { value in zoom = min(64, max(6, zoom * Double(value))) }
             )
+            .overlay {
+                TimelineMarqueeSelection(
+                    isEnabled: !brushEnabled && !model.isTimelineInteractionBlocked && libraryInsertion == nil,
+                    regions: selectionRegions,
+                    rulerFrame: CGRect(x: 0, y: 0, width: totalTimelineWidth, height: 14),
+                    selection: { model.currentTimelineSelection },
+                    onSelection: model.setTimelineMarqueeSelection,
+                    onActiveChange: { active in
+                        isSelectingWithMarquee = active
+                        if active { hoverState.clear() }
+                    },
+                    onEmptyClick: { point in
+                        if let time = timelineTime(at: point.x) {
+                            model.seekTimeline(to: snapped(time, includePlayhead: false))
+                        }
+                    }
+                )
+            }
             .padding(.horizontal, 16)
             .padding(.top, 7)
             .padding(.bottom, 12)
@@ -491,6 +517,55 @@ struct MagneticTimelineView: View {
         .onDisappear { libraryInsertion = nil; libraryDropSession.reset() }
         .scrollIndicators(.visible)
         .background(Color(nsColor: .textBackgroundColor).opacity(0.32))
+    }
+
+    /// Use the same canvas frames as drawing, including clip gaps and stacked
+    /// lanes. Include unmounted objects so scrolling/virtualization cannot change
+    /// what a rectangle selects. A preset block selects every effect it contains.
+    private var selectionRegions: [TimelineSelectionRegion] {
+        var regions = primaryItems.indices.map { index in
+            TimelineSelectionRegion(frame: primaryFrame(at: index).offsetBy(dx: 0, dy: primaryTrackY),
+                keys: [.item(primaryItems[index].id)])
+        }
+        func append(_ keys: Set<TimelineSelectionKey>, start: Double, duration: Double,
+                    trackY: CGFloat, lane: Int = 0, height: CGFloat = 28) {
+            let frame = regionFrame(start: start, duration: duration)
+            regions.append(TimelineSelectionRegion(
+                frame: CGRect(x: frame.minX, y: trackY + CGFloat(lane) * 31, width: frame.width, height: height), keys: keys))
+        }
+        for item in titleItems {
+            append([.title(item.id)], start: item.startTime, duration: item.duration,
+                trackY: 19, lane: titleLaneAssignments[item.id] ?? 0)
+        }
+        let connectedY = 19 + (showsTitleTrack ? CGFloat(titleLaneCount * 31 + 5) : 0)
+        for item in connectedItems {
+            append([.item(item.id)], start: item.timelineStart, duration: item.timelineDuration,
+                trackY: connectedY, lane: connectedLaneAssignments[item.id] ?? 0)
+        }
+        for block in effectBlocks {
+            append(Set(block.itemIDs.map(TimelineSelectionKey.effect)), start: block.startTime, duration: block.duration,
+                trackY: effectTrackY, lane: effectLaneAssignments[block.id] ?? 0)
+        }
+        for item in telemetryItems {
+            append([.telemetry(item.id)], start: item.timelineStart, duration: item.timelineDuration,
+                trackY: telemetryTrackY, lane: telemetryLaneAssignments[item.id] ?? 0)
+        }
+        for clip in audioClips {
+            append([.audio(clip.id)], start: clip.timelineStart, duration: clip.timelineDuration,
+                trackY: audioTrackY, lane: audioLaneAssignments[clip.id] ?? 0)
+        }
+        if timeline.music != nil {
+            append([.soundtrack], start: 0, duration: layout.geometry.duration,
+                trackY: audioTrackY + (showsAudioTrack ? CGFloat(audioLaneCount * 31 + 5) : 0), height: 27)
+        }
+        let transitions = timeline.effectiveTransitionItems
+        for item in primaryItems.dropFirst() where item.transition != nil {
+            let keys = Set(transitions.filter { $0.incomingClipID == item.id }.map { TimelineSelectionKey.transition($0.id) })
+            regions.append(TimelineSelectionRegion(
+                frame: CGRect(x: xPosition(for: item.timelineStart) - 9, y: primaryTrackY + 29, width: 18, height: 18),
+                keys: keys))
+        }
+        return regions
     }
 
     private var showsTitleTrack: Bool { !titleItems.isEmpty || libraryInsertion?.lane == .title }
@@ -794,6 +869,9 @@ struct MagneticTimelineView: View {
         ForEach(Array(primaryItems.dropFirst().filter {
             $0.transition != nil && renderWindow.intersects(x: xPosition(for: $0.timelineStart) - 9, width: 18)
         })) { item in
+            let selected = timeline.effectiveTransitionItems.contains {
+                $0.incomingClipID == item.id && model.isTransitionTimelineItemSelected($0.id)
+            }
             Menu {
                 if let transition = timeline.effectiveTransitionItems.first(where: { $0.incomingClipID == item.id }) {
                     Button("Настроить длительность", systemImage: "slider.horizontal.3") {
@@ -822,7 +900,8 @@ struct MagneticTimelineView: View {
                             .foregroundStyle(.white)
                     }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 4).strokeBorder(.white.opacity(0.8), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(selected ? Color.yellow : .white.opacity(0.8), lineWidth: selected ? 2 : 1)
                     }
             }
             .menuIndicator(.hidden)

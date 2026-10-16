@@ -8,6 +8,11 @@ import CoreGraphics
 /// persisted by `VeloEditPipeline`, so optimistic UI and production state do
 /// not execute two subtly different edit algorithms.
 public enum TimelineMutationEngine {
+    /// Upgrade the old automatic closing fade before any edit changes which clip is last.
+    public static func prepareForEditing(_ timeline: Timeline) -> Timeline {
+        FilmEndingFade.migratingLegacyClipAudio(timeline)
+    }
+
     @discardableResult
     public static func setTransition(in timeline: inout Timeline, incomingClipID: UUID, style: TransitionStyle?) -> Bool {
         guard let index = timeline.items.firstIndex(where: { $0.id == incomingClipID }) else { return false }
@@ -294,6 +299,7 @@ public enum TimelineMutationEngine {
               let oldIndex = timeline.items.firstIndex(where: { $0.id == id }) else { return false }
         let newIndex = min(max(0, requestedIndex), timeline.items.count - 1)
         guard oldIndex != newIndex else { return false }
+        timeline = FilmEndingFade.migratingLegacyClipAudio(timeline)
         let previousItems = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
         let item = timeline.items.remove(at: oldIndex)
         timeline.items.insert(item, at: newIndex)
@@ -314,6 +320,8 @@ public enum TimelineMutationEngine {
               let oldIndex = primaries.firstIndex(where: { $0.id == id }) else { return false }
         let newIndex = min(max(0, requestedIndex), primaries.count - 1)
         guard oldIndex != newIndex else { return false }
+        timeline = FilmEndingFade.migratingLegacyClipAudio(timeline)
+        primaries = timeline.items.filter { $0.overlay == nil }
         let previousItems = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
         let item = primaries.remove(at: oldIndex)
         primaries.insert(item, at: newIndex)

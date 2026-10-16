@@ -460,6 +460,7 @@ public struct AnalysisResult: Codable, Identifiable, Hashable, Sendable {
     public var telemetry: TelemetrySummary?
     public var analysisProfileKey: String?
     public var analyzedSourceIdentity: String? = nil
+    public var photoAnalysisVersion: Int? = nil
     public var analysisModelDigest: String? = nil
     public var aiExecution: AIExecutionEvidence? = nil
     public var usedProxy: Bool?
@@ -2492,6 +2493,7 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
     /// Movie-level fade to black. Missing on legacy/manual timelines; zero
     /// explicitly disables it. New automatic films save a three-second finish.
     public var endingFadeDuration: Double?
+    public var movieEndingAudioVersion: Int? = nil
     public var audioDucking: AudioDuckingSettings?
     public var versionName: String?
     public var directorRun: DirectorRunSummary?
@@ -2515,6 +2517,7 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
         self.music = music
         self.adaptiveSoundtrack = adaptiveSoundtrack
         self.originalAudioVolume = originalAudioVolume.map { min(max(0, $0), 1) }
+        self.movieEndingAudioVersion = 1
         self.endingFadeDuration = endingFadeDuration.map { $0.isFinite ? max(0, $0) : 0 }
         self.audioDucking = audioDucking
         self.versionName = versionName

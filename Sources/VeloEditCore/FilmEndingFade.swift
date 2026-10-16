@@ -23,6 +23,23 @@ struct FilmEndingFade {
         return result
     }
 
+    /// Older automatic edits copied the movie's audio finish onto their last
+    /// selected clip. Migrate once, before that clip can move into the body.
+    static func migratingLegacyClipAudio(_ source: Timeline) -> Timeline {
+        guard source.movieEndingAudioVersion == nil else { return source }
+        var result = source
+        result.movieEndingAudioVersion = 1
+        if let duration = source.endingFadeDuration, duration > 0,
+           let index = result.items.lastIndex(where: { $0.overlay == nil }),
+           result.items[index].candidateID != nil,
+           abs(result.items[index].effectiveAudioAdjustments.fadeOut - duration) < 0.0001 {
+            var audio = result.items[index].effectiveAudioAdjustments
+            audio.fadeOut = 0
+            result.items[index].audioAdjustments = audio
+        }
+        return result
+    }
+
     let start: Double
     let end: Double
 

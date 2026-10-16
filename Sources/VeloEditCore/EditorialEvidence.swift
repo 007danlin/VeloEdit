@@ -32,18 +32,19 @@ public struct LocalEditorialEvidenceAnalyzer: EditorialEvidenceAnalyzing {
 
     public func analyze(candidate: Candidate, asset: MediaAsset) async throws -> EditorialEvidence {
         try Task.checkCancellation()
-        if let cached = await cache.load(contentHash: asset.contentHash, candidate: candidate) { return cached }
-        let samples: [VisualFrameSample]
+        // Photos have no temporal evidence. Rebuild cheap presentation evidence
+        // from the shared source observation; duration never keys image analysis.
         if asset.kind == .photo {
-            samples = try await AdaptiveFrameSampler().samplePhoto(url: asset.originalURL, sourceHash: asset.contentHash, maximumSize: 384, frameCache: frames).samples
-        } else {
-            let count = candidate.sourceDuration > 12 ? 24 : 12
-            let end = min(candidate.sourceStart + candidate.sourceDuration, asset.metadata.duration ?? .greatestFiniteMagnitude)
-            let length = max(0, end - candidate.sourceStart - 1 / max(24, asset.metadata.frameRate ?? 30))
-            let times = (0..<count).map { candidate.sourceStart + length * Double($0) / Double(count - 1) }
-            samples = try await AdaptiveFrameSampler().editorialSamples(url: asset.originalURL, sourceHash: asset.contentHash, timestamps: times, frameCache: frames)
+            let photo = try await PhotoSourceAnalysis.inspect(asset)
+            return Self.evidence(candidate: candidate, samples: [photo.sample], isPhoto: true)
         }
-        let evidence = Self.evidence(candidate: candidate, samples: samples, isPhoto: asset.kind == .photo)
+        if let cached = await cache.load(contentHash: asset.contentHash, candidate: candidate) { return cached }
+        let count = candidate.sourceDuration > 12 ? 24 : 12
+        let end = min(candidate.sourceStart + candidate.sourceDuration, asset.metadata.duration ?? .greatestFiniteMagnitude)
+        let length = max(0, end - candidate.sourceStart - 1 / max(24, asset.metadata.frameRate ?? 30))
+        let times = (0..<count).map { candidate.sourceStart + length * Double($0) / Double(count - 1) }
+        let samples = try await AdaptiveFrameSampler().editorialSamples(url: asset.originalURL, sourceHash: asset.contentHash, timestamps: times, frameCache: frames)
+        let evidence = Self.evidence(candidate: candidate, samples: samples)
         try Task.checkCancellation()
         try await cache.store(evidence, contentHash: asset.contentHash, candidate: candidate)
         return evidence

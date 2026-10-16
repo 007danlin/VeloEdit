@@ -32,6 +32,25 @@ public final class TimelinePlayback: @unchecked Sendable {
         self.temporaryFiles = temporaryFiles
     }
 
+    /// Text changes leave the timing/source composition intact. Update only
+    /// this interactive playback's instruction payload; export builds its own.
+    public func updateTitleContents(from previous: Timeline, to next: Timeline) -> Bool {
+        var comparison = next
+        comparison.titleItems = previous.titleItems
+        guard comparison == previous,
+              previous.effectiveTitleItems.count == next.effectiveTitleItems.count,
+              let instructions = videoComposition?.instructions as? [VeloVideoInstruction], !instructions.isEmpty else { return false }
+        for (before, after) in zip(previous.effectiveTitleItems, next.effectiveTitleItems) {
+            var expected = before
+            expected.text = after.text; expected.additionalText = after.additionalText; expected.callToAction = after.callToAction
+            expected.userEdited = after.userEdited
+            guard expected == after else { return false }
+        }
+        let replacements = Dictionary(next.effectiveTitleItems.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for instruction in instructions { instruction.updateTitleContents(replacements) }
+        return true
+    }
+
     deinit { temporaryFiles.forEach { try? FileManager.default.removeItem(at: $0) } }
 }
 
@@ -76,7 +95,7 @@ public actor PlaybackEngine {
         preferStableRealtimePreview: Bool = false,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> TimelinePlayback {
-        let timeline = TimelineFrameRatePolicy.applying(to: timeline, assets: assets)
+        let timeline = FilmEndingFade.migratingLegacyClipAudio(TimelineFrameRatePolicy.applying(to: timeline, assets: assets))
         let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
         let colorProfile = outputColorProfile ?? VideoColorPipeline.profile(timeline: timeline, assets: assets)
         let composition = AVMutableComposition()
@@ -113,7 +132,10 @@ public actor PlaybackEngine {
         let realtimeTransitionItems = transitions
         let targetAspectRatio = Double(max(1, timeline.width)) / Double(max(1, timeline.height))
         let hasEndingFade = (timeline.endingFadeDuration ?? 0) > 0
-        let usesNativeCameraPath = !hasEndingFade && realtimeTelemetryItems.isEmpty && realtimeEffects.isEmpty && realtimeTitles.isEmpty && realtimeTransitionItems.isEmpty && !forceVideoComposition && Self.shouldUseNativeCameraPath(
+        let requiresHDRConversion = colorProfile.dynamicRange == .sdr && playableItems.contains {
+            $0.assetID.flatMap { assetByID[$0] }?.metadata.dynamicRange == .hdr
+        }
+        let usesNativeCameraPath = !requiresHDRConversion && !hasEndingFade && realtimeTelemetryItems.isEmpty && realtimeEffects.isEmpty && realtimeTitles.isEmpty && realtimeTransitionItems.isEmpty && !forceVideoComposition && Self.shouldUseNativeCameraPath(
             items: playableItems,
             assets: assetByID,
             targetAspectRatio: targetAspectRatio,
@@ -138,7 +160,7 @@ public actor PlaybackEngine {
                 || item.isFreezeFrame || item.isReversed || item.speedRamp != nil
                 || abs(item.sourceDuration - item.timelineDuration) >= 0.000_001
         }
-        let usesColorCompositor = requiresFrameSampling || playableItems.contains {
+        let usesColorCompositor = requiresHDRConversion || requiresFrameSampling || playableItems.contains {
             Self.requiresPixelProcessing($0.effectiveVideoAdjustments) ||
             $0.overlay?.style == .greenScreen || $0.telemetryOverlay != nil
         } || hasEndingFade || usesSafeFitBackground || !realtimeTelemetryItems.isEmpty || !realtimeEffects.isEmpty || !realtimeTitles.isEmpty || !realtimeTransitionItems.isEmpty
@@ -440,6 +462,7 @@ public actor PlaybackEngine {
                 colorProfile: colorProfile,
                 endingFade: FilmEndingFade(duration: timeline.endingFadeDuration, movieDuration: cursor.seconds, frameRate: timeline.frameRate)
             )
+            if requiresHDRConversion { videoComposition?.customVideoCompositorClass = VeloHDRToSDRVideoCompositor.self }
         } else {
             videoComposition = makeVideoComposition(placements: placements, renderSize: renderSize, frameRate: timeline.frameRate, colorProfile: colorProfile)
         }
@@ -510,6 +533,7 @@ public actor PlaybackEngine {
             ducking: SourceAudioMixPolicy.musicDucking(in: timeline),
             movieDuration: cursor.seconds,
             frameRate: timeline.frameRate,
+            endingFadeDuration: timeline.endingFadeDuration,
             speechRanges: timeline.speechRecords == nil ? nil : timeline.items.flatMap { item -> [ClosedRange<Double>] in
                 guard item.overlay == nil, item.effectiveAudioAdjustments.effectiveVolume > 0, originalAudioVolume > 0,
                       let id = item.assetID, let record = timeline.speechRecords?.first(where: { $0.assetID == id }) else { return [] }
@@ -586,11 +610,13 @@ public actor PlaybackEngine {
         preset: BackgroundPreset?
     ) -> String {
         ProductionCacheIdentity.hash([
-            "photo-v8-rational-fps", asset.contentHash, item.effect ?? "zoom-in",
+            "photo-v9-stable-fit", FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash), item.effect ?? "zoom-in",
             item.effectiveVideoAdjustments.crop.rawValue,
             preset?.rawValue ?? "photo", preset?.animationStyle?.rawValue ?? "none",
             item.effectiveVideoAdjustments.subjectReframe.map {
-                (try? JSONEncoder().encode($0).base64EncodedString()) ?? "invalid-reframe"
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                return (try? encoder.encode($0).base64EncodedString()) ?? "invalid-reframe"
             } ?? "no-reframe",
             String(Int((item.timelineDuration * 1_000).rounded())),
             "\(timeline.width)x\(timeline.height)@\(timeline.frameRate)"
@@ -1290,7 +1316,7 @@ public actor PlaybackEngine {
         return (placements, temporaryFiles)
     }
 
-    private func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double, speechRanges: [ClosedRange<Double>]? = nil) -> AVMutableAudioMix? {
+    private func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double, endingFadeDuration: Double?, speechRanges: [ClosedRange<Double>]? = nil) -> AVMutableAudioMix? {
         guard !originalTracks.isEmpty || music != nil || !additionalAudio.isEmpty else { return nil }
         func clipVolume(_ placement: Placement) -> Float {
             originalAudioVolume * Float(placement.item.effectiveAudioAdjustments.effectiveVolume)
@@ -1571,11 +1597,14 @@ public actor PlaybackEngine {
         // Apply to ordinary, adaptive and manually placed music alike, after
         // clip fades and speech ducking. Legacy projects also get the finish;
         // disabling the visual fade does not disable the musical ending.
+        // Source and detached sound follow the visual movie end, never a clip ID.
         if let ending = FilmEndingFade(duration: FilmEndingFade.defaultDuration, movieDuration: movieDuration, frameRate: frameRate) {
             var musicTrackIDs = Set(additionalAudio.filter { $0.clip.role == .music }.map { $0.track.trackID })
             if let music { musicTrackIDs.formUnion(music.regions.map { $0.track.trackID }) }
+            let sourceEnding = FilmEndingFade(duration: endingFadeDuration, movieDuration: movieDuration, frameRate: frameRate)
             parameters = parameters.map { value in
-                musicTrackIDs.contains(value.trackID) ? ending.applying(to: value, movieDuration: movieDuration) : value
+                let fade = musicTrackIDs.contains(value.trackID) ? ending : sourceEnding
+                return fade?.applying(to: value, movieDuration: movieDuration) ?? value
             }
         }
         let mix = AVMutableAudioMix()

@@ -35,6 +35,10 @@ public struct ShotContentAssessment: Codable, Hashable, Sendable {
     public var confirmedBoundaryRotationSamples: [Int]? = nil
     public var actionBoundary: DiscreteActionBoundary? = nil
 
+    var requiresConcreteRepair: Bool {
+        confidence >= 0.8 && ((status == .obstructed && rejectsRange) || actionBoundary?.rejectsCut == true)
+    }
+
     var rejectsRange: Bool {
         (status == .obstructed && confidence >= 0.7
             && (obstructedSamples.count >= 2 || !(cameraAdjustmentSamples ?? []).isEmpty
@@ -54,7 +58,7 @@ public struct SelectedContentReviewReport: Codable, Hashable, Sendable {
 
     func passes(timeline: Timeline, assets: [MediaAsset] = []) -> Bool {
         guard renderSignature == EditorialRenderSignature.signature(timeline) else { return false }
-        let items = timeline.items.filter { $0.overlay == nil && $0.kind == .video }
+        let items = timeline.items.filter { OriginalMediaType.isVideo($0, assets: assets) }
         return !items.isEmpty && items.allSatisfy { item in
             [("source", source), ("mp4", rendered)].allSatisfy { phase, observations in
                 observations.contains { assessment in
@@ -402,10 +406,12 @@ struct SelectedContentReviewer: Sendable {
     let model: String
     typealias AnswerTransport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     var answerTransport: AnswerTransport? = nil
+    var requestProgress: FilmBuildProgressHandler? = nil
+    var deadline: Date? = nil
 
     func review(timeline: Timeline, assets: [MediaAsset], renderedURL: URL? = nil,
-                progress: FilmBuildProgressHandler? = nil) async throws -> [ShotContentAssessment] {
-        let items = timeline.items.filter { $0.overlay == nil && $0.kind == .video }
+                progress: FilmBuildProgressHandler? = nil, pass: Int = 1, reason: String? = nil) async throws -> [ShotContentAssessment] {
+        let items = timeline.items.filter { OriginalMediaType.isVideo($0, assets: assets) }
         guard !items.isEmpty else { return [] }
         let byID = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let phase = renderedURL == nil ? "source" : "mp4"
@@ -413,11 +419,19 @@ struct SelectedContentReviewer: Sendable {
         let root = cacheURL.appendingPathComponent("SelectedContentReview")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var available = await OllamaVisionRuntime().isAvailable(model: model)
+        let reviewDeadline = deadline ?? Date().addingTimeInterval(180)
         var consecutiveFailures = 0
         var result: [ShotContentAssessment] = []
         for (index, item) in items.enumerated() {
             try Task.checkCancellation()
             guard let assetID = item.assetID, let asset = byID[assetID] else { continue }
+            var reviewer = self
+            reviewer.deadline = min(reviewDeadline, Date().addingTimeInterval(90))
+            let operation = phase == "source" ? "исходного видео" : "готового видео"
+            reviewer.requestProgress = { update in
+                await progress?(FilmBuildProgress(.verifying, completed: index, total: items.count,
+                    detail: "Проверка \(pass): \(operation) \(index + 1) из \(items.count). \(update.detail ?? "")" + (reason.map { " · " + $0 } ?? "")))
+            }
             let fractions = [0.02, 0.25, 0.5, 0.75, 0.98]
             let times = fractions.map { fraction in
                 renderedURL == nil ? item.sourceStart + item.sourceDuration * fraction
@@ -432,7 +446,7 @@ struct SelectedContentReviewer: Sendable {
                 status: .uncertain, confidence: 0, obstructedSamples: [],
                 observation: "Локальная проверка содержания недоступна", activity: "unknown")
             await progress?(FilmBuildProgress(.verifying, completed: index, total: items.count,
-                detail: phase == "source" ? "Проверяю содержание выбранных исходных участков" : "Проверяю содержание итогового MP4"))
+                detail: "Проверка \(pass): \(operation) \(index + 1) из \(items.count)"))
             if let data = try? Data(contentsOf: receipt), let cached = try? JSONDecoder().decode(Answer.self, from: data),
                Self.valid(cached) {
                 assessment = Self.applying(cached, to: assessment)
@@ -449,7 +463,7 @@ struct SelectedContentReviewer: Sendable {
                             movieDuration: AutomaticFilmDurationPolicy.renderedDuration(of: timeline), frameRate: timeline.frameRate)
                         return (fade?.opacity(at: time) ?? 1) < 0.35 ? index : nil
                     }
-                    var answer = try await judge(samples: samples, intentionalFadeSamples: exemptions,
+                    var answer = try await reviewer.judge(samples: samples, intentionalFadeSamples: exemptions,
                         responseURL: cacheURL.appendingPathComponent("SelectedContentResponses").appendingPathComponent(key + ".json"))
                     if renderedURL == nil, answer.status == .usable {
                         let end = item.sourceStart + item.sourceDuration
@@ -465,7 +479,7 @@ struct SelectedContentReviewer: Sendable {
                         let objectTimes = [1, 3, 5, 6, 7].map { contextTimes[$0] }
                         let objectSamples = try await AdaptiveFrameSampler().selectedContentSamples(url: asset.originalURL,
                             sourceHash: identity, timestamps: objectTimes, frameCache: frameCache, maximumSize: 1280)
-                        answer = try Self.applyingBoundary(try await inspectActionBoundary(samples: context, objectSamples: objectSamples,
+                        answer = try Self.applyingBoundary(try await reviewer.inspectActionBoundary(samples: context, objectSamples: objectSamples,
                             responseURL: cacheURL.appendingPathComponent("SelectedContentResponses").appendingPathComponent(key + ".action.json")), to: answer)
                     }
                     consecutiveFailures = 0
@@ -712,9 +726,22 @@ struct SelectedContentReviewer: Sendable {
     }
 
     func modelAnswer(body: [String: Any], responseURL: URL) async throws -> String {
+        let operation = responseURL.lastPathComponent.components(separatedBy: ".").dropFirst().joined(separator: ".")
+        let observer = requestProgress
+        await observer?(FilmBuildProgress(.verifying, detail: operation.contains("action") ? "Проверяю границы действия" : operation.contains("purpose") ? "Оцениваю содержание кадра" : "Проверяю видимость и положение кадра"))
+        let heartbeat = Task {
+            var seconds = 0
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                seconds += 10
+                await observer?(FilmBuildProgress(.verifying, detail: "Модель проверяет кадр · \(seconds) с"))
+            }
+        }
+        defer { heartbeat.cancel() }
         var request = URLRequest(url: URL(string: "http://127.0.0.1:11434/api/chat")!)
         request.httpMethod = "POST"
-        request.timeoutInterval = 120
+        let remaining = deadline?.timeIntervalSinceNow ?? 120
+        request.timeoutInterval = max(0.1, min(120, remaining))
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         try FileManager.default.createDirectory(at: responseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -745,6 +772,7 @@ struct SelectedContentReviewer: Sendable {
             try data.write(to: responseURL, options: .atomic)
             return content
         }
+        guard deadline.map({ $0 > Date() }) ?? true else { throw URLError(.timedOut) }
         // Legacy raw pairs remain available for audit, never for certification.
         // Keep both sides before replacing a path, including on network failure.
         if FileManager.default.fileExists(atPath: responseURL.path) {
@@ -770,6 +798,11 @@ struct SelectedContentReviewer: Sendable {
     private func transportResponse(for request: URLRequest) async throws -> (Data, URLResponse) {
         for attempt in 0..<2 {
             do {
+                var request = request
+                if let deadline {
+                    guard deadline > Date() else { throw URLError(.timedOut) }
+                    request.timeoutInterval = min(request.timeoutInterval, deadline.timeIntervalSinceNow)
+                }
                 let result: (Data, URLResponse)
                 if let answerTransport { result = try await answerTransport(request) }
                 else { result = try await URLSession.shared.data(for: request) }
@@ -835,6 +868,10 @@ struct SelectedContentReviewer: Sendable {
                     && candidate.sourceStart + candidate.sourceDuration > assessment.sourceStart
             }
         }.map(\.id))
+    }
+
+    static func repairCandidateIDs(_ assessments: [ShotContentAssessment], analyses: [AnalysisResult]) -> Set<UUID> {
+        rejectedCandidateIDs(assessments.filter(\.requiresConcreteRepair), analyses: analyses)
     }
 
     /// An isolated unknown is not a negative observation and cannot condemn

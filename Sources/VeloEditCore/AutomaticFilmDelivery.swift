@@ -59,6 +59,42 @@ public enum AutomaticFilmDelivery {
             }
     }
 
+    /// Taste/semantic certainty cannot override these artifact checks.
+    static func technicalFailures(timeline: Timeline) -> [String] {
+        var failures: [String] = []
+        let signature = EditorialRenderSignature.signature(timeline)
+        guard hasContent(timeline), let review = timeline.editorialReview,
+              review.editorialSignature == signature,
+              let export = review.exportVerification, export.renderSignature == signature,
+              export.artifactIsCurrent else { return ["нет проверенного актуального экспорта"] }
+        if !export.aspectRatioMatches { failures.append("пропорции MP4 не совпадают с монтажом") }
+        if export.probes.isEmpty || export.probes.contains(where: { !$0.decoded }) {
+            failures.append("не удалось декодировать контрольные кадры MP4")
+        } else if !export.probes.allSatisfy(\.passed) {
+            failures.append("изображение MP4 отличается от превью")
+        }
+        if export.durationDifference > 1 / max(1, timeline.frameRate) + 0.001 {
+            failures.append("длительность MP4 не совпадает с монтажом")
+        }
+        // A quiet artistic mix is not an invalid audio file. Keep the full
+        // loudness finding as a recommendation; missing measurements/clipping
+        // are technical failures.
+        if review.evidenceDomains?.contains(where: { [.integratedLoudness, .truePeak].contains($0.domain) && $0.required }) == true {
+            if export.encodedAudio?.measuredFrames ?? 0 <= 0 { failures.append("не проверена звуковая дорожка MP4") }
+            if let peak = export.encodedAudio?.outputTruePeakDBTP {
+                if !peak.isFinite || peak > 0 { failures.append("перегрузка звука в MP4") }
+            } else { failures.append("нет измерения звуковых пиков MP4") }
+        }
+        let required: Set<EditorialEvidenceDomain> = [.renderDecode, .sourceAudioPolicy]
+        for evidence in review.evidenceDomains ?? [] where required.contains(evidence.domain) && evidence.required && !evidence.isSufficient {
+            failures.append(evidence.reason)
+        }
+        if review.evidenceDomains?.contains(where: { $0.domain == .renderDecode && $0.isSufficient }) != true {
+            failures.append("нет подтверждения декодирования готового фильма")
+        }
+        return failures
+    }
+
     /// A quality repair must not destroy the deliverable it is improving.
     static func preservesDelivery(_ repaired: Timeline, original: Timeline, plan: StoryPlan) -> Bool {
         guard hasContent(repaired) else { return false }
@@ -99,8 +135,8 @@ public enum AutomaticFilmDelivery {
         report.timelineWidth = timeline.width
         report.timelineHeight = timeline.height
         var checks: [FilmRequirementResult] = []
-        func check(_ rule: String, _ method: String, _ passed: Bool, _ evidence: String, phrase: String? = nil) {
-            checks.append(.init(sourcePhrase: phrase ?? plan.prompt, rule: rule, verificationMethod: method, passed: passed, evidence: evidence))
+        func check(_ rule: String, _ method: String, _ passed: Bool, _ evidence: String, phrase: String? = nil, mandatory: Bool = true) {
+            checks.append(.init(sourcePhrase: phrase ?? plan.prompt, rule: rule, mandatory: mandatory, verificationMethod: method, passed: passed, evidence: evidence))
         }
         let requirement = FilmDurationRequirement.parse(prompt: plan.prompt,
             explicitSeconds: plan.directorBrief?.explicitRequestedDuration ?? plan.contentBudget?.requestedDuration,
@@ -168,7 +204,7 @@ public enum AutomaticFilmDelivery {
         // which the existing moment policy protects during assembly. Missing
         // semantic bounds do not become invented completion evidence.
         let units = Dictionary(uniqueKeysWithValues: EditorialAnalysisContext(analyses: analyses).units.map { ($0.id, $0) })
-        let protectedMoments = timeline.items.filter { $0.overlay == nil }.compactMap { item -> (TimelineItem, EditorialSourceRange)? in
+        let protectedMoments = timeline.items.filter { OriginalMediaType.isVideo($0, assets: assets) }.compactMap { item -> (TimelineItem, EditorialSourceRange)? in
             guard let id = item.candidateID, let unit = units[id],
                   let range = EditorialMomentPolicy.protectedRange(unit) else { return nil }
             return (item, range)
@@ -199,10 +235,10 @@ public enum AutomaticFilmDelivery {
             let actions = content.source
             check("visualActionCuts", "Exact source cut with before/after visual context; continuous activity is distinguished from a finite action",
                 actions.allSatisfy { $0.actionBoundary?.passes == true },
-                "Визуальные границы действий: проверено \(actions.filter { $0.actionBoundary?.passes == true }.count) из \(actions.count). Это не проверка границ речи или доказательство прибытия.")
+                "Визуальные границы действий: проверено \(actions.filter { $0.actionBoundary?.passes == true }.count) из \(actions.count). Это не проверка границ речи или доказательство прибытия.", mandatory: false)
             check("selectedContent", "Local vision model on five exact original samples and five final MP4 samples per shot",
                 content.passes(timeline: timeline, assets: assets),
-                "Проверка содержания: исходных участков \(content.source.count), итоговых \(content.rendered.count); неопределённых/непригодных \((content.source + content.rendered).filter { $0.status != .usable || $0.confidence < 0.75 }.count)")
+                "Проверка содержания: исходных участков \(content.source.count), итоговых \(content.rendered.count); неопределённых/непригодных \((content.source + content.rendered).filter { $0.status != .usable || $0.confidence < 0.75 }.count)", mandatory: false)
         }
         report.requirements = checks
         report.warnings += checks.filter { !$0.passed }.map(\.evidence).filter { !report.warnings.contains($0) }

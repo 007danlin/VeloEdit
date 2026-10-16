@@ -144,12 +144,16 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
         }
     }
 
-    public var quality: Double { candidate.insights?.bestTakeScore ?? candidate.scores.composite }
+    public var quality: Double {
+        let measured = candidate.insights?.bestTakeScore ?? candidate.scores.composite
+        return candidate.tags.contains("photo") ? max(0.55, measured) : measured
+    }
     public var speechSeconds: Double {
         guard let speech = candidate.insights?.speech, speech.confidence >= 0.65 else { return 0 }
         return max(0, min(sourceRange.end, speech.phraseEnd) - max(sourceRange.start, speech.phraseStart))
     }
     public var usableDuration: Double {
+        if candidate.tags.contains("photo") { return candidate.excluded ? 0 : max(PhotoPresentationPolicy.duration, candidate.sourceDuration) }
         let range = max(0, min(sourceRange.end, evidence.usableRange.end) - max(sourceRange.start, evidence.usableRange.start))
         guard discardReason == nil, !evidence.hasHardOcclusion, quality >= 0.38 else { return 0 }
         if let boundary = candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65 {
@@ -288,6 +292,10 @@ public struct ShotFamilyClusterer: ShotFamilyClustering {
             let overlap = max(0, min(a.sourceRange.end, b.sourceRange.end) - max(a.sourceRange.start, b.sourceRange.start)) / max(0.05, min(a.sourceRange.duration, b.sourceRange.duration))
             if overlap >= (adjacent ? 0.18 : 0.90) { return true }
         }
+        // Similar composition across distinct stills is a soft diversity signal,
+        // not evidence of a repeated video take. Exact files are deduplicated by
+        // the photo assembly's content identities.
+        if a.candidate.tags.contains("photo") || b.candidate.tags.contains("photo") { return false }
         // Most measured shots already add information. Their visual vectors
         // cannot make this predicate true, so avoid recomputing every temporal
         // histogram pair during every iteration of the sequence search.

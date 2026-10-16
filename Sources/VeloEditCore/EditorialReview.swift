@@ -127,6 +127,7 @@ public struct EditorialQualityGate: Sendable {
         let atmospheric = plan.narrativeBeatPlan?.pattern == .atmosphericObservation
         for item in items {
             guard let id = item.candidateID, var unit = byID[id] else { continue }
+            let isPhoto = item.kind == .photo || unit.candidate.tags.contains("photo")
             unit.candidate.sourceStart = item.sourceStart
             unit.candidate.sourceDuration = item.sourceDuration
             let family = context.families.familyByUnitID[id] ?? id.uuidString
@@ -134,7 +135,7 @@ public struct EditorialQualityGate: Sendable {
             runCount = family == lastFamily ? runCount + 1 : 1
             runSeconds = family == lastFamily ? runSeconds + item.timelineDuration : item.timelineDuration
             maxRun = max(maxRun, runSeconds)
-            if runCount > 2 || runSeconds > (atmospheric ? 20 : 12) + 0.05 && !unit.evidence.hasProgression && unit.speechSeconds == 0 {
+            if !isPhoto && (runCount > 2 || runSeconds > (atmospheric ? 20 : 12) + 0.05 && !unit.evidence.hasProgression && unit.speechSeconds == 0) {
                 add(.shotFamilyRunTooLong, 3, [item.id], .structuralReplan, "Повтор camera setup: \(runCount) планов, \(Int(runSeconds)) с")
             }
             lastFamily = family
@@ -144,18 +145,18 @@ public struct EditorialQualityGate: Sendable {
             let novel = !seen.contains { context.families.familyByUnitID[$0.id] == family }
             gains += (novel ? 0.82 : max(unit.evidence.informationGain, unit.evidence.actionDelta)) * min(item.timelineDuration, unit.usableDuration) / max(0.05, item.timelineDuration)
             if unit.evidence.hasHardOcclusion { add(.foregroundOcclusion, 3, [item.id], .technical, "Случайная foreground-окклюзия превышает 28%") }
-            if item.sourceDuration > unit.usableDuration + 0.1 && !item.locked {
+            if !isPhoto && item.sourceDuration > unit.usableDuration + 0.1 && !item.locked {
                 add(.durationPadding, 3, [item.id], .structuralReplan, "Длительность плана превышает подтверждённое действие/речь/наблюдение")
             }
             if let report = item.effectiveVideoAdjustments.subjectReframe?.safetyReport, !report.passed {
                 add(.unsafeReframe, 3, [item.id], .framing, report.reasons.joined(separator: "; "))
             }
-            if let boundary = unit.candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65,
+            if !isPhoto, let boundary = unit.candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65,
                item.sourceStart > boundary.anticipationStart + 1 / max(1, timeline.frameRate)
                 || item.sourceStart + item.sourceDuration < boundary.completionEnd - 1 / max(1, timeline.frameRate) {
                 add(.incompleteMoment, 2, [item.id], .structuralReplan, "Подтверждённые границы действия обрезаны: подготовка или завершение отсутствуют")
             }
-            if item.storyRole == .climax && plan.narrativeBeatPlan != nil && !(unit.evidence.hasProgression && unit.evidence.completion >= 0.65) {
+            if !isPhoto && item.storyRole == .climax && plan.narrativeBeatPlan != nil && !(unit.evidence.hasProgression && unit.evidence.completion >= 0.65) {
                 add(.falseNarrativeRole, 2, [item.id], .structuralReplan, "Climax label не подтверждён завершением действия")
             }
             if unit.speechSeconds > 0, ExplicitDeliveryRequirements(plan: plan).originalAudioVolume != 0, let speech = unit.candidate.insights?.speech {
@@ -204,7 +205,7 @@ public struct EditorialQualityGate: Sendable {
             for beat in beatPlan.beats {
                 let item = items.first { $0.candidateID == beat.candidateID }
                 var fulfilled = item != nil
-                if let item, let unit = byID[beat.candidateID], beat.purpose == .peak {
+                if let item, let unit = byID[beat.candidateID], item.kind != .photo, !unit.candidate.tags.contains("photo"), beat.purpose == .peak {
                     fulfilled = fulfilled && unit.evidence.hasProgression && unit.evidence.completion >= 0.65
                     if let boundary = unit.candidate.momentBoundary { fulfilled = fulfilled && item.sourceStart <= boundary.peakTime && item.sourceStart + item.sourceDuration >= boundary.completionEnd - 0.1 }
                 }

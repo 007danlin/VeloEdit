@@ -104,7 +104,7 @@ private extension ProjectDirectorMessage {
     }
 }
 
-private enum TimelineSelectionKey: Hashable {
+enum TimelineSelectionKey: Hashable {
     case item(UUID)
     case audio(UUID)
     case telemetry(UUID)
@@ -565,7 +565,7 @@ final class AppModel: ObservableObject {
     var selectedEffectTimelineItem: EffectTimelineItem? { timeline?.effectiveEffects.first { $0.id == selectedEffectTimelineItemID } }
     var selectedTitleTimelineItem: TitleTimelineItem? { timeline?.effectiveTitleItems.first { $0.id == selectedTitleTimelineItemID } }
     var selectedTransitionTimelineItem: TimelineTransitionItem? { timeline?.effectiveTransitionItems.first { $0.id == selectedTransitionTimelineItemID } }
-    private var currentTimelineSelection: Set<TimelineSelectionKey> {
+    var currentTimelineSelection: Set<TimelineSelectionKey> {
         var selection = Set(selectedTimelineItemIDs.map(TimelineSelectionKey.item))
         selection.formUnion(selectedTimelineAudioClipIDs.map(TimelineSelectionKey.audio))
         selection.formUnion(selectedTelemetryItemIDs.map(TimelineSelectionKey.telemetry))
@@ -3040,21 +3040,35 @@ final class AppModel: ObservableObject {
     func moveSelectedTimelineItem(_ offset: Int) {
         guard let id = selectedTimelineItemID,
               let oldIndex = timeline?.items.firstIndex(where: { $0.id == id }) else { return }
-        editTimelineOptimistically("Перемещаю фрагмент") {
+        reorderTimelineItem(id) {
             TimelineMutationEngine.moveItem(in: &$0, id: id, toIndex: oldIndex + offset)
         }
     }
 
     func moveTimelineItem(_ id: UUID, toIndex index: Int) {
-        editTimelineOptimistically("Перемещаю фрагмент") {
+        reorderTimelineItem(id) {
             TimelineMutationEngine.moveItem(in: &$0, id: id, toIndex: index)
         }
     }
 
     func movePrimaryTimelineItem(_ id: UUID, toPrimaryIndex index: Int) {
-        editTimelineOptimistically("Перемещаю фрагмент") {
+        reorderTimelineItem(id) {
             TimelineMutationEngine.movePrimaryItem(in: &$0, id: id, toPrimaryIndex: index)
         }
+    }
+
+    private func reorderTimelineItem(_ id: UUID, mutation: (inout Timeline) -> Bool) {
+        let previous = timeline?.items.first { $0.id == id }
+        let offset = previous.flatMap { item -> Double? in
+            guard timelinePlayheadTime >= item.timelineStart,
+                  timelinePlayheadTime < item.timelineStart + item.timelineDuration else { return nil }
+            return timelinePlayheadTime - item.timelineStart
+        }
+        editTimelineOptimistically("Перемещаю фрагмент", didApply: {
+            if let offset, let moved = self.timeline?.items.first(where: { $0.id == id }) {
+                self.timelinePlayheadTime = moved.timelineStart + min(offset, max(0, moved.timelineDuration - 0.001))
+            }
+        }, mutation: mutation)
     }
 
     func moveConnectedTimelineItem(_ id: UUID, toTimelineStart time: Double) {
@@ -4052,6 +4066,16 @@ final class AppModel: ObservableObject {
         selectedTransitionTimelineItemID = nil
         selectedSoundtrack = false
         timelineSelectionAnchor = nil
+    }
+
+    /// Marquee updates share the same selection as keyboard and clipboard actions,
+    /// without seeking or opening an inspector on every pointer movement.
+    func setTimelineMarqueeSelection(_ selection: Set<TimelineSelectionKey>) {
+        guard selection != currentTimelineSelection else { return }
+        let active = timelineSelectionAnchor.flatMap { selection.contains($0) ? $0 : nil }
+            ?? orderedTimelineSelectionKeys().first(where: selection.contains)
+        timelineSelectionAnchor = active
+        applyTimelineSelection(selection, active: active)
     }
 
     func selectAllTimelineElements() {
@@ -5881,7 +5905,11 @@ final class AppModel: ObservableObject {
     }
 
     func closeTimelineInspector() {
+        // Commit AppKit's final marked-text edit before dismantling TextEditor.
+        NSApp?.keyWindow?.makeFirstResponder(nil)
         isTimelineInspectorPresented = false
+        // Closing the inspector must not cancel the pending text commit or
+        // replace the optimistic model with an older project snapshot.
     }
 
     func handleEscape() {
@@ -6398,17 +6426,19 @@ final class AppModel: ObservableObject {
     private func preparePreviewPoster(
         for playback: TimelinePlayback,
         playerItem: AVPlayerItem,
-        at playbackTime: Double
+        at playbackTime: Double,
+        debounceNanoseconds: UInt64 = 35_000_000
     ) {
         previewPosterTask?.cancel()
         let requestID = UUID()
+        let editRevision = timelineEditRevision
         previewPosterRequestID = requestID
         let safeTime = min(max(0, playbackTime), max(0, playback.duration - 0.001))
         let videoComposition = playerItem.videoComposition
 
         previewPosterTask = Task.detached(priority: .userInitiated) { [weak self, weak playerItem] in
             // Collapse rapid timeline scrubbing into the final requested frame.
-            try? await Task.sleep(nanoseconds: 35_000_000)
+            if debounceNanoseconds > 0 { try? await Task.sleep(nanoseconds: debounceNanoseconds) }
             guard !Task.isCancelled else { return }
 
             let generator = AVAssetImageGenerator(asset: playback.composition)
@@ -6434,6 +6464,7 @@ final class AppModel: ObservableObject {
                 guard let self,
                       let playerItem,
                       self.previewPosterRequestID == requestID,
+                      self.timelineEditRevision == editRevision,
                       self.activePlayback === playback,
                       self.previewPlayer?.currentItem === playerItem else { return }
                 guard let generatedImage else {
@@ -6536,7 +6567,7 @@ final class AppModel: ObservableObject {
         guard !isTimelineInteractionBlocked, let pipeline, var manifest = project,
               let timelineIndex = manifest.timelines.indices.last else { return }
         let previous = manifest.timelines[timelineIndex]
-        var next = previous
+        var next = TimelineMutationEngine.prepareForEditing(previous)
         guard mutation(&next), next != previous else { return }
         next = TimelineFrameRatePolicy.applying(to: next, assets: manifest.assets)
 
@@ -6601,8 +6632,28 @@ final class AppModel: ObservableObject {
             previewRebuildTask = nil
             return
         }
+        if let playback = activePlayback, let playerItem = previewPlayer?.currentItem,
+           playback.updateTitleContents(from: previous, to: next) {
+            // Render one current frame immediately, without regenerating photo
+            // movies, audio, or a new AVPlayerItem on every keystroke.
+            preparePreviewPoster(for: playback, playerItem: playerItem,
+                at: TimelineTiming.playbackTime(forTimelineTime: timelinePlayheadTime, timeline: next), debounceNanoseconds: 0)
+            previewRebuildTask = nil
+            return
+        }
         let invalidation = TimelineInvalidationPlanner.plan(from: previous, to: next)
-        let previewDebounceNanoseconds: UInt64 = invalidation.requiresCompositionRebuild ? 35_000_000 : 16_000_000
+        let reordered = previous.items.map(\.id) != next.items.map(\.id)
+        previewPosterTask?.cancel()
+        previewPosterRequestID = nil
+        if reordered {
+            previewPlayer?.pause()
+            previewSeeker.reset()
+            previewSeekRevision &+= 1
+            pendingPlaybackSeekTimelineTime = nil
+            playbackItemStatusObservation?.invalidate()
+            playbackItemStatusObservation = nil
+        }
+        let previewDebounceNanoseconds: UInt64 = reordered ? 0 : (invalidation.requiresCompositionRebuild ? 35_000_000 : 16_000_000)
         previewRebuildTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: previewDebounceNanoseconds)

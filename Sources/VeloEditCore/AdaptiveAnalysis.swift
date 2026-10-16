@@ -725,7 +725,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
     ) async throws -> AnalysisResult {
         await metrics?.start(.fastInspection)
         // Rebuild local scores; a retry must not blend a previous VLM answer twice.
-        var baseline = try await LocalHeuristicAnalyzer(schemaVersion: schemaVersion).analyze(asset: asset)
+        let photoSource = asset.kind == .photo ? try await PhotoSourceAnalysis.inspect(asset) : nil
+        var baseline = try await LocalHeuristicAnalyzer(schemaVersion: schemaVersion).analyze(asset: asset, photoSource: photoSource)
         baseline.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: false)
         baseline.completedDepth = .metadata
         await metrics?.finish(.fastInspection)
@@ -734,16 +735,10 @@ public struct AdaptiveLocalAnalyzer: Sendable {
         baseline.usedProxy = usedProxy
         baseline.telemetry = telemetry
         if asset.kind == .photo {
-            let cacheRoot = FileManager.default.temporaryDirectory
-                .appendingPathComponent("VeloEdit-FrameCache/\(asset.contentHash)", isDirectory: true)
-            let effectiveFrameCache = frameCache ?? FrameCache(rootURL: cacheRoot)
             do {
-                let sampling = try await AdaptiveFrameSampler().samplePhoto(
-                    url: analysisURL,
-                    sourceHash: asset.contentHash,
-                    maximumSize: profile.proxyLongEdge,
-                    frameCache: effectiveFrameCache
-                )
+                let photo = photoSource!
+                let sampling = FrameSamplingOutcome(samples: [photo.sample], scenes: [],
+                    decodedFrameCount: photo.visionCalls, cacheHitCount: photo.visionCalls == 0 ? 1 : 0, visionCallCount: photo.visionCalls)
                 let deepMedia = await DeepMediaCandidateEnricher().enrich(
                     candidates: baseline.candidates,
                     samples: sampling.samples,
@@ -752,6 +747,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                     audio: nil,
                     cache: deepCache
                 )
+                try Task.checkCancellation()
                 baseline.candidates = deepMedia.candidates
                 baseline.sceneTags.formUnion(deepMedia.candidates.flatMap(\.tags))
                 baseline.deepMediaDiagnostics = deepMedia.diagnostics
@@ -766,6 +762,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                     DeepAnalysisStageReport(stage: .embeddings, ran: false, reason: "Photo fallback: \(error.localizedDescription)")
                 ])
             }
+            baseline.photoAnalysisVersion = PhotoSourceAnalysis.version
             baseline.deepMediaVersion = DeepAnalysisCache.version
             baseline.aiRuntimeLabel = "Apple Vision · локально"
             let photoComplete = (baseline.sampledFrameCount ?? 0) > 0

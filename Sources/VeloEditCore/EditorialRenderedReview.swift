@@ -33,7 +33,7 @@ public struct LocalEditorialRenderedProber: EditorialRenderedProbing {
           let playback: TimelinePlayback
           do {
             playback = try await PerformanceTrace.measure(name: "composition.build", fields: ["signature": EditorialRenderSignature.signature(timeline)]) {
-              try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings, derivedMediaCacheURL: cacheURL, forceVideoComposition: true)
+              try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings, outputColorProfile: .rec709, derivedMediaCacheURL: cacheURL, forceVideoComposition: true)
             }
           } catch {
             let value = error as NSError
@@ -76,7 +76,7 @@ enum EditorialRenderDependencies {
     // Track allocation is part of the render contract, including the audio
     // tracks used by connected clips. Old probes/mixes must be recomputed.
     // v5 also preserves requested source attenuation through export mastering.
-    static let compositionVersion = 11
+    static let compositionVersion = 14
     static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:], visualOnly: Bool = false) -> String {
         var timeline = timeline
         if visualOnly {
@@ -280,7 +280,9 @@ extension VeloEditPipeline {
                     // rendered detector still sees an unsafe body cut. Pixels
                     // outside the source do not exist, so this shot cannot be
                     // repaired by another framing pass.
-                    unrepairableUnsafeIDs.insert(repaired.items[index].id)
+                    if !OriginalMediaType.isPhoto(repaired.items[index], assets: assets) {
+                        unrepairableUnsafeIDs.insert(repaired.items[index].id)
+                    }
                     continue
                 }
                 // Restoring a nil subject plan still leaves a wide source in

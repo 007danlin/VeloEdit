@@ -33,7 +33,7 @@ enum AutomaticEditorialAssembly {
         func allowed(_ unit: EditorialUnit) -> Bool {
             (allowedAssets?.contains(unit.candidate.assetID) ?? true)
                 && !artisticOmissions.contains(unit.id)
-                && !unit.candidate.excluded && unit.discardReason == nil && !unit.evidence.hasHardOcclusion
+                && !unit.candidate.excluded && (itemKind(unit) == .photo || unit.discardReason == nil && !unit.evidence.hasHardOcclusion)
                 && original.constraints.excludeTags.isDisjoint(with: unit.candidate.tags)
                 && !forbidden.contains { $0.assetID == unit.candidate.assetID && $0.sourceStart < unit.sourceRange.end && $0.sourceStart + $0.sourceDuration > unit.sourceRange.start }
         }
@@ -77,11 +77,38 @@ enum AutomaticEditorialAssembly {
             artisticOmissions = initialIDs.subtracting(retained)
             items.removeAll { $0.candidateID.map(artisticOmissions.contains) ?? false }
         }
+        // In an unconstrained slideshow, supplied photos are intentional material.
+        // Preserve all readable, allowed originals; only exact content duplicates
+        // collapse. Near-duplicates remain available for storytelling.
+        if requested == nil, original.constraints.targetClipCount == nil {
+            var hashes = Set<String>()
+            let byID = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            items = items.filter { item in
+                guard item.kind == .photo, let asset = item.assetID.flatMap({ byID[$0] }) else { return true }
+                return hashes.insert(asset.fullContentHash ?? asset.contentHash).inserted
+            }
+
+            let photos = context.units.filter { itemKind($0) == .photo && allowed($0) && !rejected.contains($0.id) }
+                .sorted { $0.quality > $1.quality }
+            var represented = Set(items.compactMap(\.assetID))
+            for unit in photos {
+                let photoAsset = byID[unit.candidate.assetID]
+                let identity = photoAsset?.fullContentHash ?? photoAsset?.contentHash ?? unit.candidate.assetID.uuidString
+                guard hashes.insert(identity).inserted, represented.insert(unit.candidate.assetID).inserted else { continue }
+                items.append(TimelineItem(id: EditorialIdentity.uuid("photo-coverage-\(source.id)-\(unit.id)"),
+                    candidateID: unit.id, assetID: unit.candidate.assetID, kind: .photo,
+                    sourceStart: 0, sourceDuration: PhotoPresentationPolicy.duration, timelineStart: 0,
+                    timelineDuration: PhotoPresentationPolicy.duration, videoAdjustments: .init(crop: .fit),
+                    eventID: unit.eventID, eventSceneID: unit.sceneID))
+            }
+        }
         let artisticDuration = artisticOmissions.isEmpty ? source.duration : items.reduce(0) { $0 + $1.timelineDuration }
         let observational = ExpressiveMomentPolicy.requested(in: original.prompt)
         // A recommendation is a ceiling for a spacious edit, never an order
         // to fill the remaining seconds with weaker or repeated footage.
-        let target = requested ?? (observational ? 225 : max(AutomaticFilmDurationPolicy.minimumDuration, artisticDuration))
+        let photoHoldBudget = items.filter { $0.kind == .photo }.reduce(0.0) { $0 + max(PhotoPresentationPolicy.duration, $1.timelineDuration) }
+        let videoHoldBudget = items.filter { $0.kind == .video }.reduce(0.0) { $0 + $1.timelineDuration }
+        let target = requested ?? max(photoHoldBudget + videoHoldBudget, observational ? 225 : max(AutomaticFilmDurationPolicy.minimumDuration, artisticDuration))
         var targetFrames = Int((target * fps).rounded())
         let clusterer = ShotFamilyClusterer()
         func makeSlots(_ media: [TimelineItem]) -> [Slot] {
@@ -346,6 +373,16 @@ enum AutomaticEditorialAssembly {
                 selected = Array(selected[...best])
             }
         }
+        if let requested, original.constraints.targetClipCount == nil {
+            let hold = min(PhotoPresentationPolicy.duration, requested)
+            // A short explicit runtime selects fewer photos instead of flashing
+            // every supplied photo too quickly. Automatic duration keeps them all.
+            while selected.filter({ $0.item.kind == .photo }).count > 1,
+                  selected.reduce(0.0, { $0 + ($1.item.kind == .photo ? hold : 1.5) }) > requested {
+                guard let index = selected.indices.filter({ selected[$0].item.kind == .photo && !selected[$0].item.locked }).min(by: { selected[$0].unit.quality < selected[$1].unit.quality }) else { break }
+                selected.remove(at: index)
+            }
+        }
         var capacity = selected.reduce(0) { $0 + $1.capacity }
         if requested != nil, capacity < targetFrames, preferShortShots, !observational {
             let expanded = prepare(timeline: source, plan: original, analyses: analyses, events: events,
@@ -380,7 +417,7 @@ enum AutomaticEditorialAssembly {
             selected[index].frames += 1
         }
         while selected.reduce(0, { $0 + $1.frames }) > desired {
-            guard let index = selected.indices.filter({ selected[$0].frames > Int(0.5 * fps) && !protected(selected[$0].unit) && fixedRanges[selected[$0].unit.id] == nil }).max(by: { selected[$0].frames < selected[$1].frames }) else { break }
+            guard let index = selected.indices.filter({ selected[$0].frames > Int((selected[$0].item.kind == .photo ? min(PhotoPresentationPolicy.duration, requested ?? PhotoPresentationPolicy.duration) : 0.5) * fps) && !protected(selected[$0].unit) && fixedRanges[selected[$0].unit.id] == nil }).max(by: { selected[$0].frames < selected[$1].frames }) else { break }
             selected[index].frames -= 1
         }
         let prepared = selected
@@ -390,7 +427,7 @@ enum AutomaticEditorialAssembly {
             item.timelineStart = Double(cursor) / fps
             item.timelineDuration = Double(slot.frames) / fps
             item.sourceDuration = item.timelineDuration
-            if index == prepared.count - 1, fixedRanges[slot.unit.id] == nil, !protected(slot.unit), EditorialMomentPolicy.closingValue(slot.unit) >= 0.5 {
+            if item.kind != .photo, index == prepared.count - 1, fixedRanges[slot.unit.id] == nil, !protected(slot.unit), EditorialMomentPolicy.closingValue(slot.unit) >= 0.5 {
                 let end = min(slot.unit.sourceRange.end, slot.unit.evidence.usableRange.end)
                 item.sourceStart = max(item.sourceStart, (end * fps).rounded(.down) / fps - item.sourceDuration)
             }
@@ -456,6 +493,10 @@ enum AutomaticEditorialAssembly {
         var runAnchor: EditorialUnit?
         let clusterer = ShotFamilyClusterer()
         for var slot in slots {
+            if slot.item.kind == .photo {
+                result.append(slot); run = 0; lastFamily = nil; runAnchor = nil
+                continue
+            }
             let family = families[slot.unit.id] ?? slot.unit.id.uuidString
             let repeats = measuredStaticOnly
                 ? runAnchor.map { clusterer.measuredStaticSetup($0, slot.unit) } ?? false
@@ -497,6 +538,13 @@ enum AutomaticEditorialAssembly {
         var ends: [UUID: Double] = [:]
         for var item in sorted {
             guard let id = item.candidateID, let unit = units[id], let asset = item.assetID else { continue }
+            if item.kind == .photo {
+                let hold = max(PhotoPresentationPolicy.duration, item.timelineDuration)
+                let frames = Int((hold * fps).rounded(.up))
+                item.sourceStart = 0
+                result.append(Slot(item: item, unit: unit, capacity: frames, frames: frames))
+                continue
+            }
             let lower = max(unit.sourceRange.start, unit.evidence.usableRange.start)
             let upper = min(unit.sourceRange.end, unit.evidence.usableRange.end)
             let required = EditorialMomentPolicy.protectedRange(unit)

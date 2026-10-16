@@ -319,11 +319,6 @@ public struct TimelineComposer: Sendable {
             ?? OriginalAudioPromptInterpreter().volume(prompt: plan.prompt)
             ?? 1
         let endingFadeDuration = prompt.contains("без затемнения") || prompt.contains("no fade") ? 0.0 : FilmEndingFade.defaultDuration
-        if endingFadeDuration > 0, let last = items.lastIndex(where: { $0.overlay == nil }) {
-            var audio = items[last].effectiveAudioAdjustments
-            audio.fadeOut = max(audio.fadeOut, endingFadeDuration)
-            items[last].audioAdjustments = audio
-        }
         let audioClips = originalAudioVolume > 0.0001
             ? makeSoundBridges(
                 items: &items,

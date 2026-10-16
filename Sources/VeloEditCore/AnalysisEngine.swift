@@ -26,6 +26,10 @@ public struct LocalHeuristicAnalyzer: VisionModelProtocol {
     public init(schemaVersion: Int = 1) { self.schemaVersion = schemaVersion }
 
     public func analyze(asset: MediaAsset) async throws -> AnalysisResult {
+        try await analyze(asset: asset, photoSource: nil)
+    }
+
+    func analyze(asset: MediaAsset, photoSource: PhotoSourceAnalysis?) async throws -> AnalysisResult {
         var tags = Self.tagsFromFilename(asset.displayName)
         if let width = asset.metadata.width, let height = asset.metadata.height {
             tags.insert(width >= height ? "horizontal" : "vertical")
@@ -34,21 +38,21 @@ public struct LocalHeuristicAnalyzer: VisionModelProtocol {
         switch asset.kind {
         case .photo:
             tags.insert("photo")
-            let metrics = Self.photoMetrics(url: asset.originalURL)
-            tags.formUnion(metrics.labels)
-            let scores = ClipScores(quality: metrics.quality, interest: metrics.interest, action: 0.08, stability: 1)
-            let insights = CandidateInsights(
-                sceneSummary: metrics.labels.sorted().prefix(4).joined(separator: ", "),
-                dynamics: 0.08,
-                visualAppeal: metrics.interest,
-                composition: metrics.interest,
-                sharpness: metrics.quality,
-                exposureQuality: metrics.quality,
-                storyValue: metrics.interest,
-                roleScores: [.intro: metrics.interest, .setup: 0.62, .reaction: metrics.interest * 0.72, .outro: metrics.interest]
-            )
-            let candidate = Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: PhotoPresentationPolicy.duration, scores: scores, tags: tags, explanation: Self.explanation(scores: scores, tags: tags), insights: insights)
-            return AnalysisResult(assetID: asset.id, schemaVersion: schemaVersion, analyzedContentHash: asset.contentHash, sceneTags: tags, candidates: [candidate])
+            let photo: PhotoSourceAnalysis
+            if let photoSource { photo = photoSource } else { photo = try await PhotoSourceAnalysis.inspect(asset) }
+            tags.formUnion(photo.sample.labels)
+            let interest = min(1, 0.35 + photo.sample.labelConfidence * 0.55)
+            // Darkness/soft focus are observations, never automatic rejection.
+            let quality = max(0.55, photo.sample.technicalQuality)
+            let scores = ClipScores(quality: quality, interest: interest, action: 0, stability: 1)
+            let insights = CandidateInsights(sceneSummary: photo.sample.labels.sorted().prefix(4).joined(separator: ", "),
+                dynamics: 0, visualAppeal: interest, composition: interest,
+                sharpness: photo.sample.detail, exposureQuality: photo.sample.exposure,
+                storyValue: interest, roleScores: [.intro: interest, .setup: 0.62, .reaction: interest * 0.72, .outro: interest])
+            let candidate = Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: PhotoPresentationPolicy.duration,
+                scores: scores, tags: tags, explanation: Self.explanation(scores: scores, tags: tags), insights: insights)
+            return AnalysisResult(assetID: asset.id, schemaVersion: schemaVersion, analyzedContentHash: asset.contentHash,
+                sceneTags: tags, candidates: [candidate])
         case .video:
             let duration = max(0, asset.metadata.duration ?? 0)
             guard duration > 0 else {
@@ -115,21 +119,6 @@ public struct LocalHeuristicAnalyzer: VisionModelProtocol {
             ("travel", ["trip", "travel", "поезд", "путеше"])
         ]
         return Set(vocabulary.compactMap { tag, needles in needles.contains(where: lower.contains) ? tag : nil })
-    }
-
-    private static func photoMetrics(url: URL) -> (quality: Double, interest: Double, labels: Set<String>) {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            return (0.4, 0.4, [])
-        }
-        let megapixels = Double(image.width * image.height) / 1_000_000
-        let resolution = min(1, megapixels / 12)
-        let request = VNClassifyImageRequest()
-        let handler = VNImageRequestHandler(cgImage: image)
-        try? handler.perform([request])
-        let observations = (request.results ?? []).prefix(4).filter { $0.confidence >= 0.25 }
-        let labels = Set(observations.map { $0.identifier.lowercased().replacingOccurrences(of: " ", with: "-") })
-        let confidence = Double(observations.first?.confidence ?? 0.35)
-        return (min(1, 0.45 + resolution * 0.5), min(1, 0.35 + confidence * 0.55), labels)
     }
 
     private static func resolutionScore(width: Int?, height: Int?) -> Double {

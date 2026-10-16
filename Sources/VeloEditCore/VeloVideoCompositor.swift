@@ -169,7 +169,16 @@ final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtoco
     let layers: [VeloCompositorLayer]
     let telemetryLayers: [VeloTelemetryLayer]
     let effects: [EffectTimelineItem]
-    let titles: [TitleTimelineItem]
+    private let titleLock = NSLock()
+    private var titleContents: [TitleTimelineItem]
+    var titles: [TitleTimelineItem] {
+        titleLock.lock(); defer { titleLock.unlock() }
+        return titleContents
+    }
+    func updateTitleContents(_ replacements: [UUID: TitleTimelineItem]) {
+        titleLock.lock(); defer { titleLock.unlock() }
+        titleContents = titleContents.map { replacements[$0.id] ?? $0 }
+    }
     let transition: TransitionStyle?
     let transitionItem: TimelineTransitionItem?
     let renderSize: CGSize
@@ -182,7 +191,7 @@ final class VeloVideoInstruction: NSObject, AVVideoCompositionInstructionProtoco
         self.layers = layers
         self.telemetryLayers = telemetryLayers
         self.effects = effects
-        self.titles = titles
+        self.titleContents = titles
         self.transition = transition
         self.transitionItem = transitionItem
         self.renderSize = renderSize
@@ -297,7 +306,7 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
             // then incoming — the order expected by the shared renderer.
             for layer in instruction.layers.reversed() {
                 guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { continue }
-                var image = CIImage(cvPixelBuffer: buffer)
+                var image = CIImage(cvPixelBuffer: buffer, options: [.toneMapHDRtoSDR: instruction.colorProfile.dynamicRange == .sdr])
                 // AVKit's native compositor accounts for non-square pixels;
                 // Core Image receives the encoded raster instead (for example
                 // 720×576 for a 1024×576 anamorphic movie). Placement transforms
@@ -626,4 +635,16 @@ public final class VeloHDRVideoCompositor: VeloVideoCompositor, @unchecked Senda
     public override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
     ] }
+}
+
+/// Own HDR conversion per frame: AVFoundation's implicit conversion can differ
+/// between a random-access poster and sequential export on the same source.
+/// Preserve native HDR planes until Core Image performs the SDR tone mapping.
+final class VeloHDRToSDRVideoCompositor: VeloVideoCompositor, @unchecked Sendable {
+    @objc var supportsHDRSourceFrames: Bool { true }
+    @objc var canConformColorOfSourceFrames: Bool { true }
+    override var sourcePixelBufferAttributes: [String: any Sendable]? {
+        [kCVPixelBufferPixelFormatTypeKey as String: [kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_32BGRA]]
+    }
 }

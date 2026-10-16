@@ -11,6 +11,41 @@ public enum BackgroundAnimationConfiguration {
 }
 
 enum StillImageRenderGeometry {
+    static func motion(_ motion: ClipEffect?, source: CGSize, target: CGSize, progress: CGFloat,
+                       duration: Double, subjectReframe: SubjectReframePlan?) -> (scale: CGFloat, x: CGFloat, y: CGFloat) {
+        var motionScale: CGFloat = 1, horizontalTravel: CGFloat = 0, verticalTravel: CGFloat = 0
+        switch motion {
+                case .kenBurns:
+                    // An evidenced subject path already supplies its own
+                    // camera move. A second generic zoom could crop it again.
+                    if subjectReframe == nil {
+                        let move = kenBurnsMotion(source: source,
+                            target: target, progress: progress, duration: duration)
+                        motionScale = move.scale
+                        horizontalTravel = move.x
+                        verticalTravel = move.y
+                    }
+                case .zoomIn:
+                    motionScale = 1 + CGFloat(PhotoPresentationPolicy.zoomAmount) * progress
+                case .zoomOut:
+                    motionScale = 1.07 - 0.07 * progress
+                case .pushIn:
+                    motionScale = 1 + 0.16 * progress
+                case .pullOut:
+                    motionScale = 1.16 - 0.16 * progress
+                case .panLeft:
+                    motionScale = 1.08
+                    horizontalTravel = target.width * (0.045 - 0.09 * progress)
+                case .panRight:
+                    motionScale = 1.08
+                    horizontalTravel = target.width * (-0.045 + 0.09 * progress)
+                case .mirror, .none:
+                    break
+                }
+        return (motionScale, horizontalTravel, verticalTravel)
+    }
+
+
     static func kenBurnsMotion(source: CGSize, target: CGSize, progress: CGFloat, duration: Double) -> (scale: CGFloat, x: CGFloat, y: CGFloat) {
         guard source.width > 0, source.height > 0, target.width > 0, target.height > 0 else { return (1, 0, 0) }
         let p = min(1, max(0, progress))
@@ -161,10 +196,18 @@ public actor StillImageVideoGenerator {
         let frames = max(1, Int(ceil(duration / frameStep.seconds - 0.000_001)))
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         var resourcePacer = ResourceWorkPacer()
+        let staticFit = cropStyle == .fit && subjectReframe == nil && backgroundAnimationStyle == nil
+        var staticFrame: CVPixelBuffer?
         defer { if writer.status == .writing { writer.cancelWriting() } }
         for frame in 0..<frames {
             try await resourcePacer.checkpoint()
             while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
+            if let staticFrame {
+                guard adaptor.append(staticFrame, withPresentationTime: CMTime(value: CMTimeValue(frame) * frameStep.value, timescale: frameStep.timescale)) else {
+                    throw DerivedMediaError.exportFailed(writer.error?.localizedDescription ?? "static photo frame")
+                }
+                continue
+            }
             guard let pool = adaptor.pixelBufferPool else { throw DerivedMediaError.cannotCreateDestination }
             var optional: CVPixelBuffer?
             guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &optional) == kCVReturnSuccess, let buffer = optional else {
@@ -187,34 +230,9 @@ public actor StillImageVideoGenerator {
                 horizontalTravel = transform.translation.width
                 verticalTravel = transform.translation.height
             } else {
-                switch motion {
-                case .kenBurns:
-                    // An evidenced subject path already supplies its own
-                    // camera move. A second generic zoom could crop it again.
-                    if subjectReframe == nil {
-                        let move = StillImageRenderGeometry.kenBurnsMotion(source: image.extent.size,
-                            target: bounds.size, progress: progress, duration: duration)
-                        motionScale = move.scale
-                        horizontalTravel = move.x
-                        verticalTravel = move.y
-                    }
-                case .zoomIn:
-                    motionScale = 1 + CGFloat(PhotoPresentationPolicy.zoomAmount) * progress
-                case .zoomOut:
-                    motionScale = 1.07 - 0.07 * progress
-                case .pushIn:
-                    motionScale = 1 + 0.16 * progress
-                case .pullOut:
-                    motionScale = 1.16 - 0.16 * progress
-                case .panLeft:
-                    motionScale = 1.08
-                    horizontalTravel = CGFloat(width) * (0.045 - 0.09 * progress)
-                case .panRight:
-                    motionScale = 1.08
-                    horizontalTravel = CGFloat(width) * (-0.045 + 0.09 * progress)
-                case .mirror, .none:
-                    break
-                }
+                let move = StillImageRenderGeometry.motion(motion, source: image.extent.size, target: bounds.size,
+                    progress: progress, duration: duration, subjectReframe: subjectReframe)
+                motionScale = move.scale; horizontalTravel = move.x; verticalTravel = move.y
             }
 
             let preserveFullFrame = cropStyle == .fit && subjectReframe == nil
@@ -234,12 +252,15 @@ public actor StillImageVideoGenerator {
             )
             let finalImage: CIImage
             if preserveFullFrame {
+                // Fit keeps the foreground fixed. Moving only its blurred
+                // surround makes the sharp seam shimmer, especially at entry.
+                // Keep both layers in the same stationary coordinate system.
                 let backgroundPlacement = StillImageRenderGeometry.placement(
                     sourceExtent: image.extent,
                     targetSize: bounds.size,
-                    motionScale: motionScale,
-                    horizontalTravel: horizontalTravel,
-                    verticalTravel: verticalTravel,
+                    motionScale: 1,
+                    horizontalTravel: 0,
+                    verticalTravel: 0,
                     subjectReframe: nil,
                     progress: progress,
                     fill: true
@@ -265,6 +286,9 @@ public actor StillImageVideoGenerator {
             }
 
             context.render(finalImage, to: buffer, bounds: bounds, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+            // This buffer stays immutable while the encoder retains it. A still
+            // does not need hundreds of identical full-resolution CI renders.
+            if staticFit { staticFrame = buffer }
             guard adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame) * frameStep.value, timescale: frameStep.timescale)) else {
                 throw DerivedMediaError.exportFailed(writer.error?.localizedDescription ?? "pixel buffer")
             }
