@@ -4440,7 +4440,6 @@ private struct DirectorConversationView: View {
     @EnvironmentObject var model: AppModel
     @State private var setupQuestionIndex = 0
     @State private var isEnteringCustomDuration = false
-    @State private var setupTelemetry: Bool?
     @State private var customDurationText = ""
     @State private var customDurationError: String?
 
@@ -4695,11 +4694,12 @@ private struct DirectorConversationView: View {
             model.setDirectorSourceAudioPolicy(policy)
         case .titles(let policy):
             model.setDirectorTitlePolicy(policy)
-        case .telemetry(let enabled):
-            setupTelemetry = enabled
+        case .telemetry:
+            break
         }
         isEnteringCustomDuration = false
         customDurationError = nil
+        model.insertDirectorSuggestion(option.title)
         finishSetupQuestion()
     }
 
@@ -4712,6 +4712,7 @@ private struct DirectorConversationView: View {
             return
         }
         model.setTargetMinutes(minutes)
+        model.insertDirectorSuggestion("\(formattedMinutes(minutes)) мин")
         isEnteringCustomDuration = false
         customDurationError = nil
         finishSetupQuestion()
@@ -4719,44 +4720,6 @@ private struct DirectorConversationView: View {
 
     private func finishSetupQuestion() {
         setupQuestionIndex += 1
-        if setupQuestionIndex == setupQuestions.count {
-            model.finishDirectorSetup(summary: directorBriefSummary)
-        }
-    }
-
-    private var directorBriefSummary: String {
-        let brief = model.directorBrief
-        let mood = switch brief.mood {
-        case .calm: "спокойное"
-        case .cinematic: "киношное"
-        case .dynamic: "динамичное"
-        }
-        let music = switch brief.musicPolicy {
-        case .matchVideo: "подобрать под видео"
-        case .soft: "мягкая и ненавязчивая"
-        case .none: "без музыки"
-        case .specificTrack: "использовать выбранный трек"
-        }
-        let sourceAudio = switch brief.sourceAudioPolicy {
-        case .preserve: "оставить звук исходников"
-        case .duck: "приглушить звук исходников"
-        case .mute: "убрать звук исходников"
-        }
-        let titles = switch brief.titlePolicy {
-        case .minimal: "минимум титров"
-        case .keyOnly: "названия каждой части и ключевых событий"
-        case .none: "без титров"
-        }
-        return [
-            "Формат: \(brief.canvasFormat.localizedTitle).",
-            brief.explicitRequestedDuration.map { "Длительность: \(durationDescription($0))." } ?? "Длительность — по материалам.",
-            model.preset == .vlog ? "Стиль: Влог. Субтитры: \(brief.subtitlesEnabled(preset: .vlog) ? "включены" : "выключены")." : "Настроение: \(mood).",
-            brief.effectsPolicy.map { "Эффекты: \($0.localizedTitle.lowercased())." } ?? "",
-            "Музыка: \(music).",
-            "Звук: \(sourceAudio).",
-            "Титры: \(titles).",
-            setupTelemetry.map { $0 ? "Покажи полезную телеметрию только там, где есть данные." : "Без телеметрии." } ?? ""
-        ].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     private func formattedMinutes(_ value: Double) -> String {
@@ -4764,19 +4727,13 @@ private struct DirectorConversationView: View {
         if abs(value - rounded) < 0.001 { return String(Int(rounded)) }
         return String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
     }
-
-    private func durationDescription(_ seconds: Double) -> String {
-        let roundedSeconds = Int(seconds.rounded())
-        let minutes = roundedSeconds / 60
-        let remainder = roundedSeconds % 60
-        if remainder == 0 { return "\(minutes) мин" }
-        if minutes == 0 { return "\(remainder) с" }
-        return "\(minutes) мин \(remainder) с"
-    }
 }
 
-private struct DirectorComposer: View {
+struct DirectorComposer: View {
     @EnvironmentObject var model: AppModel
+    @FocusState private var isInputFocused: Bool
+    @State private var needsCaretAtEnd = false
+    @State private var inputWindow = DirectorInputWindowReference()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -4788,6 +4745,23 @@ private struct DirectorComposer: View {
             .textFieldStyle(.plain)
             .font(.body)
             .lineLimit(1...7)
+            .focused($isInputFocused)
+            .accessibilityIdentifier("director-composer-input")
+            .background(DirectorInputWindowReader(reference: inputWindow))
+            .onChange(of: model.directorInputFocusRequest) {
+                needsCaretAtEnd = true
+                if isInputFocused { placeCaretAtEnd() }
+                else { isInputFocused = true }
+            }
+            .onChange(of: isInputFocused) {
+                if isInputFocused && needsCaretAtEnd { placeCaretAtEnd() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSControl.textDidBeginEditingNotification)
+                .merge(with: NotificationCenter.default.publisher(for: NSText.didBeginEditingNotification))
+                .merge(with: NotificationCenter.default.publisher(for: NSTextView.didChangeSelectionNotification))
+                .merge(with: NotificationCenter.default.publisher(for: NSText.didChangeNotification))) { _ in
+                if needsCaretAtEnd && isInputFocused { placeCaretAtEnd() }
+            }
             .onKeyPress(phases: .down) { press in
                 guard press.key == .return else { return .ignored }
                 if !press.modifiers.isEmpty { return .ignored }
@@ -4832,8 +4806,17 @@ private struct DirectorComposer: View {
         .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
     }
 
-    private var trimmedInput: String {
-        model.directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func placeCaretAtEnd() {
+        // AppKit selects the entire draft when editing begins. Move the caret
+        // after that selection, not merely after requesting SwiftUI focus.
+        DispatchQueue.main.async {
+            guard needsCaretAtEnd, isInputFocused,
+                  let editor = inputWindow.window?.firstResponder as? NSTextView,
+                  editor.string == model.directorInput else { return }
+            editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+            editor.scrollRangeToVisible(editor.selectedRange())
+            needsCaretAtEnd = false
+        }
     }
 
     private func sendMessage() {

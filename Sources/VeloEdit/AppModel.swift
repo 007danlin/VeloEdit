@@ -332,6 +332,7 @@ final class AppModel: ObservableObject {
     }
     @Published var prompt = AppModel.defaultDirectorBrief { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorInput = "" { didSet { scheduleWorkspaceAutosave() } }
+    @Published private(set) var directorInputFocusRequest = UUID()
     @Published var directorMessages = DirectorMessage.initial { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorStatus = "Готов выслушать ваш замысел"
     @Published var directorRuntimeStatus = LocalDirectorAgent.currentRuntimeLabel()
@@ -2033,32 +2034,13 @@ final class AppModel: ObservableObject {
         directorRuntimeStatus = await directorAgent.runtimeStatus()
     }
 
-    /// Questionnaire answers already have typed values. Start the first film
-    /// directly instead of asking a language model to interpret those values a
-    /// second time. A free-form addition still uses the ordinary director path.
-    @discardableResult
-    func finishDirectorSetup(summary: String) -> Bool {
-        guard timeline == nil, !isWorking, !isDirectorResponding else { return false }
-        let summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !summary.isEmpty else { return false }
-        var draft = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        if draft == summary { draft = "" }
-        else if draft.hasPrefix(summary + "\n") { draft = String(draft.dropFirst(summary.count + 1)) }
-        guard pipeline != nil, project?.assets.contains(where: { !$0.excluded && !$0.missing }) == true else {
-            directorInput = [summary, draft].filter { !$0.isEmpty }.joined(separator: "\n")
-            return false
-        }
-        if draft.isEmpty {
-            directorInput = ""
-            if prompt == Self.defaultDirectorBrief { prompt = summary }
-            else if !prompt.contains(summary) { prompt += "\n" + summary }
-            directorMessages.append(DirectorMessage(role: .user, text: summary))
-            markFilmNeedsRebuild("Анкета заполнена — начинаю сборку")
-        } else {
-            directorInput = summary + "\n" + draft
-        }
-        createFilm()
-        return true
+    /// Suggestions only edit the draft; sending remains an explicit user action.
+    func insertDirectorSuggestion(_ text: String) {
+        let suggestion = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !suggestion.isEmpty else { return }
+        let separator = directorInput.isEmpty || directorInput.last?.isWhitespace == true ? "" : " "
+        directorInput += separator + suggestion
+        directorInputFocusRequest = UUID()
     }
 
     func createFilm(forceFullRemake: Bool = false) {
