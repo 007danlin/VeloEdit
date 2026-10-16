@@ -40,6 +40,12 @@ struct ViewerToolbarLayoutTests {
                 try await Task.sleep(for: .milliseconds(50))
                 host.layoutSubtreeIfNeeded()
                 func inspect(_ view: NSView) {
+                    if tool == .crop, width >= 365, let scroll = view as? NSScrollView {
+                        #expect(scroll.contentSize.height < 120, "Crop panel must fit its controls without an empty 220-point region")
+                        if let document = scroll.documentView {
+                            #expect(document.bounds.height <= scroll.contentSize.height + 2, "Crop controls must not be clipped")
+                        }
+                    }
                     if view is NSSlider || view is NSPopUpButton {
                         let rect = view.convert(view.bounds, to: host)
                         #expect(rect.minX >= -1 && rect.maxX <= width + 1,

@@ -2606,11 +2606,6 @@ private func rendererImage(_ image: CGImage?) -> some View {
     }
 }
 
-private struct ViewerPanelHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
 private struct ViewerHeaderHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 64
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
@@ -2662,15 +2657,15 @@ struct MontagePlayerWorkspace: View {
                 if let selectedTool, let item = model.selectedTimelineItem {
                     ScrollView(.vertical) {
                         viewerToolPanel(selectedTool, item: item)
-                            .background(GeometryReader { panel in
-                                Color.clear.preference(key: ViewerPanelHeightKey.self, value: panel.size.height)
-                            })
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                if height > 0 { toolPanelHeight = height }
+                            }
                     }
                         .scrollIndicators(.visible)
                         .scrollBounceBehavior(.basedOnSize)
-                        .frame(height: min(toolPanelHeight > 0 ? toolPanelHeight : 220,
+                        .frame(height: min(toolPanelHeight > 0 ? toolPanelHeight : 80,
                                            max(64, workspace.size.height - viewerHeaderHeight - 120), 220))
-                        .onPreferenceChange(ViewerPanelHeightKey.self) { toolPanelHeight = $0 }
                         .layoutPriority(1)
                         .background(Color(nsColor: .underPageBackgroundColor))
                         .overlay(alignment: .bottom) { Divider() }
@@ -2737,6 +2732,7 @@ struct MontagePlayerWorkspace: View {
             .background(Color.black)
             .clipped()
         }
+
     }
 
     private var previewWindowActions: some View {
@@ -2784,6 +2780,7 @@ struct MontagePlayerWorkspace: View {
             .disabled(model.selectedTimelineItem?.kind == .title)
 
             ForEach(ViewerAdjustmentTool.allCases) { tool in
+                let isModified = tool.isModified(in: model.selectedTimelineItem)
                 Button {
                     withAnimation(.easeInOut(duration: 0.16)) {
                         selectedTool = selectedTool == tool ? nil : tool
@@ -2792,8 +2789,18 @@ struct MontagePlayerWorkspace: View {
                     Image(systemName: tool.icon)
                         .frame(width: 27, height: 27)
                         .background(selectedTool == tool ? Color.primary.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                        .overlay(alignment: .topTrailing) {
+                            if isModified {
+                                Circle()
+                                    .fill(Color.blue)
+                                    .frame(width: 6, height: 6)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
+                            }
+                        }
                 }
                 .accessibilityLabel(tool.title)
+                .accessibilityValue(isModified ? "Изменено" : "По умолчанию")
                 .accessibilityIdentifier("viewer-tool-\(tool.rawValue)")
                 .help(tool.title)
             }

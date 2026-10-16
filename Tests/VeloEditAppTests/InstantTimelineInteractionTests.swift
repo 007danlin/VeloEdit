@@ -7,6 +7,44 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct InstantTimelineInteractionTests {
+    @Test func viewerIndicatorsFollowSelectionPartialResetUndoAndReopening() async throws {
+        let fixture = try await Fixture(clipCount: 2); defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        let clipID = original.items[0].id
+        func modifiedTools() -> Set<ViewerAdjustmentTool> {
+            Set(ViewerAdjustmentTool.allCases.filter { $0.isModified(in: model.selectedTimelineItem) })
+        }
+        model.selectTimelineItem(clipID)
+        #expect(modifiedTools().isEmpty)
+        model.setSelectedBrightness(0.2)
+        model.setSelectedTint(0.4)
+        model.setSelectedClipVolume(0.5)
+        #expect(modifiedTools() == [.colorBalance, .volume])
+        model.setSelectedBrightness(0)
+        #expect(modifiedTools() == [.colorBalance, .volume]) // Tint still differs.
+        model.selectTimelineItem(original.items[1].id)
+        #expect(modifiedTools().isEmpty)
+        model.selectTimelineItem(clipID)
+        #expect(modifiedTools() == [.colorBalance, .volume])
+        model.resetSelectedColorBalance()
+        #expect(modifiedTools() == [.volume])
+        #expect(model.selectedTimelineItem?.effectiveAudioAdjustments.volume == 0.5)
+        model.undoTimelineEdit()
+        #expect(modifiedTools() == [.colorBalance, .volume])
+        model.redoTimelineEdit()
+        #expect(modifiedTools() == [.volume])
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        let saved = try #require(await reopened.manifest.timelines.last?.items.first)
+        #expect(Set(ViewerAdjustmentTool.allCases.filter { $0.isModified(in: saved) }) == [.volume])
+        model.resetAllSelectedViewerAdjustments()
+        #expect(modifiedTools().isEmpty)
+        #expect(model.timeline?.items.count == 2)
+        model.clearTimelineSelection()
+        #expect(modifiedTools().isEmpty)
+    }
+
     @Test(arguments: ["balance", "correction", "stabilization", "volume", "noise", "speed", "filters", "all"])
     func everyViewerSectionSupportsIndependentResetUndoRedoAndReopening(section: String) async throws {
         let fixture = try await Fixture(clipCount: 2); defer { fixture.remove() }
@@ -50,6 +88,8 @@ struct InstantTimelineInteractionTests {
         let item = try #require(model.selectedTimelineItem)
         var video = item.effectiveVideoAdjustments
         var audio = item.effectiveAudioAdjustments
+        let modifiedTools = Set(ViewerAdjustmentTool.allCases.filter { $0.isModified(in: item) })
+        #expect(modifiedTools == Set(ViewerAdjustmentTool.allCases.filter { $0 != .information }))
         #expect(video.brightness == 0.15 && video.warmth == 0.4 && video.tint == 0.25)
         #expect(video.exposure == 0.5 && video.contrast == 1.2 && video.saturation == 0.7)
         #expect(video.highlights == -0.3 && video.shadows == 0.2)
@@ -87,6 +127,12 @@ struct InstantTimelineInteractionTests {
             model.resetAllSelectedViewerAdjustments()
             video = VideoAdjustments(); audio = AudioAdjustments()
         }
+        let resetTools: [String: ViewerAdjustmentTool] = [
+            "balance": .colorBalance, "correction": .colorCorrection, "stabilization": .stabilization,
+            "volume": .volume, "noise": .noiseReduction, "speed": .speed, "filters": .filters
+        ]
+        let expectedTools = resetTools[section].map { modifiedTools.subtracting([$0]) } ?? []
+        #expect(Set(ViewerAdjustmentTool.allCases.filter { $0.isModified(in: model.selectedTimelineItem) }) == expectedTools)
         #expect(model.selectedTimelineItem?.effectiveVideoAdjustments == video)
         #expect(model.selectedTimelineItem?.effectiveAudioAdjustments == audio)
         #expect(model.selectedTimelineItem?.effect == (section == "all" ? nil : item.effect))
@@ -134,7 +180,9 @@ struct InstantTimelineInteractionTests {
         model.setSelectedCropMode("ken-burns")
         model.rotateSelected(1)
         let beforeReset = model.timeline
+        #expect(ViewerAdjustmentTool.crop.isModified(in: model.selectedTimelineItem))
         model.resetSelectedCropAndRotation()
+        #expect(!ViewerAdjustmentTool.crop.isModified(in: model.selectedTimelineItem))
         #expect(model.selectedTimelineItem?.effect == nil)
         #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.crop == .fill)
         #expect(model.selectedTimelineItem?.effectiveVideoAdjustments.rotationQuarterTurns == 0)

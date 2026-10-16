@@ -6467,7 +6467,10 @@ final class AppModel: ObservableObject {
                 self.previewPosterImage = NSImage(cgImage: generatedImage, size: .zero)
                 self.previewPosterPlaybackID = ObjectIdentifier(playback)
                 self.previewPosterPlaybackTime = safeTime
-                self.isPreviewPosterVisible = !self.previewPlayerFrameReady && self.previewPlayer?.timeControlStatus != .playing
+                // A completed seek does not guarantee AVPlayerView has displayed
+                // the replacement item. While paused, use the frame rendered
+                // from this exact composition (including resets).
+                self.isPreviewPosterVisible = self.previewPlayer?.timeControlStatus != .playing
                 if self.isPreviewPosterVisible { self.recordPreviewFramePublished() }
             }
         }
@@ -6475,7 +6478,9 @@ final class AppModel: ObservableObject {
 
     private func showReadyPreviewPlayerFrame() {
         previewPlayerFrameReady = true
-        if isPreviewPosterVisible { isPreviewPosterVisible = false }
+        if previewPlayer?.timeControlStatus == .playing {
+            isPreviewPosterVisible = false
+        }
         recordPreviewFramePublished()
     }
 

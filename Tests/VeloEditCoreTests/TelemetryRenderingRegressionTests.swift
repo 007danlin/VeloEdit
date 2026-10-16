@@ -225,3 +225,25 @@ func telemetryImportedSamplesDriveValuesGaugesAndRoute(_ style: TelemetryWidgetS
         #expect(changes, "Frozen telemetry: \(preset.id)")
     }
 }
+
+@Test func everyTelemetryTemplatePinsItsFontsIncludingCoordinatesAndHeading() throws {
+    let root = try #require(OVRLEYBridge.resourceRootURL)
+    for style in TelemetryWidgetStyle.allCases where style.isOVRLEYTemplate {
+        for kind in [TelemetryWidgetKind.speedValue, .coordinates, .heading] {
+            let presentation: TelemetryWidgetPresentation = kind == .heading ? .headingTape : .text
+            let layout = TelemetryWidgetLayout.presetLayout(kind: kind, presentation: presentation)
+            let settings = TelemetryOverlaySettings(metrics: kind.metric.map { [$0] } ?? [], style: style, widgets: [layout])
+            let data = try #require(OVRLEYFrameRenderer.renderTemplate(settings: settings,
+                telemetry: TelemetryOverlayRenderer.catalogueTelemetry, renderSize: CGSize(width: 960, height: 540)))
+            let wrapper = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let config = try #require(wrapper["config"] as? [String: Any])
+            let value = try #require((config["values"] as? [[String: Any]])?.first)
+            let font = try #require(value["font"] as? String)
+            #expect(OVRLEYFrameRenderer.templateFontFiles[style] != nil)
+            #expect(TelemetryOverlayRenderer.fontName(for: style, fallback: "Arial") == OVRLEYFrameRenderer.templateFontFiles[style]?.path)
+            #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("fonts/" + font).path), "Missing \(style): \(font)")
+            if kind == .heading { #expect(value["label_font"] as? String == font) }
+            if let label = (config["labels"] as? [[String: Any]])?.first { #expect(label["font"] as? String == font) }
+        }
+    }
+}

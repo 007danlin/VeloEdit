@@ -8,6 +8,21 @@ import ImageIO
 enum OVRLEYFrameRenderer {
     private static let cache = OVRLEYFrameCache()
 
+    /// Shared with the native renderer for presentations absent from OVRLEY.
+    /// Both paths must use the same bundled design face.
+    static let templateFontFiles: [TelemetryWidgetStyle: URL] = {
+        guard let root = OVRLEYBridge.resourceRootURL else { return [:] }
+        var result: [TelemetryWidgetStyle: URL] = [:]
+        for style in TelemetryWidgetStyle.allCases where style.isOVRLEYTemplate {
+            let config = loadTemplate(style: style, rootURL: root)?["config"] as? [String: Any]
+            guard let font = (config?["values"] as? [[String: Any]])?.first?["font"] as? String else { continue }
+            let filename = (font as NSString).pathExtension.isEmpty ? font + ".ttf" : font
+            let url = root.appendingPathComponent("fonts/" + filename)
+            if FileManager.default.fileExists(atPath: url.path) { result[style] = url }
+        }
+        return result
+    }()
+
     static func frame(
         settings: TelemetryOverlaySettings,
         telemetry: TelemetrySummary,
@@ -177,7 +192,7 @@ enum OVRLEYFrameRenderer {
                     let region = TelemetryWidgetGeometry(rect: rect, presentation: layout.effectivePresentation, showsLabel: true).label
                     let text = layout.kind.localizedTitle.uppercased()
                     labels.append(["text": text, "x": region.minX, "y": Double(height) - region.maxY,
-                                   "font": "Arial.ttf",
+                                   "font": value["font"] ?? "Arial.ttf",
                                    "font_size": min(rect.height * 0.11, region.width / Double(max(1, text.count)) / 0.72),
                                    "color": labelColor, "opacity": layout.opacity])
                 }
@@ -244,6 +259,11 @@ enum OVRLEYFrameRenderer {
                 if let value = typography[key] { result[key] = value }
             }
         }
+        // Pin font files rather than depending on fonts installed by the user.
+        if let font = result["font"] as? String,
+           FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("fonts/" + font + ".ttf").path) {
+            result["font"] = font + ".ttf"
+        }
         return result
     }
 
@@ -269,7 +289,7 @@ enum OVRLEYFrameRenderer {
             value["major_tick_interval"] = 15
             value["minor_ticks_per_major"] = 3
             value["label_font_size"] = max(1, min(region.height * 0.22, region.width / 8 / 2.5))
-            value["label_font"] = "Arial.ttf"
+            value["label_font"] = value["font"] ?? "Arial.ttf"
             value["label_offset"] = max(1, region.height * 0.05)
             value["indicator_size"] = max(1, region.height * 0.12)
             value["major_tick_thickness"] = max(1, region.width / 200)
@@ -310,8 +330,7 @@ enum OVRLEYFrameRenderer {
         value["decimals"] = precision[metric] ?? 0
         if metric == "gps_coordinates" {
             value["coordinate_format"] = "ddm"
-            // Display fonts often omit the degree/prime glyphs used by GPS.
-            value["font"] = "Arial.ttf"
+            // The renderer substitutes missing glyphs, preserving this design’s digits.
         }
         if metric == "distance" { value["show_full_distance"] = false }
         if metric == "left_right_balance" { value["balance_format"] = "l_prefix" }

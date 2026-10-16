@@ -270,7 +270,7 @@ public enum TelemetryOverlayRenderer {
         case .corner:
             drawCornerGauge(value: display.normalized, context: context, rect: gaugeRect, color: palette.accent)
         case .headingTape:
-            drawHeadingTape(heading: sample?.headingDegrees ?? 0, context: context, rect: gaugeRect, color: palette.accent, labelColor: palette.foreground)
+            drawHeadingTape(heading: sample?.headingDegrees ?? 0, context: context, rect: gaugeRect, color: palette.accent, labelColor: palette.foreground, fontName: fontName(for: style, fallback: layout.fontName))
         case .gForce:
             drawGForce(x: sample?.gForceX ?? 0, y: sample?.gForceY ?? 0, context: context, rect: gaugeRect, color: palette.accent, foreground: palette.foreground)
         case .leanAngle:
@@ -421,7 +421,7 @@ public enum TelemetryOverlayRenderer {
         context.setStrokeColor(color); context.move(to: CGPoint(x: corner.x, y: corner.y + rect.height * 0.82 * clamped)); context.addLine(to: corner); context.addLine(to: CGPoint(x: corner.x + rect.width * 0.82 * clamped, y: corner.y)); context.strokePath()
     }
 
-    private static func drawHeadingTape(heading: Double, context: CGContext, rect: CGRect, color: CGColor, labelColor: CGColor) {
+    private static func drawHeadingTape(heading: Double, context: CGContext, rect: CGRect, color: CGColor, labelColor: CGColor, fontName: String) {
         let center = rect.midX
         let slotWidth = rect.width / 9
         let labelFontSize = min(rect.height * 0.22, slotWidth / 2.5)
@@ -431,7 +431,7 @@ public enum TelemetryOverlayRenderer {
             context.setLineWidth(offset == 0 ? 3 : 1.5)
             context.move(to: CGPoint(x: x, y: rect.maxY - rect.height * 0.25)); context.addLine(to: CGPoint(x: x, y: rect.maxY)); context.strokePath()
             let value = (Int(heading.rounded()) + offset * 15 + 360) % 360
-            draw(value % 90 == 0 ? [0: "N", 90: "E", 180: "S", 270: "W"][value] ?? "\(value)" : "\(value)", context: context, rect: CGRect(x: x - slotWidth * 0.45, y: rect.minY + rect.height * 0.18, width: slotWidth * 0.9, height: rect.height * 0.28), fontName: "Helvetica Neue", fontSize: labelFontSize, color: offset == 0 ? color : labelColor)
+            draw(value % 90 == 0 ? [0: "N", 90: "E", 180: "S", 270: "W"][value] ?? "\(value)" : "\(value)", context: context, rect: CGRect(x: x - slotWidth * 0.45, y: rect.minY + rect.height * 0.18, width: slotWidth * 0.9, height: rect.height * 0.28), fontName: fontName, fontSize: labelFontSize, color: offset == 0 ? color : labelColor)
         }
     }
 
@@ -501,7 +501,7 @@ public enum TelemetryOverlayRenderer {
         guard rect.width > 0, rect.height > 0 else { return }
         func line(at size: CGFloat) -> CTLine {
             let attributes: [NSAttributedString.Key: Any] = [
-                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName(fontName as CFString, size, nil),
+                NSAttributedString.Key(kCTFontAttributeName as String): resolvedFont(named: fontName, size: size),
                 NSAttributedString.Key(kCTForegroundColorAttributeName as String): color
             ]
             return CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
@@ -541,19 +541,27 @@ public enum TelemetryOverlayRenderer {
         }
     }
 
-    private static func fontName(for style: TelemetryWidgetStyle, fallback: String) -> String {
-        switch style {
-        case .acidTitanium: return "Menlo-Bold"
-        case .breezeBlue: return "Avenir Next Heavy"
-        case .burntOrange: return "Avenir Next Condensed Heavy"
-        case .futuristicHUD: return "Avenir Next Demi Bold"
-        case .champagneBasic, .lavenderGradient: return "Avenir Next"
-        case .champagneBorders, .champagneShadows, .whiteOpacity: return "HelveticaNeue-CondensedBold"
-        case .whiteShadows: return "Menlo-Bold"
-        case .safaBrian, .whiteVAM: return "Avenir Next Condensed Heavy"
-        case .digital: return "Menlo-Bold"
-        default: return fallback + " Bold"
+    static func fontName(for style: TelemetryWidgetStyle, fallback: String) -> String {
+        if let file = OVRLEYFrameRenderer.templateFontFiles[style] { return file.path }
+        return style == .digital ? "Menlo-Bold" : fallback
+    }
+
+    private static let fontCache = NSCache<NSString, CTFont>()
+
+    private static func resolvedFont(named name: String, size: CGFloat) -> CTFont {
+        let base: CTFont
+        if let cached = fontCache.object(forKey: name as NSString) {
+            base = cached
+        } else if name.hasPrefix("/"),
+                  let descriptors = CTFontManagerCreateFontDescriptorsFromURL(URL(fileURLWithPath: name) as CFURL) as? [CTFontDescriptor],
+                  let descriptor = descriptors.first {
+            base = CTFontCreateWithFontDescriptor(descriptor, 24, nil)
+            fontCache.setObject(base, forKey: name as NSString)
+        } else {
+            base = CTFontCreateWithName(name as CFString, 24, nil)
+            fontCache.setObject(base, forKey: name as NSString)
         }
+        return CTFontCreateCopyWithAttributes(base, size, nil, nil)
     }
 
     private static func color(_ text: String, fallback: CGColor) -> CGColor {

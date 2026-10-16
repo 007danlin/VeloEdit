@@ -281,7 +281,7 @@ pub fn draw_text_with_vertical_metrics_text(
             ) {
                 let mut paint = text_paint(style.color);
                 paint.set_image_filter(shadow_filter);
-                canvas.draw_str(text, Point::new(style.x, baseline), &font, &paint);
+                draw_font_runs(canvas, text, Point::new(style.x, baseline), &font, &paint);
             }
         }
     }
@@ -292,13 +292,49 @@ pub fn draw_text_with_vertical_metrics_text(
             paint.set_style(Style::Stroke);
             paint.set_stroke_width(style.border_thickness);
             paint.set_stroke_join(Join::Round);
-            canvas.draw_str(text, Point::new(style.x, baseline), &font, &paint);
+            draw_font_runs(canvas, text, Point::new(style.x, baseline), &font, &paint);
         }
     }
 
     let paint = text_paint(style.color);
-    canvas.draw_str(text, Point::new(style.x, baseline), &font, &paint);
+    draw_font_runs(canvas, text, Point::new(style.x, baseline), &font, &paint);
     Ok(())
+}
+
+/// Preserve the template face for supported glyphs. Display fonts commonly
+/// omit primes or Cyrillic; replacing the entire GPS value loses its styling.
+fn font_runs<'a>(text: &'a str, font: &Font) -> Vec<(&'a str, Font)> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut current = font.clone();
+    for (index, character) in text.char_indices() {
+        let next = if font.unichar_to_glyph(character as i32) != 0 {
+            font.clone()
+        } else {
+            let mut fallback = font.clone();
+            if let Some(face) = FontMgr::default().match_family_style_character(
+                "Arial", font.typeface().font_style(), &[], character as i32,
+            ) {
+                fallback.set_typeface(face);
+            }
+            fallback
+        };
+        if next.typeface().unique_id() != current.typeface().unique_id() {
+            if index > start { result.push((&text[start..index], current)); }
+            start = index;
+            current = next;
+        }
+    }
+    if start < text.len() { result.push((&text[start..], current)); }
+    result
+}
+
+fn draw_font_runs(canvas: &Canvas, text: &str, origin: Point, font: &Font, paint: &Paint) {
+    let mut x = origin.x;
+    for (text, face) in font_runs(text, font) {
+        canvas.draw_str(text, Point::new(x, origin.y), &face, paint);
+        x += face.measure_str(text, None).0;
+    }
 }
 
 /// Resolves a font from configured font directories or system fonts.
@@ -325,15 +361,15 @@ pub fn baseline_for_text_top_with_line_height(
     font: &Font,
     line_height: f32,
 ) -> f32 {
-    let (_, bounds) = font.measure_str(text, None);
-    let glyph_height = (bounds.bottom - bounds.top).abs();
+    let bounds = measure_text_with_font(text, font);
+    let glyph_height = (bounds.bounds_bottom - bounds.bounds_top).abs();
 
     if glyph_height <= f32::EPSILON {
         return baseline_for_top_with_line_height(top_y, font, line_height);
     }
 
     let linebox_offset = (line_height - glyph_height) * 0.5;
-    top_y + linebox_offset - bounds.top
+    top_y + linebox_offset - bounds.bounds_top
 }
 
 /// Measures text using a resolved style.
@@ -348,7 +384,14 @@ pub fn measure_text(
 
 /// Measures text using an already-resolved Skia font.
 pub fn measure_text_with_font(text: &str, font: &Font) -> MeasuredText {
-    let (width, bounds) = font.measure_str(text, None);
+    let mut width = 0.0;
+    let mut bounds = skia_safe::Rect::new_empty();
+    for (text, face) in font_runs(text, font) {
+        let (advance, mut run_bounds) = face.measure_str(text, None);
+        run_bounds.offset((width, 0.0));
+        bounds.join(run_bounds);
+        width += advance;
+    }
     let (_, metrics) = font.metrics();
     MeasuredText {
         width,
@@ -363,8 +406,8 @@ pub fn measure_text_with_font(text: &str, font: &Font) -> MeasuredText {
 
 /// Converts a visual text center into the Skia text origin used by `draw_str`.
 pub fn origin_x_for_centered_text(text: &str, center_x: f32, font: &Font) -> f32 {
-    let (_, bounds) = font.measure_str(text, None);
-    center_x - (bounds.left + bounds.right) * 0.5
+    let bounds = measure_text_with_font(text, font);
+    center_x - (bounds.bounds_left + bounds.bounds_right) * 0.5
 }
 
 /// Parses `#RRGGBB` or `#RRGGBBAA` text into a Skia ARGB color.

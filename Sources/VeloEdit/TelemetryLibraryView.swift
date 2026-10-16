@@ -381,6 +381,7 @@ private struct TelemetryCSVMappingView: View {
 struct TelemetryCanvasEditor: View {
     @EnvironmentObject private var model: AppModel
     let item: TimelineTelemetryItem
+    @Namespace private var canvasSpace
     @State private var drag: CGSize = .zero
     @State private var resize: CGSize = .zero
 
@@ -427,10 +428,11 @@ struct TelemetryCanvasEditor: View {
                 .gesture(moveGesture(canvas: geometry.size))
                 .offset(x: left, y: top)
         }
+        .coordinateSpace(name: canvasSpace)
     }
 
     private func moveGesture(canvas: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(canvasSpace))
             .onChanged { drag = $0.translation }
             .onEnded { value in
                 let x = min(max(0, layout.x + Double(value.translation.width / max(1, canvas.width))), 1 - layout.width)
@@ -441,7 +443,7 @@ struct TelemetryCanvasEditor: View {
     }
 
     private func resizeGesture(canvas: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(canvasSpace))
             .onChanged { resize = $0.translation }
             .onEnded { value in
                 let deltaWidth = Double(value.translation.width / max(1, canvas.width))

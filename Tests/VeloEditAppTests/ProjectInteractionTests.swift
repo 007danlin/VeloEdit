@@ -546,6 +546,44 @@ struct ProjectInteractionTests {
         #expect(model.canUndoTimelineEdit)
     }
 
+    @Test func resettingColorAndFiltersPublishesAnUntintedPausedFrame() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = try fixture.project("color-reset")
+        var style = TitleStyle()
+        style.backgroundColorHex = "#607080"
+        let source = try await TitleCardVideoGenerator().generate(text: "RESET", style: style,
+            duration: 2, width: 320, height: 180, frameRate: 30,
+            destination: fixture.root.appendingPathComponent("color.mov"), codec: .jpeg)
+        let asset = MediaAsset(originalURL: source, kind: .video, byteSize: 1, contentHash: UUID().uuidString,
+            metadata: .init(duration: 2, width: 320, height: 180, frameRate: 30, hasAudio: false))
+        let item = TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 2, timelineStart: 0, timelineDuration: 2)
+        // Keep the same compositor before and after reset, as in a film with titles.
+        let timeline = Timeline(storyPlanID: UUID(), width: 320, height: 180, items: [item],
+            effects: [.init(effectType: .pushIn, startTime: 0, duration: 2, intensity: 0)])
+        let store = try ProjectStore(open: url)
+        try await store.update { $0.assets = [asset]; $0.timelines = [timeline] }
+        let model = fixture.model()
+        model.openRecentProject(url)
+        try await wait { model.previewPosterImage != nil && model.previewPlayer?.currentItem?.status == .readyToPlay }
+        model.previewPlayer?.pause()
+        model.selectTimelineItem(item.id)
+        let baseline = try #require(model.previewPosterImage?.tiffRepresentation)
+        let originalPoster = model.previewPosterImage
+        model.setSelectedTint(0.8)
+        model.setSelectedWarmth(0.7)
+        model.setSelectedFilter(.sepia)
+        try await wait { model.previewPosterImage !== originalPoster }
+        #expect(model.previewPosterImage?.tiffRepresentation != baseline)
+        let tinted = model.previewPosterImage
+        model.resetSelectedColorBalance()
+        model.resetSelectedFilters()
+        try await wait { model.previewPosterImage !== tinted }
+        #expect(model.previewPosterImage?.tiffRepresentation == baseline)
+        #expect(model.isPreviewPosterVisible)
+        #expect(ViewerAdjustmentTool.allCases.allSatisfy { !$0.isModified(in: model.selectedTimelineItem) })
+        await model.stopForApplicationTermination()
+    }
+
     private func wait(_ predicate: () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(8)
         // Yield at least once because card actions dispatch on the next turn.

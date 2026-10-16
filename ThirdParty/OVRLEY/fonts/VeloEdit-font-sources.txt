@@ -1,0 +1,13 @@
+Additional fonts bundled for telemetry templates (2026-10-16):
+
+Bebas Neue.ttf, original filename BebasNeue-Regular.ttf
+https://github.com/google/fonts/tree/main/ofl/bebasneue
+SHA-256: 08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73
+License: bebasneue-OFL.txt
+
+Roboto.ttf, original filename Roboto[wdth,wght].ttf
+https://github.com/google/fonts/tree/main/ofl/roboto
+SHA-256: d7598e12c5dbef095ff8272cfc55da0250bd07fbdecbac8a530b9b277872a134
+License: roboto-OFL.txt
+
+Font data is unmodified; filenames are normalized for template lookup.

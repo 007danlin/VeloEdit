@@ -909,7 +909,7 @@ struct MagneticTimelineView: View {
             HStack(spacing: 3) {
                 Menu {
                     ForEach([0.0, 0.1, 0.22, 0.35, 0.5, 0.75, 1.0], id: \.self) { volume in
-                        Button("\(Int(volume * 100))%") { model.setMusicVolume(volume) }
+                        Button { model.setMusicVolume(volume) } label: { volumePresetLabel(volume, current: timeline.music?.volume ?? 1) }
                     }
                 } label: {
                     Image(systemName: "speaker.wave.2.fill").frame(width: 19, height: 19).background(.black.opacity(0.55), in: Circle())
@@ -935,7 +935,7 @@ struct MagneticTimelineView: View {
             Divider()
             Menu("Громкость", systemImage: "speaker.wave.2") {
                 ForEach([0.0, 0.1, 0.22, 0.35, 0.5, 0.75, 1.0], id: \.self) { volume in
-                    Button("\(Int(volume * 100))%") { model.setMusicVolume(volume) }
+                    Button { model.setMusicVolume(volume) } label: { volumePresetLabel(volume, current: timeline.music?.volume ?? 1) }
                 }
             }
             Menu("Скорость", systemImage: "speedometer") {
@@ -1170,11 +1170,22 @@ struct MagneticTimelineView: View {
         return model.timelineMediaAsset(assetID)?.metadata.hasAudio == true
     }
 
+    @ViewBuilder
+    private func volumePresetLabel(_ volume: Double, current: Double) -> some View {
+        if abs(volume - current) <= 0.001 {
+            Label("\(Int(volume * 100))%", systemImage: "checkmark")
+        } else {
+            Text("\(Int(volume * 100))%")
+        }
+    }
+
     private func clipVolumeOptions(_ item: TimelineItem) -> some View {
         ForEach([0.0, 0.25, 0.5, 1.0, 1.5, 2.0], id: \.self) { volume in
-            Button("\(Int(volume * 100))%") {
+            Button {
                 model.selectTimelineItem(item.id)
                 model.setSelectedClipVolume(volume)
+            } label: {
+                volumePresetLabel(volume, current: item.effectiveAudioAdjustments.volume)
             }
         }
     }
@@ -1562,12 +1573,7 @@ struct MagneticTimelineView: View {
         }
         Divider()
         Menu("Громкость", systemImage: "speaker.wave.2") {
-            ForEach([0.0, 0.25, 0.5, 1.0, 1.5, 2.0], id: \.self) { volume in
-                Button("\(Int(volume * 100))%") {
-                    model.selectTimelineAudioClip(clip.id)
-                    model.setSelectedTimelineAudioVolume(volume)
-                }
-            }
+            audioVolumeOptions(clip)
         }
         Menu("Скорость", systemImage: "speedometer") {
             ForEach([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4], id: \.self) { speed in
@@ -1627,9 +1633,11 @@ struct MagneticTimelineView: View {
 
     private func audioVolumeOptions(_ clip: TimelineAudioClip) -> some View {
         ForEach([0.0, 0.25, 0.5, 1.0, 1.5, 2.0], id: \.self) { volume in
-            Button("\(Int(volume * 100))%") {
+            Button {
                 model.selectTimelineAudioClip(clip.id)
                 model.setSelectedTimelineAudioVolume(volume)
+            } label: {
+                volumePresetLabel(volume, current: clip.adjustments.volume)
             }
         }
     }
