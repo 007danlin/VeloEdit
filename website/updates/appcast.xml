@@ -3,14 +3,14 @@
     <channel>
         <title>VeloEdit</title>
         <item>
-            <title>0.1.7</title>
-            <pubDate>Fri, 16 Oct 2026 13:55:23 +0300</pubDate>
+            <title>0.1.8</title>
+            <pubDate>Fri, 16 Oct 2026 16:42:57 +0300</pubDate>
             <link>https://veloedit.ru/</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/007danlin/VeloEdit/releases/tag/v0.1.7</sparkle:fullReleaseNotesLink>
-            <sparkle:version>2026.289.105430</sparkle:version>
-            <sparkle:shortVersionString>0.1.7</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/007danlin/VeloEdit/releases/tag/v0.1.8</sparkle:fullReleaseNotesLink>
+            <sparkle:version>2026.289.134224</sparkle:version>
+            <sparkle:shortVersionString>0.1.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/007danlin/VeloEdit/releases/download/v0.1.7/VeloEdit_0.1.7_universal.dmg" length="1467752948" type="application/octet-stream" sparkle:edSignature="BDEb2aAnyRta/ZxcHW7vFstXaE63vFhJP39scBqa4TbO5m1dSyYNsKfUdK5U6gzXgqvKKQMGWCZDFocqHaGGDw=="/>
+            <enclosure url="https://github.com/007danlin/VeloEdit/releases/download/v0.1.8/VeloEdit_0.1.8_universal.dmg" length="1468249712" type="application/octet-stream" sparkle:edSignature="ptz24ZJET6WbJ2iBfi6jwj97hZgPegFUS2gFausm0nUqn52KurzvXfNT2wUhcVNfPXMyoWMJ3PXlYjAtIKKQCQ=="/>
         </item>
     </channel>
 </rss>
