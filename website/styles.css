@@ -17,7 +17,8 @@ nav .nav-support:hover{color:#d5ff9a}
 .actions .button{white-space:nowrap}
 @media(min-width:761px){.actions{gap:10px}.actions .button{padding:16px 14px;font-size:12px;gap:8px}}
 @media(min-width:761px) and (max-width:900px){.actions .button{padding:16px 10px;font-size:11px;gap:6px}nav{gap:20px}}
-@media(max-width:760px){header{height:auto;min-height:90px;flex-wrap:wrap;gap:16px;padding:20px 0}nav{flex-direction:column;align-items:flex-end;gap:12px;margin-left:auto}nav a.nav-support{display:inline-flex}.actions{display:grid;grid-template-columns:1fr;max-width:340px}.actions .button{max-width:none}}
+@media(max-width:760px){header{display:grid;grid-template-columns:minmax(0,1fr) max-content;height:auto;min-height:90px;gap:12px;padding:12px 0}header .brand{justify-self:start;gap:8px;font-size:20px;white-space:nowrap}header .app-icon{width:32px;height:32px}header nav{display:grid;justify-items:end;gap:0;margin:0}header nav .nav-github,header nav .nav-support{display:inline-flex;align-items:center;justify-content:flex-end;min-height:34px;line-height:20px;white-space:nowrap}.nav-support svg{flex-shrink:0}.actions{display:grid;grid-template-columns:1fr;max-width:340px}.actions .button{max-width:none}}
+@media(max-width:480px){header .beta{display:none}}
 
 .support-card{position:relative;box-sizing:border-box;width:min(420px,calc(100vw - 32px));padding:52px 28px 24px;border:1px solid #394331;border-radius:20px;background:#191f17;color:var(--fg);text-align:center}
 .support-card h1,.support-card h2{font-size:25px;font-weight:550;line-height:1.2;letter-spacing:-.8px;margin:0 0 12px}
