@@ -903,13 +903,10 @@ final class AppModel: ObservableObject {
         let panel = NSOpenPanel()
         panel.title = "Открыть проект VeloEdit"
         panel.allowedContentTypes = [UTType(exportedAs: "app.veloedit.project", conformingTo: .package)]
-        // A .veloedit package is also a directory. AppKit can otherwise leave
-        // Open disabled even when its declared package type matches exactly.
+        panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.treatsFilePackagesAsDirectories = false
         panel.allowsMultipleSelection = false
-        panel.delegate = ProjectOpenPanelValidator.shared
-        panel.canChooseDirectories = true
         return panel
     }
 

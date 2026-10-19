@@ -218,23 +218,13 @@ struct ProjectInteractionTests {
         #expect(FileManager.default.fileExists(atPath: existingURL.path))
     }
 
-    @Test func openPanelSelectsProjectPackagesInsteadOfOrdinaryFolders() throws {
+    @Test func openPanelSelectsProjectPackagesInsteadOfOrdinaryFolders() {
         let panel = AppModel.makeProjectOpenPanel()
         #expect(panel.canChooseFiles)
-        #expect(panel.canChooseDirectories)
+        #expect(!panel.canChooseDirectories)
         #expect(!panel.treatsFilePackagesAsDirectories)
         #expect(!panel.allowsMultipleSelection)
         #expect(panel.allowedContentTypes.map(\.identifier) == ["app.veloedit.project"])
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let package = fixture.root.appendingPathComponent("Opening.veloedit")
-        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
-        let validator = try #require(panel.delegate as? ProjectOpenPanelValidator)
-        try validator.panel(panel, validate: package)
-        #expect(throws: NSError.self) { try validator.panel(panel, validate: fixture.root) }
-        let ordinaryFile = fixture.root.appendingPathComponent("Not A Package.veloedit")
-        try Data().write(to: ordinaryFile)
-        #expect(throws: NSError.self) { try validator.panel(panel, validate: ordinaryFile) }
         let directory = FileManager.default.temporaryDirectory
         let savePanel = AppModel.makeVideoSavePanel(directory: directory, suggestedName: "Film.mp4")
         #expect(savePanel.directoryURL?.standardizedFileURL.path == directory.standardizedFileURL.path)
