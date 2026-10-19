@@ -1,4 +1,5 @@
 import Foundation
+import CoreText
 
 public struct FCPXMLCapabilities: Sendable {
     public var supportedEffects: Set<String> = []
@@ -349,7 +350,11 @@ public struct FCPXMLExporter: Sendable {
     // Text styles are local children of each title, never resources. IDs are
     // document-wide so multiple legacy and object titles can coexist in FCP.
     private func textStyleDefinition(_ style: TitleStyle, id: String) -> String {
-        "<text-style-def id=\"\(id)\"><text-style font=\"\(escape(style.effectiveFontFamily))\" fontSize=\"\(decimal(style.fontSize))\" fontFace=\"\(style.effectiveFontWeight >= 0.72 ? "Bold" : "Regular")\" fontColor=\"\(fcpxColor(style.textColorHex, alpha: style.effectiveOpacity))\" alignment=\"\(style.alignment.rawValue)\"/></text-style-def>"
+        let font = TitleFontResolver.font(family: style.effectiveFontFamily, size: style.fontSize,
+                                         weight: style.effectiveFontWeight, version: style.typographyVersion)
+        let family = CTFontCopyFamilyName(font) as String
+        let face = CTFontCopyName(font, kCTFontSubFamilyNameKey) as String? ?? "Regular"
+        return "<text-style-def id=\"\(id)\"><text-style font=\"\(escape(family))\" fontSize=\"\(decimal(style.fontSize))\" fontFace=\"\(escape(face))\" fontColor=\"\(fcpxColor(style.textColorHex, alpha: style.effectiveOpacity))\" alignment=\"\(style.alignment.rawValue)\"/></text-style-def>"
     }
 }
 

@@ -78,9 +78,9 @@ public enum TitleOverlayRenderer {
 
     /// Measure with the same fitter as playback, without rendering a bitmap
     /// on each inspector update. Fitting limits must be visible to the editor.
-    public static func textSizing(item: TitleTimelineItem, renderSize: CGSize) -> TextSizing? {
+    public static func textSizing(item: TitleTimelineItem, renderSize: CGSize, elementID: String? = nil) -> TextSizing? {
         guard let template = TitleTemplateRegistry.template(for: item),
-              let element = template.layout.elements.first(where: { $0.content == .primaryText || $0.content == .activeCaption }),
+              let element = template.layout.elements.first(where: { elementID == nil ? ($0.content == .primaryText || $0.content == .activeCaption) : $0.id == elementID }),
               case .text(let value) = resolvedContent(for: element, item: item) else { return nil }
         let layout = AdaptiveTitleLayout.resolve(template: template, renderSize: renderSize, item: item)
         guard let geometry = layout.element(id: element.id),
@@ -93,7 +93,7 @@ public enum TitleOverlayRenderer {
         return TextSizing(fontSize: item.style.fontSize * Double(ratio),
                           lineCount: numberOfLines(text: fitted.text, width: geometry.frame.width),
                           isReduced: ratio < 0.99,
-                          isTruncated: fitted.text.string.contains("…") && !value.contains("…"))
+                          isTruncated: fitted.overflows || (fitted.text.string.contains("…") && !value.contains("…")))
     }
 
     private struct RenderedFrame {
@@ -136,7 +136,8 @@ public enum TitleOverlayRenderer {
         let safeRect = adaptiveLayout.safeRect
         let localTime = timelineTime - item.startTime
         let templateMotion = template.animationFitted(to: item.duration)
-        let defaultStyle = template.defaultStyle
+        let defaultStyle = (item.style.placement ?? .authored) == .authored
+            ? (template.layoutOrigin ?? template.defaultStyle) : template.defaultStyle
         let groupDX = safeRect.width * CGFloat(item.style.effectiveXPosition - defaultStyle.effectiveXPosition)
         let groupDY = -safeRect.height * CGFloat(item.style.effectiveYPosition - defaultStyle.effectiveYPosition)
         let groupScale = CGFloat(item.style.effectiveScale / max(0.01, defaultStyle.effectiveScale))
@@ -357,7 +358,7 @@ public enum TitleOverlayRenderer {
         }
         var edgeText: NSMutableAttributedString?
         if let treatment, treatment.edgeOpacity > 0.001 {
-            let supportStrokeWidth = max(8, treatment.strokeWidth)
+            let supportStrokeWidth = (item.style.typographyVersion ?? 1) >= 2 ? max(2, min(4, treatment.strokeWidth)) : max(8, treatment.strokeWidth)
             let edgeColor = CGColor(gray: treatment.lightSupport ? 1 : 0, alpha: treatment.edgeOpacity)
             context.setShadow(offset: CGSize(width: 0, height: -fitted.fontSize * 0.025),
                               blur: fitted.fontSize * 0.035, color: edgeColor)
@@ -427,6 +428,7 @@ public enum TitleOverlayRenderer {
         var text: NSAttributedString
         var fontSize: CGFloat
         var requestedFontSize: CGFloat
+        var overflows = false
     }
 
     private struct FitParameters: Hashable {
@@ -480,6 +482,7 @@ public enum TitleOverlayRenderer {
         if let cached = fittedTextCache.object(forKey: key) { return cached.result }
         let result = fittedText(value,
             family: isPrimary ? item.style.effectiveFontFamily : base.fontFamily,
+            typographyVersion: item.style.typographyVersion,
             weight: isPrimary ? item.style.effectiveFontWeight : base.fontWeight,
             color: color(isPrimary ? item.style.textColorHex : element.fillColorHex, alpha: 1),
             tracking: CGFloat(isPrimary ? (item.style.tracking ?? base.tracking) : base.tracking) * typographyScale,
@@ -498,6 +501,7 @@ public enum TitleOverlayRenderer {
     private static func fittedText(
         _ value: String,
         family: String,
+        typographyVersion: Int?,
         weight: Double,
         color textColor: CGColor,
         tracking: CGFloat,
@@ -521,15 +525,16 @@ public enum TitleOverlayRenderer {
             .replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n").count
         let effectiveMaxLines = hasBreak ? max(maxLines, manualLines) : 1
         let candidates = lineBreakCandidates(value, maximumLines: effectiveMaxLines)
-        func fit(at size: CGFloat) -> FittedText? {
+        func fit(at size: CGFloat, trackingOverride: CGFloat? = nil) -> FittedText? {
             for candidate in candidates {
                 let text = attributedText(
                     candidate,
                     family: family,
+                    typographyVersion: typographyVersion,
                     size: size,
                     weight: weight,
                     color: textColor,
-                    tracking: tracking,
+                    tracking: trackingOverride ?? tracking,
                     lineSpacing: lineSpacing,
                     alignment: alignment,
                     strokeWidth: strokeWidth,
@@ -556,6 +561,25 @@ public enum TitleOverlayRenderer {
             return best
         }
 
+        if (typographyVersion ?? 1) >= 2 {
+            for override: CGFloat? in [nil, 0] {
+                guard var full = fit(at: 0.1, trackingOverride: override) else { continue }
+                var lower: CGFloat = 0.1, upper = minimumSize
+                for _ in 0..<16 {
+                    let middle = (lower + upper) / 2
+                    if let candidate = fit(at: middle, trackingOverride: override) { full = candidate; lower = middle }
+                    else { upper = middle }
+                }
+                full.overflows = true
+                return full
+            }
+            let text = attributedText(value, family: family, typographyVersion: typographyVersion,
+                size: minimumSize, weight: weight, color: textColor, tracking: tracking,
+                lineSpacing: lineSpacing, alignment: alignment, strokeWidth: strokeWidth,
+                activeWord: activeWord, activeWordColor: activeWordColor)
+            return FittedText(text: text, fontSize: minimumSize, requestedFontSize: maximumSize, overflows: true)
+        }
+
         // Extremely long manually entered text is shortened only after all
         // legal reflow and font-size options have been exhausted. This keeps
         // the visible result inside its frame instead of silently clipping it.
@@ -566,6 +590,7 @@ public enum TitleOverlayRenderer {
                 let text = attributedText(
                     candidate,
                     family: family,
+                    typographyVersion: typographyVersion,
                     size: minimumSize,
                     weight: weight,
                     color: textColor,
@@ -604,6 +629,7 @@ public enum TitleOverlayRenderer {
     private static func attributedText(
         _ value: String,
         family: String,
+        typographyVersion: Int?,
         size: CGFloat,
         weight: Double,
         color textColor: CGColor,
@@ -614,7 +640,7 @@ public enum TitleOverlayRenderer {
         activeWord: NSRange?,
         activeWordColor: CGColor
     ) -> NSMutableAttributedString {
-            let font = resolvedFont(family: family, size: size, weight: weight, text: value)
+            let font = TitleFontResolver.font(family: family, size: size, weight: weight, version: typographyVersion)
             let paragraph = paragraphStyle(alignment: alignment, lineSpacing: lineSpacing)
             let text = NSMutableAttributedString(string: value)
             let range = NSRange(location: 0, length: text.length)
@@ -741,26 +767,6 @@ public enum TitleOverlayRenderer {
             lines += 1
         }
         return max(1, lines)
-    }
-
-    private static func resolvedFont(family: String, size: CGFloat, weight: Double, text: String) -> CTFont {
-        let candidates = [family, "Avenir Next", "Helvetica Neue", "Arial"]
-        for candidate in candidates {
-            let base = CTFontCreateWithName(candidate as CFString, max(1, size), nil)
-            let desired: CTFontSymbolicTraits = weight >= 0.72 ? .traitBold : []
-            let font = CTFontCreateCopyWithSymbolicTraits(base, max(1, size), nil, desired, desired) ?? base
-            if fontSupports(font, text: text) { return font }
-        }
-        return CTFontCreateWithName("Helvetica Neue" as CFString, max(1, size), nil)
-    }
-
-    private static func fontSupports(_ font: CTFont, text: String) -> Bool {
-        // Line separators have no printable glyph and must not trigger a
-        // fallback font when the user inserts a newline.
-        var characters = Array(text.filter { !$0.isNewline && $0 != "\t" }.utf16)
-        guard !characters.isEmpty else { return true }
-        var glyphs = Array(repeating: CGGlyph(), count: characters.count)
-        return CTFontGetGlyphsForCharacters(font, &characters, &glyphs, characters.count)
     }
 
     private static func paragraphStyle(alignment: TitleAlignment, lineSpacing: Double) -> CTParagraphStyle {

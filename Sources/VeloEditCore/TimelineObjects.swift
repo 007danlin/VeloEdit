@@ -616,7 +616,11 @@ public struct TitleAnimation: Codable, Hashable, Sendable {
     }
 }
 
+public enum TitleSemanticRole: String, Codable, Sendable { case filmOpening }
+
 public struct TitleTimelineItem: Codable, Identifiable, Hashable, Sendable {
+    public var semanticRole: TitleSemanticRole?
+    public var fulfilledChapterID: UUID?
     public var speechAnchor: SpeechCaptionAnchor?
     public var filmPartID: UUID?
     public var id: UUID

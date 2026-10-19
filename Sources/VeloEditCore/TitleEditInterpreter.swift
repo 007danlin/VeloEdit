@@ -33,6 +33,8 @@ public enum TitleEditInterpreter {
         }
 
         let aliases: [(String, [String])] = [
+            ("title.cinematic-clean.v1", ["без рамки", "cinematic clean"]),
+            ("title.chapter-compact.v1", ["компактн", "compact chapter"]),
             ("title.cinematic.v1", ["кинемат", "кинош"]),
             ("title.dynamic.v1", ["динами", "экшен", "энергич"]),
             ("title.modern.v1", ["современн"]),
@@ -53,12 +55,14 @@ public enum TitleEditInterpreter {
                               ("travel", ["путешеств"]), ("social", ["соцсет"])]
         let captionTemplate = isCaption ? captionAliases.first(where: { contains($0.1) })
             .flatMap { TitleTemplateRegistry.template(id: "caption.\($0.0).v1") } : nil
-        let template = named ?? captionTemplate ?? aliases.first(where: { contains($0.1) }).flatMap { TitleTemplateRegistry.template(id: $0.0) }
+        let specific = aliases.prefix(2).first(where: { contains($0.1) }).flatMap { TitleTemplateRegistry.template(id: $0.0) }
+        let template = specific ?? named ?? captionTemplate ?? aliases.first(where: { contains($0.1) }).flatMap { TitleTemplateRegistry.template(id: $0.0) }
         if let template {
             if template.id != item.effectiveTemplateID {
                 item.templateID = template.id
                 item.kind = template.kind
                 item.style = template.defaultStyle
+                item.animation = template.defaultAnimation ?? TitleAnimation()
                 item.activeWordHighlighting = template.kind == .wordLevelCaptions
             }
             changes.append("шаблон \(template.name)")

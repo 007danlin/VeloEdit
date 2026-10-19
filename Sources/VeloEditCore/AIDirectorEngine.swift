@@ -763,6 +763,7 @@ public struct DirectorEditingTools: Sendable {
                 report.applied.append(call)
 
             case .removeTitleObject(let titleID, _):
+                FilmOpeningTitles.rememberDeletion(in: &timeline, titleID: titleID)
                 var titles = timeline.effectiveTitleItems
                 guard titles.contains(where: { $0.id == titleID }) else { rejection(call, "титр не найден"); continue }
                 titles.removeAll { $0.id == titleID }

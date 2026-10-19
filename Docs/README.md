@@ -31,6 +31,7 @@
 - [Автоматическая сборка фильма](Features/automatic-editorial-assembly.md)
 - [Восстановление сборки фильма](Features/film-build-recovery.md)
 - [Титры](Specifications/smart-chapter-titles.md), [музыка](Specifications/dynamic-music.md) и [распознавание речи](Specifications/vlog-local-speech.md)
+- [Качество библиотеки титров и название фильма в начале](Specifications/film-opening-titles.md)
 - [Первый запуск](Specifications/first-launch.md)
 - [Скрипты и проверки](../Scripts/README.md), [графика](../Design/README.md), [сайт](../website/README.md)
 

@@ -103,6 +103,7 @@ public struct SmartChapterTitleEngine: Sendable {
     public func applying(to source: Timeline, plan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult],
                          mode: AIPowerMode, model: any ChapterTitleModel, force: Bool = false,
                          sourceAssessments: [ShotContentAssessment]? = nil) async throws -> Timeline {
+        let source = FilmOpeningTitles.restoringChapters(source)
         guard !ExplicitDeliveryRequirements(plan: plan).forbidsTitles,
               EditorialPresentationPolicy.requiresChapterTitles(plan) || source.effectiveTitleItems.contains(where: { $0.kind == .chapter }) else { return source }
         var result = FilmPartPolicy.freezing(source, plan: plan)

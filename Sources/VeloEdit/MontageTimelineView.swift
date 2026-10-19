@@ -2127,7 +2127,8 @@ struct MagneticTimelineView: View {
                   TitleTemplateRegistry.template(id: String(components[1])) != nil,
                   let data = Data(base64Encoded: String(components[2])),
                   let text = String(data: data, encoding: .utf8) else { return false }
-            model.addModernTitle(text, templateID: String(components[1]), at: time)
+            let payload = try? JSONDecoder().decode(TitleLibraryPayload.self, from: data)
+            model.addModernTitle(payload?.text ?? text, templateID: String(components[1]), at: time, placement: payload?.placement ?? .authored)
             return true
         }
         if raw.hasPrefix("title:") {

@@ -7,6 +7,56 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct InstantTimelineInteractionTests {
+    @Test func filmOpeningAppliesAsOneUndoableEditAndDeletionPersists() async throws {
+        let fixture = try await Fixture(clipCount: 3); defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.directorBrief = .init(musicPolicy: .none, titlePolicy: .minimal)
+        let originalSettings = model.directorBrief.openingTitles
+        model.project?.storyPlans = [StoryPlan(id: original.storyPlanID, prompt: "Наш фильм", preset: .cinematic,
+            constraints: .init(targetDuration: 30), chapters: [], directorBrief: model.directorBrief)]
+        let settings = FilmOpeningSettings(policy: .selected, title: "Наше путешествие 🏕", templateID: "title.cinematic-clean.v1")
+        model.applyFilmOpeningSettings(settings)
+        let opening = try #require(model.timeline?.effectiveTitleItems.first { $0.semanticRole == .filmOpening })
+        #expect(model.timeline?.items == original.items && model.timeline?.duration == original.duration)
+        #expect(model.timeline?.originalAudioVolume == original.originalAudioVolume)
+        #expect(model.selectedTitleTimelineItem?.id == opening.id)
+        model.undoTimelineEdit()
+        #expect(model.timeline == original)
+        #expect(model.directorBrief.openingTitles == originalSettings)
+        model.redoTimelineEdit()
+        #expect(model.timeline?.effectiveTitleItems.first?.id == opening.id)
+        model.selectTitleTimelineItem(opening.id)
+        model.setSelectedModernTitleText("Ручное название\nВторая строка")
+        model.setSelectedModernTitleAdditionalText("")
+        model.setSelectedModernTitleTemplate("title.elegant.v1")
+        #expect(model.selectedTitleTimelineItem?.text == "Ручное название\nВторая строка")
+        #expect(model.selectedTitleTimelineItem?.additionalText?.isEmpty != false)
+        model.moveTitleTimelineItem(opening.id, to: 1.7)
+        model.setSelectedModernTitleDuration(4.2)
+        #expect(model.selectedTitleTimelineItem?.startTime == 1.7)
+        #expect(model.selectedTitleTimelineItem?.duration == 4.2)
+        model.deleteTimelineSelection()
+        #expect(model.timeline?.openingTitles?.policy == .off)
+        #expect(model.timeline?.effectiveTitleItems.contains { $0.semanticRole == .filmOpening } == false)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last == model.timeline)
+        model.undoTimelineEdit()
+        #expect(model.timeline?.effectiveTitleItems.first?.text == "Ручное название\nВторая строка")
+        #expect(await model.flushAutosave())
+    }
+
+    @Test func manuallyAssembledTimelineCanUseTheSameOpeningControls() async throws {
+        let fixture = try await Fixture(clipCount: 2); defer { fixture.remove() }
+        let model = fixture.model
+        #expect(model.project?.storyPlans.isEmpty == true)
+        model.applyFilmOpeningSettings(.init(policy: .selected, title: "Наш день", templateID: "title.cinematic-clean.v1"))
+        #expect(model.timeline?.effectiveTitleItems.first?.semanticRole == .filmOpening)
+        #expect(model.timeline?.effectiveTitleItems.first?.text == "Наш день")
+        #expect(await model.flushAutosave())
+    }
+
     @Test func movingWatchedClipKeepsPreviewAtItsNewPositionAndPreservesFinish() async throws {
         let fixture = try await Fixture(clipCount: 3); defer { fixture.remove() }
         let model = fixture.model

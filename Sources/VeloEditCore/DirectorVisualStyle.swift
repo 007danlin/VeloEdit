@@ -16,7 +16,8 @@ public struct DirectorVisualStyle: Sendable {
 
     public func templateID(for purpose: SmartTitlePurpose) -> String? {
         guard [.filmOpening, .chapter, .activity].contains(purpose) else { return nil }
-        return "title.minimal-clean.v1"
+        if purpose == .filmOpening { return mood == .cinematic ? "title.cinematic-clean.v1" : "title.minimal-clean.v1" }
+        return "title.chapter-compact.v1"
     }
 
     public func duration(text: String, secondary: String? = nil, purpose: SmartTitlePurpose) -> Double {
@@ -31,7 +32,7 @@ public struct DirectorVisualStyle: Sendable {
     }
 
     public func style(for template: TitleTemplateDefinition) -> TitleStyle {
-        EditorialPresentationPolicy.compactChapterStyle
+        template.defaultStyle
     }
 
     public func sceneBoundary(eventChanged: Bool, sceneChanged: Bool) -> EditorialBoundaryDecision? {

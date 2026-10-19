@@ -164,14 +164,14 @@ import Testing
     #expect(review.diagnostics.contains { $0.code == "repaired-placement" })
 }
 
-@Test func smartTitleRespectsTemplateTextLimitsAndDisambiguatesChronology() throws {
+@Test func smartTitlePreservesAuthoredTextAndDisambiguatesChronology() throws {
     let long = try #require(SmartTitleEngine().decide(SmartTitleContext(
         purpose: .filmOpening,
         requestedText: "Поездка с друзьями в Сочи на майские праздники 2026 года",
         preferredTemplateID: "title.minimal-clean.v1"
     )))
-    let template = try #require(TitleTemplateRegistry.template(id: long.templateID))
-    #expect(long.primaryText.count <= template.textConstraints.maxCharacters)
+    #expect(TitleTemplateRegistry.template(id: long.templateID) != nil)
+    #expect(long.primaryText == "Поездка с друзьями в Сочи на майские праздники 2026 года")
     #expect(long.primaryText.contains("Сочи"))
 
     let duplicate = try #require(SmartTitleEngine().decide(SmartTitleContext(
@@ -233,7 +233,7 @@ import Testing
         entries: [EventStoryEntry(eventID: eventID, title: "Велопрогулка", startDate: asset.metadata.creationDate, endDate: asset.metadata.creationDate, allocatedDuration: 12, quality: 0.9, sceneIDs: [sceneID])],
         chapterCardsEnabled: true
     )
-    let plan = StoryPlan(prompt: "Летний фильм", preset: .summerFilm, constraints: StoryConstraints(targetDuration: 20), chapters: [chapter], eventStory: story)
+    let plan = StoryPlan(prompt: "Летний фильм", preset: .summerFilm, constraints: StoryConstraints(targetDuration: 20), chapters: [chapter], eventStory: story, directorBrief: DirectorBrief())
     let timeline = TimelineComposer().compose(plan: plan, assets: [asset], analyses: [analysis])
 
     #expect(timeline.items.allSatisfy { $0.kind != .title })

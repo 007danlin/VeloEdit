@@ -33,7 +33,6 @@ public struct TimelineComposer: Sendable {
         var titleSceneScopeByID: [UUID: UUID] = [:]
         var titleEventScopeByID: [UUID: UUID] = [:]
         var directTitleContainment: [UUID: ClosedRange<Double>] = [:]
-        var insertedProjectTitle = false
         var lastTelemetryEnd = -Double.greatestFiniteMagnitude
         var telemetryAccentCount = 0
         let maximumTelemetryAccents = max(1, Int(ceil(plan.constraints.targetDuration / 18)))
@@ -111,6 +110,7 @@ public struct TimelineComposer: Sendable {
                 startTime: startTime,
                 duration: decision.duration,
                 style: visualStyle.style(for: template),
+                animation: template.defaultAnimation ?? TitleAnimation(),
                 explanation: [reason] + decision.explanation
             )
             titleItems.append(item)
@@ -128,25 +128,6 @@ public struct TimelineComposer: Sendable {
             var chapterGeneratedTitleIDs: [UUID] = []
             var directlyChapterScopedTitleIDs: [UUID] = []
             var chapterTitleStartOffset = 0.0
-            if titlePolicy != DirectorTitlePolicy.none,
-               !insertedProjectTitle,
-               chapter.isColdOpen != true,
-               let projectTitle = plan.eventStory?.projectTitle,
-               !projectTitle.isEmpty {
-                if let decision = smartTitle(
-                    purpose: .filmOpening,
-                    requestedText: projectTitle,
-                    chapter: chapter,
-                    sequenceIndex: nil,
-                    preferredTemplateID: plan.preset == .cinematic ? "title.cinematic.v1" : nil
-                ) {
-                    if let id = appendTitle(decision, at: cursor, reason: "Название фильма создано из event hierarchy") {
-                        chapterGeneratedTitleIDs.append(id)
-                    }
-                    chapterTitleStartOffset = decision.duration + 0.15
-                }
-                insertedProjectTitle = true
-            }
             if titlePolicy != DirectorTitlePolicy.none,
                let chapterTitle = chapter.chapterCardTitle,
                plan.eventStory?.chapterCardsEnabled == true,
@@ -473,7 +454,7 @@ public struct TimelineComposer: Sendable {
         var result = EditorialIntentEnforcer.enforce(
             DirectorEffectsPolicyEngine.decorate(composed, plan: plan, candidates: candidates, assets: assets, analyses: analyses), plan: plan)
         result.automaticallySelectFrameRate = true
-        return TimelineFrameRatePolicy.applying(to: result, assets: assets)
+        return FilmOpeningTitles.reconcile(TimelineFrameRatePolicy.applying(to: result, assets: assets), plan: plan, analyses: analyses)
     }
 
     /// Chooses the output canvas from real imported frame dimensions. The

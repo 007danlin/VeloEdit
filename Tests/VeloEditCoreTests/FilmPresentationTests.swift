@@ -25,7 +25,10 @@ import UniformTypeIdentifiers
     #expect(photos.count == 3)
     #expect(photos.allSatisfy { $0.timelineDuration == 6 && $0.effect == ClipEffect.zoomIn.rawValue })
     #expect(timeline.endingFadeDuration == 3)
-    #expect(timeline.items.last?.effectiveAudioAdjustments.fadeOut == 3)
+    // The closing audio fade belongs to the movie, so moving the last clip
+    // cannot carry that automatic fade into the middle of the edit.
+    #expect(timeline.movieEndingAudioVersion == 1)
+    #expect(timeline.items.last?.effectiveAudioAdjustments.fadeOut == 0)
     var reviewedTimeline = timeline
     for index in reviewedTimeline.items.indices { reviewedTimeline.items[index].storyRole = .bRoll }
     let review = TimelineSelfReviewer().review(reviewedTimeline, plan: plan, analyses: analyses)

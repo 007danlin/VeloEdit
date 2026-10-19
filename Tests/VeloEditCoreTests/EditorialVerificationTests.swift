@@ -333,7 +333,7 @@ func verificationRealProjectRecoveryCommitsFullyVerifiedFilm() async throws {
     #expect(expected.isSubset(of: Set(claims.map { $0.domain })))
     #expect(claims.allSatisfy { $0.renderSignature == EditorialRenderSignature.signature(timeline) })
     #expect(claims.allSatisfy { !$0.itemIDs.isEmpty && $0.itemIDs.allSatisfy { $0 == itemID } })
-    #expect(claims.allSatisfy { !$0.probeTimes.isEmpty && $0.method == "LocalRenderedSemanticVerifier-v3" })
+    #expect(claims.allSatisfy { !$0.probeTimes.isEmpty && $0.method == "LocalRenderedSemanticVerifier-v\(EditorialLocalSemanticVerifier.version)" })
 }
 
 @Test func verificationIgnoresOneFrameVisionNoiseButRejectsPersistentOcclusion() {

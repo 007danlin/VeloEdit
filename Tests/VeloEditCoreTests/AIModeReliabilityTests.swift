@@ -157,6 +157,7 @@ private actor RecoveringAnalyzer: VisionModelProtocol {
             completedDepth: .maximum)
         result.aiExecution = AIExecutionEvidence(visualAnalysisCompleted: true, plannedScenes: 1,
             evaluatedScenes: calls == 1 ? 0 : 1, modelAvailable: true)
+        result.photoAnalysisVersion = asset.kind == .photo ? PhotoSourceAnalysis.version : nil
         return result
     }
 }

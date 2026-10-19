@@ -67,6 +67,11 @@ public struct AdaptiveTitleLayout: Hashable, Sendable {
                 )
             )
         }
+        if template.id == "title.cinematic-clean.v1", item?.additionalText?.isEmpty != false,
+           let index = elements.firstIndex(where: { $0.id == "primary" }) {
+            let frame = elements[index].frame
+            elements[index].frame = frame.offsetBy(dx: 0, dy: safeRect.midY - frame.midY)
+        }
         // Without a subtitle, use the panel's remaining text space to center
         // the heading. Retain its fitted size and the original landscape layout.
         if let item, item.additionalText?.isEmpty != false, geometry.portraitInfluence > 0,
@@ -78,6 +83,19 @@ public struct AdaptiveTitleLayout: Hashable, Sendable {
             let frame = elements[primaryIndex].frame
             let available = frame.union(secondaryFrame)
             elements[primaryIndex].frame = frame.offsetBy(dx: 0, dy: (available.midY - frame.midY) * geometry.portraitInfluence)
+        }
+        if let placement = item?.style.placement, placement != .authored,
+           let primary = elements.first(where: { $0.id == "primary" }) {
+            let fraction: CGFloat = placement == .upper ? 0.78 : placement == .lower ? 0.22 : 0.5
+            let visible = elements.filter { element in
+                guard let definition = template.layout.elements.first(where: { $0.id == element.id }) else { return false }
+                return definition.followsSafeArea && (definition.content != .secondaryText || item?.additionalText?.isEmpty == false)
+            }.reduce(CGRect.null) { $0.union($1.frame) }
+            let requested = safeRect.minY + safeRect.height * fraction - primary.frame.midY
+            let delta = min(max(requested, safeRect.minY - visible.minY), safeRect.maxY - visible.maxY)
+            for index in elements.indices where template.layout.elements[index].followsSafeArea {
+                elements[index].frame = elements[index].frame.offsetBy(dx: 0, dy: delta)
+            }
         }
         return AdaptiveTitleLayout(geometry: geometry, safeRect: safeRect, elements: elements)
     }

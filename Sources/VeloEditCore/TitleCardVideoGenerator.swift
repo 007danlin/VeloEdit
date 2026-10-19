@@ -83,7 +83,7 @@ public actor TitleCardVideoGenerator {
 
         func fittedString(_ value: String, size: CGFloat) -> (NSAttributedString, CGSize) {
             let attributes: [NSAttributedString.Key: Any] = [
-                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName(style.effectiveFontFamily as CFString, max(1, size), nil),
+                NSAttributedString.Key(kCTFontAttributeName as String): TitleFontResolver.font(family: style.effectiveFontFamily, size: size, weight: style.typographyVersion == nil ? 0.4 : style.effectiveFontWeight, version: style.typographyVersion),
                 NSAttributedString.Key(kCTForegroundColorAttributeName as String): foreground,
                 NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraph
             ]

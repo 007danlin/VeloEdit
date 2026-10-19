@@ -50,7 +50,7 @@ import Testing
         let event = UUID()
         var plan = StoryPlan(prompt: "Названия каждой части", preset: .cinematic, constraints: .init(targetDuration: 12),
             chapters: candidates.map { StoryChapter(title: "Велопрогулка", candidateIDs: [$0], eventID: event, eventSceneID: UUID()) },
-            directorBrief: .init(requestedDuration: 12, mood: .cinematic, musicPolicy: .none, titlePolicy: .keyOnly))
+            directorBrief: .init(requestedDuration: 12, mood: .cinematic, musicPolicy: .none, titlePolicy: .keyOnly, openingTitles: .init(policy: .off)))
         plan.narrativeBeatPlan = .init(pattern: .eventChapters, beats: [], reasons: [])
         let timeline = Timeline(storyPlanID: plan.id, items: candidates.enumerated().map { index, id in
             TimelineItem(candidateID: id, kind: .video, sourceDuration: 6, timelineStart: Double(index * 6), timelineDuration: 6)

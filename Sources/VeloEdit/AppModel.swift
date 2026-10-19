@@ -254,6 +254,8 @@ final class AppModel: ObservableObject {
     @Published var storageModels: [InstalledAIModel] = []
     @Published var storageModelsMessage = ""
     @Published var storageIsLoading = false
+    @Published var storageModelsIsLoading = false
+    @Published var storageAvailableCapacity: Int64?
     @Published var storageIsCleaning = false
     private var storageTask: Task<Void, Never>?
     private var manualProjectAfterCreation = false
@@ -2809,32 +2811,73 @@ final class AppModel: ObservableObject {
     }
 
     func refreshStorageUsage() {
+        refreshStorageUsage(recalculating: nil)
+        refreshStorageModels()
+    }
+
+    func refreshStorageUsage(recalculating selection: Set<URL>?,
+                             measure: @escaping @Sendable (URL) -> ProjectStorageUsage = { StorageMaintenance.usage(of: $0) }) {
         storageTask?.cancel()
-        storageIsLoading = true
         let urls = ProjectLibrary.uniqueURLs(knownProjectURLs + recentProjectURLs + [projectURL].compactMap { $0 })
-        storageTask = Task { [weak self] in
-            let inventory = Task.detached(priority: .utility) { () -> [ProjectStorageUsage] in
-                var result: [ProjectStorageUsage] = []
-                for url in urls {
-                    guard !Task.isCancelled else { break }
-                    result.append(StorageMaintenance.usage(of: url))
-                }
-                return result
+        let previous = Dictionary(storageProjects.map { ($0.url.standardizedFileURL.path, $0) }, uniquingKeysWith: { first, _ in first })
+        storageProjects = urls.map { previous[$0.standardizedFileURL.path] ?? .pending($0) }
+        let selectedPaths = selection.map { Set($0.map { $0.standardizedFileURL.path }) }
+        let pending = storageProjects.filter { (selectedPaths?.contains($0.url.standardizedFileURL.path) ?? true) || $0.isCalculating }.map(\.url)
+        storageIsLoading = !pending.isEmpty
+        storageTask = Task.detached(priority: .utility) { [weak self] in
+            let capacity = StorageMaintenance.availableCapacity(near: FileManager.default.homeDirectoryForCurrentUser)
+            await self?.updateStorageCapacity(capacity)
+            for url in pending {
+                guard !Task.isCancelled else { return }
+                await self?.applyStorageAvailability(StorageMaintenance.overview(of: url))
             }
-            let projects = await withTaskCancellationHandler(operation: { await inventory.value }, onCancel: { inventory.cancel() })
-            guard !Task.isCancelled, let self else { return }
-            self.storageProjects = projects
+            for url in pending {
+                guard !Task.isCancelled else { return }
+                let usage = measure(url)
+                guard !Task.isCancelled else { return }
+                await self?.applyStorageUsage(usage)
+            }
+            await self?.finishStorageRefresh()
+        }
+    }
+
+    private func updateStorageCapacity(_ capacity: Int64?) {
+        guard !Task.isCancelled else { return }
+        storageAvailableCapacity = capacity
+    }
+
+    private func applyStorageUsage(_ usage: ProjectStorageUsage) {
+        guard !Task.isCancelled, let index = storageProjects.firstIndex(where: { $0.url.standardizedFileURL.path == usage.url.standardizedFileURL.path }) else { return }
+        storageProjects[index] = usage
+    }
+
+    private func applyStorageAvailability(_ usage: ProjectStorageUsage) {
+        guard !Task.isCancelled, let index = storageProjects.firstIndex(where: { $0.url.standardizedFileURL.path == usage.url.standardizedFileURL.path }) else { return }
+        if storageProjects[index].isCalculating || storageProjects[index].unavailable != usage.unavailable {
+            storageProjects[index] = usage
+        }
+    }
+
+    private func finishStorageRefresh() {
+        guard !Task.isCancelled else { return }
+        storageIsLoading = false
+    }
+
+    private func refreshStorageModels() {
+        guard !storageModelsIsLoading else { return }
+        storageModelsIsLoading = true
+        Task { [weak self] in
             do {
                 let models = try await LocalAIModelManager.shared.installedModelList()
-                guard !Task.isCancelled else { return }
+                guard let self else { return }
                 self.storageModels = models
                 self.storageModelsMessage = models.isEmpty ? "Загруженных моделей нет" : "Модели могут использоваться другими приложениями через Ollama. Общие файлы занимают место только один раз."
             } catch {
-                guard !Task.isCancelled else { return }
+                guard let self else { return }
                 self.storageModels = []
                 self.storageModelsMessage = "Локальный сервис недоступен. Список моделей появится после подготовки ИИ."
             }
-            self.storageIsLoading = false
+            self?.storageModelsIsLoading = false
         }
     }
 
@@ -2863,7 +2906,7 @@ final class AppModel: ObservableObject {
         storageIsCleaning = true
         isWorking = true
         activityTitle = "Очищаю хранилище"
-        defer { storageIsCleaning = false; isWorking = false; refreshStorageUsage() }
+        defer { storageIsCleaning = false; isWorking = false; refreshStorageUsage(recalculating: Set(selection.keys)) }
         if selection.keys.contains(where: isCurrentProject) {
             guard await suspendProjectCacheReaders() else { return nil }
         }
@@ -2871,13 +2914,12 @@ final class AppModel: ObservableObject {
         var freed: Int64 = 0
         var failures: [String] = []
         for (url, categories) in selection.sorted(by: { $0.key.path < $1.key.path }) {
-            for category in ProjectCacheCategory.allCases where categories.contains(category) {
-                do {
-                    freed += try await Task.detached(priority: .utility) {
-                        try StorageMaintenance.clear(category, package: url, protectingProjects: others)
-                    }.value
-                } catch { failures.append("\(url.deletingPathExtension().lastPathComponent), \(category.title): \(error.localizedDescription)") }
-            }
+            guard !categories.isEmpty else { continue }
+            do {
+                freed += try await Task.detached(priority: .utility) {
+                    try StorageMaintenance.clear(categories, package: url, protectingProjects: others)
+                }.value
+            } catch { failures.append("\(url.deletingPathExtension().lastPathComponent): \(error.localizedDescription)") }
             if isCurrentProject(url) {
                 thumbnailURLs = [:]; timelineFilmstripURLs = [:]; timelineThumbnailURLs = [:]
                 needsCacheRefreshAfterCleanup = true
@@ -2889,24 +2931,29 @@ final class AppModel: ObservableObject {
         return message
     }
 
-    func trashStoredProjects(_ urls: [URL]) async -> String? {
-        guard !hasActiveWork, !storageIsCleaning, downloadingAIPowerMode == nil, !urls.isEmpty else { return nil }
+    func trashStoredProjects(_ urls: [URL], forgetting unavailable: [URL] = []) async -> String? {
+        guard !hasActiveWork, !storageIsCleaning, downloadingAIPowerMode == nil, !urls.isEmpty || !unavailable.isEmpty else { return nil }
         storageIsCleaning = true
         isWorking = true
         activityTitle = "Перемещаю проекты в Корзину"
-        defer { storageIsCleaning = false; isWorking = false; refreshStorageUsage() }
-        if urls.contains(where: isCurrentProject) {
+        defer { storageIsCleaning = false; isWorking = false }
+        if (urls + unavailable).contains(where: isCurrentProject) {
             guard await suspendProjectCacheReaders() else { return nil }
         }
         let others = knownProjectURLs
-        do {
-            let dependents = try await Task.detached(priority: .utility) { try StorageMaintenance.projectsDepending(on: urls, among: others) }.value
-            guard dependents.isEmpty else {
-                errorMessage = "В этих пакетах есть материалы других проектов: " + dependents.map { $0.deletingPathExtension().lastPathComponent }.joined(separator: ", ") + ". Сначала соберите автономные копии этих проектов или перенесите их исходники."
+        if !urls.isEmpty {
+            do {
+                let dependents = try await Task.detached(priority: .utility) { try StorageMaintenance.projectsDepending(on: urls, among: others) }.value
+                guard dependents.isEmpty else {
+                    errorMessage = "В этих пакетах есть материалы других проектов: " + dependents.map { $0.deletingPathExtension().lastPathComponent }.joined(separator: ", ") + ". Сначала соберите автономные копии этих проектов или перенесите их исходники."
+                    return nil
+                }
+            } catch {
+                errorMessage = "Не удалось проверить связи проектов. Удаление не начато: \(error.localizedDescription)"
                 return nil
             }
-        } catch { errorMessage = "Не удалось проверить связи проектов. Удаление не начато: \(error.localizedDescription)"; return nil }
-        var moved = 0
+        }
+        var moved: [URL] = []
         for url in urls {
             do {
                 try await Task.detached(priority: .utility) { try StorageMaintenance.moveProjectToTrash(url) }.value
@@ -2916,21 +2963,38 @@ final class AppModel: ObservableObject {
                     isWorking = true
                     section = .settings
                 }
-                forgetStoredProject(url)
-                moved += 1
-            } catch { errorMessage = "Перемещено в Корзину: \(moved). Не удалось удалить «\(url.lastPathComponent)»: \(error.localizedDescription)"; break }
+                moved.append(url)
+            } catch { errorMessage = "Перемещено в Корзину: \(moved.count). Не удалось удалить «\(url.lastPathComponent)»: \(error.localizedDescription)"; break }
         }
-        guard moved > 0 else { return nil }
-        return "В Корзину перемещено проектов: \(moved). Место освободится после её очистки в Finder."
+        if unavailable.contains(where: isCurrentProject) {
+            pipeline = nil
+            resetProjectUI()
+            isWorking = true
+            section = .settings
+        }
+        forgetStoredProjects(moved + unavailable)
+        guard !moved.isEmpty || !unavailable.isEmpty else { return nil }
+        var messages: [String] = []
+        if !moved.isEmpty { messages.append("В Корзину перемещено проектов: \(moved.count). Место освободится после её очистки в Finder.") }
+        if !unavailable.isEmpty { messages.append("Убрано из списка недоступных проектов: \(unavailable.count). Их файлы не изменены.") }
+        return messages.joined(separator: " ")
     }
 
     func forgetStoredProject(_ url: URL) {
-        knownProjectURLs.removeAll { $0.resolvingSymlinksInPath().standardizedFileURL.path == url.resolvingSymlinksInPath().standardizedFileURL.path }
-        recentProjectURLs.removeAll { $0.resolvingSymlinksInPath().standardizedFileURL.path == url.resolvingSymlinksInPath().standardizedFileURL.path }
-        preparedProjectPresentations[url.standardizedFileURL] = nil
+        forgetStoredProjects([url])
+    }
+
+    func forgetStoredProjects(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        // Library URLs are normalized on entry. Do not resolve disconnected
+        // volumes on MainActor or start a full storage scan for every removal.
+        let paths = Set(urls.map { $0.standardizedFileURL.path })
+        knownProjectURLs.removeAll { paths.contains($0.standardizedFileURL.path) }
+        recentProjectURLs.removeAll { paths.contains($0.standardizedFileURL.path) }
+        storageProjects.removeAll { paths.contains($0.url.standardizedFileURL.path) }
+        for url in urls { preparedProjectPresentations[url.standardizedFileURL] = nil }
         defaults.set(knownProjectURLs.map(\.path), forKey: Self.projectLibraryKey)
         persistRecentProjects()
-        refreshStorageUsage()
     }
 
     func removeStoredModel(_ name: String) async -> Bool {
@@ -2938,7 +3002,7 @@ final class AppModel: ObservableObject {
         storageIsCleaning = true
         isWorking = true
         activityTitle = "Удаляю AI-модель"
-        defer { storageIsCleaning = false; isWorking = false; refreshStorageUsage() }
+        defer { storageIsCleaning = false; isWorking = false; refreshStorageModels() }
         do {
             try await LocalAIModelManager.shared.removeModel(name)
             await refreshAIModelAvailability()
@@ -3788,12 +3852,57 @@ final class AppModel: ObservableObject {
 
     var canPasteEffectTimelineItem: Bool { copiedEffectTimelineItem != nil }
 
+    func applyFilmOpeningSettings(_ settings: FilmOpeningSettings) {
+        guard let timeline else { directorBrief.openingTitles = settings; return }
+        var brief = directorBrief
+        brief.openingTitles = settings
+        var plan = project?.storyPlans.last(where: { $0.id == timeline.storyPlanID })
+            ?? StoryPlan(id: timeline.storyPlanID, prompt: "", preset: .cinematic,
+                         constraints: .init(targetDuration: timeline.duration), chapters: [])
+        // The persisted timeline owns this setting, so undo also restores it.
+        // A manually assembled timeline need not have an automatic story plan.
+        plan.directorBrief = brief
+        let name = project?.name
+        editTimelineOptimistically("Обновляю название фильма") { timeline in
+            let next = FilmOpeningTitles.reconcile(timeline, plan: plan, projectName: name, applying: settings)
+            guard next != timeline else { return false }
+            timeline = next
+            return true
+        }
+        if let opening = self.timeline?.effectiveTitleItems.first(where: { $0.semanticRole == .filmOpening }) {
+            selectTitleTimelineItem(opening.id)
+        }
+    }
+
+    func previewFilmOpening() {
+        guard let opening = timeline?.effectiveTitleItems.first(where: { $0.semanticRole == .filmOpening }) else { return }
+        selectTitleTimelineItem(opening.id)
+        revealTitleForEditing(opening)
+        previewPlayer?.seek(to: CMTime(seconds: max(0, opening.startTime - 0.6), preferredTimescale: 600))
+        previewPlayer?.play()
+        let player = previewPlayer
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(opening.duration + 0.7))
+            player?.pause()
+        }
+    }
+
+    func titleLibraryFrame() async -> CGImage? {
+        guard let item = previewPlayer?.currentItem else { return previewPosterImage?.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+        let generator = AVAssetImageGenerator(asset: item.asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.videoComposition = item.videoComposition
+        generator.maximumSize = CGSize(width: 640, height: 640)
+        let time = CMTime(seconds: timelinePlayheadTime, preferredTimescale: 600)
+        return try? await generator.image(at: time).image
+    }
+
     func addModernTitle(_ text: String, kind: TitleTimelineKind, at time: Double? = nil) {
         let templateID = TitleTemplateRegistry.defaultTemplate(for: kind)?.id
         addModernTitle(text, templateID: templateID, fallbackKind: kind, at: time)
     }
 
-    func addModernTitle(_ text: String, templateID: String?, fallbackKind: TitleTimelineKind = .title, at time: Double? = nil) {
+    func addModernTitle(_ text: String, templateID: String?, fallbackKind: TitleTimelineKind = .title, at time: Double? = nil, placement: TitlePlacement = .authored) {
         guard let timeline else { return }
         let template = TitleTemplateRegistry.template(id: templateID)
         let kind = template?.kind ?? fallbackKind
@@ -3810,19 +3919,10 @@ final class AppModel: ObservableObject {
         } else {
             words = []
         }
-        let title = TitleTimelineItem(
-            kind: kind,
-            templateID: template?.id,
-            text: text,
-            additionalText: template?.preview.secondaryText,
-            callToAction: template?.preview.callToAction,
-            startTime: start,
-            duration: duration,
-            style: template?.defaultStyle ?? TitleStyle(),
-            words: words,
-            activeWordHighlighting: kind == .wordLevelCaptions,
-            explanation: ["Пользователь добавил \(kind.localizedTitle)"]
-        )
+        var title = template?.makeTimelineItem(text: text, startTime: start, duration: duration)
+            ?? TitleTimelineItem(kind: kind, text: text.isEmpty ? "Название" : text, startTime: start, duration: duration)
+        title.words = words
+        title.style.placement = placement == .authored ? nil : placement
         editTimelineOptimistically(
             "Титр добавлен на Timeline",
             didApply: { self.selectTitleTimelineItem(title.id) }
@@ -3899,9 +3999,8 @@ final class AppModel: ObservableObject {
                 $0.templateID = template.id
                 $0.kind = template.kind
                 $0.style = template.defaultStyle
+                $0.animation = template.defaultAnimation ?? TitleAnimation()
                 $0.activeWordHighlighting = template.kind == .wordLevelCaptions
-                if $0.additionalText?.isEmpty != false { $0.additionalText = template.preview.secondaryText }
-                if $0.callToAction?.isEmpty != false { $0.callToAction = template.preview.callToAction }
                 $0.explanation.append("Пользователь выбрал Title Template \(template.name)")
             }
         }
@@ -4222,6 +4321,7 @@ final class AppModel: ObservableObject {
         updated.audioClips = updated.effectiveAudioClips.filter {
             !audioIDs.contains($0.id) && $0.attachedToItemID.map(removedClipIDs.contains) != true
         }
+        for id in titleIDs { FilmOpeningTitles.rememberDeletion(in: &updated, titleID: id) }
         updated.telemetryItems = updated.effectiveTelemetryItems.filter {
             !telemetryIDs.contains($0.id) && $0.targetClipID.map(removedClipIDs.contains) != true
         }
@@ -4420,6 +4520,8 @@ final class AppModel: ObservableObject {
         }
         for original in clipboard.titles {
             var copy = original
+            copy.semanticRole = nil; copy.fulfilledChapterID = nil
+            copy.userEdited = true
             copy.id = UUID()
             copy.startTime = max(0, insertionTime + original.startTime - referenceTime)
             copy.targetClipID = copy.targetClipID.flatMap { idMap[$0] ?? $0 }

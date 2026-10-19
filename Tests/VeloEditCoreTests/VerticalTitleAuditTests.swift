@@ -147,7 +147,10 @@ import UniformTypeIdentifiers
         let root = output?.appendingPathComponent("playback") ?? FileManager.default.temporaryDirectory.appendingPathComponent("portrait-parity-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { if output == nil { try? FileManager.default.removeItem(at: root) } }
-        let segment = 10.0
+        // Keep every registered template inside the source movie. The old
+        // fixed 30-second fixture ended before the newest caption styles.
+        let catalogDuration = 0.5 + Double(max(0, TitleTemplateRegistry.all.count - 1)) * 2 + 1.8
+        let segment = max(10, ceil(catalogDuration / 3))
         var assets: [MediaAsset] = []
         for (index, canvas) in [size, CGSize(width: 640, height: 360), CGSize(width: 640, height: 360)].enumerated() {
             let imageURL = root.appendingPathComponent("source-\(index).png")

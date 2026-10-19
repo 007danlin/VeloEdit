@@ -31,7 +31,7 @@ private func storageSize(_ bytes: Int64) -> String {
 private struct StorageReview: Identifiable {
     enum Operation {
         case cache([URL: Set<ProjectCacheCategory>])
-        case projects([URL])
+        case projects(trash: [URL], forget: [URL])
         case model(String)
         case forget(URL)
     }
@@ -69,13 +69,16 @@ private struct StorageSettingsView: View {
         mode == "Проекты" ? projectSelection.count : cacheSelection.values.filter { !$0.isEmpty }.count
     }
     private var busy: Bool {
-        model.hasActiveWork || model.storageIsCleaning || model.storageIsLoading || model.downloadingAIPowerMode != nil || setup.phase == .downloading || setup.phase == .verifying || setup.phase == .checking
+        model.hasActiveWork || model.storageIsCleaning || model.downloadingAIPowerMode != nil || setup.phase == .downloading || setup.phase == .verifying
+    }
+    private var selectedProjectsArePending: Bool {
+        mode == "Проекты" && model.storageProjects.contains { projectSelection.contains($0.url) && !$0.availabilityIsKnown }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                LazyVStack(alignment: .leading, spacing: 20) {
                     overview
                     if let result {
                         Label(result, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
@@ -100,16 +103,21 @@ private struct StorageSettingsView: View {
                 else {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(selectedCount == 0 ? "Выберите, что удалить" : "Выбрано проектов: \(selectedCount) · \(storageSize(selectedBytes))").font(.callout.weight(.semibold))
-                        Text(mode == "Кэш" ? "Исходники, монтаж, анализ и экспорт сохранятся." : "Проекты будут перемещены в Корзину.").font(.caption).foregroundStyle(.secondary)
+                        Text(mode == "Кэш" ? "Исходники, монтаж, анализ и экспорт сохранятся." : "Доступные проекты — в Корзину, недоступные — убрать из списка.").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Снять выбор") { cacheSelection = [:]; projectSelection = [] }.disabled(selectedCount == 0)
-                    Button(mode == "Кэш" ? "Очистить…" : "В Корзину…", action: reviewSelection)
-                        .buttonStyle(.borderedProminent).fixedSize().disabled(busy || selectedCount == 0)
+                    Button(mode == "Кэш" ? "Очистить…" : "Удалить выбранные…", action: reviewSelection)
+                        .buttonStyle(.borderedProminent).fixedSize().disabled(busy || selectedCount == 0 || selectedProjectsArePending)
                 }
             }.padding(16).background(.bar)
         }
         .onAppear(perform: model.refreshStorageUsage)
+        .onChange(of: model.storageProjects.map(\.url)) { _, urls in
+            let remaining = Set(urls)
+            projectSelection.formIntersection(remaining)
+            cacheSelection = cacheSelection.filter { remaining.contains($0.key) }
+        }
         .sheet(item: $review) { item in
             StorageConfirmationView(review: item) {
                 review = nil
@@ -132,6 +140,10 @@ private struct StorageSettingsView: View {
             }
             Text("Можно очистить отдельные категории, весь доступный кэш или удалить выбранные проекты. Сначала вы увидите состав удаления.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if model.storageIsLoading {
+                Text("Размеры обновляются в фоне. Можно продолжать выбирать проекты; итоговый размер ещё уточняется.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if model.hasActiveWork || setup.phase == .downloading || setup.phase == .verifying {
                 Label("Очистка станет доступна после завершения текущей работы и загрузок.", systemImage: "clock").font(.caption).foregroundStyle(.orange)
             }
@@ -141,7 +153,7 @@ private struct StorageSettingsView: View {
     @ViewBuilder private var statistics: some View {
         statistic("Проекты на диске", bytes: model.storageProjects.reduce(0) { $0 + $1.totalBytes })
         statistic("Можно очистить", bytes: model.storageProjects.reduce(0) { $0 + $1.reclaimableBytes })
-        if let free = StorageMaintenance.availableCapacity(near: FileManager.default.homeDirectoryForCurrentUser) {
+        if let free = model.storageAvailableCapacity {
             statistic("Свободно на системном диске", bytes: free)
         }
     }
@@ -167,11 +179,11 @@ private struct StorageSettingsView: View {
                     Button("По названию") { largestFirst = false }
                 }
                 Button("Выбрать показанные") {
-                    for project in projects where !project.unavailable {
+                    for project in projects {
                         if mode == "Проекты" { projectSelection.insert(project.url) }
-                        else { cacheSelection[project.url] = Set(ProjectCacheCategory.allCases.filter { (project.cacheBytes[$0] ?? 0) > 0 }) }
+                        else if !project.unavailable { cacheSelection[project.url] = Set(ProjectCacheCategory.allCases.filter { (project.cacheBytes[$0] ?? 0) > 0 }) }
                     }
-                }.disabled(busy)
+                }
             }
         }
     }
@@ -179,21 +191,21 @@ private struct StorageSettingsView: View {
     private func projectRow(_ project: ProjectStorageUsage) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
-                if mode == "Проекты" && !project.unavailable {
+                if mode == "Проекты" {
                     Toggle("Выбрать \(project.name)", isOn: Binding(get: { projectSelection.contains(project.url) }, set: { selected in
                         if selected { projectSelection.insert(project.url) } else { projectSelection.remove(project.url) }
-                    })).labelsHidden().toggleStyle(.checkbox).disabled(busy)
+                    })).labelsHidden().toggleStyle(.checkbox)
                 }
                 Image(systemName: project.unavailable ? "externaldrive.badge.exclamationmark" : "film.stack").foregroundStyle(project.unavailable ? Color.orange : Color.accentColor)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(project.name).font(.headline).textSelection(.enabled)
-                        if model.isCurrentProject(project.url) { Text("Открыт").font(.caption).foregroundStyle(.secondary) }
+                        if model.projectURL?.standardizedFileURL == project.url.standardizedFileURL { Text("Открыт").font(.caption).foregroundStyle(.secondary) }
                     }
                     Text(project.url.path).font(.caption).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
                 }
                 Spacer()
-                Text(project.unavailable ? "Недоступен" : storageSize(project.totalBytes)).font(.callout.monospacedDigit())
+                Text(project.isCalculating ? "Считаем…" : project.unavailable ? "Недоступен" : storageSize(project.totalBytes)).font(.callout.monospacedDigit())
                 Menu {
                     Button("Показать в Finder") { NSWorkspace.shared.activateFileViewerSelecting([project.url]) }.disabled(project.unavailable)
                     if project.unavailable {
@@ -203,10 +215,10 @@ private struct StorageSettingsView: View {
                     } else {
                         Button("Переместить в Корзину…", role: .destructive) { reviewProjects([project]) }
                     }
-                } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().disabled(busy)
+                } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().disabled(busy || !project.availabilityIsKnown)
             }
             if project.unavailable {
-                Text("Подключите диск и обновите список. Недоступные данные не учитываются в размере.").font(.caption).foregroundStyle(.secondary)
+                Text("Подключите диск и обновите список, чтобы удалить файлы. В режиме «Проекты целиком» можно выделить этот проект и убрать запись вместе с другими. Недоступные данные не учитываются в размере.").font(.caption).foregroundStyle(.secondary)
             } else if mode == "Кэш" {
                 Divider()
                 ForEach(ProjectCacheCategory.allCases) { category in
@@ -219,7 +231,7 @@ private struct StorageSettingsView: View {
                                 Text(category.title)
                                 Text(description(category)).font(.caption).foregroundStyle(.secondary)
                             }
-                        }.toggleStyle(.checkbox).disabled(busy || (project.cacheBytes[category] ?? 0) == 0)
+                        }.toggleStyle(.checkbox).disabled((project.cacheBytes[category] ?? 0) == 0)
                         Spacer()
                         Text(storageSize(project.cacheBytes[category] ?? 0)).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
                     }
@@ -243,7 +255,10 @@ private struct StorageSettingsView: View {
 
     private var modelList: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Локальные AI-модели", systemImage: "cpu").font(.title3.bold())
+            HStack {
+                Label("Локальные AI-модели", systemImage: "cpu").font(.title3.bold())
+                if model.storageModelsIsLoading { ProgressView().controlSize(.small) }
+            }
             Text(model.storageModelsMessage).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach(model.storageModels, id: \.name) { item in
                 HStack {
@@ -255,7 +270,7 @@ private struct StorageSettingsView: View {
                     Text(item.size.map(storageSize) ?? "Размер неизвестен").foregroundStyle(.secondary)
                     Button("Удалить…", role: .destructive) {
                         review = StorageReview(operation: .model(item.name), title: "Удалить модель?", details: [item.name, "Размер модели: \(item.size.map(storageSize) ?? "неизвестен")"], removed: "Выбранная модель из Ollama. Общие слои, нужные другим моделям, останутся, поэтому освободиться может меньше места. Это повлияет и на другие приложения, использующие эту модель.", kept: "Проекты, исходники, готовые фильмы и результаты анализа сохранятся. Для новых AI-задач эту модель потребуется скачать заново.", action: "Удалить модель")
-                    }.disabled(busy)
+                    }.disabled(busy || model.storageModelsIsLoading)
                 }.padding(.vertical, 5)
             }
             if !setup.isInstalled {
@@ -274,22 +289,42 @@ private struct StorageSettingsView: View {
         } + ["Будет освобождено примерно \(storageSize(selectedBytes))."], removed: "Только выбранные временные файлы. Кэш удаляется без Корзины и создаётся заново по мере необходимости.", kept: "Исходники, музыка, телеметрия, монтаж, анализ, история правок и экспорт. Файлы, на которые ссылается проект, не удаляются. Первый просмотр после очистки может быть медленнее.", action: "Очистить кэш")
     }
     private func reviewProjects(_ selected: [ProjectStorageUsage]) {
-        review = StorageReview(operation: .projects(selected.map(\.url)), title: "Переместить проекты в Корзину?", details: selected.map { "\($0.name) · \(storageSize($0.totalBytes))\n\($0.url.path)" }, removed: "Пакеты целиком, включая монтаж, историю, анализ, кэш и все вложенные исходники, музыку и экспорт. Открытый проект будет закрыт. Размер пакетов: \(storageSize(selected.reduce(0) { $0 + $1.totalBytes })).", kept: "Исходники и экспорт за пределами выбранных пакетов, другие проекты и AI-модели. Можно восстановить пакеты из Корзины через Finder. Место освободится после очистки Корзины; VeloEdit её не очищает. Перед удалением проверяются ссылки из других известных проектов.", action: "Переместить в Корзину")
+        let available = selected.filter { !$0.unavailable }
+        let unavailable = selected.filter(\.unavailable)
+        var removed: [String] = []
+        if !available.isEmpty {
+            let size = available.contains(where: \.isCalculating) ? "ещё подсчитывается" : storageSize(available.reduce(0) { $0 + $1.totalBytes })
+            removed.append("В Корзину: \(available.count) пакетов целиком, включая монтаж, историю, анализ, кэш и вложенные файлы. Размер пакетов: \(size).")
+        }
+        if !unavailable.isEmpty {
+            removed.append("Из списка: \(unavailable.count) записей недоступных проектов. Их файлы на дисках не изменятся; после подключения диска проекты можно открыть снова.")
+        }
+        review = StorageReview(operation: .projects(trash: available.map(\.url), forget: unavailable.map(\.url)),
+            title: available.isEmpty ? "Убрать выбранные проекты из списка?" : "Удалить выбранные проекты?",
+            details: selected.map { "\($0.name) · \($0.unavailable ? "убрать из списка" : "в Корзину · " + ($0.isCalculating ? "размер подсчитывается" : storageSize($0.totalBytes)))\n\($0.url.path)" },
+            removed: removed.joined(separator: "\n\n") + " Открытый выбранный проект будет закрыт.",
+            kept: "Внешние исходники и экспорт, другие проекты и AI-модели сохранятся. Пакеты можно восстановить из Корзины через Finder. Место освободится после очистки Корзины. Перед перемещением проверяются ссылки из других известных проектов.",
+            action: available.isEmpty ? "Убрать из списка" : "Удалить выбранные")
     }
     private func perform(_ operation: StorageReview.Operation) async {
         guard !busy else { return }
         result = nil
         switch operation {
-        case .cache(let selection): result = await model.clearSelectedProjectCaches(selection)
-        case .projects(let urls): result = await model.trashStoredProjects(urls)
+        case .cache(let selection):
+            for (url, categories) in selection { cacheSelection[url]?.subtract(categories) }
+            result = await model.clearSelectedProjectCaches(selection)
+        case .projects(let urls, let unavailable):
+            projectSelection.subtract(urls + unavailable)
+            result = await model.trashStoredProjects(urls, forgetting: unavailable)
         case .model(let name):
             if await model.removeStoredModel(name) {
                 if name == LocalDirectorAgent.ollamaModel { setup.modelWasRemoved() }
                 result = "Модель \(name) удалена."
             }
-        case .forget(let url): model.forgetStoredProject(url); result = "Запись убрана из списка. Файлы не изменены."
+        case .forget(let url):
+            projectSelection.remove(url)
+            model.forgetStoredProject(url); result = "Запись убрана из списка. Файлы не изменены."
         }
-        cacheSelection = [:]; projectSelection = []
     }
 }
 

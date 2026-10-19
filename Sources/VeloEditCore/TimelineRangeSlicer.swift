@@ -231,8 +231,9 @@ enum TimelineRangeSlicer {
         }
 
         var titleIDs: [UUID] = []
-        timeline.titleItems = source.effectiveTitleItems.flatMap { original in
-            segmentBounds(start: original.startTime, end: original.endTime, ownerID: original.targetClipID).enumerated().map { index, bounds in
+        timeline.titleItems = source.effectiveTitleItems.flatMap { original -> [TitleTimelineItem] in
+            if original.semanticRole == .filmOpening { return [original] }
+            return segmentBounds(start: original.startTime, end: original.endTime, ownerID: original.targetClipID).enumerated().map { index, bounds in
                 var segment = original
                 if index > 0 { segment.id = UUID() }
                 segment.startTime = bounds.start

@@ -496,7 +496,8 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
         requestedDuration: 120,
         musicPolicy: .soft,
         sourceAudioPolicy: .duck,
-        titlePolicy: .keyOnly
+        titlePolicy: .keyOnly,
+        openingTitles: .init(policy: .off)
     )
     let plan = StoryPlan(
         prompt: "Фильм",
@@ -560,7 +561,8 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
         prompt: "Добавь только ключевые титры",
         preset: .cinematic,
         constraints: StoryConstraints(targetDuration: 10),
-        chapters: []
+        chapters: [],
+        directorBrief: DirectorBrief(requestedDuration: 10, musicPolicy: .none, openingTitles: .init(policy: .off))
     )
     let timeline = Timeline(
         storyPlanID: plan.id,

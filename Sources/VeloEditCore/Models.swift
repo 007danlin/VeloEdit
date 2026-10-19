@@ -972,6 +972,7 @@ public enum DirectorEffectsPolicy: String, Codable, CaseIterable, Identifiable, 
 }
 
 public struct DirectorBrief: Codable, Hashable, Sendable {
+    public var openingTitles: FilmOpeningSettings?
     public var subtitlePolicy: DirectorSubtitlePolicy?
     /// Per-film choice; nil keeps older projects and their saved appearance.
     public var subtitleStyle: SpeechCaptionStyle?
@@ -1006,7 +1007,8 @@ public struct DirectorBrief: Codable, Hashable, Sendable {
         durationMode: FilmDurationMode = .exact,
         effectsPolicy: DirectorEffectsPolicy? = nil,
         subtitlePolicy: DirectorSubtitlePolicy? = nil,
-        subtitleStyle: SpeechCaptionStyle? = nil
+        subtitleStyle: SpeechCaptionStyle? = nil,
+        openingTitles: FilmOpeningSettings? = FilmOpeningSettings()
     ) {
         self.canvasFormat = canvasFormat
         self.durationMode = durationMode
@@ -1020,6 +1022,7 @@ public struct DirectorBrief: Codable, Hashable, Sendable {
         self.effectsPolicy = effectsPolicy
         self.subtitlePolicy = subtitlePolicy
         self.subtitleStyle = subtitleStyle
+        self.openingTitles = openingTitles
     }
 
     public var usesAutomaticCanvasFormat: Bool { canvasFormatIsAutomatic ?? false }
@@ -1854,6 +1857,9 @@ public struct TitleStyle: Codable, Hashable, Sendable {
     public var tracking: Double?
     public var lineSpacing: Double?
     public var activeWordColorHex: String?
+    /// Nil retains the saved Regular/Bold mapping and original secondary typography.
+    public var typographyVersion: Int?
+    public var placement: TitlePlacement?
 
     public init(
         fontSize: Double = 72,
@@ -2448,6 +2454,9 @@ public struct TimelineAudioClip: Codable, Identifiable, Hashable, Sendable {
 }
 
 public struct Timeline: Codable, Identifiable, Hashable, Sendable {
+    public var openingTitles: FilmOpeningSettings?
+    public var openingTitleDecision: FilmOpeningDecision?
+    public var openingTitleEvidence: FilmOpeningEvidence?
     public var speechRecords: [SpeechSourceRecord]?
     public var suppressedSpeechCaptionKeys: [String]?
     public var speechCaptionArchive: [TitleTimelineItem]?

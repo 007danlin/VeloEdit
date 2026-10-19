@@ -31,7 +31,7 @@ private func chapterFixture() -> (StoryPlan, Timeline) {
     }
     let plan = StoryPlan(prompt: "Титры: названия каждой части и ключевых событий.", preset: .adventure,
                          constraints: StoryConstraints(targetDuration: 15), chapters: chapters,
-                         directorBrief: DirectorBrief(requestedDuration: 15, musicPolicy: .none, titlePolicy: .keyOnly))
+                         directorBrief: DirectorBrief(requestedDuration: 15, musicPolicy: .none, titlePolicy: .keyOnly, openingTitles: .init(policy: .off)))
     let items = candidates.enumerated().map { index, id in
         TimelineItem(candidateID: id, assetID: UUID(), kind: .video, sourceDuration: 3,
                      timelineStart: Double(index) * 3, timelineDuration: 3,
@@ -45,7 +45,7 @@ private func chapterFixture() -> (StoryPlan, Timeline) {
 
 @Test func questionnaireTitleRequirementSurvivesIntentParsing() {
     let prompt = "Формат: Горизонтальное 16:9. Точная длительность: 5 мин. Настроение: киношное. Музыка: подобрать под видео. Звук: приглушить звук исходников. Титры: названия каждой части и ключевых событий."
-    let intents = IntentLedgerEngine.intents(prompt: prompt, brief: DirectorBrief(titlePolicy: .keyOnly), pending: [prompt], newAssetIDs: [])
+    let intents = IntentLedgerEngine.intents(prompt: prompt, brief: DirectorBrief(titlePolicy: .keyOnly, openingTitles: .init(policy: .off)), pending: [prompt], newAssetIDs: [])
     #expect(intents.contains(.addTitles))
     #expect(!intents.contains { if case .unverifiedInstruction = $0 { return true }; return false })
     let compound = IntentLedgerEngine.intents(prompt: "Добавь титры. Сделай неведомое действие", brief: nil,

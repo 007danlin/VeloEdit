@@ -502,7 +502,7 @@ func keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration: Double) throws {
     let plan = StoryEngine().createPlan(
         prompt: "Собери фильм из всех частей поездки", preset: .story, constraints: constraints,
         assets: assets, analyses: analyses, events: discovery.events,
-        directorBrief: DirectorBrief(requestedDuration: duration, musicPolicy: .none, titlePolicy: .keyOnly)
+        directorBrief: DirectorBrief(requestedDuration: duration, musicPolicy: .none, titlePolicy: .keyOnly, openingTitles: .init(policy: .off))
     )
     #expect(plan.eventStory?.chapterCardsEnabled == true)
     let timeline = TimelineComposer().compose(plan: plan, assets: assets, analyses: analyses)
@@ -539,7 +539,7 @@ func keyTitlesNameEveryPartAcrossSeparateSourceFiles(duration: Double) throws {
     }
     var plan = StoryPlan(prompt: "Добавь титры для всех частей", preset: .story,
                          constraints: StoryConstraints(targetDuration: 9), chapters: chapters,
-                         directorBrief: DirectorBrief(requestedDuration: 9, musicPolicy: .none, titlePolicy: .keyOnly))
+                         directorBrief: DirectorBrief(requestedDuration: 9, musicPolicy: .none, titlePolicy: .keyOnly, openingTitles: .init(policy: .off)))
     plan.narrativeBeatPlan = NarrativeBeatPlan(pattern: .minimalMontage, beats: [], reasons: [])
     let timeline = Timeline(storyPlanID: plan.id, items: items)
     let presented = EditorialPresentationPolicy.chapters(in: timeline, plan: plan)

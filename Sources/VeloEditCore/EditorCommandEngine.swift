@@ -1512,6 +1512,8 @@ public struct EditorCommandExecutor: Sendable {
                 timeline.titleItems = titleObjects
                 applied.append("оформление изменено у титров: \(legacyPositions.count + objectPositions.count)")
             case .removeTitles:
+                timeline.openingTitles = FilmOpeningSettings(policy: .off)
+                timeline.openingTitleDecision = nil
                 let ids = timeline.items.filter { $0.kind == .title }.map(\.id) + timeline.effectiveTitleItems.map(\.id)
                 timeline.items.removeAll { $0.kind == .title }
                 timeline.titleItems = []

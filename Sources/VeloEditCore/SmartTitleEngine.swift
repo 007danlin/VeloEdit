@@ -201,7 +201,7 @@ public struct SmartTitleEngine: Sendable {
         guard !Self.isMeaningless(deduplicated) else { return nil }
         let template = selectTemplate(primaryText: deduplicated, secondaryText: secondary, context: context, evidence: evidence)
         guard let template else { return nil }
-        let fittedPrimary = Self.shortened(deduplicated, limit: template.textConstraints.maxCharacters)
+        let fittedPrimary = context.requestedText?.isEmpty == false ? deduplicated : Self.shortened(deduplicated, limit: template.textConstraints.maxCharacters)
         let fittedSecondary = secondary.map { Self.shortened($0, limit: max(18, template.textConstraints.maxCharacters)) }
         explanation.append("Выбран существующий шаблон \(template.name); его layout и animation не изменяются")
         if !context.avoidRegions.isEmpty { explanation.append("Композиция проверена относительно важных объектов кадра") }
@@ -578,7 +578,7 @@ public enum AutomatedTitlePolicy {
         for original in source.sorted(by: titleOrder) {
             var item = original
             let generated = isGenerated(item)
-            guard generated, !isCaption(item.kind) else {
+            guard item.semanticRole != .filmOpening, generated, !isCaption(item.kind) else {
                 result.append(item)
                 continue
             }
@@ -656,7 +656,7 @@ public enum AutomatedTitlePolicy {
         guard !primaries.isEmpty else { return [:] }
         var scopes: [UUID: ClosedRange<Double>] = [:]
 
-        for title in source where isGenerated(title) && !isCaption(title.kind) {
+        for title in source where title.semanticRole != .filmOpening && isGenerated(title) && !isCaption(title.kind) {
             if let partID = title.filmPartID, let part = timeline.filmParts?.first(where: { $0.id == partID }) {
                 let ids = Set(part.itemIDs)
                 let items = primaries.filter { ids.contains($0.id) }

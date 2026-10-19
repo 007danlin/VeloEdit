@@ -464,6 +464,9 @@ public enum TimelineMutationEngine {
         guard items[index] != before else { return false }
         SpeechSubtitleBuilder.preservingManualTiming(&items[index], previous: before, timeline: timeline)
         items[index].userEdited = true
+        if items[index].semanticRole == .filmOpening {
+            timeline.openingTitles = FilmOpeningSettings(policy: items[index].enabled ? .selected : .off, title: items[index].text, subtitle: items[index].additionalText ?? "", templateID: items[index].effectiveTemplateID)
+        }
         timeline.titleItems = items
         return true
     }

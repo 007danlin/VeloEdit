@@ -70,6 +70,91 @@ private struct MaintenanceFixture {
     #expect(throws: (any Error).self) { try StorageMaintenance.clear(.thumbnails, package: invalid.deletingLastPathComponent()) }
 }
 
+@Test func storageMaintenanceIgnoresMissingManifestsInOtherProjects() throws {
+    let fixture = try MaintenanceFixture(); defer { fixture.remove() }
+    let leftover = try fixture.file("deleted.veloedit/Cache/Thumbnails/leftover.jpg")
+    let deleted = fixture.root.appendingPathComponent("deleted.veloedit")
+    let missing = fixture.root.appendingPathComponent("missing.veloedit")
+    let disposable = try fixture.file("test.veloedit/Cache/Proxies/disposable.mp4")
+    let others = [deleted, missing, fixture.package]
+
+    #expect(try StorageMaintenance.projectsDepending(on: [fixture.package], among: others).isEmpty)
+    #expect(try StorageMaintenance.clear(.proxies, package: fixture.package, protectingProjects: others) == 4)
+    #expect(!FileManager.default.fileExists(atPath: disposable.path))
+    #expect(FileManager.default.fileExists(atPath: leftover.path))
+    #expect(!FileManager.default.fileExists(atPath: deleted.appendingPathComponent("project.json").path))
+    // A missing manifest is still an error when cleaning the selected package.
+    #expect(throws: (any Error).self) { try StorageMaintenance.clear(.thumbnails, package: deleted) }
+}
+
+@Test func storageMaintenanceStillFindsDependentsAfterMissingManifest() async throws {
+    let fixture = try MaintenanceFixture(); defer { fixture.remove() }
+    _ = try fixture.file("deleted.veloedit/Cache/leftover")
+    let deleted = fixture.root.appendingPathComponent("deleted.veloedit")
+    let shared = try fixture.file("test.veloedit/Cache/Proxies/shared.mp4")
+    let other = fixture.root.appendingPathComponent("other.veloedit")
+    let store = try ProjectStore(createAt: other, name: "Dependent", recoveryDirectory: fixture.root.appendingPathComponent("Recovery"))
+    try await store.update {
+        $0.assets = [MediaAsset(originalURL: shared, kind: .video, byteSize: 4, contentHash: "shared", metadata: MediaMetadata(duration: 1))]
+    }
+    let others = [deleted, other]
+    #expect(try StorageMaintenance.projectsDepending(on: [fixture.package], among: others) == [other])
+    #expect(try StorageMaintenance.clear(.proxies, package: fixture.package, protectingProjects: others) == 0)
+    #expect(FileManager.default.fileExists(atPath: shared.path))
+    #expect(try StorageMaintenance.projectsDepending(on: [fixture.package, other], among: others).isEmpty)
+}
+
+@Test func storageMaintenanceProtectsMusicCatalogWithoutManifest() throws {
+    let fixture = try MaintenanceFixture(); defer { fixture.remove() }
+    let shared = try fixture.file("test.veloedit/Cache/Proxies/music.wav")
+    let catalog = try fixture.file("deleted.veloedit/MusicLibrary/tracks.json", bytes: [])
+    try JSONSerialization.data(withJSONObject: [["url": shared.absoluteString]]).write(to: catalog)
+    let other = fixture.root.appendingPathComponent("deleted.veloedit")
+    #expect(try StorageMaintenance.projectsDepending(on: [fixture.package], among: [other]) == [other])
+    #expect(try StorageMaintenance.clear(.proxies, package: fixture.package, protectingProjects: [other]) == 0)
+    #expect(FileManager.default.fileExists(atPath: shared.path))
+}
+
+@Test func storageMaintenanceDoesNotIgnoreCorruptOrUnreadableOtherManifests() throws {
+    let fixture = try MaintenanceFixture(); defer { fixture.remove() }
+    let manifest = try fixture.file("invalid.veloedit/project.json", bytes: [0])
+    let other = manifest.deletingLastPathComponent()
+    let disposable = try fixture.file("test.veloedit/Cache/Proxies/disposable.mp4")
+    #expect(throws: (any Error).self) { try StorageMaintenance.projectsDepending(on: [fixture.package], among: [other]) }
+    #expect(throws: (any Error).self) { try StorageMaintenance.clear(.proxies, package: fixture.package, protectingProjects: [other]) }
+    try Data(contentsOf: fixture.package.appendingPathComponent("project.json")).write(to: manifest)
+    try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: manifest.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: manifest.path) }
+    #expect(throws: (any Error).self) { try StorageMaintenance.projectsDepending(on: [fixture.package], among: [other]) }
+    #expect(throws: (any Error).self) { try StorageMaintenance.clear(.proxies, package: fixture.package, protectingProjects: [other]) }
+    #expect(FileManager.default.fileExists(atPath: disposable.path))
+}
+
+@Test func storageUsageCountsEachFileOnceAndBatchCleanupPreservesReferencedMedia() async throws {
+    let fixture = try MaintenanceFixture(); defer { fixture.remove() }
+    let shared = try fixture.file("test.veloedit/Cache/Proxies/shared.mp4")
+    let proxy = try fixture.file("test.veloedit/Cache/Proxies/disposable.mp4")
+    let thumb = try fixture.file("test.veloedit/Cache/Thumbnails/thumb.jpg")
+    _ = try fixture.file("test.veloedit/Media/original.mov")
+    _ = try fixture.file("test.veloedit/MusicLibrary/Files/music.wav")
+    _ = try fixture.file("test.veloedit/Telemetry/track.gpx")
+    let outside = try fixture.file("outside/video.mov", bytes: Array(repeating: 1, count: 100))
+    try FileManager.default.createSymbolicLink(at: fixture.package.appendingPathComponent("Media/linked.mov"), withDestinationURL: outside)
+    try await fixture.store.update {
+        $0.assets = [MediaAsset(originalURL: shared, kind: .video, byteSize: 4, contentHash: "source", metadata: MediaMetadata(duration: 1))]
+    }
+    let usage = StorageMaintenance.usage(of: fixture.package)
+    #expect(usage.totalBytes == StorageMaintenance.byteCount(at: fixture.package))
+    #expect(usage.embeddedMediaBytes == 12)
+    #expect(usage.cacheBytes[.proxies] == 4)
+    #expect(usage.cacheBytes[.thumbnails] == 4)
+    #expect(try StorageMaintenance.clear([.proxies, .thumbnails], package: fixture.package) == 8)
+    #expect(!FileManager.default.fileExists(atPath: proxy.path))
+    #expect(!FileManager.default.fileExists(atPath: thumb.path))
+    #expect(FileManager.default.fileExists(atPath: shared.path))
+    #expect(FileManager.default.fileExists(atPath: outside.path))
+}
+
 @Test func missingMediaRelinksOnlyMatchingContentsAndKeepsAnalysis() async throws {
     let fixture = try MaintenanceFixture(); defer { fixture.remove() }
     let source = try fixture.file("before/source.mov")

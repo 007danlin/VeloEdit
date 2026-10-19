@@ -597,7 +597,7 @@ public actor PlaybackEngine {
     private static func titleCacheIdentity(item: TimelineItem, timeline: Timeline) -> String {
         let style = (try? JSONEncoder.veloEdit.encode(item.effectiveTitleStyle)).map { $0.base64EncodedString() } ?? "style"
         return ProductionCacheIdentity.hash([
-            "title-v4-rational-fps", item.title ?? "", style,
+            "title-v5-verified-font-runs", item.title ?? "", style,
             String(Int((item.timelineDuration * 1_000).rounded())),
             "\(timeline.width)x\(timeline.height)@\(timeline.frameRate)"
         ])

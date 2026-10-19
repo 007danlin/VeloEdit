@@ -254,9 +254,11 @@ private actor CountingIndependentAnalyzer: VisionModelProtocol {
     var calls = 0
     func analyze(asset: MediaAsset) async throws -> AnalysisResult {
         calls += 1
-        return AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash,
+        var result = AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash,
             sceneTags: ["outdoor"], candidates: [Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: 2,
                 scores: ClipScores(quality: 0.8, interest: 0.8, action: 0.5, stability: 0.8, uniqueness: 0.8), tags: ["outdoor"])])
+        result.photoAnalysisVersion = asset.kind == .photo ? PhotoSourceAnalysis.version : nil
+        return result
     }
 }
 

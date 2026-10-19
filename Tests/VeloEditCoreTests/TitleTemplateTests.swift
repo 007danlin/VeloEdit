@@ -46,7 +46,7 @@ import UniformTypeIdentifiers
 
     let signatures = templates.map { template in
         template.layout.elements.map {
-            "\($0.kind.rawValue):\($0.content.rawValue):\($0.frame.x):\($0.frame.y):\($0.frame.width):\($0.frame.height):\($0.fillColorHex)"
+            "\(template.defaultStyle):\($0.kind.rawValue):\($0.content.rawValue):\($0.frame.x):\($0.frame.y):\($0.frame.width):\($0.frame.height):\($0.fillColorHex)"
         }.joined(separator: "|")
     }
     #expect(Set(signatures).count == templates.count)

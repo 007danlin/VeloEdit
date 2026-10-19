@@ -9,6 +9,12 @@ enum TitleTimelineAnchoring {
         let items = Dictionary(uniqueKeysWithValues: source.items.map { ($0.id, $0) })
         let scopes = AutomatedTitlePolicy.inferredContainmentByTitleID(source.effectiveTitleItems, timeline: source)
         result.titleItems = source.effectiveTitleItems.map { original in
+            if original.semanticRole == .filmOpening {
+                var title = original
+                title.duration = min(title.duration, max(0.05, source.duration - title.startTime))
+                if title.startTime >= source.duration { title.enabled = false }
+                return title
+            }
             guard let id = original.effectiveAnchorClipID, let anchor = items[id] else { return original }
             var title = original
             if let old = previousItems[id] {

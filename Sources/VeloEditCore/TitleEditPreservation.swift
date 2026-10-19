@@ -17,10 +17,28 @@ enum TitleEditPreservation {
                 result.chapterTitleDecisions = previous.chapterTitleDecisions
             }
         }
+        result.openingTitles = previous.openingTitles ?? generated.openingTitles
+        result.openingTitleDecision = previous.openingTitleDecision ?? generated.openingTitleDecision
         var titles = generated.effectiveTitleItems
+        if previous.openingTitles?.policy == .off { titles.removeAll { $0.semanticRole == .filmOpening } }
+        else if var opening = previous.effectiveTitleItems.first(where: { $0.semanticRole == .filmOpening }) {
+            opening.targetClipID = nil; opening.anchorClipID = nil
+            opening.duration = min(opening.duration, max(0.05, result.duration - opening.startTime))
+            titles.removeAll { $0.semanticRole == .filmOpening }
+            titles.append(opening)
+        }
+        result.titleItems = titles
         let edited = previous.effectiveTitleItems.filter { !AutomatedTitlePolicy.isGenerated($0) }
         guard !edited.isEmpty else { return result }
         for original in edited {
+            if original.semanticRole == .filmOpening {
+                var title = original
+                title.targetClipID = nil; title.anchorClipID = nil
+                title.duration = min(title.duration, max(0.05, result.duration - title.startTime))
+                titles.removeAll { $0.semanticRole == .filmOpening }
+                if previous.openingTitles?.policy != .off { titles.append(title) }
+                continue
+            }
             let oldAnchor = previous.items.first { item in
                 item.overlay == nil && item.kind != .title &&
                     original.startTime >= item.timelineStart &&

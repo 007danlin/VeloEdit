@@ -402,6 +402,7 @@ public enum EditorialIntentEnforcer {
         let requirements = ExplicitDeliveryRequirements(plan: plan)
         let volume = requirements.originalAudioVolume
         if requirements.forbidsTitles {
+            timeline.openingTitleDecision = nil
             timeline.titleItems = plan.directorBrief?.subtitlesEnabled(preset: plan.preset) == true
                 ? timeline.effectiveTitleItems.filter { [.subtitle, .automaticSubtitles, .wordLevelCaptions].contains($0.kind) } : []
             timeline.items.removeAll { $0.kind == .title }
@@ -428,9 +429,10 @@ public enum EditorialIntentEnforcer {
         if plan.narrativeBeatPlan != nil && !explicitCreativeRequest(plan.prompt) {
             timeline.effects = timeline.effectiveEffects.filter { $0.effectType.category != .stylized }
         }
+        timeline = FilmOpeningTitles.restoringChapters(timeline)
         timeline = EditorialPresentationPolicy.chapters(in: timeline, plan: plan)
-        timeline = EditorialPresentationPolicy.ensuringRequestedTitle(in: timeline, plan: plan)
-        return EditorialPresentationPolicy.stylingGeneratedTitles(in: timeline, plan: plan)
+        timeline = EditorialPresentationPolicy.stylingGeneratedTitles(in: timeline, plan: plan)
+        return EditorialPresentationPolicy.ensuringRequestedTitle(in: timeline, plan: plan)
     }
 }
 
@@ -460,7 +462,7 @@ public enum EditorialRenderSignature {
         copy.width = Int((aspect * 10_000).rounded())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash($0.base64EncodedString()) } ?? "invalid-signature"
+        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash("title-renderer-v2|" + $0.base64EncodedString()) } ?? "invalid-signature"
     }
 }
 

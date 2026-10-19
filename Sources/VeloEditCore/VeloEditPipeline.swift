@@ -2672,6 +2672,9 @@ public actor VeloEditPipeline {
         timeline.audioDucking = AudioDuckingSettings(enabled: brief.sourceAudioPolicy != .mute)
         await progress?(FilmBuildProgress(.subtitles))
         timeline = SpeechSubtitleBuilder.applying(to: timeline, records: records, enabled: brief.subtitlesEnabled(preset: .vlog), allowMuted: brief.subtitlesWithoutAudio == true, previous: current.timelines.last, style: brief.subtitleStyle)
+        if let previous = current.timelines.last { timeline = TitleEditPreservation.applying(from: previous, to: timeline, clipIDs: [:]) }
+        timeline = FilmOpeningTitles.reconcile(timeline, plan: plan, projectName: current.name, analyses: analyses)
+        if let warning = timeline.openingTitleDecision?.warning { warnings.append(warning) }
         let durationRequirement = FilmDurationRequirement.parse(prompt: prompt, explicitSeconds: brief.explicitRequestedDuration, mode: brief.durationMode)
         if !durationRequirement.accepts(duration: timeline.duration, frameRate: timeline.frameRate) {
             warnings.append("Запрошенная длительность несовместима с полным рассказом: сохранено \(Int(timeline.duration.rounded())) с без ускорения и обрезания фраз.")
@@ -3418,6 +3421,8 @@ public actor VeloEditPipeline {
             timeline.speechRecords = records
             timeline = SpeechSubtitleBuilder.applying(to: timeline, records: records, enabled: brief.subtitlesEnabled(preset: plan.preset), allowMuted: brief.subtitlesWithoutAudio == true, previous: current.timelines.last, style: brief.subtitleStyle)
         }
+        timeline = FilmOpeningTitles.reconcile(timeline, plan: plan, projectName: current.name, analyses: analyses)
+        if let warning = timeline.openingTitleDecision?.warning { deliveryWarnings.append(warning) }
         let didRenameTitles = EditorialRenderSignature.signature(timeline) != beforeFinalTitles
         let beforeFinalClock = timeline.frameRate
         timeline = TimelineFrameRatePolicy.applying(to: timeline, assets: current.assets)

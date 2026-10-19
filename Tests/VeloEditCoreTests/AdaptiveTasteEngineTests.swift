@@ -319,7 +319,9 @@ private func p7Timeline(planID: UUID, candidates: [Candidate], actionFirst: Bool
         AIDirectorEngine().direct(plan: variant.plan, initialTimeline: TimelineComposer().compose(plan: variant.plan, assets: assets, analyses: analyses), assets: assets, analyses: analyses)
     }
     let context = TasteContextResolver().resolve(projectStyle: autonomous.projectStyle, assets: assets, analyses: analyses)
-    let result = try #require(MontageVariantSelector().select(stories: search.variants, timelines: directed, assets: assets, analyses: analyses, searchDiagnostics: search.diagnostics, personalTasteProfile: learnedProfile, tasteContext: context))
+    // Match automatic creation: bounded search retains a usable variant with
+    // quality warnings while still recording the personalized ranking.
+    let result = try #require(MontageVariantSelector().select(stories: search.variants, timelines: directed, assets: assets, analyses: analyses, searchDiagnostics: search.diagnostics, personalTasteProfile: learnedProfile, tasteContext: context, allowsQualityWarnings: true))
     let diagnostics = try #require(result.timeline.directorRun?.personalTasteDiagnostics)
     #expect(diagnostics.profileConfidence > 0.25)
     #expect(search.diagnostics.attemptedStrategyCount > 1)

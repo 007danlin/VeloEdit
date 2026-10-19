@@ -1837,6 +1837,10 @@ private struct MontageMediaBrowser: View {
     @EnvironmentObject private var model: AppModel
     @State private var tab: MontageBrowserTab = .media
     @State private var search = ""
+    @State private var titlePlacement: TitlePlacement = .authored
+    @State private var titleSearch = ""
+    @State private var openingOnly = false
+    @State private var titleBackground: CGImage?
     @State private var titleText = ""
     @State private var backgroundCategory: BackgroundCategory = .nature
     private let columns = [GridItem(.adaptive(minimum: 96), spacing: 8)]
@@ -2129,26 +2133,32 @@ private struct MontageMediaBrowser: View {
     private var titleBrowser: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                TextField("Текст титра", text: $titleText)
+                Toggle("Начальные титры", isOn: $openingOnly)
+                Picker("Положение", selection: $titlePlacement) {
+                    ForEach(TitlePlacement.allCases) { Text($0.localizedTitle).tag($0) }
+                }
+                TextField("Поиск оформления", text: $titleSearch).textFieldStyle(.roundedBorder)
+                TextField("Текст титра", text: $titleText, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                 Text("Введите текст и выберите оформление. Наведите указатель на карточку, чтобы увидеть анимацию.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                ForEach(TitleTemplateCategory.allCases) { category in
+                ForEach(TitleTemplateCategory.allCases.filter { category in visibleTitleTemplates.contains { $0.category == category } }) { category in
                     VStack(alignment: .leading, spacing: 7) {
                         Text(category.localizedTitle)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                            ForEach(TitleTemplateRegistry.all.filter { $0.category == category }) { template in
+                            ForEach(visibleTitleTemplates.filter { $0.category == category }) { template in
                                 LibraryItemButton {
                                     let value = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    model.addModernTitle(value.isEmpty ? template.preview.primaryText : value, templateID: template.id)
+                                    model.addModernTitle(value.isEmpty ? "Название" : value, templateID: template.id, placement: titlePlacement)
                                     titleText = ""
                                 } label: {
                                     VStack(alignment: .leading, spacing: 5) {
-                                        TitlePreviewArtwork(template: template, text: titleText)
-                                            .aspectRatio(16 / 9, contentMode: .fit)
+                                        TitlePreviewArtwork(template: template, text: titleText,
+                                            renderSize: titlePreviewSize, background: titleBackground, placement: titlePlacement)
+                                            .aspectRatio(titlePreviewSize.width / titlePreviewSize.height, contentMode: .fit)
                                             .overlay(alignment: .bottomTrailing) {
                                                 Image(systemName: "plus.circle.fill")
                                                     .font(.caption)
@@ -2173,6 +2183,22 @@ private struct MontageMediaBrowser: View {
             }
             .padding(12)
         }
+        .task(id: model.timelinePlayheadTime) {
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+            let image = await model.titleLibraryFrame()
+            if !Task.isCancelled { titleBackground = image }
+        }
+    }
+
+    private var visibleTitleTemplates: [TitleTemplateDefinition] {
+        TitleTemplateRegistry.all.filter { (!openingOnly || $0.supportsFilmOpening) && $0.matchesSearch(titleSearch) }
+    }
+
+    private var titlePreviewSize: CGSize {
+        let width = CGFloat(model.timeline?.width ?? 1920)
+        let height = CGFloat(model.timeline?.height ?? 1080)
+        let scale = 480 / max(width, height)
+        return CGSize(width: width * scale, height: height * scale)
     }
 
     private var effectsBrowser: some View {
@@ -2336,8 +2362,10 @@ private struct MontageMediaBrowser: View {
 
     private func titleDragPayload(_ template: TitleTemplateDefinition) -> String {
         let value = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = value.isEmpty ? template.preview.primaryText : value
-        return "title-template:\(template.id):\(Data(text.utf8).base64EncodedString())"
+        let text = value.isEmpty ? "Название" : value
+        let payload = TitleLibraryPayload(text: text, placement: titlePlacement)
+        let data = (try? JSONEncoder().encode(payload)) ?? Data(text.utf8)
+        return "title-template:\(template.id):\(data.base64EncodedString())"
     }
 
     private func shortTime(_ seconds: Double) -> String {
@@ -2502,18 +2530,32 @@ private struct BackgroundPatternArtwork: View {
 private actor TitlePreviewRenderer {
     static let shared = TitlePreviewRenderer()
 
-    func image(template: TitleTemplateDefinition, text: String, time: Double) -> CGImage? {
+    private let renderer = AdaptiveTitlePreviewRenderer()
+    private let context = CIContext()
+
+    func image(template: TitleTemplateDefinition, text: String, time: Double, renderSize: CGSize, background: CGImage?, placement: TitlePlacement) -> CGImage? {
         guard !Task.isCancelled else { return nil }
         var copy = template
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !clean.isEmpty { copy.preview.primaryText = clean }
-        return TitleOverlayRenderer.previewCGImage(template: copy, time: time, renderSize: CGSize(width: 480, height: 270))
+        if !clean.isEmpty { copy.preview.primaryText = clean; copy.preview.secondaryText = nil; copy.preview.callToAction = nil }
+        let bounds = CGRect(origin: .zero, size: renderSize)
+        var frame = background.map { CIImage(cgImage: $0) }
+        if let value = frame {
+            frame = value.transformed(by: CGAffineTransform(scaleX: renderSize.width / value.extent.width, y: renderSize.height / value.extent.height))
+        }
+        var item = copy.previewItem()
+        item.style.placement = placement == .authored ? nil : placement
+        guard let overlay = renderer.image(items: [item], timelineTime: time, renderSize: renderSize, background: frame) else { return nil }
+        return context.createCGImage(CIImage(cgImage: overlay).composited(over: frame ?? CIImage(color: .black).cropped(to: bounds)), from: bounds)
     }
 }
 
 private struct TitlePreviewArtwork: View {
     let template: TitleTemplateDefinition
     let text: String
+    var renderSize = CGSize(width: 480, height: 270)
+    var background: CGImage? = nil
+    var placement: TitlePlacement = .authored
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
     @State private var preview: CGImage?
@@ -2522,10 +2564,14 @@ private struct TitlePreviewArtwork: View {
         let template: TitleTemplateDefinition
         let text: String
         let animated: Bool
+        let width: Int
+        let height: Int
+        let backgroundID: ObjectIdentifier?
+        let placement: TitlePlacement
     }
 
     var body: some View {
-        let request = Request(template: template, text: text, animated: isHovered && !reduceMotion)
+        let request = Request(template: template, text: text, animated: isHovered && !reduceMotion, width: Int(renderSize.width), height: Int(renderSize.height), backgroundID: background.map(ObjectIdentifier.init), placement: placement)
         ZStack {
             LinearGradient(
                 colors: [.black, Color(red: 0.055, green: 0.055, blue: 0.07)],
@@ -2553,7 +2599,7 @@ private struct TitlePreviewArtwork: View {
                 let time = request.animated
                     ? seconds.truncatingRemainder(dividingBy: max(0.25, template.duration))
                     : template.duration * 0.5
-                let image = await TitlePreviewRenderer.shared.image(template: request.template, text: request.text, time: time)
+                let image = await TitlePreviewRenderer.shared.image(template: request.template, text: request.text, time: time, renderSize: renderSize, background: background, placement: request.placement)
                 guard !Task.isCancelled else { return }
                 preview = image
                 guard request.animated else { return }
@@ -3544,6 +3590,7 @@ private struct TimelineInspector: View {
                 if let title = model.selectedTitleTimelineItem {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
                         inspectorGroup("Текст") { modernTitleTextControls(title) }
+                        inspectorGroup("Время") { modernTitleTimingControls(title) }
                         inspectorGroup("Шаблон и стиль") { modernTitleStyleControls(title) }
                         inspectorGroup("✨ Изменить с помощью AI") { modernTitleAIControls(title) }
                     }
@@ -3751,6 +3798,22 @@ private struct TimelineInspector: View {
         }
     }
 
+    private func modernTitleTimingControls(_ item: TitleTimelineItem) -> some View {
+        let total = model.timeline?.duration ?? item.endTime
+        return VStack(alignment: .leading, spacing: 8) {
+            Stepper("Начало: \(item.startTime, specifier: "%.2f") с", value: Binding(
+                get: { item.startTime }, set: { model.moveTitleTimelineItem(item.id, to: $0) }
+            ), in: 0...max(0, total - item.duration), step: 0.1)
+            Stepper("Длительность: \(item.duration, specifier: "%.2f") с", value: Binding(
+                get: { item.duration }, set: model.setSelectedModernTitleDuration
+            ), in: 0.05...max(0.05, total - item.startTime), step: 0.1)
+            if item.semanticRole == .filmOpening {
+                Text("Название всего фильма. Перемещение первого клипа не удаляет этот титр.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private func modernTitleStyleControls(_ item: TitleTimelineItem) -> some View {
         let style = item.style
         let sizing = TitleOverlayRenderer.textSizing(item: item, renderSize: CGSize(
@@ -3769,10 +3832,38 @@ private struct TimelineInspector: View {
                 get: { item.effectiveTemplateID ?? "" },
                 set: model.setSelectedModernTitleTemplate
             )) {
-                ForEach(TitleTemplateRegistry.all) { template in
+                ForEach(item.semanticRole == .filmOpening ? TitleTemplateRegistry.openingTemplates : TitleTemplateRegistry.all) { template in
                     Text(template.name).tag(template.id)
                 }
             }
+            Picker("Шрифт основного текста", selection: Binding(get: { style.effectiveFontFamily }, set: { family in
+                var copy = style; copy.fontFamily = family; copy.typographyVersion = 2
+                model.setSelectedModernTitleStyle(copy)
+            })) {
+                ForEach(TitleFontResolver.families, id: \.self) { Text($0).tag($0) }
+            }
+            Picker("Начертание", selection: Binding(get: { TitleFontResolver.resolvedFace(style: style).id }, set: { faceID in
+                guard let face = TitleFontResolver.faces(family: style.effectiveFontFamily).first(where: { $0.id == faceID }) else { return }
+                var copy = style; copy.fontWeight = face.weight; copy.typographyVersion = 2
+                model.setSelectedModernTitleStyle(copy)
+            })) {
+                ForEach(TitleFontResolver.faces(family: style.effectiveFontFamily)) { Text($0.name).tag($0.id) }
+            }
+            Text("В кадре: \(TitleFontResolver.resolvedFace(style: style).name). Подпись сохраняет шрифт оформления.")
+                .font(.caption2).foregroundStyle(.secondary)
+            if let replacement = TitleFontResolver.replacementFamily(style: style) {
+                Text("Шрифт недоступен. Используется \(replacement).").font(.caption2).foregroundStyle(.orange)
+            }
+            if style.typographyVersion == nil {
+                Button("Обновить типографику") {
+                    var copy = style; copy.typographyVersion = 2; model.setSelectedModernTitleStyle(copy)
+                }
+            }
+            Picker("Положение", selection: Binding(get: { style.placement ?? .authored }, set: { value in
+                var copy = style; copy.placement = value == .authored ? nil : value
+                model.setSelectedModernTitleStyle(copy)
+            })) { ForEach(TitlePlacement.allCases) { Text($0.localizedTitle).tag($0) } }
+            modernTitleAnimationControls(item)
             HStack {
                 Text("Размер текста")
                 Spacer()
@@ -3836,18 +3927,15 @@ private struct TimelineInspector: View {
     private func modernTitleAnimationControls(_ item: TitleTimelineItem) -> some View {
         let animation = item.animation
         return VStack(alignment: .leading, spacing: 8) {
-            Picker("Появление", selection: Binding(
-                get: { animation.entrance },
-                set: { value in var copy = animation; copy.entrance = value; model.setSelectedModernTitleAnimation(copy) }
-            )) { ForEach(TitleAnimationKind.allCases) { Text($0.rawValue.capitalized).tag($0) } }
-            Picker("Исчезновение", selection: Binding(
-                get: { animation.exit },
-                set: { value in var copy = animation; copy.exit = value; model.setSelectedModernTitleAnimation(copy) }
-            )) { ForEach(TitleAnimationKind.allCases) { Text($0.rawValue.capitalized).tag($0) } }
-            Picker("Easing", selection: Binding(
-                get: { animation.easing },
-                set: { value in var copy = animation; copy.easing = value; model.setSelectedModernTitleAnimation(copy) }
-            )) { ForEach(KeyframeEasing.allCases) { Text($0.localizedTitle).tag($0) } }
+            Text("Авторская анимация оформления").font(.caption2).foregroundStyle(.secondary)
+            Toggle("Анимация появления", isOn: Binding(
+                get: { animation.entrance != .none },
+                set: { enabled in var copy = animation; copy.entrance = enabled ? .fade : .none; model.setSelectedModernTitleAnimation(copy) }
+            ))
+            Toggle("Анимация исчезновения", isOn: Binding(
+                get: { animation.exit != .none },
+                set: { enabled in var copy = animation; copy.exit = enabled ? .fade : .none; model.setSelectedModernTitleAnimation(copy) }
+            ))
         }
     }
 
@@ -4267,6 +4355,7 @@ private struct TimelineInspector: View {
             ("Бирюзовый", "#40E0D0"), ("Фиолетовый", "#AF52DE")
         ]
         return VStack(alignment: .leading, spacing: 8) {
+            Text("Карточка: размер, выравнивание и цвета. Для шрифтов, подписей и анимации используйте оформление из библиотеки титров.").font(.caption2).foregroundStyle(.secondary)
             titleTextEditor("Текст титра", text: $editingTitleText)
             Text("Enter — новая строка.").font(.caption2).foregroundStyle(.secondary)
             Stepper(
@@ -5011,6 +5100,7 @@ private struct DirectorFilmSettingsPopover: View {
             Picker("Стиль", selection: Binding(get: { model.preset }, set: model.selectPreset)) {
                 ForEach(FilmPreset.allCases) { Text($0.localizedTitle).tag($0) }
             }
+            FilmOpeningControls()
             Picker("Субтитры", selection: Binding(get: { model.directorBrief.subtitlePolicy ?? .automatic }, set: model.setDirectorSubtitlePolicy)) {
                 ForEach(DirectorSubtitlePolicy.allCases) { Text($0.localizedTitle).tag($0) }
             }

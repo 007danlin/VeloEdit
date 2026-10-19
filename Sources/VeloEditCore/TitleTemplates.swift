@@ -1,6 +1,20 @@
 import Foundation
 import CoreGraphics
 
+public enum TitlePlacement: String, Codable, CaseIterable, Identifiable, Sendable {
+    case authored, upper, center, lower
+    public var id: String { rawValue }
+    public var localizedTitle: String {
+        switch self { case .authored: return "Как в оформлении"; case .upper: return "Сверху"; case .center: return "По центру"; case .lower: return "Снизу" }
+    }
+}
+
+public struct TitleLibraryPayload: Codable, Sendable {
+    public var text: String
+    public var placement: TitlePlacement
+    public init(text: String, placement: TitlePlacement = .authored) { self.text = text; self.placement = placement }
+}
+
 // MARK: - Data-driven professional title templates
 
 public enum TitleTemplateCategory: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -280,6 +294,9 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
     /// Preserve the inspector's coordinate origin when revising a built-in
     /// composition, so saved titles do not acquire an unintended offset.
     public var styleAnchor: TitleNormalizedRect?
+    public var styleOverride: TitleStyle?
+    public var layoutOrigin: TitleStyle?
+    public var defaultAnimation: TitleAnimation?
 
     public init(
         id: String,
@@ -312,9 +329,10 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
     }
 
     public var defaultStyle: TitleStyle {
+        if let styleOverride { return styleOverride }
         let primary = layout.elements.first { $0.content == .primaryText }
         let primaryFrame = styleAnchor ?? primary?.frame ?? TitleNormalizedRect(x: 0.08, y: 0.32, width: 0.84, height: 0.36)
-        return TitleStyle(
+        var style = TitleStyle(
             fontSize: typography.fontSize,
             textColorHex: typography.textColorHex,
             backgroundColorHex: "#111111",
@@ -328,6 +346,8 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
             tracking: typography.tracking,
             lineSpacing: typography.lineSpacing
         )
+        style.typographyVersion = 2
+        return style
     }
 
     public func previewItem(startTime: Double = 0) -> TitleTimelineItem {
@@ -340,8 +360,18 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
             startTime: startTime,
             duration: duration,
             style: defaultStyle,
+            animation: defaultAnimation ?? TitleAnimation(),
             activeWordHighlighting: kind == .wordLevelCaptions
         )
+    }
+
+    /// Demonstration content belongs exclusively to previewItem().
+    public func makeTimelineItem(text: String, startTime: Double, duration: Double? = nil) -> TitleTimelineItem {
+        TitleTimelineItem(kind: kind, templateID: id,
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Название" : text,
+            startTime: startTime, duration: duration ?? self.duration,
+            style: defaultStyle, animation: defaultAnimation ?? TitleAnimation(), activeWordHighlighting: kind == .wordLevelCaptions,
+            explanation: ["Пользователь добавил \(name)"])
     }
 
     public func animationFitted(to duration: Double) -> TitleTemplateAnimation {
@@ -364,7 +394,7 @@ public struct TitleTemplateDefinition: Codable, Identifiable, Hashable, Sendable
 }
 
 public enum TitleTemplateRegistry {
-    public static let all: [TitleTemplateDefinition] = makeTemplates()
+    public static let all: [TitleTemplateDefinition] = expandedTemplates(makeTemplates())
     private static let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
 
     public static func template(id: String?) -> TitleTemplateDefinition? {
@@ -372,7 +402,20 @@ public enum TitleTemplateRegistry {
     }
 
     public static func template(for item: TitleTimelineItem) -> TitleTemplateDefinition? {
-        template(id: item.templateID) ?? defaultTemplate(for: item.kind)
+        guard var template = template(id: item.templateID) ?? defaultTemplate(for: item.kind) else { return nil }
+        if (item.style.typographyVersion ?? 1) >= 2 {
+            for index in template.layout.elements.indices {
+                guard template.layout.elements[index].content == .secondaryText, var type = template.layout.elements[index].typography else { continue }
+                type.fontSize = max(32, type.fontSize)
+                type.fontWeight = max(0.55, type.fontWeight)
+                type.tracking = min(2, type.tracking)
+                template.layout.elements[index].typography = type
+                var frame = template.layout.elements[index].frame
+                frame.height = max(0.09, frame.height)
+                template.layout.elements[index].frame = frame
+            }
+        }
+        return template
     }
 
     public static func defaultTemplate(for kind: TitleTimelineKind) -> TitleTemplateDefinition? {
@@ -557,10 +600,10 @@ public enum TitleTemplateRegistry {
             TitleTemplateDefinition(
                 id: "title.date.v1", name: "Date", category: .dateTime, kind: .date,
                 preview: TitleTemplatePreview(primaryText: "16 АПРЕЛЯ", secondaryText: "2026 · 07:40"),
-                typography: type(mono, 48, 0.60, "#FFFFFF", 2, .right),
+                typography: type(mono, 48, 0.85, "#FFFFFF", 2, .right),
                 layout: TitleTemplateLayout(elements: [
                     shape("bracket-top", .line, .init(x: 0.67, y: 0.075, width: 0.25, height: 0.003), "#5AC8FA", lineWidth: 3, stagger: 0, reveal: .horizontal),
-                    text("primary", .primaryText, .init(x: 0.55, y: 0.10, width: 0.37, height: 0.10), type(mono, 48, 0.60, "#FFFFFF", 2, .right), uppercase: true, stagger: 1, reveal: .horizontal),
+                    text("primary", .primaryText, .init(x: 0.55, y: 0.10, width: 0.37, height: 0.10), type(mono, 48, 0.85, "#FFFFFF", 2, .right), uppercase: true, stagger: 1, reveal: .horizontal),
                     text("secondary", .secondaryText, .init(x: 0.64, y: 0.205, width: 0.28, height: 0.055), type(mono, 19, 0.45, "#9EDBFF", 1, .right), uppercase: true, stagger: 2)
                 ]), animation: fadeBlur,
                 textConstraints: TitleTextConstraints(maxCharacters: 34, maxLines: 1, maxWidth: 0.37, maxHeight: 0.11, minFontScale: 0.55)

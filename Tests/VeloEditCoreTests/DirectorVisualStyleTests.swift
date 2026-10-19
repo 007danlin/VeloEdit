@@ -12,7 +12,7 @@ import Testing
         }
         let plan = StoryPlan(prompt: "Титры: названия каждой части и ключевых событий.", preset: .adventure,
             constraints: StoryConstraints(targetDuration: 16), chapters: chapters,
-            directorBrief: DirectorBrief(requestedDuration: 0, mood: mood, musicPolicy: .none, titlePolicy: .keyOnly))
+            directorBrief: DirectorBrief(requestedDuration: 0, mood: mood, musicPolicy: .none, titlePolicy: .keyOnly, openingTitles: .init(policy: .off)))
         let items = ids.enumerated().map { index, id in
             TimelineItem(candidateID: id, assetID: UUID(), kind: .video, sourceDuration: 4,
                 timelineStart: Double(index) * 4, timelineDuration: 4,
@@ -29,7 +29,7 @@ import Testing
         #expect(result.effectiveTitleItems.map(\.startTime) == [0, 8])
         #expect(result.effectiveTitleItems.allSatisfy { $0.duration >= 3.5 && $0.style.fontSize == 72 })
         #expect(result.effectiveTitleItems.allSatisfy { $0.animation.entrance == .none && $0.kind == .chapter })
-        #expect(result.effectiveTitleItems.allSatisfy { $0.templateID == "title.minimal-clean.v1" })
+        #expect(result.effectiveTitleItems.allSatisfy { $0.templateID == "title.chapter-compact.v1" })
         #expect(result.effectiveTitleItems[0].endTime <= 8)
         #expect(EditorialIntentEnforcer.enforce(result, plan: plan) == result)
         #expect(EditorialPresentationPolicy.missingChapterTitles(in: result, plan: plan).isEmpty)
@@ -110,7 +110,7 @@ import Testing
         let (plan, _) = fixture(.cinematic)
         let chosen = try #require(SmartTitleEngine().decide(.init(purpose: .chapter, requestedText: "Рыбалка",
             tags: ["action", "speed"], preferredTemplateID: "title.chapter.v1", mood: plan.directorBrief?.mood)))
-        #expect(chosen.templateID == "title.minimal-clean.v1")
+        #expect(chosen.templateID == "title.chapter-compact.v1")
         #expect(chosen.duration == 5.5)
         var styles: [TransitionStyle?] = []
         for mood in DirectorNarrativeMood.allCases {
@@ -169,6 +169,7 @@ import Testing
             }
         }
         var legacy = generated
+        legacy.titleItems?[0].templateID = "title.minimal-clean.v1"
         legacy.titleItems?[0].style = TitleStyle(fontSize: 72, backgroundColorHex: "#101010", xPosition: 0.36, yPosition: 0.78, backgroundOpacity: 0.75)
         let migrated = EditorialPresentationPolicy.ensuringChapterTitles(in: legacy, plan: plan, preserveExistingPresentation: true)
         #expect(migrated.effectiveTitleItems.first?.style == reference.style)
