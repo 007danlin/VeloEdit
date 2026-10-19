@@ -1,0 +1,16 @@
+{
+  "generated_on": "2026-10-19",
+  "tool": "built-in image_gen",
+  "assets": [
+    {
+      "path": "Resources/Backgrounds/forest.png",
+      "variant": "forest-a",
+      "prompt": "Create a professional fine-art woodland PHOTOGRAPH in wide 16:9 landscape format. Use the attached photograph strictly as the visual reference for realism, pine ecology, exposure and atmosphere. Location: ordinary old Scots pine forest in northern Europe. The frame is composed mostly of irregular straight trunks receding into deep dark woodland, rough black-brown bark, sparse soft needles and a modest grass-and-pine-needle floor. Early morning sunlight comes from outside the right edge and touches a FEW small patches of grass and branches; subdued thin haze only deep between trunks. Camera view close to the reference: dark substantial trunk at right edge, imperfect smaller trees at varied distances, narrow barely visible trail off-center. Exposure protects the highlights, deep natural shadows. Muted pine green, real warm ochre, photographic grain and quiet air. A real photographer's medium-format forest study, optically coherent depth, gently resolved detail; natural small imperfections. NOT a concept art illustration, no ornamental arrangement, no carpet of uniformly glittering moss, no exaggerated sunbeams, no orange glow covering everything, no HDR clarity, no plastic or crunchy texture, no fantasy. No people, logos, text, watermark. Make the result convincingly like a photograph printed in a serious nature photography book."
+    },
+    {
+      "path": "Resources/Backgrounds/snow.png",
+      "variant": "winter-b",
+      "prompt": "Professional winter landscape photograph, horizontal 16:9, convincingly captured by a real camera. A small frozen lake in northern Europe with a matte fresh-snow surface, an irregular line of real pine and birch trees along the far shore, one bare slender birch at the far right edge close to the camera. Low late-afternoon winter sun outside the frame on the left produces subtle pale warm highlights and long soft cool shadows across untouched snow in foreground. Moderate natural contrast, off-white whites with delicate texture, pale winter sky with a few thin clouds, actual irregular branches and believable imperfect tree silhouettes. 70mm lens compressed perspective, elegant minimal composition with extensive calm empty lake surface, subtle film grain. No mirrored lake reflections, no mountains, no magical glowing trees, no aurora, no oversaturation, no HDR, no crunchy detail, no painterly snow. No humans, footprints, text, logos, borders or watermark. Should look like a serious landscape photographer's understated portfolio photograph."
+    }
+  ]
+}

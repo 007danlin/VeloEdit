@@ -100,6 +100,60 @@ struct InstantTimelineInteractionTests {
         #expect(model.selectedTitleTimelineItem?.text == "Новый текст 🌳\nВторая строка")
     }
 
+    @Test(arguments: ["clear", "escape", "command", "marquee", "all", "clip", "section", "delete"])
+    func leavingTitleEditingNeverLeavesAnEmptyInspector(exit: String) async throws {
+        let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
+        let model = fixture.model
+        model.section = .timeline
+        let title = TitleTimelineItem(kind: .title, text: "Сохрани меня", startTime: 0, duration: 5)
+        model.project?.timelines[0].titleItems = [title]
+        model.selectTitleTimelineItem(title.id)
+        model.openTimelineInspector()
+        #expect(model.isTimelineInspectorPresented)
+        model.setSelectedModernTitleText("Последняя правка 🌳")
+        #expect(model.isTimelineInspectorPresented)
+        switch exit {
+        case "clear": model.clearTimelineSelection()
+        case "escape": model.handleEscape()
+        case "command": model.selectTitleTimelineItem(title.id, modifiers: .command)
+        case "marquee": model.setTimelineMarqueeSelection([])
+        case "all": model.selectAllTimelineElements()
+        case "clip": model.selectTimelineItem(model.timeline?.items.first?.id)
+        case "section": model.openSection(.media)
+        case "delete": model.deleteTimelineSelection()
+        default: break
+        }
+        #expect(!model.isTimelineInspectorPresented)
+        if exit == "delete" { model.undoTimelineEdit() }
+        #expect(!model.isTimelineInspectorPresented)
+        #expect(model.timeline?.effectiveTitleItems.first?.text == "Последняя правка 🌳")
+        #expect(await model.flushAutosave())
+        model.section = .timeline
+        model.selectTitleTimelineItem(title.id)
+        #expect(!model.isTimelineInspectorPresented)
+        model.openTimelineInspector()
+        #expect(model.isTimelineInspectorPresented)
+    }
+
+    @Test func inspectorRejectsMissingTitlesAndClosesWhenUndoRemovesItsTarget() async throws {
+        let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
+        let model = fixture.model
+        model.section = .timeline
+        model.toggleTimelineInspector()
+        #expect(!model.isTimelineInspectorPresented)
+        model.addModernTitle("Новый", kind: .title)
+        model.openTimelineInspector()
+        #expect(model.isTimelineInspectorPresented)
+        model.undoTimelineEdit()
+        #expect(!model.isTimelineInspectorPresented)
+        model.redoTimelineEdit()
+        #expect(!model.isTimelineInspectorPresented)
+        model.selectTitleTimelineItem(UUID())
+        model.openTimelineInspector()
+        #expect(!model.isTimelineInspectorPresented)
+        #expect(await model.flushAutosave())
+    }
+
     @Test func viewerIndicatorsFollowSelectionPartialResetUndoAndReopening() async throws {
         let fixture = try await Fixture(clipCount: 2); defer { fixture.remove() }
         let model = fixture.model

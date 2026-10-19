@@ -201,6 +201,7 @@ final class AppModel: ObservableObject {
             cachedPlaybackMap = nil
             cachedTimelineAssets = nil
             rebuildDirectorMomentIndex()
+            reconcileTimelineInspector()
         }
     }
     private var cachedTimelineAssets: [UUID: MediaAsset]?
@@ -323,6 +324,7 @@ final class AppModel: ObservableObject {
     @Published var settingsTab: WorkspaceSettingsTab = .general
     @Published var section: WorkspaceSection = .home {
         didSet {
+            if section != .timeline { closeTimelineInspector() }
             // Some inspector and playback actions navigate directly. Do not
             // leave an invisible creation form blocking the next New action.
             if section != .home, isPresentingNewProject, !isCreatingProject {
@@ -378,7 +380,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var previewPosterImage: NSImage?
     @Published private(set) var isPreviewPosterVisible = false
     @Published var showViewer = false
-    @Published var isTimelineInspectorPresented = false
+    @Published private(set) var isTimelineInspectorPresented = false
+    var canInspectSelectedTitle: Bool {
+        selectedTitleTimelineItem != nil || selectedTimelineItem?.kind == .title
+    }
     @Published var thumbnailURLs: [UUID: URL] = [:]
     @Published var timelineThumbnailURLs: [UUID: URL] = [:]
     @Published var timelineFilmstripURLs: [UUID: URL] = [:]
@@ -898,10 +903,13 @@ final class AppModel: ObservableObject {
         let panel = NSOpenPanel()
         panel.title = "Открыть проект VeloEdit"
         panel.allowedContentTypes = [UTType(exportedAs: "app.veloedit.project", conformingTo: .package)]
-        panel.canChooseDirectories = false
+        // A .veloedit package is also a directory. AppKit can otherwise leave
+        // Open disabled even when its declared package type matches exactly.
         panel.canChooseFiles = true
         panel.treatsFilePackagesAsDirectories = false
         panel.allowsMultipleSelection = false
+        panel.delegate = ProjectOpenPanelValidator.shared
+        panel.canChooseDirectories = true
         return panel
     }
 
@@ -3225,22 +3233,22 @@ final class AppModel: ObservableObject {
     }
 
     func selectTimelineItem(_ id: UUID?, modifiers: NSEvent.ModifierFlags = []) {
-        isTimelineInspectorPresented = false
+        closeTimelineInspector()
         updateTimelineSelection(id.map(TimelineSelectionKey.item), modifiers: modifiers)
     }
 
     func selectTimelineAudioClip(_ id: UUID?, modifiers: NSEvent.ModifierFlags = []) {
-        isTimelineInspectorPresented = false
+        closeTimelineInspector()
         updateTimelineSelection(id.map(TimelineSelectionKey.audio), modifiers: modifiers)
     }
 
     func selectTelemetryItem(_ id: UUID?, modifiers: NSEvent.ModifierFlags = []) {
-        isTimelineInspectorPresented = false
+        closeTimelineInspector()
         updateTimelineSelection(id.map(TimelineSelectionKey.telemetry), modifiers: modifiers)
     }
 
     func selectEffectTimelineItem(_ id: UUID?, modifiers: NSEvent.ModifierFlags = []) {
-        isTimelineInspectorPresented = false
+        closeTimelineInspector()
         updateTimelineSelection(id.map(TimelineSelectionKey.effect), modifiers: modifiers)
     }
 
@@ -3249,7 +3257,7 @@ final class AppModel: ObservableObject {
         primaryID: UUID,
         modifiers: NSEvent.ModifierFlags = []
     ) {
-        isTimelineInspectorPresented = false
+        closeTimelineInspector()
         let validIDs = Set(ids.filter { id in
             timeline?.effectiveEffects.contains(where: { $0.id == id }) == true
         })
@@ -3286,7 +3294,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectTransitionTimelineItem(_ id: UUID?, modifiers: NSEvent.ModifierFlags = []) {
-        isTimelineInspectorPresented = false
+        closeTimelineInspector()
         updateTimelineSelection(id.map(TimelineSelectionKey.transition), modifiers: modifiers)
     }
 
@@ -3888,13 +3896,31 @@ final class AppModel: ObservableObject {
     }
 
     func titleLibraryFrame() async -> CGImage? {
-        guard let item = previewPlayer?.currentItem else { return previewPosterImage?.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+        // A viewer poster already contains the project's titles. Never reuse
+        // it as the background on which another template will be drawn.
+        guard let item = previewPlayer?.currentItem, let timeline else { return nil }
+        // Legacy full-frame title cards have text baked into the source video.
+        // Their neutral card fallback is safer than showing that text twice.
+        guard !timeline.items.contains(where: {
+            $0.kind == .title && timelinePlayheadTime >= $0.timelineStart &&
+                timelinePlayheadTime < $0.timelineStart + $0.timelineDuration
+        }) else { return nil }
         let generator = AVAssetImageGenerator(asset: item.asset)
         generator.appliesPreferredTrackTransform = true
-        generator.videoComposition = item.videoComposition
+        generator.videoComposition = TitleLibraryPreview.videoComposition(from: item.videoComposition)
         generator.maximumSize = CGSize(width: 640, height: 640)
-        let time = CMTime(seconds: timelinePlayheadTime, preferredTimescale: 600)
-        return try? await generator.image(at: time).image
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let mapped = TimelineTiming.playbackTime(forTimelineTime: timelinePlayheadTime, timeline: timeline)
+        let duration = activePlayback?.duration ?? timeline.duration
+        let time = CMTime(seconds: Self.playablePreviewTime(mapped, duration: duration, frameRate: timeline.frameRate), preferredTimescale: 600)
+        let image = try? await withTaskCancellationHandler {
+            try await generator.image(at: time).image
+        } onCancel: {
+            generator.cancelAllCGImageGeneration()
+        }
+        guard !Task.isCancelled, previewPlayer?.currentItem === item else { return nil }
+        return image
     }
 
     func addModernTitle(_ text: String, kind: TitleTimelineKind, at time: Double? = nil) {
@@ -4146,11 +4172,12 @@ final class AppModel: ObservableObject {
 
     func selectSoundtrack() {
         guard timeline?.music != nil else { return }
-        isTimelineInspectorPresented = false
+        closeTimelineInspector()
         updateTimelineSelection(.soundtrack, modifiers: NSEvent.modifierFlags)
     }
 
     func clearTimelineSelection() {
+        closeTimelineInspector()
         selectedTimelineItemIDs.removeAll()
         selectedTimelineAudioClipIDs.removeAll()
         selectedTelemetryItemIDs.removeAll()
@@ -4179,6 +4206,7 @@ final class AppModel: ObservableObject {
 
     func selectAllTimelineElements() {
         guard let timeline else { return }
+        closeTimelineInspector()
         selectedTimelineItemIDs = Set(timeline.items.map(\.id))
         selectedTimelineAudioClipIDs = Set(timeline.effectiveAudioClips.map(\.id))
         selectedTelemetryItemIDs = Set(timeline.effectiveTelemetryItems.map(\.id))
@@ -4218,6 +4246,12 @@ final class AppModel: ObservableObject {
     }
 
     private func applyTimelineSelection(_ selection: Set<TimelineSelectionKey>, active: TimelineSelectionKey?) {
+        let inspected = selectedTitleTimelineItemID.map(TimelineSelectionKey.title)
+            ?? selectedTimelineItemID.map(TimelineSelectionKey.item)
+        if isTimelineInspectorPresented, active != inspected {
+            // Flush marked text while the old title still owns the selection.
+            NSApp?.keyWindow?.makeFirstResponder(nil)
+        }
         selectedTimelineItemIDs = Set(selection.compactMap { if case .item(let id) = $0 { id } else { nil } })
         selectedTimelineAudioClipIDs = Set(selection.compactMap { if case .audio(let id) = $0 { id } else { nil } })
         selectedTelemetryItemIDs = Set(selection.compactMap { if case .telemetry(let id) = $0 { id } else { nil } })
@@ -4231,6 +4265,7 @@ final class AppModel: ObservableObject {
         selectedTitleTimelineItemID = active.flatMap { if case .title(let id) = $0 { id } else { nil } }
         selectedTransitionTimelineItemID = active.flatMap { if case .transition(let id) = $0 { id } else { nil } }
         selectedSoundtrack = selection.contains(.soundtrack)
+        reconcileTimelineInspector()
     }
 
     private func orderedTimelineSelectionKeys() -> [TimelineSelectionKey] {
@@ -5980,7 +6015,6 @@ final class AppModel: ObservableObject {
         guard hasProjectWorkspace || destination == .home || destination == .settings else { return }
         cancelProjectCreation()
         if destination != .timeline { showViewer = false }
-        if destination == .settings { isTimelineInspectorPresented = false }
         section = destination
         if [.media, .timeline].contains(destination), needsCacheRefreshAfterCleanup, let pipeline, !hasActiveWork {
             needsCacheRefreshAfterCleanup = false
@@ -5999,16 +6033,23 @@ final class AppModel: ObservableObject {
     }
 
     func toggleTimelineInspector() {
-        isTimelineInspectorPresented.toggle()
+        if isTimelineInspectorPresented { closeTimelineInspector() }
+        else { openTimelineInspector() }
     }
 
     func openTimelineInspector() {
-        isTimelineInspectorPresented = selectedTitleTimelineItem != nil || selectedTimelineItem?.kind == .title
+        isTimelineInspectorPresented = section == .timeline && canInspectSelectedTitle
+    }
+
+    private func reconcileTimelineInspector() {
+        if isTimelineInspectorPresented && !canInspectSelectedTitle {
+            closeTimelineInspector()
+        }
     }
 
     func closeTimelineInspector() {
         // Commit AppKit's final marked-text edit before dismantling TextEditor.
-        NSApp?.keyWindow?.makeFirstResponder(nil)
+        if isTimelineInspectorPresented { NSApp?.keyWindow?.makeFirstResponder(nil) }
         isTimelineInspectorPresented = false
         // Closing the inspector must not cancel the pending text commit or
         // replace the optimistic model with an older project snapshot.
@@ -6023,7 +6064,7 @@ final class AppModel: ObservableObject {
         } else if section == .timeline && hasTimelineSelection {
             clearTimelineSelection()
         } else if section == .timeline && isTimelineInspectorPresented {
-            isTimelineInspectorPresented = false
+            closeTimelineInspector()
         } else if selectedAssetID != nil {
             selectedAssetID = nil
         } else {

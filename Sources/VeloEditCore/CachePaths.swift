@@ -1,11 +1,21 @@
 import Foundation
+import CryptoKit
 
 public struct CachePaths: Sendable {
     public let root: URL
     public init(root: URL) { self.root = root }
 
     public func thumbnail(for asset: MediaAsset) -> URL {
-        root.appendingPathComponent("Thumbnails", isDirectory: true).appendingPathComponent("\(asset.contentHash.prefix(20)).jpg")
+        root.appendingPathComponent("Thumbnails", isDirectory: true).appendingPathComponent("\(thumbnailIdentity(for: asset, length: 20)).jpg")
+    }
+
+    private func thumbnailIdentity(for asset: MediaAsset, length: Int) -> String {
+        // Built-in names all begin with "veloedit-background-". Truncating
+        // that prefix made different backgrounds share a thumbnail and kept
+        // old filmstrips alive after replacing an asset's artwork.
+        guard BackgroundPreset.preset(for: asset) != nil else { return String(asset.contentHash.prefix(length)) }
+        return SHA256.hash(data: Data(asset.contentHash.utf8))
+            .map { String(format: "%02x", $0) }.joined().prefix(length).description
     }
 
     public func proxy(for asset: MediaAsset) -> URL {
@@ -97,7 +107,7 @@ public struct CachePaths: Sendable {
     }
 
     public func background(_ preset: BackgroundPreset, width: Int, height: Int) -> URL {
-        backgroundsDirectory.appendingPathComponent("\(preset.rawValue)-v3-\(width)x\(height).png")
+        backgroundsDirectory.appendingPathComponent("\(preset.rawValue)-v\(preset.renderVersion)-\(width)x\(height).png")
     }
 
     public var throughputHistory: URL {
@@ -120,7 +130,7 @@ public struct CachePaths: Sendable {
         let start = Int((item.sourceStart * 1000).rounded())
         let duration = Int((item.sourceDuration * 1000).rounded())
         return root.appendingPathComponent("TimelineThumbnails", isDirectory: true)
-            .appendingPathComponent("\(item.id.uuidString)-\(asset.contentHash.prefix(12))-\(start)-\(duration)-filmstrip-\(sampleCount)-v4.jpg")
+            .appendingPathComponent("\(item.id.uuidString)-\(thumbnailIdentity(for: asset, length: 12))-\(start)-\(duration)-filmstrip-\(sampleCount)-v4.jpg")
     }
 
     public func analysisKey(for asset: MediaAsset, schemaVersion: Int) -> String {

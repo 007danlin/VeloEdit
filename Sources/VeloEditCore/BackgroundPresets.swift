@@ -193,6 +193,10 @@ public enum BackgroundPreset: String, CaseIterable, Identifiable, Sendable {
         isSolid ? nil : .cinematic
     }
 
+    public var isProceduralGradient: Bool {
+        colors.count > 1 && bundledResourceFileName == nil && decoration == .none
+    }
+
     public var colors: [BackgroundColor] {
         switch self {
         case .curtain: return [.init(0.08, 0.01, 0), .init(0.62, 0.03, 0), .init(0.12, 0.01, 0)]
@@ -320,14 +324,17 @@ public enum BackgroundPreset: String, CaseIterable, Identifiable, Sendable {
         return bundle.url(forResource: bundledResourceFileName, withExtension: "png", subdirectory: "Backgrounds")
     }
 
-    /// Version 3 adds the categorized illustrated catalogue and invalidates
-    /// any earlier procedural copies already cached inside projects.
-    public var contentHashPrefix: String { "veloedit-background-v3-\(rawValue)-" }
+    /// Regenerate improved gradients and the replacement photographic assets.
+    public var renderVersion: Int {
+        self == .forest || self == .snow || (colors.count > 1 && bundledResourceFileName == nil) ? 4 : 3
+    }
+    public var contentHashPrefix: String { "veloedit-background-v\(renderVersion)-\(rawValue)-" }
 
     public static func preset(for asset: MediaAsset) -> BackgroundPreset? {
         guard asset.contentHash.hasPrefix("veloedit-background-v1-") ||
                 asset.contentHash.hasPrefix("veloedit-background-v2-") ||
-                asset.contentHash.hasPrefix("veloedit-background-v3-") else { return nil }
+                asset.contentHash.hasPrefix("veloedit-background-v3-") ||
+                asset.contentHash.hasPrefix("veloedit-background-v4-") else { return nil }
         return allCases.first { preset in
             asset.contentHash.contains("-\(preset.rawValue)-")
         }
@@ -377,7 +384,7 @@ public enum BackgroundPresetRenderer {
            let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
             drawAspectFill(image, in: context, rect: rect)
         } else {
-            drawGradient(preset.colors, in: context, rect: rect, colorSpace: colorSpace)
+            drawGradient(preset.colors, in: context, rect: rect)
             drawDecoration(preset.decoration, colors: preset.colors, in: context, rect: rect)
         }
         guard let image = context.makeImage() else { throw DerivedMediaError.cannotCreateDestination }
@@ -397,16 +404,47 @@ public enum BackgroundPresetRenderer {
         context.draw(image, in: target)
     }
 
-    private static func drawGradient(_ colors: [BackgroundColor], in context: CGContext, rect: CGRect, colorSpace: CGColorSpace) {
+    private static func drawGradient(_ colors: [BackgroundColor], in context: CGContext, rect: CGRect) {
         if colors.count == 1 {
             context.setFillColor(colors[0].cgColor)
             context.fill(rect)
             return
         }
-        let values = colors.map(\.cgColor) as CFArray
-        let locations = colors.indices.map { CGFloat($0) / CGFloat(max(1, colors.count - 1)) }
-        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: values, locations: locations) else { return }
-        context.drawLinearGradient(gradient, start: CGPoint(x: rect.minX, y: rect.maxY), end: CGPoint(x: rect.maxX, y: rect.minY), options: [])
+        guard colors.count > 1, let data = context.data else { return }
+        let colors = colors.map { color -> BackgroundColor in
+            guard let space = context.colorSpace,
+                  let components = color.cgColor.converted(to: space, intent: .defaultIntent, options: nil)?.components,
+                  components.count >= 3 else { return color }
+            return BackgroundColor(Double(components[0]), Double(components[1]), Double(components[2]))
+        }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
+        let width = context.width, height = context.height
+        let denominator = Double(width * width + height * height)
+        // Interpolate before quantization. One shared sub-code-value noise
+        // sample per pixel breaks up 8-bit contour bands without colored grain
+        // or a repeating ordered-dither pattern. The seed is spatially stable.
+        for y in 0..<height {
+            for x in 0..<width {
+                let position = ((Double(x) + 0.5) * Double(width) +
+                    (Double(y) + 0.5) * Double(height)) / denominator * Double(colors.count - 1)
+                let index = min(colors.count - 2, max(0, Int(position)))
+                let fraction = min(1, max(0, position - Double(index)))
+                let a = colors[index], b = colors[index + 1]
+                var seed = UInt32(truncatingIfNeeded: y * width + x) &+ 0x9e3779b9
+                seed = (seed ^ (seed >> 16)) &* 0x21f0aaad
+                seed = (seed ^ (seed >> 15)) &* 0x735a2d97
+                seed ^= seed >> 15
+                let noise = Double(seed & 0xffff) / 65536 - 0.5
+                func quantize(_ start: Double, _ end: Double) -> UInt8 {
+                    UInt8(min(255, max(0, ((start + (end - start) * fraction) * 255 + noise).rounded())))
+                }
+                let offset = y * context.bytesPerRow + x * 4
+                pixels[offset] = quantize(a.red, b.red)
+                pixels[offset + 1] = quantize(a.green, b.green)
+                pixels[offset + 2] = quantize(a.blue, b.blue)
+                pixels[offset + 3] = 255
+            }
+        }
     }
 
     private static func drawDecoration(_ decoration: BackgroundDecoration, colors: [BackgroundColor], in context: CGContext, rect: CGRect) {

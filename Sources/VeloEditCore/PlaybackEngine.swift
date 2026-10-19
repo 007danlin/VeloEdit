@@ -246,7 +246,10 @@ public actor PlaybackEngine {
                             height: timeline.height,
                             frameRate: timeline.frameRate,
                             destination: temporary,
-                            codec: forceVideoComposition && derivedMediaCacheURL == nil ? .proRes4444 : .h264,
+                            // H.264 discards sub-code-value dithering and
+                            // introduces contour bands on smooth dark ramps.
+                            codec: (backgroundPreset?.isProceduralGradient == true ||
+                                (forceVideoComposition && derivedMediaCacheURL == nil)) ? .proRes4444 : .h264,
                             motion: bakedMotion,
                             subjectReframe: item.effectiveVideoAdjustments.subjectReframe,
                             cropStyle: item.effectiveVideoAdjustments.crop,
@@ -610,7 +613,8 @@ public actor PlaybackEngine {
         preset: BackgroundPreset?
     ) -> String {
         ProductionCacheIdentity.hash([
-            "photo-v9-stable-fit", FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash), item.effect ?? "zoom-in",
+            preset?.isProceduralGradient == true ? "photo-v10-gradient-prores" : "photo-v9-stable-fit",
+            FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash), item.effect ?? "zoom-in",
             item.effectiveVideoAdjustments.crop.rawValue,
             preset?.rawValue ?? "photo", preset?.animationStyle?.rawValue ?? "none",
             item.effectiveVideoAdjustments.subjectReframe.map {

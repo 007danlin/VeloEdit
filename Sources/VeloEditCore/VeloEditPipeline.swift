@@ -634,7 +634,8 @@ public actor VeloEditPipeline {
     public func migrateLegacyBuiltInBackgroundAssets() async throws {
         let current = await store.manifest
         let legacyAssets = current.assets.filter {
-            BackgroundPreset.preset(for: $0) != nil && !$0.contentHash.hasPrefix("veloedit-background-v3-")
+            guard let preset = BackgroundPreset.preset(for: $0) else { return false }
+            return !$0.contentHash.hasPrefix(preset.contentHashPrefix)
         }
         guard !legacyAssets.isEmpty else { return }
         let fallbackTimeline = current.timelines.last

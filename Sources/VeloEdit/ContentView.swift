@@ -171,7 +171,7 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             Group {
-                if model.openingProjectURL == nil && model.isTimelineInspectorPresented {
+                if model.openingProjectURL == nil && model.isTimelineInspectorPresented && model.canInspectSelectedTitle {
                     TimelineInspector()
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .clipped()
@@ -2167,11 +2167,7 @@ private struct MontageMediaBrowser: View {
             }
             .padding(12)
         }
-        .task(id: model.timelinePlayheadTime) {
-            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
-            let image = await model.titleLibraryFrame()
-            if !Task.isCancelled { titleBackground = image }
-        }
+        .modifier(TitleLibraryBackgroundLoader(clock: model.playbackClock, image: $titleBackground))
     }
 
     private var titlePreviewSize: CGSize {
@@ -2503,6 +2499,38 @@ private struct BackgroundPatternArtwork: View {
     private func pseudo(_ value: Int) -> CGFloat {
         let x = sin(Double(value) * 12.9898) * 43_758.5453
         return CGFloat(x - floor(x))
+    }
+}
+
+private struct TitleLibraryBackgroundLoader: ViewModifier {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var clock: TimelinePlaybackClock
+    @Binding var image: CGImage?
+    @State private var source: Source?
+
+    private struct Source: Equatable {
+        var projectID: UUID?
+        var playerItemID: ObjectIdentifier?
+    }
+
+    private struct Request: Equatable {
+        var source: Source
+        var time: Double
+    }
+
+    func body(content: Content) -> some View {
+        let currentSource = Source(projectID: model.project?.id,
+            playerItemID: model.previewPlayer?.currentItem.map(ObjectIdentifier.init))
+        let time = model.previewPlayer?.timeControlStatus == .playing ? floor(clock.time * 2) / 2 : clock.time
+        content.task(id: Request(source: currentSource, time: time)) {
+            // Observe the lightweight clock, not just unrelated model changes.
+            // Replacing playback at the same time must also refresh the frame.
+            if source != currentSource { image = nil; source = currentSource }
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+            let frame = await model.titleLibraryFrame()
+            guard !Task.isCancelled else { return }
+            image = frame
+        }
     }
 }
 
