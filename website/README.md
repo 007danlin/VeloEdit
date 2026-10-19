@@ -3,7 +3,9 @@
 Лендинг публикуется Cloudflare Pages из репозитория `007danlin/VeloEdit`.
 Проект: `veloedit`, production branch: `main`, framework: None,
 build command: `exit 0`, output directory: `website`, root directory: корень репозитория.
-Push в main автоматически запускает публикацию. GitHub Pages отключён.
+Push в main автоматически запускает публикацию. Автоматические preview-публикации
+других веток отключены в Cloudflare → Settings → Branch control; при необходимости
+их можно включить для конкретной доверенной ветки. Сайт обслуживает Cloudflare Pages.
 
 Домены `veloedit.ru` и `www.veloedit.ru` подключаются через Custom domains проекта,
 затем соответствующие CNAME указывают на `veloedit.pages.dev`. Записи GitHub A и
