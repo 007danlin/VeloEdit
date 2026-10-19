@@ -60,7 +60,7 @@ import Testing
         #expect(!SourceAudioMixPolicy.preservesAttenuation(in: timeline))
     }
 
-    @Test(arguments: ["embedded", "detached", "adaptive", "manual", "no-music"])
+    @Test(arguments: ["embedded", "detached", "adaptive", "manual", "no-music", "clip-gain", "speed"])
     func decodedTwentyPercentSourceMatchesPreviewAndExport(_ mode: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-source-balance-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -108,6 +108,16 @@ import Testing
             timeline.music = nil
         }
         timeline = SourceAudioMixPolicy.applyingRequestedVolume(DirectorSourceAudioPolicy.duck.volume, to: timeline)
+        if mode == "clip-gain" {
+            timeline.originalAudioVolume = 1
+            timeline.items[0].audioAdjustments = .init(volume: 0.25)
+            timeline.items[1].audioAdjustments = .init(volume: 0.5)
+            timeline.endingFadeDuration = 3
+        }
+        if mode == "speed" {
+            timeline.items[1].speed = 2
+            timeline.items[1].timelineDuration = 2
+        }
         if mode == "adaptive" {
             timeline.adaptiveSoundtrack = .init(primaryTrackID: track.id, timelineDuration: 8,
                 timelineFingerprint: timeline.adaptiveSoundtrackFingerprint, segments: [
@@ -119,8 +129,25 @@ import Testing
                 ], confidence: 1)
             #expect(timeline.effectiveAdaptiveSoundtrack != nil)
         }
-        let playback = try await PlaybackEngine().build(timeline: timeline, assets: [asset], musicTracks: tracks)
-        let preview = try await signalBalance(asset: playback.composition, mix: playback.audioMix)
+        var before = timeline
+        if mode == "clip-gain" {
+            before.items[0].audioAdjustments?.volume = 1
+            before.items[1].audioAdjustments?.volume = 1
+        }
+        let playback = try await PlaybackEngine().build(timeline: before, assets: [asset], musicTracks: tracks)
+        let mix = mode == "clip-gain" ? try #require(playback.updatedAudioMix(from: before, to: timeline)) : playback.audioMix
+        let preview = try await signalBalance(asset: playback.composition, mix: mix)
+        if mode == "clip-gain" {
+            var mute = timeline
+            mute.items[0].audioAdjustments?.muted = true
+            let mutedMix = try #require(playback.updatedAudioMix(from: timeline, to: mute))
+            let muted = try await signalBalance(asset: playback.composition, mix: mutedMix)
+            #expect(muted[0].sourceAmplitude < 0.00001)
+            #expect(abs(muted[1].sourceAmplitude - 0.1) < 0.002)
+            var retimed = timeline
+            retimed.items[0].speed = 2
+            #expect(playback.updatedAudioMix(from: before, to: retimed) == nil)
+        }
         let exportURL = root.appendingPathComponent("result.mp4")
         // Frame repetition on the delivery clock must not retime or amplify
         // the original audio, including the final mastering/mux pass.
@@ -128,22 +155,31 @@ import Testing
         let report = try await RenderEngine().render(timeline: timeline, assets: [asset], musicTracks: tracks,
             quality: .maximum, frameRate: exportFPS, destination: exportURL)
         #expect(abs(try #require(report.videoInfo).frameRate - exportFPS) < 0.005)
-        #expect(abs(try #require(report.videoInfo).duration - 8) < 1 / exportFPS + 0.001)
+        #expect(abs(try #require(report.videoInfo).duration - (mode == "speed" ? 6 : 8)) < 1 / exportFPS + 0.001)
+        if mode == "speed" {
+            #expect(abs(playback.duration - 6) < 0.001)
+            let second = try #require(playback.composition.tracks(withMediaType: .video)
+                .flatMap(\.segments).first { !$0.isEmpty && abs($0.timeMapping.target.start.seconds - 4) < 0.001 })
+            #expect(abs(second.timeMapping.source.start.seconds - 4) < 0.001)
+            #expect(abs(second.timeMapping.source.duration.seconds - 4) < 0.001)
+            #expect(abs(second.timeMapping.target.duration.seconds - 2) < 0.001)
+        }
         let exported = try await signalBalance(asset: AVURLAsset(url: exportURL), mix: nil)
         for index in preview.indices {
             // Equal input amplitudes: source at 20%, music at its unchanged 18%.
             // Measure decoded samples, including the final loudness mastering.
-            if mode != "no-music" {
-                let expectedDB = 20 * log10(0.20 / 0.18)
+            let expectedVolume = mode == "clip-gain" ? (index == 0 ? 0.25 : 0.5) : 0.20
+            if mode != "no-music" && mode != "speed" {
+                let expectedDB = 20 * log10(expectedVolume / 0.18)
                 #expect(abs(preview[index].balanceDB - expectedDB) < 0.5)
                 #expect(abs(exported[index].balanceDB - expectedDB) < 0.5)
             }
             // A ratio alone misses mastering that raises BOTH buses again.
             // Camera input amplitude is 0.2, so the requested output is 0.04.
-            #expect(abs(preview[index].sourceAmplitude - 0.04) < 0.002)
-            #expect(abs(exported[index].sourceAmplitude - 0.04) < 0.002)
+            #expect(abs(preview[index].sourceAmplitude - 0.2 * expectedVolume) < 0.002)
+            #expect(abs(exported[index].sourceAmplitude - 0.2 * expectedVolume) < 0.002)
             #expect(abs(preview[index].sourceAmplitude - exported[index].sourceAmplitude) < 0.002)
-            print("Source audio \(mode), window \(index): preview=\(preview[index].sourceAmplitude), export=\(exported[index].sourceAmplitude), expected=0.04")
+            print("Source audio \(mode), window \(index): preview=\(preview[index].sourceAmplitude), export=\(exported[index].sourceAmplitude), expected=\(0.2 * expectedVolume)")
         }
     }
 

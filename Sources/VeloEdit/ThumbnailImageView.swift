@@ -75,7 +75,9 @@ struct CachedAdaptiveFilmstripImage: View {
                     let sourceCount = max(1, sourceFrameCount)
                     let swiftUIImage = Image(nsImage: image)
                     for visibleIndex in slice.indices(count: visibleCount, fullWidth: fullWidth) {
-                        let fraction = visibleCount == 1 ? 0.5 : Double(visibleIndex) / Double(visibleCount - 1)
+                        // Shrinking across the one-tile threshold must not
+                        // replace the beginning with a middle frame.
+                        let fraction = visibleCount == 1 ? 0 : Double(visibleIndex) / Double(visibleCount - 1)
                         let sourceIndex = min(sourceCount - 1, Int((fraction * Double(sourceCount - 1)).rounded()))
                         let tileRect = CGRect(x: CGFloat(visibleIndex) * tileWidth - slice.lower, y: 0, width: tileWidth, height: size.height)
                         context.drawLayer { layer in

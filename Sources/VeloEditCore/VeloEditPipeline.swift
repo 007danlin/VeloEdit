@@ -32,6 +32,7 @@ public enum DirectorBriefFulfillmentError: LocalizedError, Sendable {
 public actor VeloEditPipeline {
     public let store: ProjectStore
     private let renderedProber: any EditorialRenderedProbing
+    private let suppliedContentReviewer: (any SelectedContentReviewing)?
     private let speechRecognizer: (any LocalSpeechRecognizing)?
     private let importer: MediaImporter
     let shouldCopyImportedMedia: @Sendable (URL) -> Bool
@@ -55,6 +56,7 @@ public actor VeloEditPipeline {
         speechRecognizer: (any LocalSpeechRecognizing)? = nil,
         renderedProber: any EditorialRenderedProbing = LocalEditorialRenderedProber(),
         analyzer: (any VisionModelProtocol)? = nil,
+        contentReviewer: (any SelectedContentReviewing)? = nil,
         musicLibrary: LocalMusicLibrary? = nil,
         musicSystem: MusicLibrary? = nil,
         freeToUseProvider: FreeToUseMusicProvider? = nil,
@@ -68,6 +70,7 @@ public actor VeloEditPipeline {
         self.shouldCopyImportedMedia = shouldCopyImportedMedia
         self.speechRecognizer = speechRecognizer
         self.renderedProber = renderedProber
+        self.suppliedContentReviewer = contentReviewer
         self.analyzer = analyzer
         self.analysisModelPreparer = analysisModelPreparer
         let projectMusicLibrary = musicLibrary ?? LocalMusicLibrary(rootURLProvider: { store.musicLibraryURL })
@@ -311,7 +314,7 @@ public actor VeloEditPipeline {
         return SelectedContentReviewReport(renderSignature: EditorialRenderSignature.signature(timeline), source: source, rendered: rendered)
     }
 
-    public func verifyCurrentFilm() async throws -> Timeline {
+    public func verifyCurrentFilm(verifyExport: Bool = true) async throws -> Timeline {
         let snapshot = await store.snapshot()
         let current = snapshot.manifest
         guard let original = current.timelines.last,
@@ -324,7 +327,8 @@ public actor VeloEditPipeline {
             let cache = CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
             var checked = await Self.editorialRenderReview(timeline: original, plan: plan, assets: current.assets,
                 analyses: current.analyses, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cache,
-                prober: renderedProber, repairsRemaining: 0, events: current.events, normalizePresentation: false)
+                prober: verifyExport ? renderedProber : LocalEditorialRenderedProber(verifyExport: false),
+                repairsRemaining: 0, events: current.events, normalizePresentation: false)
             try Task.checkCancellation()
             checked.filmDeliveryReport = AutomaticFilmDelivery.verifiedReport(for: checked, plan: plan,
                 assets: current.assets, analyses: current.analyses)
@@ -3247,7 +3251,9 @@ public actor VeloEditPipeline {
             guard await store.snapshot().revision == snapshot.revision else { throw error }
             var fallback = await store.recoverableFilmBuild()?.draft ?? saved
             guard var state = fallback.contentRepairState, let best = state.best,
-                  AutomaticFilmDelivery.technicalFailures(timeline: best.timeline).isEmpty else { throw error }
+                  AutomaticFilmDelivery.technicalFailures(timeline: best.timeline).isEmpty,
+                  !best.timeline.items.contains(where: { OriginalMediaType.isVideo($0, assets: snapshot.manifest.assets) })
+                    || best.timeline.selectedContentReview?.passes(timeline: best.timeline, assets: snapshot.manifest.assets) == true else { throw error }
             fallback.timeline = best.timeline
             fallback.plan = best.plan
             fallback.phase = .readyForPlayback
@@ -3281,9 +3287,13 @@ public actor VeloEditPipeline {
         let cacheURL = CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
         let initialRepairState = draft.contentRepairState ?? FilmContentRepairState()
         draft.contentRepairState = initialRepairState
-        var contentReviewer = SelectedContentReviewer(cacheURL: cacheURL,
-            model: await SelectedContentReviewer.verificationModel(preferred: AIAnalysisProfile.resolve(mode: current.preferences.effectiveAIPowerMode,
-                advanced: current.preferences.effectiveAdvancedAISettings, thermalState: .nominal).ollamaModelID))
+        let contentReviewer: any SelectedContentReviewing
+        if let suppliedContentReviewer { contentReviewer = suppliedContentReviewer }
+        else {
+            contentReviewer = SelectedContentReviewer(cacheURL: cacheURL,
+                model: await SelectedContentReviewer.verificationModel(preferred: AIAnalysisProfile.resolve(mode: current.preferences.effectiveAIPowerMode,
+                    advanced: current.preferences.effectiveAdvancedAISettings, thermalState: .nominal).ollamaModelID))
+        }
         try Task.checkCancellation()
         try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
         var timeline = draft.timeline
@@ -3314,16 +3324,12 @@ public actor VeloEditPipeline {
             let assembled = AutomaticEditorialAssembly.prepare(timeline: timeline, plan: plan, analyses: analyses, events: draft.events, assets: current.assets, verifiedSource: draft.verifiedSourceContent ?? [])
             timeline = assembled.timeline
             plan = assembled.plan
-            if renderedProber is LocalEditorialRenderedProber, plan.narrativeBeatPlan != nil {
-                // Observe once; any concrete repair is compared with a verified
-                // deliverable below. Subjective judgments never restart finishing.
-                let reviewStarted = Date()
-                contentReviewer.deadline = reviewStarted.addingTimeInterval(draft.contentRepairState?.semanticSecondsRemaining ?? 180)
+            if renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil {
+                // Inspect source ranges before finishing. Exact completed receipts
+                // are reused later; missing observations must run before delivery.
                 draft.verifiedSourceContent = try await contentReviewer.review(timeline: timeline, assets: current.assets,
-                    progress: progress, pass: (draft.contentRepairState?.attempts ?? 0) + 1,
+                    renderedURL: nil, progress: progress, pass: (draft.contentRepairState?.attempts ?? 0) + 1,
                     reason: draft.contentRepairState?.reason)
-                let remainingSemanticSeconds = draft.contentRepairState?.semanticSecondsRemaining ?? 180
-                draft.contentRepairState?.semanticSecondsRemaining = max(0, remainingSemanticSeconds - Date().timeIntervalSince(reviewStarted))
             }
             let photoReview = try await PhotoTimelineReview.review(timeline, assets: current.assets, repairFraming: true, progress: progress)
             timeline = photoReview.timeline
@@ -3373,21 +3379,12 @@ public actor VeloEditPipeline {
                 draft.plan = plan
                 try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
             }
-            timeline = await Self.editorialRenderReview(timeline: timeline, plan: plan, assets: current.assets, analyses: analyses, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cacheURL, prober: renderedProber, events: draft.events, analyzeChapterTransitions: true)
-            try Task.checkCancellation()
         }
         let settled = TimelineDeliveryContract().validateAndRepair(timeline: timeline, plan: plan, assets: current.assets, analyses: analyses)
         if !preservingSelection, plan.narrativeBeatPlan != nil,
            EditorialRenderSignature.signature(settled.timeline) != EditorialRenderSignature.signature(timeline),
            AutomaticFilmDelivery.preservesDelivery(settled.timeline, original: timeline, plan: plan) {
             timeline = settled.timeline
-            // The last contract repair invalidates all earlier export evidence.
-            // Inspect the repaired artifact directly without another edit loop.
-            do {
-                let frames = try await renderedProber.frames(timeline: timeline, assets: current.assets, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cacheURL)
-                timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, renderedFrames: frames, requireRenderedEvidence: true)
-            } catch is CancellationError { throw CancellationError() }
-            catch { timeline.editorialReview = nil }
         }
         let beforeDurationRecovery = EditorialRenderSignature.signature(timeline)
         if !preservingSelection {
@@ -3403,7 +3400,6 @@ public actor VeloEditPipeline {
                 timeline = await Self.applyingAdaptiveSoundtrack(to: timeline, plan: plan, tracks: tracks, analyses: analyses)
             }
         }
-        let beforeFinalTitles = EditorialRenderSignature.signature(timeline)
         if !preservingSelection || timeline.chapterTitleDecisions?.contains(where: { $0.rulesVersion != SmartChapterTitleEngine.rulesVersion }) == true {
             timeline = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: current.assets,
                 analyses: analyses, mode: current.preferences.effectiveAIPowerMode, model: titleModel, sourceAssessments: draft.verifiedSourceContent)
@@ -3424,10 +3420,7 @@ public actor VeloEditPipeline {
         }
         timeline = FilmOpeningTitles.reconcile(timeline, plan: plan, projectName: current.name, analyses: analyses)
         if let warning = timeline.openingTitleDecision?.warning { deliveryWarnings.append(warning) }
-        let didRenameTitles = EditorialRenderSignature.signature(timeline) != beforeFinalTitles
-        let beforeFinalClock = timeline.frameRate
         timeline = TimelineFrameRatePolicy.applying(to: timeline, assets: current.assets)
-        let didResolveFinalClock = timeline.frameRate != beforeFinalClock
         var musicVerified = true
         do {
             try Self.validateDirectorMusic(timeline, brief: draft.directorBrief, tracks: tracks)
@@ -3471,26 +3464,24 @@ public actor VeloEditPipeline {
                 throw AutonomousOperationError.verificationFailed("Кадры текущего фильма не декодируются")
             }
         }
-        if preservingSelection || plan.narrativeBeatPlan == nil || didRecoverDuration || didRenameTitles || didResolveFinalClock {
-            do {
-                let frames = try await renderedProber.frames(timeline: timeline, assets: current.assets, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cacheURL)
-                timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, renderedFrames: frames, requireRenderedEvidence: true)
-            } catch is CancellationError { throw CancellationError() }
-            catch {
-                if preservingSelection {
-                    throw AutonomousOperationError.verificationFailed("Не удалось проверить сохранённый монтаж: \(error.localizedDescription). Черновик сохранён без замены событий, музыки и титров.")
-                }
-                deliveryWarnings.append("Фильм сохранён для просмотра; контрольный экспорт будет повторён при сохранении видео.")
-            }
-        }
+        // Encode only the settled edit: duration recovery, soundtrack, opening,
+        // chapter titles, subtitles and delivery clock are all final now.
+        // Preview repairs above retain their full pixel checks. This pass must
+        // verify that exact cut without re-anchoring its already placed titles.
+        timeline = await Self.editorialRenderReview(timeline: timeline, plan: plan, assets: current.assets,
+            analyses: analyses, tracks: tracks, telemetry: Self.telemetryLookup(in: current), cacheURL: cacheURL,
+            prober: renderedProber, repairsRemaining: 0, events: draft.events, normalizePresentation: false)
         try Task.checkCancellation()
+        if preservingSelection,
+           timeline.editorialReview?.evidenceDomains?.contains(where: { $0.domain == .renderDecode && $0.isSufficient }) != true {
+            throw AutonomousOperationError.verificationFailed("Не удалось проверить сохранённый монтаж. Черновик сохранён без замены событий, музыки и титров.")
+        }
         var repairState = draft.contentRepairState ?? FilmContentRepairState()
-        if renderedProber is LocalEditorialRenderedProber, plan.narrativeBeatPlan != nil,
-           timeline.items.contains(where: { OriginalMediaType.isVideo($0, assets: current.assets) }) {
-            let reviewStarted = Date()
-            contentReviewer.deadline = reviewStarted.addingTimeInterval(repairState.semanticSecondsRemaining)
+        let requiresContentReview = (renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil)
+            && timeline.items.contains { OriginalMediaType.isVideo($0, assets: current.assets) }
+        if requiresContentReview {
             let originals = try await contentReviewer.review(timeline: timeline, assets: current.assets,
-                progress: progress, pass: repairState.attempts + 1, reason: repairState.reason)
+                renderedURL: nil, progress: progress, pass: repairState.attempts + 1, reason: repairState.reason)
             draft.verifiedSourceContent = originals
             var delivered: [ShotContentAssessment] = []
             if let export = timeline.editorialReview?.exportVerification,
@@ -3499,7 +3490,7 @@ public actor VeloEditPipeline {
                 delivered = try await contentReviewer.review(timeline: timeline, assets: current.assets,
                     renderedURL: url, progress: progress, pass: repairState.attempts + 1, reason: repairState.reason)
             }
-            repairState.semanticSecondsRemaining = max(0, repairState.semanticSecondsRemaining - Date().timeIntervalSince(reviewStarted))
+            try Task.checkCancellation()
             timeline.selectedContentReview = SelectedContentReviewReport(renderSignature: EditorialRenderSignature.signature(timeline),
                 source: originals, rendered: delivered)
             let defects = Set((originals + delivered).filter(\.requiresConcreteRepair).map(\.itemID)).count
@@ -3525,7 +3516,7 @@ public actor VeloEditPipeline {
                         progress: progress, contentRepairsRemaining: contentRepairsRemaining - 1)
                 }
             }
-            if let best = repairState.best, !improved, best.concreteDefects <= defects,
+            if let best = repairState.best, !improved, best.concreteDefects < defects,
                AutomaticFilmDelivery.technicalFailures(timeline: best.timeline).isEmpty {
                 timeline = best.timeline
                 plan = best.plan
@@ -3538,6 +3529,17 @@ public actor VeloEditPipeline {
             guard failures.isEmpty else {
                 throw AutonomousOperationError.verificationFailed("Техническая проверка не завершена: " + failures.joined(separator: "; ") + ". Черновик сохранён.")
             }
+        }
+        if requiresContentReview,
+           timeline.selectedContentReview?.passes(timeline: timeline, assets: current.assets) != true {
+            // A failed/ambiguous observation is not a finished film. Keep the
+            // exact cut and all completed evidence for an explicit retry.
+            draft.timeline = timeline
+            draft.plan = plan
+            draft.analyses = analyses
+            draft.phase = .checkingContent
+            try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
+            throw AutonomousOperationError.verificationFailed("Проверка содержания не пройдена: есть неподтверждённые или непригодные фрагменты. Черновик сохранён; готовый фильм ещё не выдан.")
         }
         timeline.filmDeliveryReport = AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan, assets: current.assets, analyses: analyses, additionalWarnings: deliveryWarnings)
         if !musicVerified {

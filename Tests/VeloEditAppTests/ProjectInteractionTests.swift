@@ -8,6 +8,44 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct ProjectInteractionTests {
+    @Test func openingCompletedProjectDoesNotStartContentReview() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let url = try fixture.project("No automatic audit")
+        let store = try ProjectStore(open: url)
+        let movie = try await TitleCardVideoGenerator().generate(text: "Saved film", style: TitleStyle(), duration: 2,
+            width: 160, height: 90, frameRate: 15, destination: url.appendingPathComponent("source.mov"))
+        let asset = try await MediaImporter().makeAsset(url: movie)
+        let plan = StoryPlan(prompt: "Без музыки. Без титров.", preset: .memories, constraints: .init(targetDuration: 2), chapters: [])
+        var timeline = Timeline(storyPlanID: plan.id, width: 160, height: 90, frameRate: 15,
+            items: [TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 2, timelineStart: 0, timelineDuration: 2)])
+        let signature = EditorialRenderSignature.signature(timeline)
+        timeline.selectedContentReview = .init(renderSignature: signature, source: [], rendered: [])
+        let info = try FileManager.default.attributesOfItem(atPath: movie.path)
+        var review = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: [])
+        review.exportVerification = .init(renderSignature: signature, probes: [], durationDifference: 0, aspectRatioMatches: true,
+            provenance: "Project-open orchestration fixture", outputURL: movie,
+            fileSize: (info[.size] as? NSNumber)?.int64Value, fileModified: info[.modificationDate] as? Date)
+        timeline.editorialReview = review
+        let saved = timeline
+        try await store.update {
+            $0.assets = [asset]; $0.storyPlans = [plan]; $0.timelines = [saved]
+            $0.preferences.advancedAISettings = .init(enabled: true, modelID: "uninstalled-project-open-fixture")
+        }
+        // Enable normal services: disabling them would mask the old auto-audit.
+        let model = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: true,
+            personalTasteStore: LocalPersonalTasteStore(url: fixture.root.appendingPathComponent("taste.json")))
+        model.openRecentProject(url)
+        try await wait { model.previewPlayer != nil && !model.thumbnailURLs.isEmpty }
+        try await Task.sleep(for: .seconds(3))
+        #expect(model.timeline?.selectedContentReview == saved.selectedContentReview)
+        #expect(model.timeline?.items == saved.items)
+        #expect(!model.isCreatingFilm && !model.isWorking)
+        #expect(!model.filmVerificationMessage.contains("содержания"))
+        let cache = CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory
+        #expect(!FileManager.default.fileExists(atPath: cache.appendingPathComponent("SelectedContentReview").path))
+        #expect(await model.stopForApplicationTermination())
+    }
+
     @Test func updateRelaunchRestoresProjectEditsDraftsAndLibraryOnce() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let url = try fixture.project("Update")

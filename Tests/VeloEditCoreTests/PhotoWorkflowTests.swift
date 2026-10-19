@@ -7,6 +7,70 @@ import UniformTypeIdentifiers
 @testable import VeloEditCore
 
 @Suite(.serialized) struct PhotoWorkflowTests {
+    @Test func kenBurnsPreviewAndExportStayCenteredAndReplaceLegacyCache() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("matching-photo.png")
+        let context = try #require(CGContext(data: nil, width: 4032, height: 2268, bitsPerComponent: 8,
+            bytesPerRow: 4032 * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(gray: 0.2, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 4032, height: 2268))
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 1716, y: 834, width: 600, height: 600))
+        let destination = try #require(CGImageDestinationCreateWithURL(file as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
+        try #require(CGImageDestinationFinalize(destination))
+        let asset = try await MediaImporter().makeAsset(url: file)
+        let item = TimelineItem(assetID: asset.id, kind: .photo, sourceDuration: 6, timelineStart: 0,
+            timelineDuration: 6, effect: ClipEffect.kenBurns.rawValue, videoAdjustments: .init(crop: .fill))
+        let timeline = Timeline(storyPlanID: UUID(), width: 320, height: 180, frameRate: 30, items: [item])
+        let cache = root.appendingPathComponent("cache")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let legacyKey = ProductionCacheIdentity.hash([
+            "photo-v9-stable-fit", FrameCacheKey.sourceIdentity(url: file, contentHash: asset.contentHash),
+            "ken-burns", "fill", "photo", "none", "no-reframe", "6000", "320x180@30.0"
+        ])
+        _ = try await StillImageVideoGenerator().generate(imageURL: file, duration: 6, width: 320, height: 180,
+            frameRate: 30, destination: cache.appendingPathComponent("photo-\(legacyKey).mov"), motion: nil)
+        let playback = try await PlaybackEngine().build(timeline: timeline, assets: [asset], derivedMediaCacheURL: cache)
+        #expect(playback.derivedMediaCacheMisses == 1 && playback.derivedMediaCacheHits == 0)
+        let reused = try await PlaybackEngine().build(timeline: timeline, assets: [asset], derivedMediaCacheURL: cache)
+        #expect(reused.derivedMediaCacheHits == 1 && reused.derivedMediaCacheMisses == 0)
+        let output = root.appendingPathComponent("export.mp4")
+        _ = try await RenderEngine().render(timeline: timeline, assets: [asset], quality: .maximum, destination: output)
+        for (movie, composition) in [(playback.composition as AVAsset, playback.videoComposition),
+                                     (AVURLAsset(url: output) as AVAsset, nil)] {
+            let generator = AVAssetImageGenerator(asset: movie)
+            generator.videoComposition = composition
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            var maximumOffset: Double = 0
+            var areas: [Int] = []
+            for frame in 0..<180 {
+                let image = try await generator.image(at: CMTime(value: Int64(frame), timescale: 30)).image
+                var pixels = [UInt8](repeating: 0, count: 320 * 180 * 4)
+                try pixels.withUnsafeMutableBytes { bytes in
+                    let raster = try #require(CGContext(data: bytes.baseAddress, width: 320, height: 180,
+                        bitsPerComponent: 8, bytesPerRow: 320 * 4, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
+                    raster.draw(image, in: CGRect(x: 0, y: 0, width: 320, height: 180))
+                }
+                var x = 0.0, y = 0.0, count = 0
+                for index in 0..<(320 * 180) where pixels[index * 4] > 200 {
+                    x += Double(index % 320) + 0.5; y += Double(index / 320) + 0.5; count += 1
+                }
+                try #require(count > 0)
+                maximumOffset = max(maximumOffset, hypot(x / Double(count) - 160, y / Double(count) - 90))
+                areas.append(count)
+            }
+            #expect(maximumOffset < 0.7)
+            // Motion must remain visible; freezing the photo is not a fix.
+            #expect(Double(try #require(areas.last)) > Double(try #require(areas.first)) * 1.05)
+        }
+    }
+
     @Test func sourceCacheSurvivesDurationChangesButNotSourceReplacement() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

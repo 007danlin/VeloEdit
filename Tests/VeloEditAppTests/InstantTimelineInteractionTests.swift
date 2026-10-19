@@ -7,6 +7,146 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct InstantTimelineInteractionTests {
+    @Test func rightTrimRemovesTailPixelsInActualPlayerAndExport() async throws {
+        let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
+        var cards: [MediaAsset] = []
+        for (index, color) in ["#808080", "#FF0000", "#00FF00", "#0000FF"].enumerated() {
+            let url = try await TitleCardVideoGenerator().generate(text: "", style: TitleStyle(backgroundColorHex: color),
+                duration: 2, width: 160, height: 90, frameRate: 30,
+                destination: fixture.root.appendingPathComponent("card-\(index).mov"))
+            cards.append(MediaAsset(originalURL: url, kind: .video, byteSize: 1, contentHash: "card-\(index)",
+                metadata: .init(duration: 2, width: 160, height: 90, frameRate: 30, hasAudio: false)))
+        }
+        let sourceTimeline = Timeline(storyPlanID: UUID(), width: 160, height: 90, frameRate: 30,
+            items: cards.enumerated().map { index, asset in
+                TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 2, timelineStart: Double(index) * 2, timelineDuration: 2)
+            }, originalAudioVolume: 0)
+        let sourceURL = fixture.root.appendingPathComponent("source.mp4")
+        _ = try await RenderEngine().render(timeline: sourceTimeline, assets: cards, quality: .maximum, destination: sourceURL)
+        let asset = MediaAsset(originalURL: sourceURL, kind: .video, byteSize: 1, contentHash: "trim-pixels",
+            metadata: .init(duration: 8, width: 160, height: 90, frameRate: 30, hasAudio: false))
+        let item = TimelineItem(assetID: asset.id, kind: .video, sourceStart: 2, sourceDuration: 6,
+            timelineStart: 0, timelineDuration: 6)
+        let model = fixture.model
+        model.project?.assets = [asset]
+        model.project?.timelines[0] = Timeline(storyPlanID: UUID(), width: 160, height: 90, frameRate: 30,
+            items: [item], originalAudioVolume: 0)
+        let pipeline = try #require(model.pipeline)
+        try await pipeline.store.update { $0.assets = [asset] }
+        let range = TimelineTrimRange(start: 0, duration: 6).trimming(.trailing, by: -2)
+        model.trimTimelineItem(id: item.id, sourceStart: item.sourceStart, timelineDuration: range.duration)
+        #expect(await model.flushAutosave())
+        let deadline = Date().addingTimeInterval(15)
+        while model.previewPlayer?.currentItem == nil && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let playerItem = try #require(model.previewPlayer?.currentItem)
+        #expect(abs(try await playerItem.asset.load(.duration).seconds - 4) < 0.001)
+        let trimmed = try #require(model.timeline)
+        #expect(trimmed.items[0].sourceStart == 2 && trimmed.items[0].sourceDuration == 4)
+
+        func dominantChannel(asset: AVAsset, composition: AVVideoComposition? = nil, time: Double) async throws -> Int {
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.videoComposition = composition
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+            let image = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 600)).image
+            var pixel = [UInt8](repeating: 0, count: 4)
+            try pixel.withUnsafeMutableBytes { bytes in
+                let context = try #require(CGContext(data: bytes.baseAddress, width: 1, height: 1,
+                    bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
+                context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            }
+            let channel = (0..<3).max { pixel[$0] < pixel[$1] }!
+            #expect(pixel[channel] > 150)
+            return channel
+        }
+        // The selected original is red → green → blue. A right trim must
+        // retain red and remove blue, in decoded pixels as well as metadata.
+        #expect(try await dominantChannel(asset: AVURLAsset(url: sourceURL), time: 2.5) == 0)
+        #expect(try await dominantChannel(asset: AVURLAsset(url: sourceURL), time: 7.5) == 2)
+        #expect(try await dominantChannel(asset: playerItem.asset, composition: playerItem.videoComposition, time: 0.5) == 0)
+        #expect(try await dominantChannel(asset: playerItem.asset, composition: playerItem.videoComposition, time: 3.5) == 1)
+        let output = fixture.root.appendingPathComponent("right-trim.mp4")
+        _ = try await RenderEngine().render(timeline: trimmed, assets: [asset], quality: .maximum, destination: output)
+        #expect(try await dominantChannel(asset: AVURLAsset(url: output), time: 0.5) == 0)
+        #expect(try await dominantChannel(asset: AVURLAsset(url: output), time: 3.5) == 1)
+    }
+
+    @Test func savingImmediatelyAfterSpeedChangeStillUpdatesActualPlayer() async throws {
+        let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
+        let model = fixture.model
+        let url = try await TitleCardVideoGenerator().generate(text: "Speed", style: TitleStyle(), duration: 4,
+            width: 160, height: 90, frameRate: 30, destination: fixture.root.appendingPathComponent("speed.mov"))
+        let asset = MediaAsset(originalURL: url, kind: .video, byteSize: 1, contentHash: "speed-fixture",
+            metadata: .init(duration: 4, width: 160, height: 90, frameRate: 30, hasAudio: false))
+        let item = TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 4, timelineStart: 0, timelineDuration: 4)
+        model.project?.assets = [asset]
+        model.project?.timelines[0] = Timeline(storyPlanID: UUID(), width: 160, height: 90, frameRate: 30,
+            items: [item], originalAudioVolume: 1)
+        let pipeline = try #require(model.pipeline)
+        try await pipeline.store.update { $0.assets = [asset] }
+        model.setInlineClipSpeed(2, id: item.id)
+        #expect(await model.flushAutosave())
+        let deadline = Date().addingTimeInterval(8)
+        while model.previewPlayer?.currentItem == nil && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let playerItem = try #require(model.previewPlayer?.currentItem)
+        #expect(abs(try await playerItem.asset.load(.duration).seconds - 2) < 0.001)
+        #expect(model.timeline?.items[0].sourceDuration == 4)
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test func inlineControlsTargetTheirOwnClipAndRevealItForPlayback() async throws {
+        let fixture = try await Fixture(clipCount: 3); defer { fixture.remove() }
+        let model = fixture.model
+        let before = try #require(model.timeline)
+        let target = before.items[1]
+        model.selectTimelineItem(before.items[2].id)
+        model.setInlineClipVolume(0.25, id: target.id)
+        #expect(model.selectedTimelineItemID == target.id)
+        #expect(model.timeline?.items[1].effectiveAudioAdjustments.volume == 0.25)
+        #expect(model.timeline?.items[2].effectiveAudioAdjustments.volume == 1)
+        #expect(model.timelinePlayheadTime == 10)
+        model.setInlineClipSpeed(2, id: target.id)
+        #expect(model.timeline?.items[1].sourceStart == target.sourceStart)
+        #expect(model.timeline?.items[1].sourceDuration == target.sourceDuration)
+        #expect(model.timeline?.items[1].timelineDuration == 5)
+        #expect(model.timeline?.items[2].timelineStart == 15)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last == model.timeline)
+        model.undoTimelineEdit()
+        #expect(model.timeline?.items[1].timelineDuration == 10)
+        #expect(model.timeline?.items[1].effectiveAudioAdjustments.volume == 0.25)
+    }
+
+    @Test func rightTrimOfFastVideoPreservesSourceBeginningThroughUndoAndSave() async throws {
+        let fixture = try await Fixture(clipCount: 3); defer { fixture.remove() }
+        let model = fixture.model
+        model.project?.timelines[0].items[1].sourceStart = 5
+        model.project?.timelines[0].items[1].sourceDuration = 20
+        model.project?.timelines[0].items[1].speed = 2
+        let original = try #require(model.timeline)
+        let item = original.items[1]
+        let range = TimelineTrimRange(start: item.timelineStart, duration: item.timelineDuration).trimming(.trailing, by: -2)
+        model.trimTimelineItem(id: item.id, sourceStart: item.sourceStart, timelineDuration: range.duration)
+        let trimmed = try #require(model.timeline)
+        #expect(trimmed.items[1].sourceStart == 5)
+        #expect(trimmed.items[1].sourceDuration == 16)
+        #expect(trimmed.items[1].timelineStart == 10)
+        #expect(trimmed.items[2].timelineStart == 18)
+        model.undoTimelineEdit()
+        #expect(model.timeline == original)
+        model.redoTimelineEdit()
+        #expect(model.timeline == trimmed)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last == trimmed)
+    }
+
     @Test func filmOpeningAppliesAsOneUndoableEditAndDeletionPersists() async throws {
         let fixture = try await Fixture(clipCount: 3); defer { fixture.remove() }
         let model = fixture.model

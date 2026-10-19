@@ -8,6 +8,7 @@ public struct FilmBuildProgress: Sendable, Equatable {
         case analysis, preparing, evidence, moments, planning, findingMusic, analyzingMusic
         case assembling, reviewing, fallback, finishing, soundtrack, verifying, saving
         case previewFrames, controlExport, deliveryFrames, audioCheck, resuming
+        case sourceContent, renderedContent
 
         public var title: String {
             switch self {
@@ -34,6 +35,8 @@ public struct FilmBuildProgress: Sendable, Equatable {
             case .deliveryFrames: return "Сравниваю готовое видео с монтажом"
             case .audioCheck: return "Проверяю звук готового видео"
             case .resuming: return "Продолжаю сохранённую сборку"
+            case .sourceContent: return "Проверяю содержание исходных фрагментов"
+            case .renderedContent: return "Проверяю содержание готового видео"
             }
         }
     }

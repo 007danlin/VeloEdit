@@ -51,6 +51,11 @@ enum StillImageRenderGeometry {
         let p = min(1, max(0, progress))
         let eased = p * p * (3 - 2 * p)
         let scale = 1 + CGFloat(PhotoPresentationPolicy.zoomAmount * min(1, max(0, duration) / 4)) * eased
+        // Choose the pan axis from the fixed aspect ratios, never the growing
+        // overscan. For matching ratios, rounding used to alternate X/Y on
+        // consecutive frames and move the image by tens of pixels.
+        let relativeAspect = (source.width / source.height) / (target.width / target.height)
+        guard abs(relativeAspect - 1) > 0.000_001 else { return (scale, 0, 0) }
         let fill = max(target.width / source.width, target.height / source.height)
         let extraX = max(0, source.width * fill * scale - target.width)
         let extraY = max(0, source.height * fill * scale - target.height)
@@ -58,7 +63,7 @@ enum StillImageRenderGeometry {
         // A tall photo needs vertical travel, not a horizontal move clamped
         // to zero. Bound travel by duration to avoid a rushed panorama sweep.
         let maximumTravel = min(target.width, target.height) * CGFloat(max(0, duration)) * 0.07
-        if extraY / target.height > extraX / target.width {
+        if relativeAspect < 1 {
             return (scale, 0, (0.5 - eased) * min(extraY * 0.6, maximumTravel))
         }
         return (scale, (0.5 - eased) * min(extraX * 0.6, maximumTravel), 0)

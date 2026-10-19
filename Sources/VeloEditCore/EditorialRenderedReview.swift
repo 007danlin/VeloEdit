@@ -198,7 +198,7 @@ extension VeloEditPipeline {
         // headings before deriving a signature or inspecting pixels, keeping
         // any presentation that already received a rendered readability fix.
         if normalizePresentation { timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true) }
-        timeline = TitleTimelineAnchoring.reconcile(timeline)
+        if normalizePresentation { timeline = TitleTimelineAnchoring.reconcile(timeline) }
         let cache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialProbes"))
         // A deliberately sparse ranking probe is not production evidence and
         // must never poison the full-render cache used by the final winner.

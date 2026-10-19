@@ -4484,7 +4484,7 @@ private struct DirectorChatColumn: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("ИИ-режиссёр")
                         .font(.title3.weight(.semibold))
-                    Text(model.directorStatus)
+                    Text(model.isCreatingFilm ? model.status : model.directorStatus)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

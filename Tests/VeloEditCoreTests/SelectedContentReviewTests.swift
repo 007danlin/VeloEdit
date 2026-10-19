@@ -3,6 +3,100 @@ import Testing
 @testable import VeloEditCore
 
 @Suite struct SelectedContentReviewTests {
+    @Test func verifierKeepsOneContextSizeWithoutChangingEvidence() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let reviewer = SelectedContentReviewer(cacheURL: root, model: "fixture", answerTransport: { request in
+            (Data(#"{"model":"fixture","done":true,"done_reason":"stop","message":{"content":"{\"observation\":\"literal evidence\"}"}}"#.utf8),
+             HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        for context in [4096, 8192, 16384] {
+            let response = root.appendingPathComponent("context-\(context).json")
+            _ = try await reviewer.modelAnswer(body: ["model": "fixture", "options": ["num_ctx": context, "num_predict": 320],
+                "messages": [["role": "user", "content": "Same independent question", "images": ["all-original-pixels"]]]], responseURL: response)
+            let request = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: response.deletingPathExtension().appendingPathExtension("request.json"))) as? [String: Any])
+            let options = try #require(request["options"] as? [String: Int])
+            #expect(options["num_ctx"] == max(8192, context))
+            #expect(options["num_predict"] == 320)
+            let message = try #require((request["messages"] as? [[String: Any]])?.first)
+            #expect(message["images"] as? [String] == ["all-original-pixels"])
+            #expect(message["content"] as? String == "Same independent question")
+        }
+    }
+
+    private actor ReviewTransport {
+        var timeouts = 4
+        var calls = 0
+        func send(_ request: URLRequest) throws -> (Data, URLResponse) {
+            calls += 1
+            if timeouts > 0 { timeouts -= 1; throw URLError(.timedOut) }
+            let body = try #require(try JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+            let format = body["format"] as! [String: Any]
+            let fields = format["required"] as! [String]
+            let content: [String: Any]
+            if fields.contains("frames") {
+                content = ["frames": (0..<5).map { ["index": $0, "content": "landscape", "confidence": 0.95,
+                    "obstructionFraction": 0, "handlingEvidence": "none"] as [String: Any] },
+                    "observation": "Открытый вид на реку", "activity": "Пейзаж"]
+            } else if fields.contains("purpose") {
+                content = ["scene": "A coherent river view", "orientation": "upright", "opaqueCoverFraction": 0,
+                    "purpose": "establishing", "purposeConfidence": 0.95, "purposeEvidence": "The wide river and shore establish the location"]
+            } else {
+                content = ["interaction": "none", "confidence": 0.95, "evidence": "No hands or camera contact are visible"]
+            }
+            let answer = String(data: try JSONSerialization.data(withJSONObject: content), encoding: .utf8)!
+            return (try JSONSerialization.data(withJSONObject: ["model": "fixture", "done": true,
+                "done_reason": "stop", "message": ["content": answer]]),
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+    }
+
+    @Test func twoSlowShotsDoNotDisableRemainingContentReviewAndProgressFinishes() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let movie = try await TitleCardVideoGenerator().generate(text: "River", style: TitleStyle(), duration: 4,
+            width: 160, height: 90, frameRate: 30, destination: root.appendingPathComponent("source.mov"))
+        let asset = MediaAsset(originalURL: movie, kind: .video, byteSize: 1, contentHash: "review-fixture",
+            metadata: .init(duration: 4, width: 160, height: 90, frameRate: 30, hasAudio: false))
+        let timeline = Timeline(storyPlanID: UUID(), items: (0..<3).map {
+            TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 1, timelineStart: Double($0), timelineDuration: 1)
+        })
+        let transport = ReviewTransport(), updates = FilmBuildProgressRecorder()
+        let reviewer = SelectedContentReviewer(cacheURL: root, model: "fixture", answerTransport: { try await transport.send($0) })
+        let result = try await reviewer.review(timeline: timeline, assets: [asset], renderedURL: movie,
+            progress: { await updates.record($0) })
+        #expect(result.map(\.status) == [.uncertain, .uncertain, .usable])
+        #expect(await transport.calls > 4)
+        let progress = await updates.updates
+        #expect(progress.allSatisfy { $0.stage == .renderedContent })
+        #expect(progress.last?.completed == 3 && progress.last?.total == 3)
+        let calls = await transport.calls
+        var cachedTimeline = timeline
+        cachedTimeline.items = [timeline.items[2]]
+        let cached = try await reviewer.review(timeline: cachedTimeline, assets: [asset], renderedURL: movie)
+        #expect(cached.last?.status == .usable)
+        #expect(await transport.calls == calls)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_CONTENT_REVIEW_PROJECT"] != nil))
+    func liveSelectedShotCompletesIndependentReview() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["VELOEDIT_CONTENT_REVIEW_PROJECT"])
+        let store = try ProjectStore(open: URL(fileURLWithPath: path))
+        let project = await store.manifest
+        var timeline = try #require(project.timelines.last)
+        timeline.items = [try #require(timeline.items.first { $0.kind == .video })]
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-live-content-review")
+        let reviewer = SelectedContentReviewer(cacheURL: root, model: "qwen3-vl:30b-a3b-instruct")
+        let started = Date()
+        let result = try await reviewer.review(timeline: timeline, assets: project.assets,
+            progress: { print("LIVE CONTENT: \($0.countLabel) \($0.detail ?? "")") })
+        let answer = try #require(result.first)
+        print("LIVE CONTENT RESULT: \(Date().timeIntervalSince(started))s, \(answer.status), confidence=\(answer.confidence), boundary=\(String(describing: answer.actionBoundary?.verdict))")
+        #expect(answer.confidence > 0)
+        #expect(answer.actionBoundary != nil || answer.status == .obstructed || answer.status == .unmotivated)
+    }
+
     private actor ObjectBoundaryTransport {
         var index = 0
         let invalidObjectEvidence: Bool

@@ -411,6 +411,7 @@ final class AppModel: ObservableObject {
     var pipeline: VeloEditPipeline?
     private var unavailableProjectURL: URL?
     private var activePlayback: TimelinePlayback?
+    private var activePlaybackTimeline: Timeline?
     private var playbackTimeObserver: Any?
     private var playbackItemStatusObservation: NSKeyValueObservation?
     private var filmVerificationTask: Task<Void, Never>?
@@ -440,7 +441,8 @@ final class AppModel: ObservableObject {
     private var activityProgressEstimate = ActivityTimeEstimate()
     private var activityProgressStage: String?
     private var filmBuildTimeEstimate: FilmBuildTimeEstimate?
-    private static let filmTimingCalibrationKey = "filmTimingCalibration.v1"
+    private static let filmTimingCalibrationKey = "filmTimingCalibration.v2"
+    private var lastAnalysisProgressRefresh = -Double.infinity
     private var projectRestoreTask: Task<Void, Never>?
     private var projectOpenTask: Task<Void, Never>?
     private var sectionBeforeProjectOpen: WorkspaceSection?
@@ -736,13 +738,16 @@ final class AppModel: ObservableObject {
                 }
                 let activity = WorkActivity(reason: "Проверка фильма VeloEdit")
                 defer { withExtendedLifetime(activity) {} }
-                let checked = try await pipeline.verifyCurrentFilm()
+                // A manual gain/trim edit must not launch another full movie
+                // encode after one second. Delivery still verifies the MP4
+                // when the user saves video; here inspect the current preview.
+                let checked = try await pipeline.verifyCurrentFilm(verifyExport: false)
                 try Task.checkCancellation()
                 guard self.pipeline === pipeline, self.timelineEditRevision == revision,
                       self.timeline.map(EditorialRenderSignature.signature) == signature else { return }
                 await self.refresh()
-                self.filmVerificationMessage = checked.filmDeliveryReport?.status == .verified
-                    ? "Сохранено · проверено" : "Сохранено · есть замечания проверки"
+                let decoded = checked.editorialReview?.evidenceDomains?.contains { $0.domain == .renderDecode && $0.isSufficient } == true
+                self.filmVerificationMessage = decoded ? "Сохранено · просмотр проверен" : "Сохранено · есть замечания проверки"
                 self.editTrace?.event("edit.verification.finished", fields: ["status": self.filmVerificationMessage])
             } catch is CancellationError { }
             catch {
@@ -5104,6 +5109,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setInlineClipSpeed(_ speed: Double, id: UUID) {
+        selectTimelineItem(id)
+        revealInlineClip(id)
+        setSelectedSpeed(speed)
+        revealInlineClip(id)
+    }
+
+    func setInlineClipVolume(_ volume: Double, id: UUID) {
+        selectTimelineItem(id)
+        revealInlineClip(id)
+        setSelectedClipVolume(volume)
+    }
+
+    private func revealInlineClip(_ id: UUID) {
+        guard let item = timeline?.items.first(where: { $0.id == id }) else { return }
+        if timelinePlayheadTime < item.timelineStart || timelinePlayheadTime >= item.timelineStart + item.timelineDuration {
+            seekTimeline(to: item.timelineStart)
+        }
+    }
+
     func setSelectedSpeedRamp(_ mode: String) {
         guard let item = selectedTimelineItem, !item.isFreezeFrame else { return }
         let ramp: SpeedRamp?
@@ -5951,8 +5976,6 @@ final class AppModel: ObservableObject {
             await pendingTimelineCommit.value
         }
         if let pipeline, await synchronizeProjectLocation(using: pipeline) { await refresh() }
-        previewRebuildTask?.cancel()
-        previewRebuildTask = nil
         if timelinePersistenceFailed, let pipeline, let timeline {
             do {
                 _ = try await pipeline.commitLatestTimeline(timeline, clientRevision: timelineEditRevision)
@@ -6414,6 +6437,7 @@ final class AppModel: ObservableObject {
         restoringTimelineTime requestedTimelineTime: Double? = nil
     ) {
         let previousPlayback = activePlayback
+        let previousPlaybackTimeline = activePlaybackTimeline
         let previousItem = previewPlayer?.currentItem
         if let playbackTimeObserver, let previewPlayer {
             previewPlayer.removeTimeObserver(playbackTimeObserver)
@@ -6431,6 +6455,7 @@ final class AppModel: ObservableObject {
         previewPlayer?.pause()
         previewURL = nil
         activePlayback = playback
+        activePlaybackTimeline = timeline
         previewPlayerFrameReady = false
         let playerItem = AVPlayerItem(asset: playback.composition)
         if let videoComposition = playback.videoComposition {
@@ -6530,6 +6555,7 @@ final class AppModel: ObservableObject {
                     if let previousItem, let previousPlayback {
                         player.replaceCurrentItem(with: previousItem)
                         self.activePlayback = previousPlayback
+                        self.activePlaybackTimeline = previousPlaybackTimeline
                         self.isPreviewPosterVisible = self.previewPosterImage != nil
                     }
                     return
@@ -6772,8 +6798,19 @@ final class AppModel: ObservableObject {
             previewRebuildTask = nil
             return
         }
-        if let playback = activePlayback, let playerItem = previewPlayer?.currentItem,
+        let previewMatchesPreviousEdit = activePlaybackTimeline.map(EditorialRenderSignature.signature) == EditorialRenderSignature.signature(previous)
+        if previewMatchesPreviousEdit,
+           let playback = activePlayback, let playerItem = previewPlayer?.currentItem,
+           let mix = playback.updatedAudioMix(from: TimelineMutationEngine.prepareForEditing(previous), to: next) {
+            playerItem.audioMix = mix
+            activePlaybackTimeline = next
+            previewRebuildTask = nil
+            return
+        }
+        if previewMatchesPreviousEdit,
+           let playback = activePlayback, let playerItem = previewPlayer?.currentItem,
            playback.updateTitleContents(from: previous, to: next) {
+            activePlaybackTimeline = next
             // Render one current frame immediately, without regenerating photo
             // movies, audio, or a new AVPlayerItem on every keystroke.
             preparePreviewPoster(for: playback, playerItem: playerItem,
@@ -7568,10 +7605,11 @@ final class AppModel: ObservableObject {
         refreshFilmBuildETA()
     }
 
-    private func setFilmBuildProgress(_ update: FilmBuildProgress, generation: UInt64) {
+    private func setFilmBuildProgress(_ update: FilmBuildProgress, generation: UInt64) async {
         guard isWorking, isCreatingFilm, operationGeneration == generation,
               activityUnmeasuredStartedAt != nil else { return }
-        if activityFilmBuildStage != update.stage {
+        let stageChanged = activityFilmBuildStage != update.stage
+        if stageChanged {
             activityUnmeasuredStartedAt = Date()
             activityFilmBuildStage = update.stage
         }
@@ -7581,6 +7619,13 @@ final class AppModel: ObservableObject {
         status = update.detail ?? update.stage.title
         filmBuildTimeEstimate?.observe(update, now: ProcessInfo.processInfo.systemUptime)
         refreshFilmBuildETA()
+        let now = ProcessInfo.processInfo.systemUptime
+        if let pipeline, stageChanged || (update.stage == .analysis && now - lastAnalysisProgressRefresh >= 1) {
+            lastAnalysisProgressRefresh = now
+            let analyzed = await pipeline.store.manifest.analyses
+            guard isWorking, isCreatingFilm, operationGeneration == generation else { return }
+            project?.analyses = analyzed
+        }
     }
 
     private func finishUnmeasuredActivity(at finalProgress: Double? = nil) {

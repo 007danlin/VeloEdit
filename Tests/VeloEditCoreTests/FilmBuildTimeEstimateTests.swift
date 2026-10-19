@@ -7,6 +7,22 @@ private func buildEstimate(calibration: [String: Double] = [:]) -> FilmBuildTime
                          needsAnalysis: true, includesMusic: true, calibration: calibration, now: 0)
 }
 
+@Test func contentReviewMeasuresItsOwnPaceBeforeShowingAnETA() {
+    var estimate = buildEstimate(calibration: ["verifying": 1])
+    estimate.observe(.init(.verifying), now: 0)
+    estimate.observe(.init(.controlExport, completed: 0, total: 100), now: 0)
+    estimate.observe(.init(.controlExport, completed: 50, total: 100), now: 20)
+    #expect(estimate.hasMeasuredPace)
+    estimate.observe(.init(.sourceContent, completed: 0, total: 22), now: 40)
+    #expect(!estimate.hasMeasuredPace)
+    estimate.observe(.init(.sourceContent, completed: 1, total: 22), now: 340)
+    estimate.observe(.init(.sourceContent, completed: 2, total: 22), now: 640)
+    #expect(estimate.hasMeasuredPace)
+    #expect(estimate.remaining(now: 640) > 1_000)
+    estimate.observe(.init(.renderedContent, completed: 0, total: 22), now: 7_000)
+    #expect(!estimate.hasMeasuredPace)
+}
+
 @Test func filmBuildEstimateIncludesWorkAfterAnalysis() {
     var estimate = buildEstimate()
     estimate.observe(step: .analysis, fraction: 0.5, total: 100, secondsRemaining: 30, now: 10)

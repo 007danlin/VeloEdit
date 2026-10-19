@@ -339,6 +339,12 @@ struct MagneticTimelineView: View {
             }
 
             Spacer(minLength: 10)
+            Text(model.timelinePersistenceStatus)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .help(model.timelinePersistenceStatus)
+                .frame(maxWidth: 280)
             Image(systemName: "minus.magnifyingglass")
                 .foregroundStyle(.secondary)
             Slider(value: $zoom, in: 6...64)
@@ -1167,7 +1173,7 @@ struct MagneticTimelineView: View {
         let isPhoto = item.assetID.flatMap { model.timelineMediaAsset($0) }?.kind == .photo
 
         return ZStack(alignment: .topLeading) {
-            clipFilmstrip(item, width: width + croppedLeadingWidth)
+            clipFilmstrip(item, width: preview == nil ? width : max(clipWidth(item), width + croppedLeadingWidth))
                 .offset(x: -croppedLeadingWidth)
                 .frame(width: width, height: isPhoto ? 76 : 58, alignment: .topLeading)
                 .clipped()
@@ -1261,8 +1267,7 @@ struct MagneticTimelineView: View {
     private func clipVolumeOptions(_ item: TimelineItem) -> some View {
         ForEach([0.0, 0.25, 0.5, 1.0, 1.5, 2.0], id: \.self) { volume in
             Button {
-                model.selectTimelineItem(item.id)
-                model.setSelectedClipVolume(volume)
+                model.setInlineClipVolume(volume, id: item.id)
             } label: {
                 volumePresetLabel(volume, current: item.effectiveAudioAdjustments.volume)
             }
@@ -1272,8 +1277,7 @@ struct MagneticTimelineView: View {
     private func clipSpeedOptions(_ item: TimelineItem) -> some View {
         ForEach([0.25, 0.5, 1, 2, 4, 8, 10, 20], id: \.self) { speed in
             Button {
-                model.selectTimelineItem(item.id)
-                model.setSelectedSpeed(speed)
+                model.setInlineClipSpeed(speed, id: item.id)
             } label: {
                 if abs(item.speed - speed) <= 0.001 {
                     Label(speedTitle(speed), systemImage: "checkmark")
@@ -1936,6 +1940,10 @@ struct MagneticTimelineView: View {
                     model.trimTimelineItem(id: item.id, sourceStart: preview.sourceStart,
                         timelineDuration: preview.timelineDuration,
                         timelineStart: item.overlay == nil ? nil : preview.timelineStart)
+                    if let trimmed = model.timeline?.items.first(where: { $0.id == item.id }) {
+                        model.seekTimeline(to: edge == .leading ? trimmed.timelineStart
+                            : max(trimmed.timelineStart, trimmed.timelineStart + trimmed.timelineDuration - 1 / max(1, timeline.frameRate)))
+                    }
                 }
             }
     }

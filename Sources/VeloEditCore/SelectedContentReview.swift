@@ -56,7 +56,7 @@ public struct SelectedContentReviewReport: Codable, Hashable, Sendable {
     public var source: [ShotContentAssessment]
     public var rendered: [ShotContentAssessment]
 
-    func passes(timeline: Timeline, assets: [MediaAsset] = []) -> Bool {
+    public func passes(timeline: Timeline, assets: [MediaAsset] = []) -> Bool {
         guard renderSignature == EditorialRenderSignature.signature(timeline) else { return false }
         let items = timeline.items.filter { OriginalMediaType.isVideo($0, assets: assets) }
         return !items.isEmpty && items.allSatisfy { item in
@@ -76,9 +76,15 @@ public struct SelectedContentReviewReport: Codable, Hashable, Sendable {
     }
 }
 
+/// Awaited by film creation before publishing the finished Timeline.
+public protocol SelectedContentReviewing: Sendable {
+    func review(timeline: Timeline, assets: [MediaAsset], renderedURL: URL?,
+                progress: FilmBuildProgressHandler?, pass: Int, reason: String?) async throws -> [ShotContentAssessment]
+}
+
 /// A bounded second look at the selected footage. It does not replace the
 /// existing analysis/ranker, force an effect, or run a new source-wide scan.
-struct SelectedContentReviewer: Sendable {
+struct SelectedContentReviewer: SelectedContentReviewing {
     static let version = "selected-content-v58-camera-target-corroboration"
     static func verificationModel(preferred: String) async -> String {
         // A tiny model is useful for broad indexing, but real clip checks
@@ -418,18 +424,23 @@ struct SelectedContentReviewer: Sendable {
         let frameCache = FrameCache(rootURL: cacheURL.appendingPathComponent("SelectedContentFrames"))
         let root = cacheURL.appendingPathComponent("SelectedContentReview")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        var available = await OllamaVisionRuntime().isAvailable(model: model)
-        let reviewDeadline = deadline ?? Date().addingTimeInterval(180)
+        var available: Bool
+        if answerTransport != nil { available = true }
+        else { available = await OllamaVisionRuntime().isAvailable(model: model) }
+        // A full independent observation takes several model requests. A 90 s
+        // shot / 180 s film deadline discarded every result on a real 24-shot
+        // film. Bound each shot, not the entire movie; uncertainty is not a pass.
+        let stage: FilmBuildProgress.Stage = renderedURL == nil ? .sourceContent : .renderedContent
         var consecutiveFailures = 0
         var result: [ShotContentAssessment] = []
         for (index, item) in items.enumerated() {
             try Task.checkCancellation()
             guard let assetID = item.assetID, let asset = byID[assetID] else { continue }
             var reviewer = self
-            reviewer.deadline = min(reviewDeadline, Date().addingTimeInterval(90))
+            reviewer.deadline = min(deadline ?? .distantFuture, Date().addingTimeInterval(600))
             let operation = phase == "source" ? "исходного видео" : "готового видео"
             reviewer.requestProgress = { update in
-                await progress?(FilmBuildProgress(.verifying, completed: index, total: items.count,
+                await progress?(FilmBuildProgress(stage, completed: index, total: items.count,
                     detail: "Проверка \(pass): \(operation) \(index + 1) из \(items.count). \(update.detail ?? "")" + (reason.map { " · " + $0 } ?? "")))
             }
             let fractions = [0.02, 0.25, 0.5, 0.75, 0.98]
@@ -445,12 +456,12 @@ struct SelectedContentReviewer: Sendable {
                 sourceDuration: item.sourceDuration, sampleTimes: times, phase: phase, model: model, cacheKey: key,
                 status: .uncertain, confidence: 0, obstructedSamples: [],
                 observation: "Локальная проверка содержания недоступна", activity: "unknown")
-            await progress?(FilmBuildProgress(.verifying, completed: index, total: items.count,
+            await progress?(FilmBuildProgress(stage, completed: index, total: items.count,
                 detail: "Проверка \(pass): \(operation) \(index + 1) из \(items.count)"))
             if let data = try? Data(contentsOf: receipt), let cached = try? JSONDecoder().decode(Answer.self, from: data),
                Self.valid(cached) {
                 assessment = Self.applying(cached, to: assessment)
-            } else if available {
+            } else if available, reviewer.deadline.map({ $0 > Date() }) ?? true {
                 do {
                     let samples = try await AdaptiveFrameSampler().selectedContentSamples(url: renderedURL ?? asset.originalURL,
                         sourceHash: identity, timestamps: times, frameCache: frameCache)
@@ -492,11 +503,17 @@ struct SelectedContentReviewer: Sendable {
                 } catch is CancellationError { throw CancellationError() }
                 catch {
                     assessment.observation = "Содержание не проверено: \(error.localizedDescription)"
-                    consecutiveFailures += 1
+                    // A slow or ambiguous shot says nothing about the next
+                    // one. Stop network attempts only when the local service
+                    // itself is unreachable, never after two model timeouts.
+                    let code = (error as? URLError)?.code
+                    consecutiveFailures = [.cannotConnectToHost, .cannotFindHost].contains(code) ? consecutiveFailures + 1 : 0
                     if consecutiveFailures >= 2 { available = false }
                 }
             }
             result.append(assessment)
+            await progress?(FilmBuildProgress(stage, completed: index + 1, total: items.count,
+                detail: "Обработано \(index + 1) из \(items.count) · подтверждено \(result.filter { $0.status != .uncertain }.count)"))
         }
         return result
     }
@@ -726,6 +743,15 @@ struct SelectedContentReviewer: Sendable {
     }
 
     func modelAnswer(body: [String: Any], responseURL: URL) async throws -> String {
+        var body = body
+        if var options = body["options"] as? [String: Any] {
+            // The multi-image boundary observer needs 8K. Alternating 4K/8K
+            // reloaded the same local model (20 s in the observed film) twice
+            // per shot. Keep one context size without reducing input evidence.
+            options["num_ctx"] = max(8192, options["num_ctx"] as? Int ?? 8192)
+            body["options"] = options
+            body["keep_alive"] = "10m"
+        }
         let operation = responseURL.lastPathComponent.components(separatedBy: ".").dropFirst().joined(separator: ".")
         let observer = requestProgress
         await observer?(FilmBuildProgress(.verifying, detail: operation.contains("action") ? "Проверяю границы действия" : operation.contains("purpose") ? "Оцениваю содержание кадра" : "Проверяю видимость и положение кадра"))

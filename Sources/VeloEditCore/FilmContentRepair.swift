@@ -12,7 +12,6 @@ public final class FilmVerifiedAlternative: Codable, Sendable {
 }
 public struct FilmContentRepairState: Codable, Sendable {
     var attempts = 0
-    var semanticSecondsRemaining: Double = 180
     var visited: Set<String> = []
     var best: FilmVerifiedAlternative?
     var reason: String? = nil

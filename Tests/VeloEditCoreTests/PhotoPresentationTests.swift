@@ -147,6 +147,34 @@ import Testing
             #expect(abs(early.x - first.x) + abs(early.y - first.y) < 0.1)
         }
     }
+
+    @Test func matchingAspectKenBurnsStaysCenteredAndContinuousAtEveryFrame() {
+        // Equal aspect ratios used to alternate the pan axis due to rounding
+        // of the growing overscan, jumping by tens of pixels between frames.
+        for (source, target) in [
+            (CGSize(width: 4032, height: 2268), CGSize(width: 1920, height: 1080)),
+            (CGSize(width: 2268, height: 4032), CGSize(width: 1080, height: 1920)),
+            (CGSize(width: 4000, height: 4000), CGSize(width: 1080, height: 1080))
+        ] {
+            var maximumStep: CGFloat = 0
+            var maximumPan: CGFloat = 0
+            var previous: CGPoint?
+            for frame in 0..<180 {
+                let progress = CGFloat(frame) / 179
+                let move = StillImageRenderGeometry.kenBurnsMotion(source: source, target: target,
+                    progress: progress, duration: 6)
+                maximumPan = max(maximumPan, abs(move.x), abs(move.y))
+                let placement = StillImageRenderGeometry.placement(sourceExtent: CGRect(origin: .zero, size: source),
+                    targetSize: target, motionScale: move.scale, horizontalTravel: move.x, verticalTravel: move.y,
+                    subjectReframe: nil, progress: progress)
+                let position = CGPoint(x: placement.x, y: placement.y)
+                if let previous { maximumStep = max(maximumStep, hypot(position.x - previous.x, position.y - previous.y)) }
+                previous = position
+            }
+            #expect(maximumPan == 0)
+            #expect(maximumStep < 1)
+        }
+    }
 }
 
 /// Explicit study replay uses a complete development copy, never original projects.

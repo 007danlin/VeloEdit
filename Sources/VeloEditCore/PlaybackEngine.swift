@@ -8,7 +8,7 @@ import CoreImage
 public final class TimelinePlayback: @unchecked Sendable {
     public let composition: AVComposition
     public let videoComposition: AVVideoComposition?
-    public let audioMix: AVAudioMix?
+    public private(set) var audioMix: AVAudioMix?
     public let audioMasteringReport: EditorialAudioMasteringReport?
     public let duration: Double
     public let renderedItemCount: Int
@@ -17,8 +17,9 @@ public final class TimelinePlayback: @unchecked Sendable {
     public let derivedMediaCacheHits: Int
     public let derivedMediaCacheMisses: Int
     private let temporaryFiles: [URL]
+    private let audioMixBuilder: ((Timeline) -> AVAudioMix?)?
 
-    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, audioMasteringReport: EditorialAudioMasteringReport? = nil, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, temporaryFiles: [URL]) {
+    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, audioMasteringReport: EditorialAudioMasteringReport? = nil, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, temporaryFiles: [URL], audioMixBuilder: ((Timeline) -> AVAudioMix?)? = nil) {
         self.composition = composition
         self.videoComposition = videoComposition
         self.audioMix = audioMix
@@ -30,6 +31,28 @@ public final class TimelinePlayback: @unchecked Sendable {
         self.derivedMediaCacheHits = derivedMediaCacheHits
         self.derivedMediaCacheMisses = derivedMediaCacheMisses
         self.temporaryFiles = temporaryFiles
+        self.audioMixBuilder = audioMixBuilder
+    }
+
+    /// Gain and mute belong to the mixer, not to video decoding. Replace the
+    /// current player's mix immediately, retaining its item, clock and sound.
+    public func updatedAudioMix(from previous: Timeline, to next: Timeline) -> AVAudioMix? {
+        guard previous.items.count == next.items.count,
+              previous.effectiveOriginalAudioVolume > 0 else { return nil }
+        var comparison = next
+        comparison.originalAudioVolume = previous.originalAudioVolume
+        for index in next.items.indices {
+            var audio = next.items[index].effectiveAudioAdjustments
+            let before = previous.items[index].effectiveAudioAdjustments
+            audio.volume = before.volume
+            audio.muted = before.muted
+            guard audio == before else { return nil }
+            comparison.items[index].audioAdjustments = previous.items[index].audioAdjustments
+        }
+        guard comparison == previous else { return nil }
+        guard let updated = audioMixBuilder?(next) else { return nil }
+        audioMix = updated
+        return updated
     }
 
     /// Text changes leave the timing/source composition intact. Update only
@@ -527,7 +550,7 @@ public actor PlaybackEngine {
         for track in composition.tracks where track.segments.isEmpty {
             composition.removeTrack(track)
         }
-        let audioMix: AVAudioMix? = makeAudioMix(
+        let audioMix: AVAudioMix? = Self.makeAudioMix(
             placements: placements,
             originalTracks: originalAudioTracks.compactMap { $0 }.filter { !$0.segments.isEmpty },
             originalAudioVolume: Float(originalAudioVolume),
@@ -568,7 +591,31 @@ public actor PlaybackEngine {
             warnings: sourceWarnings + [soundtrackWarning].compactMap { $0 },
             derivedMediaCacheHits: derivedMediaCacheHits,
             derivedMediaCacheMisses: derivedMediaCacheMisses,
-            temporaryFiles: temporaryFiles
+            temporaryFiles: temporaryFiles,
+            audioMixBuilder: { updated in
+                let byID = Dictionary(uniqueKeysWithValues: updated.items.map { ($0.id, $0) })
+                let updatedPlacements = placements.map { placement in
+                    var value = placement
+                    if let item = byID[placement.item.id] { value.item.audioAdjustments = item.audioAdjustments }
+                    return value
+                }
+                return Self.makeAudioMix(placements: updatedPlacements,
+                    originalTracks: originalAudioTracks.compactMap { $0 }.filter { !$0.segments.isEmpty },
+                    originalAudioVolume: Float(min(1, max(0, updated.effectiveOriginalAudioVolume))),
+                    music: musicResult, additionalAudio: audioResult.placements + adaptiveMusic,
+                    ducking: SourceAudioMixPolicy.musicDucking(in: updated), movieDuration: cursor.seconds,
+                    frameRate: updated.frameRate, endingFadeDuration: updated.endingFadeDuration,
+                    speechRanges: updated.speechRecords == nil ? nil : updated.items.flatMap { item -> [ClosedRange<Double>] in
+                        guard item.overlay == nil, item.effectiveAudioAdjustments.effectiveVolume > 0,
+                              updated.effectiveOriginalAudioVolume > 0, let id = item.assetID,
+                              let record = updated.speechRecords?.first(where: { $0.assetID == id }) else { return [] }
+                        return (record.transcript.speechRanges ?? record.transcript.sentences.map { $0.startTime...$0.endTime }).compactMap { range in
+                            let a = max(item.sourceStart, range.lowerBound), b = min(item.sourceStart + item.sourceDuration, range.upperBound)
+                            guard b > a else { return nil }
+                            return SpeechTimeMap.playbackRange(anchor: SpeechCaptionAnchor(key: "mix", assetID: id, sourceStart: a, sourceEnd: b, words: []), item: item, timeline: updated)
+                        }
+                    })
+            }
         )
     }
 
@@ -613,7 +660,7 @@ public actor PlaybackEngine {
         preset: BackgroundPreset?
     ) -> String {
         ProductionCacheIdentity.hash([
-            preset?.isProceduralGradient == true ? "photo-v10-gradient-prores" : "photo-v9-stable-fit",
+            preset?.isProceduralGradient == true ? "photo-v10-gradient-prores" : "photo-v11-stable-ken-burns",
             FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash), item.effect ?? "zoom-in",
             item.effectiveVideoAdjustments.crop.rawValue,
             preset?.rawValue ?? "photo", preset?.animationStyle?.rawValue ?? "none",
@@ -1320,7 +1367,7 @@ public actor PlaybackEngine {
         return (placements, temporaryFiles)
     }
 
-    private func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double, endingFadeDuration: Double?, speechRanges: [ClosedRange<Double>]? = nil) -> AVMutableAudioMix? {
+    private static func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double, endingFadeDuration: Double?, speechRanges: [ClosedRange<Double>]? = nil) -> AVMutableAudioMix? {
         guard !originalTracks.isEmpty || music != nil || !additionalAudio.isEmpty else { return nil }
         func clipVolume(_ placement: Placement) -> Float {
             originalAudioVolume * Float(placement.item.effectiveAudioAdjustments.effectiveVolume)

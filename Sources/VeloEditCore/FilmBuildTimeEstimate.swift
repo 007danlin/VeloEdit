@@ -67,7 +67,10 @@ public struct FilmBuildTimeEstimate {
     /// Until this Mac has measured the current operation, a workload heuristic
     /// is useful internally but is not a trustworthy countdown for the user.
     public var hasMeasuredPace: Bool {
-        work.measuredCompletion != nil || work.suppliedCompletion != nil
+        if childStage == .sourceContent || childStage == .renderedContent {
+            return child?.measuredCompletion != nil
+        }
+        return work.measuredCompletion != nil || work.suppliedCompletion != nil
             || child?.measuredCompletion != nil || child?.suppliedCompletion != nil
             || calibration[step.rawValue] != nil
     }
@@ -181,7 +184,7 @@ public struct FilmBuildTimeEstimate {
     }
 
     private static let verificationStages: [FilmBuildProgress.Stage] = [
-        .previewFrames, .controlExport, .deliveryFrames, .audioCheck
+        .previewFrames, .controlExport, .deliveryFrames, .audioCheck, .sourceContent, .renderedContent
     ]
 
     private func childBudget(for stage: FilmBuildProgress.Stage) -> TimeInterval {

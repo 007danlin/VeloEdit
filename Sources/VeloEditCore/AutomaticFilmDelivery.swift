@@ -238,7 +238,7 @@ public enum AutomaticFilmDelivery {
                 "Визуальные границы действий: проверено \(actions.filter { $0.actionBoundary?.passes == true }.count) из \(actions.count). Это не проверка границ речи или доказательство прибытия.", mandatory: false)
             check("selectedContent", "Local vision model on five exact original samples and five final MP4 samples per shot",
                 content.passes(timeline: timeline, assets: assets),
-                "Проверка содержания: исходных участков \(content.source.count), итоговых \(content.rendered.count); неопределённых/непригодных \((content.source + content.rendered).filter { $0.status != .usable || $0.confidence < 0.75 }.count)", mandatory: false)
+                "Проверка содержания: исходных участков \(content.source.count), итоговых \(content.rendered.count); неопределённых/непригодных \((content.source + content.rendered).filter { $0.status != .usable || $0.confidence < 0.75 }.count)")
         }
         report.requirements = checks
         report.warnings += checks.filter { !$0.passed }.map(\.evidence).filter { !report.warnings.contains($0) }

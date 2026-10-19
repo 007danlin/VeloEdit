@@ -11,6 +11,46 @@ private actor PreparationCounter {
     func called() { calls += 1 }
 }
 
+private actor FinalExportCounter: EditorialRenderedProbing {
+    var timelines: [Timeline] = []
+    func frames(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL) async throws -> [PerceptualRenderedFrameEvidence] {
+        timelines.append(timeline)
+        return try await FixtureEditorialProber().frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
+    }
+}
+
+@Test func filmBuildExportsOnlyAfterOpeningAndDeliveryClockAreFinal() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Готовое название")
+    var draft = try await savedBuild(store)
+    draft.plan.narrativeBeatPlan = .init(pattern: .minimalMontage, beats: [], reasons: [])
+    draft.timeline.openingTitles = .init(policy: .selected, title: "Готовое название", templateID: "title.cinematic-clean.v1")
+    try await store.checkpointFilmBuild(draft, ifRevision: await store.snapshot().revision)
+    let prober = FinalExportCounter()
+    let finished = try await VeloEditPipeline(store: store, renderedProber: prober).resumeFilmBuild()
+    let probed = await prober.timelines
+    #expect(probed.count == 1)
+    let exported = try #require(probed.first)
+    #expect(exported.effectiveTitleItems.contains { $0.semanticRole == .filmOpening && $0.text == "Готовое название" })
+    #expect(EditorialRenderSignature.signature(exported) == EditorialRenderSignature.signature(finished))
+    #expect(exported.frameRate == finished.frameRate)
+}
+
+@Test func manualPreviewVerificationDoesNotEncodeAnotherMovie() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Manual preview")
+    let draft = try await savedBuild(store)
+    try await store.update { $0.timelines = [draft.timeline]; $0.storyPlans = [draft.plan] }
+    let prober = FinalExportCounter()
+    let checked = try await VeloEditPipeline(store: store, renderedProber: prober).verifyCurrentFilm(verifyExport: false)
+    #expect(await prober.timelines.isEmpty)
+    #expect(EditorialRenderSignature.signature(checked) == EditorialRenderSignature.signature(draft.timeline))
+    #expect(checked.editorialReview?.evidenceDomains?.contains { $0.domain == .renderDecode && $0.isSufficient } == true)
+    #expect(checked.editorialReview?.exportVerification == nil)
+}
+
 private func preparationFixture(cached: Bool, kind: MediaKind = .photo) async throws -> ProjectStore {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let store = try ProjectStore(createAt: root, name: "Cached analysis preflight")
