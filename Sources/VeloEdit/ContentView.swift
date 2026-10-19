@@ -1837,11 +1837,7 @@ private struct MontageMediaBrowser: View {
     @EnvironmentObject private var model: AppModel
     @State private var tab: MontageBrowserTab = .media
     @State private var search = ""
-    @State private var titlePlacement: TitlePlacement = .authored
-    @State private var titleSearch = ""
-    @State private var openingOnly = false
     @State private var titleBackground: CGImage?
-    @State private var titleText = ""
     @State private var backgroundCategory: BackgroundCategory = .nature
     private let columns = [GridItem(.adaptive(minimum: 96), spacing: 8)]
     private let backgroundColumns = [
@@ -2133,31 +2129,19 @@ private struct MontageMediaBrowser: View {
     private var titleBrowser: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("Начальные титры", isOn: $openingOnly)
-                Picker("Положение", selection: $titlePlacement) {
-                    ForEach(TitlePlacement.allCases) { Text($0.localizedTitle).tag($0) }
-                }
-                TextField("Поиск оформления", text: $titleSearch).textFieldStyle(.roundedBorder)
-                TextField("Текст титра", text: $titleText, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                Text("Введите текст и выберите оформление. Наведите указатель на карточку, чтобы увидеть анимацию.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                ForEach(TitleTemplateCategory.allCases.filter { category in visibleTitleTemplates.contains { $0.category == category } }) { category in
+                ForEach(TitleTemplateCategory.allCases.filter { category in TitleTemplateRegistry.all.contains { $0.category == category } }) { category in
                     VStack(alignment: .leading, spacing: 7) {
                         Text(category.localizedTitle)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                            ForEach(visibleTitleTemplates.filter { $0.category == category }) { template in
+                            ForEach(TitleTemplateRegistry.all.filter { $0.category == category }) { template in
                                 LibraryItemButton {
-                                    let value = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    model.addModernTitle(value.isEmpty ? "Название" : value, templateID: template.id, placement: titlePlacement)
-                                    titleText = ""
+                                    model.addModernTitle("Название", templateID: template.id)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 5) {
-                                        TitlePreviewArtwork(template: template, text: titleText,
-                                            renderSize: titlePreviewSize, background: titleBackground, placement: titlePlacement)
+                                        TitlePreviewArtwork(template: template, text: "",
+                                            renderSize: titlePreviewSize, background: titleBackground, placement: .authored)
                                             .aspectRatio(titlePreviewSize.width / titlePreviewSize.height, contentMode: .fit)
                                             .overlay(alignment: .bottomTrailing) {
                                                 Image(systemName: "plus.circle.fill")
@@ -2188,10 +2172,6 @@ private struct MontageMediaBrowser: View {
             let image = await model.titleLibraryFrame()
             if !Task.isCancelled { titleBackground = image }
         }
-    }
-
-    private var visibleTitleTemplates: [TitleTemplateDefinition] {
-        TitleTemplateRegistry.all.filter { (!openingOnly || $0.supportsFilmOpening) && $0.matchesSearch(titleSearch) }
     }
 
     private var titlePreviewSize: CGSize {
@@ -2361,9 +2341,8 @@ private struct MontageMediaBrowser: View {
     }
 
     private func titleDragPayload(_ template: TitleTemplateDefinition) -> String {
-        let value = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = value.isEmpty ? "Название" : value
-        let payload = TitleLibraryPayload(text: text, placement: titlePlacement)
+        let text = "Название"
+        let payload = TitleLibraryPayload(text: text, placement: .authored)
         let data = (try? JSONEncoder().encode(payload)) ?? Data(text.utf8)
         return "title-template:\(template.id):\(data.base64EncodedString())"
     }
