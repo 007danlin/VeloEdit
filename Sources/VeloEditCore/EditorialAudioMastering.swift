@@ -282,8 +282,17 @@ public enum EditorialAudioMastering {
             guard cursor < duration else { break }
             var a: Float = held, b: Float = held
             var range = CMTimeRange.zero
-            let found = parameters.getVolumeRamp(for: CMTime(seconds: query, preferredTimescale: 48_000), startVolume: &a, endVolume: &b, timeRange: &range)
+            let queryTime = CMTime(seconds: query, preferredTimescale: 48_000)
+            let found = parameters.getVolumeRamp(for: queryTime, startVolume: &a, endVolume: &b, timeRange: &range)
             guard found else { append(held, held, from: cursor, to: duration); break }
+            // Looking ahead across a gap can report a future setVolume event
+            // with an indefinite duration, even when later ramps exist.
+            // Query at that event's exact start to resolve its actual end;
+            // otherwise it incorrectly replaces every subsequent clip gain.
+            if range.start > queryTime {
+                let eventStart = range.start
+                _ = parameters.getVolumeRamp(for: eventStart, startVolume: &a, endVolume: &b, timeRange: &range)
+            }
             let start = max(cursor, min(duration, range.start.seconds))
             append(held, held, from: cursor, to: start)
             let rawEnd = range.end.seconds

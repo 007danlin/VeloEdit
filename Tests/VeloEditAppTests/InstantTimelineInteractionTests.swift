@@ -7,6 +7,75 @@ import VeloEditCore
 @Suite(.serialized)
 @MainActor
 struct InstantTimelineInteractionTests {
+    @Test func zeroInlineVolumeHidesOnlyThatClipsSpeechAndRestoresItOnUndo() async throws {
+        let fixture = try await Fixture(clipCount: 2); defer { fixture.remove() }
+        let model = fixture.model
+        var timeline = try #require(model.timeline)
+        timeline.originalAudioVolume = 1
+        timeline.music = .init(style: .calm, bpm: 100, volume: 0.4)
+        timeline.audioDucking = .init(enabled: true)
+        timeline.speechRecords = timeline.items.map { item in
+            var transcript = SpeechTranscript(localeIdentifier: "ru", words: [], sentences: [], confidence: 1)
+            transcript.status = .ready; transcript.speechRanges = [2...3]
+            return .init(assetID: item.assetID!, transcript: transcript)
+        }
+        model.project?.timelines[0] = timeline
+        let target = timeline.items[0]
+        let originalZones = model.musicDuckingRegions
+        #expect(originalZones.count == 2)
+
+        model.setInlineClipVolume(0, id: target.id)
+        // The computed collection used by the timeline updates synchronously.
+        #expect(model.musicDuckingRegions.count == 1)
+        #expect(model.musicDuckingRegions.allSatisfy { $0.anchors.allSatisfy { $0.itemID != target.id } })
+        #expect(model.timeline?.items[0].effectiveAudioAdjustments.musicDuckingExclusions?.isEmpty != false)
+        #expect(model.timeline?.music == timeline.music)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(MusicSpeechDucking.regions(in: try #require(await reopened.manifest.timelines.last)) == model.musicDuckingRegions)
+
+        model.undoTimelineEdit()
+        #expect(model.musicDuckingRegions == originalZones)
+        model.redoTimelineEdit()
+        #expect(model.musicDuckingRegions.count == 1)
+        model.setInlineClipVolume(1, id: target.id)
+        #expect(model.musicDuckingRegions == originalZones)
+        #expect(await model.flushAutosave())
+    }
+
+    @Test func removingSpeechDuckingZoneKeepsMusicAndSupportsUndoAndSave() async throws {
+        let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
+        let model = fixture.model
+        var timeline = try #require(model.timeline)
+        timeline.originalAudioVolume = 1
+        timeline.music = .init(style: .calm, bpm: 100, volume: 0.4)
+        timeline.audioDucking = .init(enabled: true)
+        var transcript = SpeechTranscript(localeIdentifier: "ru", words: [], sentences: [], confidence: 1)
+        transcript.status = .ready; transcript.speechRanges = [2...3, 6...7]
+        timeline.speechRecords = [.init(assetID: timeline.items[0].assetID!, transcript: transcript)]
+        model.project?.timelines[0] = timeline
+        let zone = try #require(model.musicDuckingRegions.first)
+        model.selectMusicDuckingRegion(zone.id)
+        #expect(model.hasTimelineSelection)
+        #expect(!model.selectedSoundtrack)
+        #expect(model.selectedTimelineItemID == nil)
+        model.deleteTimelineSelection()
+        #expect(model.musicDuckingRegions.count == 1)
+        #expect(model.timeline?.music == timeline.music)
+        #expect(model.timeline?.items.count == 1)
+        #expect(!model.hasTimelineSelection)
+        #expect(await model.flushAutosave())
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last == model.timeline)
+        model.undoTimelineEdit()
+        #expect(model.musicDuckingRegions.count == 2)
+        model.redoTimelineEdit()
+        #expect(model.musicDuckingRegions.count == 1)
+        model.selectMusicDuckingRegion(try #require(model.musicDuckingRegions.first).id)
+        model.selectSoundtrack()
+        #expect(model.selectedMusicDuckingRegionID == nil)
+    }
+
     @Test func rightTrimRemovesTailPixelsInActualPlayerAndExport() async throws {
         let fixture = try await Fixture(clipCount: 1); defer { fixture.remove() }
         var cards: [MediaAsset] = []

@@ -1737,6 +1737,8 @@ public struct AudioAdjustments: Codable, Hashable, Sendable {
     public var duckingAmount: Double?
     public var preservePitch: Bool?
     public var effect: AudioEffect?
+    /// Source-time exclusions follow the clip through moves, trims and splits.
+    public var musicDuckingExclusions: [MusicDuckingExclusion]?
 
     public init(volume: Double = 1, muted: Bool = false, fadeIn: Double = 0, fadeOut: Double = 0, noiseReduction: Double = 0, eqPreset: AudioEQPreset = .flat, normalize: Bool = false, duckOthers: Bool = false, duckingAmount: Double = 0.5, preservePitch: Bool = true, effect: AudioEffect = .none) {
         self.volume = min(max(0, volume), 2)

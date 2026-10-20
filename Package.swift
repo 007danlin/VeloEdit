@@ -21,7 +21,17 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "CRNNoise",
+            path: "ThirdParty/RNNoise",
+            sources: ["src/denoise.c", "src/rnn.c", "src/pitch.c", "src/kiss_fft.c",
+                      "src/celt_lpc.c", "src/nnet.c", "src/nnet_default.c",
+                      "src/parse_lpcnet_weights.c", "src/rnnoise_data.c", "src/rnnoise_tables.c"],
+            publicHeadersPath: "include",
+            cSettings: [.headerSearchPath("src"), .headerSearchPath("compat"), .define("RNNOISE_BUILD")]
+        ),
+        .target(
             name: "VeloEditCore",
+            dependencies: ["CRNNoise"],
             linkerSettings: [
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("Vision"),
@@ -53,7 +63,8 @@ let package = Package(
         .executableTarget(name: "VeloEditSpeechWorker", dependencies: ["VeloEditCore", .product(name: "WhisperKit", package: "ArgmaxOSS"), .product(name: "CWhisper", package: "WhisperCPP"), .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager")]),
         .testTarget(
             name: "VeloEditCoreTests",
-            dependencies: ["VeloEditCore"]
+            dependencies: ["VeloEditCore"],
+            resources: [.copy("Fixtures/NoiseReduction")]
         ),
         .testTarget(
             name: "VeloEditSpeechWorkerTests",

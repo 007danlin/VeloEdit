@@ -19,6 +19,9 @@ final class FirstLaunchCoordinator: ObservableObject {
     private(set) var usesLightReveal = true
     private(set) var exitEntryElapsed: Double = 0
     private(set) var isReplay = false
+    var onAction: ((Action, Bool) -> Void)?
+    var onFinish: ((Action, Bool) -> Void)?
+    private var acceptedAction: Action?
     private let defaults: UserDefaults
     private let clock: () -> CFTimeInterval
     private var task: Task<Void, Never>?
@@ -65,11 +68,15 @@ final class FirstLaunchCoordinator: ObservableObject {
     func accept(_ action: Action, reduceMotion: Bool = false, pointer: Bool = false) -> Bool {
         guard isPresented else { return false }
         if action == .projectCommand {
+            acceptedAction = action
+            onAction?(action, isReplay)
             defaults.set(true, forKey: Self.completedKey)
             finish()
             return true
         }
         guard phase != .exiting else { return false }
+        acceptedAction = action
+        onAction?(action, isReplay)
         defaults.set(true, forKey: Self.completedKey)
         cancelTask()
         usesLightReveal = action == .begin && !reduceMotion
@@ -88,6 +95,7 @@ final class FirstLaunchCoordinator: ObservableObject {
         guard !isPresented else { return }
         cancelTask()
         isReplay = true
+        acceptedAction = nil
         startedAt = nil
         exitAt = nil
         presentationID = UUID()
@@ -111,6 +119,10 @@ final class FirstLaunchCoordinator: ObservableObject {
     private func finish() {
         cancelTask()
         phase = .finished
+        if let action = acceptedAction {
+            acceptedAction = nil
+            onFinish?(action, isReplay)
+        }
     }
 
     private func cancelTask() { task?.cancel(); task = nil }

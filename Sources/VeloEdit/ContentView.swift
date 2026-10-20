@@ -8,7 +8,6 @@ import VeloEditCore
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var intro: FirstLaunchCoordinator
-    @State private var isSidebarVisible = true
     @State private var isRenamingProject = false
     @State private var projectName = ""
 
@@ -19,7 +18,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                if isSidebarVisible {
+                if model.isSidebarVisible {
                     sidebar
                         .frame(width: 239)
                         .disabled(model.isCreatingProject)
@@ -27,8 +26,11 @@ struct ContentView: View {
                 }
 
                 Group {
-                    if !model.hasProjectWorkspace && model.section != .settings { WelcomeView() }
-                    else { selectedWorkspace }
+                    if !model.hasProjectWorkspace && model.section != .settings && !model.onboarding.showsProjectlessWorkspace {
+                        WelcomeView()
+                    } else {
+                        selectedWorkspace.disabled(model.onboarding.showsProjectlessWorkspace)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -57,7 +59,7 @@ struct ContentView: View {
         .background {
             if !model.hasProjectWorkspace || model.section == .home {
                 HStack(spacing: 0) {
-                    if isSidebarVisible { Color.clear.frame(width: 240) }
+                    if model.isSidebarVisible { Color.clear.frame(width: 240) }
                     ZStack {
                         WelcomeAuroraBackground()
                         ActivitySymbolConstellation()
@@ -152,7 +154,7 @@ struct ContentView: View {
 
             WindowHeaderButton(
                 systemImage: "sidebar.left",
-                label: isSidebarVisible ? "Скрыть боковую панель" : "Показать боковую панель",
+                label: model.isSidebarVisible ? "Скрыть боковую панель" : "Показать боковую панель",
                 action: toggleSidebar
             )
                 .frame(width: 30, height: 32)
@@ -171,13 +173,17 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             Group {
-                if model.openingProjectURL == nil && model.isTimelineInspectorPresented && model.canInspectSelectedTitle {
+                if model.openingProjectURL == nil && model.isTimelineInspectorPresented && model.canInspectSelectedTitle && !model.onboarding.isPresented {
                     TimelineInspector()
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .clipped()
                 } else {
                     navigationSidebar
                 }
+            }
+
+            if model.hasProjectWorkspace {
+                OnboardingResumeButton(coordinator: model.onboarding)
             }
 
             if model.openingProjectURL == nil, !model.isWorking, let recovery = model.recoverableFilmBuild,
@@ -247,6 +253,7 @@ struct ContentView: View {
             .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color.accentColor.opacity(0.16), lineWidth: 1) }
             .padding(10)
+            .inactiveDuringOnboarding()
 
             Divider()
 
@@ -275,9 +282,11 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(model.storageIsCleaning || (!model.hasProjectWorkspace && section != .home && section != .settings))
+                    .onboardingAnchor(.section(section))
                 }
             }
             .padding(10)
+            .onboardingAnchor(.navigation)
 
             Divider()
 
@@ -287,6 +296,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.top, 9)
+                .inactiveDuringOnboarding()
 
             ScrollView {
                 LazyVStack(spacing: 3) {
@@ -326,6 +336,7 @@ struct ContentView: View {
                 .padding(.vertical, 6)
             }
             .frame(maxHeight: .infinity)
+            .inactiveDuringOnboarding()
 
         }
     }
@@ -344,7 +355,7 @@ struct ContentView: View {
                     case .home: WelcomeView()
                     case .media: MediaLibraryView()
                     case .director: DirectorPanel()
-                    case .timeline: TimelineWorkspaceView(showsResetAllButton: !isSidebarVisible)
+                    case .timeline: TimelineWorkspaceView(showsResetAllButton: !model.isSidebarVisible)
                     case .export: ExportWorkspaceView()
                     case .settings: SettingsWorkspaceView()
                     }
@@ -372,7 +383,8 @@ struct ContentView: View {
     private static func resolution(_ metadata: MediaMetadata) -> String { if let w = metadata.width, let h = metadata.height { return "\(w)×\(h)" }; return "Фотография" }
 
     private func toggleSidebar() {
-        isSidebarVisible.toggle()
+        model.onboarding.interrupt()
+        model.isSidebarVisible.toggle()
     }
 
     private func presentProjectRename() {
@@ -382,6 +394,7 @@ struct ContentView: View {
     }
 
     private func handleEscape() {
+        if model.onboarding.isPresented { model.onboarding.dismiss(); return }
         if model.isPresentingNewProject {
             DispatchQueue.main.async { model.cancelProjectCreation() }
             return
@@ -693,8 +706,11 @@ private struct WelcomeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(minHeight: 430)
 
+            OnboardingResumeButton(coordinator: model.onboarding)
+
             if !model.recentProjectURLs.isEmpty {
                 RecentProjectsGallery()
+                    .inactiveDuringOnboarding()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -744,16 +760,19 @@ private struct WelcomeActivityHero: View {
                     .foregroundStyle(.white, Color(red: 0.10, green: 0.58, blue: 1.00))
             }
             .frame(width: 82, height: 82)
+            .inactiveDuringOnboarding()
 
             Text("VeloEdit")
                 .font(.system(size: 38, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
+                .inactiveDuringOnboarding()
 
             Text("Дайте приложению реальные материалы и расскажите, какой фильм хотите.")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.white.opacity(0.62))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 500)
+                .inactiveDuringOnboarding()
 
             HStack(spacing: 12) {
                 Button("Новый проект", action: model.createProject)
@@ -763,6 +782,7 @@ private struct WelcomeActivityHero: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
             }
+            .onboardingAnchor(.welcome)
         }
         .padding(.horizontal, 42)
         .padding(.vertical, 22)
@@ -1160,6 +1180,7 @@ private struct MediaLibraryView: View {
                         .layoutPriority(1)
                     if selectedMediaAsset != nil || selectedMusicTrack != nil {
                         mediaInspector
+                            .inactiveDuringOnboarding()
                             .frame(
                                 minWidth: 230,
                                 idealWidth: 320,
@@ -1173,6 +1194,7 @@ private struct MediaLibraryView: View {
                     if selectedMediaAsset != nil || selectedMusicTrack != nil {
                         Divider()
                         mediaInspector
+                            .inactiveDuringOnboarding()
                             .frame(minHeight: 180, idealHeight: 260, maxHeight: max(180, geometry.size.height * 0.45))
                     }
                 }
@@ -1195,6 +1217,7 @@ private struct MediaLibraryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(20)
+                Group {
                 if model.openingProjectURL == nil && model.newMaterialCount > 0 {
                     HStack {
                         Text("Добавлено материалов: \(model.newMaterialCount). Использовать в фильме?")
@@ -1329,6 +1352,8 @@ private struct MediaLibraryView: View {
                         .padding(.bottom, 18)
                     }
                 }
+                }
+                .inactiveDuringOnboarding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -1391,8 +1416,10 @@ private struct MediaLibraryView: View {
             Button("Добавить материалы", systemImage: "plus", action: model.chooseMedia)
                 .help("Выбрать файлы или папки на Mac, флэшке либо внешнем диске")
                 .disabled(model.isWorking)
+                .onboardingAnchor(.media)
             Button("Ручной монтаж", systemImage: "timeline.selection", action: model.startManualEditing)
                 .disabled(model.isWorking)
+                .inactiveDuringOnboarding()
         }
         .fixedSize(horizontal: true, vertical: true)
         .disabled(model.openingProjectURL != nil)
@@ -1751,15 +1778,19 @@ private struct SourcePreview: View {
 private struct TimelineWorkspaceView: View {
     @EnvironmentObject var model: AppModel
     let showsResetAllButton: Bool
+    // This empty surface belongs only to the view; the tour never creates or
+    // changes a project, its saved timeline, or its undo history.
+    @State private var onboardingTimeline = Timeline(storyPlanID: UUID(), items: [])
 
     var body: some View {
         GeometryReader { geometry in
-            if let timeline = model.timeline {
+            if let timeline = model.timeline ?? (model.onboarding.showsEmptyMontagePreview ? onboardingTimeline : nil) {
                 let columnWidth = max(0, (geometry.size.width - 1) / 2)
 
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         MontageMediaBrowser()
+                            .inactiveDuringOnboarding()
                             .frame(minWidth: 0, maxWidth: .infinity)
                             .frame(width: columnWidth)
                             .clipped()
@@ -1770,13 +1801,16 @@ private struct TimelineWorkspaceView: View {
                             .frame(width: columnWidth)
                             .clipped()
                             .frame(maxHeight: .infinity)
+                            .onboardingAnchor(.preview)
                     }
                     .frame(height: geometry.size.height / 2)
 
                     Divider()
                     MagneticTimelineView(timeline: timeline, playbackClock: model.playbackClock)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .onboardingAnchor(.timeline)
                 }
+                .disabled(model.onboarding.showsEmptyMontagePreview)
                 .background(Color(nsColor: .windowBackgroundColor))
                 .background(TimelineKeyboardMonitor(model: model).frame(width: 0, height: 0))
             } else {
@@ -2948,6 +2982,7 @@ struct MontagePlayerWorkspace: View {
                             get: { (audio.noiseReduction ?? 0) > 0.001 },
                             set: { model.setSelectedNoiseReduction($0 ? max(0.5, audio.noiseReduction ?? 0) : 0) }
                         ))
+                        .help("Нейросетевое шумоподавление сохраняет речь и уменьшает фон. Обработка выполняется на этом Mac.")
                         ViewerValueSlider(title: "Очистка", value: audio.noiseReduction ?? 0, range: 0...1, style: .percent, onCommit: model.setSelectedNoiseReduction)
                         ViewerMenuControl(title: "Эквалайзер", selection: Binding(get: { audio.eqPreset ?? .flat }, set: model.setSelectedEQ)) {
                             ForEach(AudioEQPreset.allCases) { preset in Text(preset.localizedTitle).tag(preset) }
@@ -4469,9 +4504,12 @@ private struct DirectorPanel: View {
                 .frame(minWidth: 450, idealWidth: 610, maxWidth: .infinity)
                 .layoutPriority(1)
             DirectorPlayerColumn()
+                .inactiveDuringOnboarding()
                 .frame(minWidth: 300, idealWidth: 480, maxWidth: .infinity)
         }
-        .task { await model.refreshAIModelAvailability() }
+        .task(id: model.onboarding.isPresented) {
+            if !model.onboarding.isPresented { await model.refreshAIModelAvailability() }
+        }
     }
 }
 
@@ -4520,14 +4558,17 @@ private struct DirectorChatColumn: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            .inactiveDuringOnboarding()
 
             Divider()
 
             DirectorConversationView()
                 .id(model.project?.id)
+                .inactiveDuringOnboarding()
 
             DirectorComposer()
                 .padding(14)
+                .onboardingAnchor(.director)
         }
     }
 }
@@ -4850,6 +4891,7 @@ struct DirectorComposer: View {
                 else { isInputFocused = true }
             }
             .onChange(of: isInputFocused) {
+                if isInputFocused { model.onboarding.interrupt() }
                 if isInputFocused && needsCaretAtEnd { placeCaretAtEnd() }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSControl.textDidBeginEditingNotification)
@@ -4870,6 +4912,7 @@ struct DirectorComposer: View {
             HStack(spacing: 10) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     AIPowerSelector()
+                        .inactiveDuringOnboarding()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: 8)
@@ -5837,11 +5880,13 @@ struct GeneralSettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 SettingsSectionCard("Знакомство с VeloEdit") {
                     HStack(spacing: 12) {
-                        SettingsActionDescription(icon: "play.rectangle", title: "Первый кадр",
-                                                  description: "Посмотрите вступление ещё раз и вернитесь к текущему экрану.")
+                        SettingsActionDescription(icon: "play.rectangle", title: "Вступление и инструкция",
+                                                  description: "Посмотрите вступление и познакомьтесь с основными разделами редактора.")
                         Spacer(minLength: 12)
                         Button("Посмотреть вступление") { model.intro.replay() }
                             .buttonStyle(.bordered)
+                            .disabled(model.onboarding.isPresented || model.onboarding.unavailableReason != nil)
+                            .help(model.onboarding.unavailableReason ?? "После «Начнём» появится мини-инструкция")
                     }
                 }
                 SettingsSectionCard("Статистика всех проектов") {

@@ -15,6 +15,7 @@ paths = [source / "Package.swift"] + list((source / "Sources").rglob("*.swift"))
 paths += [p for p in (source / "Resources").rglob("*") if p.is_file()]
 paths += list((source / "Scripts").rglob("*.py")) + list((source / "Scripts").rglob("*.sh"))
 paths += [source / "Distribution/native-dependencies.json"]
+paths += [p for p in (source / "ThirdParty/RNNoise").rglob("*") if p.is_file()]
 for path in sorted(paths):
     digest.update(str(path.relative_to(source)).encode() + b"\0")
     with path.open("rb") as stream:

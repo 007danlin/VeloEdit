@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SwiftUI
 import AppKit
 import AVKit
@@ -187,6 +188,10 @@ final class AppModel: ObservableObject {
 
     private static let recentProjectsKey = "recentProjectPaths.v1"
     let intro: FirstLaunchCoordinator
+    let onboarding: OnboardingCoordinator
+    let exportWorkspaceOptions = ExportWorkspaceOptions()
+    private var onboardingObservation: AnyCancellable?
+    @Published var isSidebarVisible = true
     private static let projectLibraryKey = "projectLibraryPaths.v1"
     private let defaults: UserDefaults
     private static let freeToUseLicenseAcceptedKey = "freeToUseLicenseAccepted.v1"
@@ -198,6 +203,7 @@ final class AppModel: ObservableObject {
     nonisolated static let interactivePreviewLongEdge = 1_920
     @Published var project: ProjectManifest? {
         didSet {
+            if onboarding.isPresented && oldValue?.id != project?.id { onboarding.interrupt() }
             cachedPlaybackMap = nil
             cachedTimelineAssets = nil
             rebuildDirectorMomentIndex()
@@ -316,6 +322,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var selectedTitleTimelineItemIDs: Set<UUID> = []
     @Published private(set) var selectedTransitionTimelineItemIDs: Set<UUID> = []
     @Published var selectedSoundtrack = false
+    @Published private(set) var selectedMusicDuckingRegionID: String?
+    @Published private(set) var musicSpeechActivity: [SpeechActivityRecord] = []
     let playbackClock = TimelinePlaybackClock()
     private(set) var timelinePlayheadTime: Double {
         get { playbackClock.time }
@@ -324,7 +332,8 @@ final class AppModel: ObservableObject {
     @Published var settingsTab: WorkspaceSettingsTab = .general
     @Published var section: WorkspaceSection = .home {
         didSet {
-            if section != .timeline { closeTimelineInspector() }
+            if onboarding.isPresented && section != oldValue { onboarding.interrupt() }
+            if section != .timeline && !onboarding.isNavigating { closeTimelineInspector() }
             // Some inspector and playback actions navigate directly. Do not
             // leave an invisible creation form blocking the next New action.
             if section != .home, isPresentingNewProject, !isCreatingProject {
@@ -392,6 +401,7 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String? {
         didSet {
             guard let errorMessage, errorMessage != oldValue else { return }
+            onboarding.interrupt()
             SupportDiagnostics.shared.record("Ошибка интерфейса · \(activityTitle) · проект: \(projectURL?.path ?? "не открыт")\n\(errorMessage)")
             AppNotifications.shared.send(title: "Ошибка VeloEdit", body: errorMessage)
         }
@@ -591,7 +601,26 @@ final class AppModel: ObservableObject {
         return selection
     }
     var hasTimelineSelection: Bool {
-        !currentTimelineSelection.isEmpty
+        selectedMusicDuckingRegionID != nil || !currentTimelineSelection.isEmpty
+    }
+    var musicDuckingRegions: [MusicDuckingRegion] {
+        guard let timeline else { return [] }
+        return MusicSpeechDucking.regions(in: timeline, activity: musicSpeechActivity)
+    }
+
+    func selectMusicDuckingRegion(_ id: String) {
+        guard musicDuckingRegions.contains(where: { $0.id == id }) else { return }
+        NSApp?.keyWindow?.makeFirstResponder(nil)
+        clearTimelineSelection()
+        selectedMusicDuckingRegionID = id
+    }
+
+    func removeMusicDuckingRegion(_ id: String) {
+        guard let region = musicDuckingRegions.first(where: { $0.id == id }) else { return }
+        editTimelineOptimistically("Приглушение под речь убрано", didApply: { self.selectedMusicDuckingRegionID = nil }) {
+            MusicSpeechDucking.removing(region, from: &$0)
+            return true
+        }
     }
     var canPasteTimelineElements: Bool { timelineClipboard?.isEmpty == false }
 
@@ -801,9 +830,12 @@ final class AppModel: ObservableObject {
          }) {
         self.defaults = defaults
         self.intro = FirstLaunchCoordinator(defaults: defaults)
+        self.onboarding = OnboardingCoordinator(defaults: defaults, intro: intro)
         self.directorAgent = directorAgent ?? LocalDirectorAgent()
         self.personalTasteStore = personalTasteStore
         self.loadProject = loadProject
+        onboarding.attach(to: self)
+        onboardingObservation = onboarding.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         let paths = defaults.stringArray(forKey: Self.recentProjectsKey) ?? []
         let recentURLs = ProjectLibrary.uniqueURLs(paths.map { URL(fileURLWithPath: $0) })
         recentProjectURLs = Array(recentURLs.prefix(12))
@@ -826,6 +858,7 @@ final class AppModel: ObservableObject {
     func createProject() {
         intro.accept(.projectCommand)
         guard !storageIsCleaning else { return }
+        onboarding.projectAction()
         // Let the welcome button finish its gesture before replacing its view.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.openingProjectURL == nil, !self.isCreatingProject,
@@ -849,6 +882,7 @@ final class AppModel: ObservableObject {
 
     func cancelProjectCreation() {
         guard isPresentingNewProject, !isCreatingProject else { return }
+        onboarding.projectCancelled()
         isPresentingNewProject = false
         manualProjectAfterCreation = false
         newProjectError = nil
@@ -877,7 +911,11 @@ final class AppModel: ObservableObject {
         if let message = draft.validationMessage { newProjectError = message; return }
         newProjectError = nil
         isCreatingProject = true
-        defer { isCreatingProject = false }
+        var created = false
+        defer {
+            isCreatingProject = false
+            if created { onboarding.projectReady() }
+        }
         guard await flushAutosave() else { return }
         do {
             let store = try await Task.detached(priority: .userInitiated) { try draft.makeStore() }.value
@@ -891,6 +929,7 @@ final class AppModel: ObservableObject {
             sectionBeforeProjectCreation = nil
             section = .media
             status = "Проект создан — перетащите фотографии, видео или музыку"
+            created = true
             if manualProjectAfterCreation {
                 manualProjectAfterCreation = false
                 startManualEditing()
@@ -921,6 +960,7 @@ final class AppModel: ObservableObject {
         intro.accept(.projectCommand)
         guard !storageIsCleaning else { return }
         guard !isCreatingProject, projectOpenPanel == nil else { return }
+        onboarding.projectAction()
         let panel = Self.makeProjectOpenPanel()
         projectOpenPanel = panel
         // Return from SwiftUI's button/menu action before presenting AppKit's
@@ -929,7 +969,10 @@ final class AppModel: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
                 self?.projectOpenPanel = nil
-                guard response == .OK, let url = panel.url else { return }
+                guard response == .OK, let url = panel.url else {
+                    self?.onboarding.projectCancelled()
+                    return
+                }
                 self?.openProject(at: url)
             }
             if let window = NSApplication.shared.mainWindow {
@@ -941,6 +984,7 @@ final class AppModel: ObservableObject {
     }
 
     func openRecentProject(_ url: URL, name: String? = nil) {
+        onboarding.interrupt()
         openProject(at: url, name: name)
     }
 
@@ -1058,6 +1102,7 @@ final class AppModel: ObservableObject {
     private func openProject(at url: URL, destination: WorkspaceSection = .media, name: String? = nil) {
         intro.accept(.projectCommand)
         guard !storageIsCleaning else { return }
+        onboarding.projectAction()
         // A recent-project card lives inside a ForEach backed by
         // `recentProjectURLs`. Opening it also moves that URL to the front of
         // the list. If we publish those changes while SwiftUI is still
@@ -1138,6 +1183,7 @@ final class AppModel: ObservableObject {
                 // Consume only after a successful open, so an unavailable
                 // project can be retried on the next launch without losing data.
                 clearUpdateRelaunchProject()
+                onboarding.projectReady()
 
                 // Cached artwork appears independently; missing frames are
                 // regenerated later by prepareOpenedProject().
@@ -1229,6 +1275,7 @@ final class AppModel: ObservableObject {
     }
 
     func chooseMedia() {
+        onboarding.interrupt()
         guard !storageIsCleaning else { return }
         guard pipeline != nil else { return }
         let panel = NSOpenPanel()
@@ -1316,6 +1363,7 @@ final class AppModel: ObservableObject {
     }
 
     func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        onboarding.interrupt()
         guard let pipeline, !isWorking else { return false }
         Task {
             let urls = await FileDropLoader.load(providers)
@@ -1326,6 +1374,7 @@ final class AppModel: ObservableObject {
     }
 
     func handleTimelineFileDrop(_ providers: [NSItemProvider], at index: Int, audioStart: Double) -> Bool {
+        onboarding.interrupt()
         guard let pipeline, !isWorking,
               providers.contains(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else { return false }
         Task {
@@ -1771,6 +1820,7 @@ final class AppModel: ObservableObject {
     }
 
     func sendDirectorMessage() {
+        onboarding.interrupt()
         let sourceText = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sourceText.isEmpty else { return }
         if DirectorRequestIntentInterpreter().mode(for: sourceText) == .advisory {
@@ -2056,6 +2106,7 @@ final class AppModel: ObservableObject {
     }
 
     func createFilm(forceFullRemake: Bool = false) {
+        onboarding.interrupt()
         guard let pipeline, !isWorking, !isDirectorResponding else { return }
         let isRebuildingFilm = timeline != nil
         let timelineToAvoid = forceFullRemake ? timeline : nil
@@ -2464,6 +2515,7 @@ final class AppModel: ObservableObject {
     func revealExportedVideo(_ job: RenderJob) { NSWorkspace.shared.activateFileViewerSelecting([job.outputURL]) }
 
     func saveVideo() {
+        onboarding.interrupt()
         saveVideoAs()
     }
 
@@ -3228,6 +3280,7 @@ final class AppModel: ObservableObject {
             didApply: { self.selectTimelineAudioClip(clip.id) }
         ) { updated in
             guard TimelineMutationEngine.insertAudioClip(in: &updated, clip: clip) else { return false }
+            MusicSpeechDucking.retargetExclusions(from: MusicSpeechDucking.soundtrack, to: clip.id.uuidString, in: &updated)
             updated.music = nil
             updated.adaptiveSoundtrack = nil
             return true
@@ -4179,6 +4232,7 @@ final class AppModel: ObservableObject {
     }
 
     func clearTimelineSelection() {
+        selectedMusicDuckingRegionID = nil
         closeTimelineInspector()
         selectedTimelineItemIDs.removeAll()
         selectedTimelineAudioClipIDs.removeAll()
@@ -4199,7 +4253,7 @@ final class AppModel: ObservableObject {
     /// Marquee updates share the same selection as keyboard and clipboard actions,
     /// without seeking or opening an inspector on every pointer movement.
     func setTimelineMarqueeSelection(_ selection: Set<TimelineSelectionKey>) {
-        guard selection != currentTimelineSelection else { return }
+        guard selection != currentTimelineSelection || selectedMusicDuckingRegionID != nil else { return }
         let active = timelineSelectionAnchor.flatMap { selection.contains($0) ? $0 : nil }
             ?? orderedTimelineSelectionKeys().first(where: selection.contains)
         timelineSelectionAnchor = active
@@ -4208,6 +4262,7 @@ final class AppModel: ObservableObject {
 
     func selectAllTimelineElements() {
         guard let timeline else { return }
+        selectedMusicDuckingRegionID = nil
         closeTimelineInspector()
         selectedTimelineItemIDs = Set(timeline.items.map(\.id))
         selectedTimelineAudioClipIDs = Set(timeline.effectiveAudioClips.map(\.id))
@@ -4248,6 +4303,7 @@ final class AppModel: ObservableObject {
     }
 
     private func applyTimelineSelection(_ selection: Set<TimelineSelectionKey>, active: TimelineSelectionKey?) {
+        selectedMusicDuckingRegionID = nil
         let inspected = selectedTitleTimelineItemID.map(TimelineSelectionKey.title)
             ?? selectedTimelineItemID.map(TimelineSelectionKey.item)
         if isTimelineInspectorPresented, active != inspected {
@@ -4336,6 +4392,10 @@ final class AppModel: ObservableObject {
     }
 
     func deleteTimelineSelection(status initialStatus: String = "Удаляю выбранные элементы") {
+        if let id = selectedMusicDuckingRegionID {
+            removeMusicDuckingRegion(id)
+            return
+        }
         guard var updated = timeline, hasTimelineSelection else { return }
         let selection = currentTimelineSelection
         let removedClipIDs = Set(selection.compactMap { if case .item(let id) = $0 { id } else { nil } })
@@ -4616,11 +4676,11 @@ final class AppModel: ObservableObject {
     }
 
     var shouldHandleTimelineUndo: Bool {
-        !intro.blocksEditorInput && !isPresentingNewProject && openingProjectURL == nil && timeline != nil && editorialComparison == nil && !showEditorialStyle && !isTextEntryFocused
+        !intro.blocksEditorInput && !onboarding.isPresented && !isPresentingNewProject && openingProjectURL == nil && timeline != nil && editorialComparison == nil && !showEditorialStyle && !isTextEntryFocused
     }
 
     var shouldHandleTimelineShortcuts: Bool {
-        !intro.blocksEditorInput && !isPresentingNewProject && openingProjectURL == nil && section == .timeline && !isTextEntryFocused
+        !intro.blocksEditorInput && !onboarding.isPresented && !isPresentingNewProject && openingProjectURL == nil && section == .timeline && !isTextEntryFocused
     }
 
     func handleTimelineKeyDown(_ event: NSEvent) -> Bool {
@@ -5901,6 +5961,7 @@ final class AppModel: ObservableObject {
     func dismissNewMaterials() { newMaterialCount = 0 }
 
     func startManualEditing() {
+        onboarding.interrupt()
         guard let pipeline, !isWorking else { return }
         section = .timeline
         guard timeline == nil else { return }
@@ -6031,6 +6092,7 @@ final class AppModel: ObservableObject {
 
     func openSection(_ destination: WorkspaceSection) {
         intro.accept(.projectCommand)
+        onboarding.interrupt()
         guard !isCreatingProject, !storageIsCleaning else { return }
         guard hasProjectWorkspace || destination == .home || destination == .settings else { return }
         cancelProjectCreation()
@@ -6076,6 +6138,7 @@ final class AppModel: ObservableObject {
     }
 
     func handleEscape() {
+        if onboarding.isPresented { onboarding.dismiss(); return }
         if isWorking {
             cancelOperation()
         } else if showViewer {
@@ -6169,6 +6232,8 @@ final class AppModel: ObservableObject {
         projectURL = nil
         videoExportDirectory = nil
         activePlayback = nil
+        musicSpeechActivity = []
+        selectedMusicDuckingRegionID = nil
         previewPlayer = nil
         previewURL = nil
         previewPosterImage = nil
@@ -6455,6 +6520,7 @@ final class AppModel: ObservableObject {
         previewPlayer?.pause()
         previewURL = nil
         activePlayback = playback
+        musicSpeechActivity = playback.speechActivity
         activePlaybackTimeline = timeline
         previewPlayerFrameReady = false
         let playerItem = AVPlayerItem(asset: playback.composition)
@@ -6883,6 +6949,8 @@ final class AppModel: ObservableObject {
         previewPlayer?.pause()
         previewPlayer = nil
         activePlayback = nil
+        musicSpeechActivity = []
+        selectedMusicDuckingRegionID = nil
         previewPosterImage = nil
         isPreviewPosterVisible = false
         previewPosterPlaybackID = nil

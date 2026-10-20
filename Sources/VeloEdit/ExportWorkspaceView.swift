@@ -1,31 +1,51 @@
 import SwiftUI
 import VeloEditCore
 
+/// Transient project UI choices survive an instructional round-trip through other sections.
+@MainActor
+final class ExportWorkspaceOptions: ObservableObject {
+    enum VideoPreset: Hashable { case maximum, fullHD, custom }
+    @Published var preset: VideoPreset = .maximum
+    @Published var customQuality: RenderQuality = .final4K
+    @Published var customFrameRate: Double = 30
+    private var projectID: UUID?
+    private var prepared = false
+
+    func prepare(projectID: UUID?, maximumFrameRate: Double) {
+        guard !prepared || self.projectID != projectID else { return }
+        prepared = true
+        self.projectID = projectID
+        preset = .maximum
+        customQuality = .final4K
+        customFrameRate = maximumFrameRate
+    }
+}
+
 struct ExportWorkspaceView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var preset: VideoPreset = .maximum
-    @State private var customQuality: RenderQuality = .final4K
-    @State private var customFrameRate: Double = 30
+    var body: some View { ExportWorkspaceContent(options: model.exportWorkspaceOptions) }
+}
+
+private struct ExportWorkspaceContent: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var options: ExportWorkspaceOptions
+    private typealias VideoPreset = ExportWorkspaceOptions.VideoPreset
     @State private var showsTechnicalDetails = false
     @State private var showsExportHistory = false
 
-    private enum VideoPreset: Hashable {
-        case maximum, fullHD, custom
-    }
-
     private var quality: RenderQuality {
-        switch preset {
+        switch options.preset {
         case .maximum: return .maximum
         case .fullHD: return .final1080p
-        case .custom: return customQuality
+        case .custom: return options.customQuality
         }
     }
 
     private var frameRate: Double {
-        switch preset {
+        switch options.preset {
         case .maximum: return model.maximumSourceFrameRate
         case .fullHD: return model.timeline?.frameRate ?? 30
-        case .custom: return customFrameRate
+        case .custom: return options.customFrameRate
         }
     }
 
@@ -41,25 +61,24 @@ struct ExportWorkspaceView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                header
+                header.inactiveDuringOnboarding()
                 videoCard
-                if !model.completedVideoExports.isEmpty { completedExports }
-                otherFormats
+                    .onboardingAnchor(.export)
+                if !model.completedVideoExports.isEmpty { completedExports.inactiveDuringOnboarding() }
+                otherFormats.inactiveDuringOnboarding()
             }
             .frame(maxWidth: 820)
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .onAppear { customFrameRate = model.maximumSourceFrameRate }
+        .onAppear { options.prepare(projectID: model.project?.id, maximumFrameRate: model.maximumSourceFrameRate) }
         .onChange(of: model.project?.id) { _, _ in
-            preset = .maximum
-            customQuality = .final4K
-            customFrameRate = model.maximumSourceFrameRate
+            options.prepare(projectID: model.project?.id, maximumFrameRate: model.maximumSourceFrameRate)
             showsExportHistory = false
         }
-        .onChange(of: model.exportFrameRateOptions) { _, options in
-            if !options.contains(customFrameRate) {
-                customFrameRate = model.maximumSourceFrameRate
+        .onChange(of: model.exportFrameRateOptions) { _, rates in
+            if !rates.contains(options.customFrameRate) {
+                options.customFrameRate = model.maximumSourceFrameRate
             }
         }
         .onChange(of: model.completedVideoExports.first?.id) { previous, current in
@@ -102,7 +121,7 @@ struct ExportWorkspaceView: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 settingsRow("Качество") {
-                    Picker("Качество видео", selection: $preset) {
+                    Picker("Качество видео", selection: $options.preset) {
                         Text("Максимальное").tag(VideoPreset.maximum)
                         Text("Full HD · 1080p").tag(VideoPreset.fullHD)
                         Text("Вручную").tag(VideoPreset.custom)
@@ -111,9 +130,9 @@ struct ExportWorkspaceView: View {
                     .labelsHidden()
                 }
 
-                if preset == .custom {
+                if options.preset == .custom {
                     settingsRow("Разрешение") {
-                        Picker("Разрешение видео", selection: $customQuality) {
+                        Picker("Разрешение видео", selection: $options.customQuality) {
                             Text("720p — компактный файл").tag(RenderQuality.preview720p)
                             Text("1080p — Full HD").tag(RenderQuality.final1080p)
                             Text("2160p — 4K UHD").tag(RenderQuality.final4K)
@@ -122,7 +141,7 @@ struct ExportWorkspaceView: View {
                         .labelsHidden()
                     }
                     settingsRow("Частота кадров") {
-                        Picker("Частота кадров", selection: $customFrameRate) {
+                        Picker("Частота кадров", selection: $options.customFrameRate) {
                             ForEach(model.exportFrameRateOptions, id: \.self) { value in
                                 Text("\(ExportVideoSettings.frameRateLabel(value)) кадров/с").tag(value)
                             }

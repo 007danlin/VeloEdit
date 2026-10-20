@@ -266,10 +266,22 @@ private func adaptiveBytes(_ image: CIImage, rect: CGRect = adaptiveCanvas) -> [
         CGImageDestinationAddImage(png, frame, nil)
         #expect(CGImageDestinationFinalize(png))
     }
-    let darkPixels = stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0] < 150 }.count
-    // White letters without the adaptive edge would disappear on this source.
-    #expect(darkPixels > 100)
-    #expect(darkPixels < 640 * 360 / 12)
+    let reference = TitleOverlayRenderer.composited(
+        item: title, timelineTime: 1.5, renderSize: adaptiveCanvas.size,
+        over: background, adaptation: AdaptiveTitleBackgroundRenderer()
+    )
+    func supportEnergy(_ bytes: [UInt8]) -> Double {
+        stride(from: 0, to: bytes.count, by: 4).reduce(0) {
+            $0 + (255 - Double(bytes[$1])) / 255
+        }
+    }
+    let expectedSupport = supportEnergy(adaptiveBytes(reference))
+    let exportedSupport = supportEnergy(pixels)
+    // Compare antialiased edge coverage with the direct renderer. Counting only
+    // pixels below one brightness threshold changes abruptly with video gamma.
+    #expect(expectedSupport > 100)
+    #expect(exportedSupport > expectedSupport * 0.8)
+    #expect(exportedSupport < expectedSupport * 1.2)
 }
 
 @Test func adaptiveTitleContourDoesNotDoubleTheFillDuringFade() throws {

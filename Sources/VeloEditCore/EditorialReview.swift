@@ -462,7 +462,7 @@ public enum EditorialRenderSignature {
         copy.width = Int((aspect * 10_000).rounded())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash("title-renderer-v2|photo-motion-v2|" + $0.base64EncodedString()) } ?? "invalid-signature"
+        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash("title-renderer-v2|photo-motion-v2|speech-ducking-v1|audio-envelope-v2|" + $0.base64EncodedString()) } ?? "invalid-signature"
     }
 }
 

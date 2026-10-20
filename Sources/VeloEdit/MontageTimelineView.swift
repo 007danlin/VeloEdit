@@ -107,6 +107,7 @@ struct MagneticTimelineView: View {
     private var titleLaneAssignments: [UUID: Int] { layout.titleLaneAssignments }
     private var connectedLaneCount: Int { layout.connectedLaneCount }
     private var audioLaneCount: Int { previewLaneCount(.audio, existing: layout.audioLaneCount) }
+    private var audioLaneStride: CGFloat { audioClips.contains(where: { $0.role == .music }) ? 60 : 31 }
     private var telemetryLaneCount: Int { previewLaneCount(.telemetry, existing: layout.telemetryLaneCount) }
     private var effectLaneCount: Int { previewLaneCount(.effect, existing: layout.effectLaneCount) }
     private var titleLaneCount: Int { previewLaneCount(.title, existing: layout.titleLaneCount) }
@@ -534,10 +535,10 @@ struct MagneticTimelineView: View {
                 keys: [.item(primaryItems[index].id)])
         }
         func append(_ keys: Set<TimelineSelectionKey>, start: Double, duration: Double,
-                    trackY: CGFloat, lane: Int = 0, height: CGFloat = 28) {
+                    trackY: CGFloat, lane: Int = 0, height: CGFloat = 28, laneStride: CGFloat = 31) {
             let frame = regionFrame(start: start, duration: duration)
             regions.append(TimelineSelectionRegion(
-                frame: CGRect(x: frame.minX, y: trackY + CGFloat(lane) * 31, width: frame.width, height: height), keys: keys))
+                frame: CGRect(x: frame.minX, y: trackY + CGFloat(lane) * laneStride, width: frame.width, height: height), keys: keys))
         }
         for item in titleItems {
             append([.title(item.id)], start: item.startTime, duration: item.duration,
@@ -558,11 +559,24 @@ struct MagneticTimelineView: View {
         }
         for clip in audioClips {
             append([.audio(clip.id)], start: clip.timelineStart, duration: clip.timelineDuration,
-                trackY: audioTrackY, lane: audioLaneAssignments[clip.id] ?? 0)
+                trackY: audioTrackY, lane: audioLaneAssignments[clip.id] ?? 0,
+                height: 28, laneStride: audioLaneStride)
         }
         if timeline.music != nil {
             append([.soundtrack], start: 0, duration: layout.geometry.duration,
-                trackY: audioTrackY + (showsAudioTrack ? CGFloat(audioLaneCount * 31 + 5) : 0), height: 27)
+                trackY: audioTrackY + (showsAudioTrack ? CGFloat(audioLaneCount) * audioLaneStride + 5 : 0), height: 27)
+        }
+        // Let speech objects receive their own clicks and Delete selection.
+        // They are occupied space for the marquee, independent of the music.
+        for region in model.musicDuckingRegions {
+            let y: CGFloat
+            if region.target == MusicSpeechDucking.soundtrack {
+                y = audioTrackY + (showsAudioTrack ? CGFloat(audioLaneCount) * audioLaneStride + 5 : 0) + 32
+            } else if let clip = audioClips.first(where: { $0.id.uuidString == region.target }) {
+                y = audioTrackY + CGFloat(audioLaneAssignments[clip.id] ?? 0) * audioLaneStride + 33
+            } else { continue }
+            append([], start: region.timelineRange.lowerBound,
+                duration: region.timelineRange.upperBound - region.timelineRange.lowerBound, trackY: y, height: 23)
         }
         let transitions = timeline.effectiveTransitionItems
         for item in primaryItems.dropFirst() where item.transition != nil {
@@ -586,8 +600,8 @@ struct MagneticTimelineView: View {
     private var telemetryTrackY: CGFloat { effectTrackY + (showsEffectTrack ? CGFloat(max(1, effectLaneCount) * 31 + 5) : 0) }
     private var audioTrackY: CGFloat { telemetryTrackY + (showsTelemetryTrack ? CGFloat(max(1, telemetryLaneCount) * 31 + 5) : 0) }
     private var canvasHeight: CGFloat {
-        audioTrackY + (showsAudioTrack ? CGFloat(max(1, audioLaneCount) * 31 + 5) : 0) +
-        (timeline.music == nil ? 0 : 32)
+        audioTrackY + (showsAudioTrack ? CGFloat(max(1, audioLaneCount)) * audioLaneStride + 5 : 0) +
+        (timeline.music == nil ? 0 : 60)
     }
 
     private var titleTrack: some View {
@@ -919,6 +933,15 @@ struct MagneticTimelineView: View {
     }
 
     private var musicTrack: some View {
+        let frame = rangeTrimFrame(for: .soundtrack, start: 0, duration: layout.geometry.duration)
+        return VStack(alignment: .leading, spacing: 5) {
+            musicStrip
+            musicDuckingObjects(target: MusicSpeechDucking.soundtrack, frame: frame)
+                .offset(x: frame.minX + soundtrackDragTranslation)
+        }
+    }
+
+    private var musicStrip: some View {
         let frame = rangeTrimFrame(for: .soundtrack, start: 0,
             duration: layout.geometry.duration)
         return Group {
@@ -990,7 +1013,7 @@ struct MagneticTimelineView: View {
             edgeTrimRegion(.trailing, target: .soundtrack, start: 0, duration: layout.geometry.duration,
                 width: min(14, frame.width / 2)) { translation in trimSoundtrack(edge: .trailing, translation: translation) }
         }
-        .overlay(alignment: .trailing) {
+        .overlay(alignment: .topTrailing) {
             HStack(spacing: 3) {
                 Menu {
                     ForEach([0.0, 0.1, 0.22, 0.35, 0.5, 0.75, 1.0], id: \.self) { volume in
@@ -1011,6 +1034,7 @@ struct MagneticTimelineView: View {
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
             .padding(.trailing, 16)
+            .padding(.top, 4)
         }
         .offset(x: frame.minX + soundtrackDragTranslation)
         .contextMenu {
@@ -1035,14 +1059,32 @@ struct MagneticTimelineView: View {
         }
     }
 
-    private var audioClipsTrack: some View {
+    private func musicDuckingObjects(target: String, frame: CGRect) -> some View {
         ZStack(alignment: .leading) {
+            ForEach(model.musicDuckingRegions.filter { $0.target == target }) { region in
+                let start = max(frame.minX, xPosition(for: region.timelineRange.lowerBound))
+                let end = min(frame.maxX, xPosition(for: region.timelineRange.upperBound))
+                if end > start, renderWindow.intersects(x: start, width: end - start) {
+                    MusicDuckingZoneView(region: region, width: end - start,
+                        selected: model.selectedMusicDuckingRegionID == region.id,
+                        select: { model.selectMusicDuckingRegion(region.id) },
+                        remove: { model.removeMusicDuckingRegion(region.id) })
+                        .offset(x: start - frame.minX)
+                }
+            }
+        }
+        .frame(width: frame.width, height: 23, alignment: .leading)
+    }
+
+    private var audioClipsTrack: some View {
+        ZStack(alignment: .topLeading) {
             ForEach(visibleAudioClips) { clip in
                 let selected = model.isTimelineAudioClipSelected(clip.id)
                 let frame = rangeTrimFrame(for: .audio(clip.id), start: clip.timelineStart,
                     duration: clip.timelineDuration)
                 let trimWidth = min(14, frame.width / 4)
                 let controlsInset = min(16, frame.width / 3)
+                VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 7) {
                     Image(systemName: clip.role == .music ? "music.note" : "waveform")
                     Text(clip.title)
@@ -1080,7 +1122,7 @@ struct MagneticTimelineView: View {
                         minimumStart: max(0, clip.timelineStart - clip.sourceStart / clip.effectiveSpeed),
                         maximumEnd: audioTrimMaximumEnd(clip), width: trimWidth) { translation in trimAudio(clip, edge: .trailing, translation: translation) }
                 }
-                .overlay(alignment: .trailing) {
+                .overlay(alignment: .topTrailing) {
                     TimelineInlineControls(availableWidth: max(1, frame.width - controlsInset * 2)) {
                         audioVolumeButton(clip)
                         audioSpeedButton(clip)
@@ -1089,18 +1131,23 @@ struct MagneticTimelineView: View {
                         Section("Скорость") { audioSpeedOptions(clip) }
                     }
                     .padding(.trailing, controlsInset)
+                    .padding(.top, 4)
+                }
+                .contextMenu { audioContextMenu(clip) }
+                if clip.role == .music {
+                    musicDuckingObjects(target: clip.id.uuidString, frame: frame)
+                }
                 }
                 .offset(
                     x: frame.minX +
                     (draggedAudioID == clip.id ? audioDragTranslation : 0),
-                    y: CGFloat(audioLaneAssignments[clip.id] ?? 0) * 31
+                    y: CGFloat(audioLaneAssignments[clip.id] ?? 0) * audioLaneStride
                 )
                 .scaleEffect(draggedAudioID == clip.id ? 1.02 : 1)
                 .shadow(color: .black.opacity(draggedAudioID == clip.id ? 0.24 : 0), radius: 5, y: 2)
-                .contextMenu { audioContextMenu(clip) }
             }
         }
-        .frame(width: totalTimelineWidth, height: CGFloat(audioLaneCount * 31), alignment: .topLeading)
+        .frame(width: totalTimelineWidth, height: CGFloat(audioLaneCount) * audioLaneStride, alignment: .topLeading)
     }
 
     private var telemetryTrack: some View {
@@ -2006,7 +2053,7 @@ struct MagneticTimelineView: View {
                         .padding(5)
                 }
                 .frame(width: preview.width, height: height)
-                .offset(x: preview.x, y: y + CGFloat(preview.laneIndex * 31))
+                .offset(x: preview.x, y: y + CGFloat(preview.laneIndex) * (preview.lane == .audio ? audioLaneStride : 31))
                 .allowsHitTesting(false)
                 .zIndex(25)
         }

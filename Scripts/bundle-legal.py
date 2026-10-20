@@ -40,11 +40,13 @@ def main():
         "Music-LICENSE.txt": resources / "Music/LICENSE.md",
         "ONNX-Runtime-LICENSE.txt": swift_cache / "checkouts/onnxruntime-swift-package-manager/LICENSE",
         "Sparkle-LICENSE.txt": swift_cache / "checkouts/Sparkle/LICENSE",
+        "RNNoise-LICENSE.txt": source / "ThirdParty/RNNoise/COPYING",
     }
     for name, path in required.items():
         if not path.is_file():
             raise SystemExit(f"Required third-party license is missing: {path}")
         shutil.copy2(path, licenses / name)
+    shutil.copy2(source / "ThirdParty/RNNoise/UPSTREAM.json", legal / "RNNoise.json")
     shutil.copytree(resources / "FFmpeg-Licenses", licenses / "FFmpeg")
     speech_notices = resources / "Speech/ModelsPackage/notices"
     if speech_notices.is_dir():

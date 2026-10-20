@@ -88,6 +88,9 @@ public enum TimelineMutationEngine {
         clips[index] = left
         clips.insert(right, at: index + 1)
         timeline.audioClips = clips
+        if original.role == .music {
+            MusicSpeechDucking.retargetExclusions(from: original.id.uuidString, to: right.id.uuidString, in: &timeline, copy: true)
+        }
         return right.id
     }
 

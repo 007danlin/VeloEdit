@@ -45,8 +45,12 @@ public actor ProcessedAudioGenerator {
         }
         let trimmed = FileManager.default.temporaryDirectory
             .appendingPathComponent("veloedit-audio-source-\(UUID().uuidString)")
-            .appendingPathExtension("m4a")
-        defer { try? FileManager.default.removeItem(at: trimmed) }
+            .appendingPathExtension("caf")
+        let denoised = trimmed.deletingPathExtension().appendingPathExtension("denoised.caf")
+        defer {
+            try? FileManager.default.removeItem(at: trimmed)
+            try? FileManager.default.removeItem(at: denoised)
+        }
         try await extractAudio(
             sourceURL: sourceURL,
             sourceStart: sourceStart,
@@ -54,8 +58,14 @@ public actor ProcessedAudioGenerator {
             destination: trimmed
         )
         try? FileManager.default.removeItem(at: destination)
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: destination) } }
 
-        let input = try AVAudioFile(forReading: trimmed)
+        let noiseReduction = adjustments.noiseReduction ?? 0
+        if noiseReduction > 0.0001 {
+            try await SpeechNoiseReducer.render(source: trimmed, destination: denoised, amount: noiseReduction)
+        }
+        let input = try AVAudioFile(forReading: noiseReduction > 0.0001 ? denoised : trimmed)
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
         let sourceMixer = AVAudioMixerNode()
@@ -97,18 +107,26 @@ public actor ProcessedAudioGenerator {
             format: renderFormat,
             maximumFrameCount: 4_096
         )
-        let output = try AVAudioFile(
+        var outputSettings = engine.manualRenderingFormat.settings
+        outputSettings[AVLinearPCMIsNonInterleaved] = false
+        var output: AVAudioFile? = try autoreleasepool { try AVAudioFile(
             forWriting: destination,
-            settings: engine.manualRenderingFormat.settings,
+            settings: outputSettings,
             commonFormat: .pcmFormatFloat32,
             interleaved: false
-        )
+        ) }
+        defer { output = nil }
         guard let buffer = AVAudioPCMBuffer(
             pcmFormat: engine.manualRenderingFormat,
             frameCapacity: engine.manualRenderingMaximumFrameCount
         ) else { throw DerivedMediaError.cannotCreateDestination }
 
         try engine.start()
+        defer {
+            player.stop()
+            engine.stop()
+            engine.disableManualRenderingMode()
+        }
         scheduleForOfflineRendering(input, on: player)
         player.play()
         var stalledRenderAttempts = 0
@@ -124,7 +142,7 @@ public actor ProcessedAudioGenerator {
             switch try engine.renderOffline(frames, to: buffer) {
             case .success:
                 stalledRenderAttempts = 0
-                try output.write(from: buffer)
+                try output!.write(from: buffer)
             case .cannotDoInCurrentContext, .insufficientDataFromInputNode:
                 stalledRenderAttempts += 1
                 guard stalledRenderAttempts < 2_000 else {
@@ -137,9 +155,9 @@ public actor ProcessedAudioGenerator {
                 throw DerivedMediaError.exportFailed("Неизвестная ошибка обработки звука")
             }
         }
-        player.stop()
-        engine.stop()
-        engine.disableManualRenderingMode()
+        try Task.checkCancellation()
+        output = nil
+        completed = true
         return destination
     }
 
@@ -148,7 +166,7 @@ public actor ProcessedAudioGenerator {
         let resolvedURL = sourceURL.resolvingSymlinksInPath()
         let values = try FileManager.default.attributesOfItem(atPath: resolvedURL.path)
         return ProductionCacheIdentity.hash([
-            "processed-audio-v1-48k-stereo", resolvedURL.path,
+            "processed-audio-v2-rnnoise-0.2-0b50c45-pcm", resolvedURL.path,
             String((values[.size] as? NSNumber)?.int64Value ?? 0),
             String(((values[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0).bitPattern),
             String(sourceStart.bitPattern), String(sourceDuration.bitPattern),
@@ -159,6 +177,7 @@ public actor ProcessedAudioGenerator {
 
     private static func isUsableCachedAudio(_ url: URL, duration: Double) -> Bool {
         guard let file = try? AVAudioFile(forReading: url), file.length > 0,
+              Double(file.length) / file.processingFormat.sampleRate >= max(0.05, duration) - 0.15,
               Double(file.length) / file.processingFormat.sampleRate <= max(0.05, duration) + 0.15,
               let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 32) else { return false }
         // Read the tail too: a valid CAF header can outlive a truncated payload.
@@ -177,20 +196,80 @@ public actor ProcessedAudioGenerator {
     private func extractAudio(sourceURL: URL, sourceStart: Double, sourceDuration: Double, destination: URL) async throws {
         try? FileManager.default.removeItem(at: destination)
         let asset = AVURLAsset(url: sourceURL)
-        guard !(try await asset.loadTracks(withMediaType: .audio)).isEmpty,
-              let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+        guard let track = try await asset.loadTracks(withMediaType: .audio).first,
+              let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: SpeechNoiseReducer.sampleRate,
+                                         channels: 2, interleaved: true) else {
             throw DerivedMediaError.exportUnavailable
         }
-        session.outputURL = destination
-        session.outputFileType = .m4a
-        session.timeRange = CMTimeRange(
-            start: CMTime(seconds: max(0, sourceStart), preferredTimescale: 600),
-            duration: CMTime(seconds: max(0.05, sourceDuration), preferredTimescale: 600)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: format.settings)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { throw DerivedMediaError.exportUnavailable }
+        reader.add(output)
+        reader.timeRange = CMTimeRange(
+            start: CMTime(seconds: max(0, sourceStart), preferredTimescale: 48_000),
+            duration: CMTime(seconds: max(0.05, sourceDuration), preferredTimescale: 48_000)
         )
-        await session.export()
-        guard session.status == .completed else {
-            throw DerivedMediaError.exportFailed(session.error?.localizedDescription ?? "Не удалось извлечь звук")
+        guard reader.startReading() else {
+            throw DerivedMediaError.exportFailed(reader.error?.localizedDescription ?? "Не удалось извлечь звук")
         }
+        defer { if reader.status == .reading { reader.cancelReading() } }
+        // Decode directly to PCM: an intermediate AAC encode used to discard
+        // quiet speech detail before any audio processing had even started.
+        var file: AVAudioFile? = try autoreleasepool {
+            try AVAudioFile(forWriting: destination, settings: format.settings,
+                            commonFormat: .pcmFormatFloat32, interleaved: true)
+        }
+        defer { file = nil }
+        let expectedFrames = Int64((reader.timeRange.duration.seconds * 48_000).rounded())
+        var writtenFrames: Int64 = 0
+        var decodedFrames: Int64 = 0
+        guard let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_096),
+              let silentData = silence.mutableAudioBufferList.pointee.mBuffers.mData else {
+            throw DerivedMediaError.cannotCreateDestination
+        }
+        memset(silentData, 0, 4_096 * Int(format.streamDescription.pointee.mBytesPerFrame))
+        func fillSilence(until target: Int64) throws {
+            while writtenFrames < min(target, expectedFrames) {
+                try Task.checkCancellation()
+                silence.frameLength = AVAudioFrameCount(min(4_096, min(target, expectedFrames) - writtenFrames))
+                try file!.write(from: silence)
+                writtenFrames += Int64(silence.frameLength)
+            }
+        }
+        while let sample = try await MediaSampleReader.next(from: output, reader: reader) {
+            let count = CMSampleBufferGetNumSamples(sample)
+            guard count > 0 else { continue }
+            // Preserve track offsets and gaps relative to the selected video
+            // range. Concatenating buffers would advance a late-starting mic.
+            let timestamp = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+            guard timestamp.isFinite else { throw DerivedMediaError.exportFailed("Неверное время аудиоданных") }
+            let position = Int64(((timestamp - reader.timeRange.start.seconds) * 48_000).rounded())
+            try fillSilence(until: position)
+            let skipped = Int(min(Int64(count), max(0, writtenFrames - position)))
+            let frames = min(count - skipped, Int(expectedFrames - writtenFrames))
+            guard frames > 0 else { continue }
+            guard let block = CMSampleBufferGetDataBuffer(sample),
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
+                  let data = buffer.mutableAudioBufferList.pointee.mBuffers.mData else {
+                throw DerivedMediaError.exportFailed("Не удалось прочитать аудиоданные")
+            }
+            buffer.frameLength = AVAudioFrameCount(frames)
+            let bytesPerFrame = Int(format.streamDescription.pointee.mBytesPerFrame)
+            let byteCount = frames * bytesPerFrame
+            guard CMBlockBufferGetDataLength(block) >= (skipped + frames) * bytesPerFrame,
+                  CMBlockBufferCopyDataBytes(block, atOffset: skipped * bytesPerFrame, dataLength: byteCount, destination: data) == noErr else {
+                throw DerivedMediaError.exportFailed("Повреждены аудиоданные")
+            }
+            try file!.write(from: buffer)
+            writtenFrames += Int64(frames)
+            decodedFrames += Int64(frames)
+        }
+        guard reader.status == .completed, decodedFrames > 0 else {
+            throw DerivedMediaError.exportFailed(reader.error?.localizedDescription ?? "Не удалось извлечь звук")
+        }
+        try fillSilence(until: expectedFrames)
+        file = nil
     }
 
     private func normalizationGain(for input: AVAudioFile) throws -> Float {
@@ -231,23 +310,14 @@ public actor ProcessedAudioGenerator {
         normalizationGain: Float
     ) {
         let preset = adjustments.eqPreset ?? .flat
-        let noiseReduction = adjustments.noiseReduction ?? 0
         let effect = adjustments.effect ?? AudioEffect.none
         equalizer.globalGain = normalizationGain
         equalizer.bands.forEach { $0.bypass = true }
         let highPass = equalizer.bands[0]
         highPass.filterType = .highPass
-        highPass.frequency = Float(55 + min(max(0, noiseReduction), 1) * 65)
+        highPass.frequency = 55
         highPass.bandwidth = 0.6
-        highPass.bypass = noiseReduction < 0.001 && preset != .voice
-
-        if noiseReduction > 0.001 {
-            let lowPass = equalizer.bands[4]
-            lowPass.filterType = .lowPass
-            lowPass.frequency = Float(18_000 - min(max(0, noiseReduction), 1) * 7_000)
-            lowPass.bandwidth = 0.7
-            lowPass.bypass = false
-        }
+        highPass.bypass = preset != .voice
 
         func band(_ index: Int, frequency: Float, gain: Float, bandwidth: Float = 1) {
             let value = equalizer.bands[index]

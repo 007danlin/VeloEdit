@@ -15,7 +15,9 @@ struct VeloEditApp: App {
     var body: some Scene {
         Window("VeloEdit", id: "main") {
             FirstLaunchRoot(intro: model.intro) {
-                ContentView()
+                OnboardingRoot(model: model, coordinator: model.onboarding) {
+                    ContentView()
+                }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         DirectorModelSetupBanner(setup: directorModelSetup).environmentObject(model)
                     }
@@ -378,6 +380,15 @@ struct VeloEditCommands: Commands {
         }
 
         CommandGroup(replacing: .help) {
+            Button("Знакомство с VeloEdit…") { model.onboarding.start() }
+                .disabled(model.onboarding.isPresented || model.onboarding.unavailableReason != nil)
+                .help(model.onboarding.unavailableReason ?? "Показать основные разделы редактора")
+            if model.onboarding.canResume {
+                Button("Продолжить знакомство…") { model.onboarding.start(resuming: true) }
+                    .disabled(model.onboarding.unavailableReason != nil)
+                    .help(model.onboarding.unavailableReason ?? "Вернуться к последней подсказке")
+            }
+            Divider()
             Button("Горячие клавиши…") {
                 model.openSection(.settings)
                 model.settingsTab = .keyboardShortcuts

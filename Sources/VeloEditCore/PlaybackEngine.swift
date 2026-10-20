@@ -16,10 +16,11 @@ public final class TimelinePlayback: @unchecked Sendable {
     public let warnings: [String]
     public let derivedMediaCacheHits: Int
     public let derivedMediaCacheMisses: Int
+    public let speechActivity: [SpeechActivityRecord]
     private let temporaryFiles: [URL]
     private let audioMixBuilder: ((Timeline) -> AVAudioMix?)?
 
-    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, audioMasteringReport: EditorialAudioMasteringReport? = nil, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, temporaryFiles: [URL], audioMixBuilder: ((Timeline) -> AVAudioMix?)? = nil) {
+    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, audioMasteringReport: EditorialAudioMasteringReport? = nil, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, speechActivity: [SpeechActivityRecord] = [], temporaryFiles: [URL], audioMixBuilder: ((Timeline) -> AVAudioMix?)? = nil) {
         self.composition = composition
         self.videoComposition = videoComposition
         self.audioMix = audioMix
@@ -30,6 +31,7 @@ public final class TimelinePlayback: @unchecked Sendable {
         self.warnings = warnings
         self.derivedMediaCacheHits = derivedMediaCacheHits
         self.derivedMediaCacheMisses = derivedMediaCacheMisses
+        self.speechActivity = speechActivity
         self.temporaryFiles = temporaryFiles
         self.audioMixBuilder = audioMixBuilder
     }
@@ -46,6 +48,7 @@ public final class TimelinePlayback: @unchecked Sendable {
             let before = previous.items[index].effectiveAudioAdjustments
             audio.volume = before.volume
             audio.muted = before.muted
+            audio.musicDuckingExclusions = before.musicDuckingExclusions
             guard audio == before else { return nil }
             comparison.items[index].audioAdjustments = previous.items[index].audioAdjustments
         }
@@ -100,6 +103,7 @@ public actor PlaybackEngine {
         var start: CMTime
         var duration: CMTime
         var duckingEnabled: Bool? = nil
+        var duckingTarget: String? = nil
         var end: CMTime { start + duration }
     }
 
@@ -550,25 +554,19 @@ public actor PlaybackEngine {
         for track in composition.tracks where track.segments.isEmpty {
             composition.removeTrack(track)
         }
+        progress?(ImportProgress(completed: playableItems.count, total: playableItems.count, currentName: "Определяю речь для музыки"))
+        let speech = try await SpeechActivityDetector.shared.resolve(timeline: timeline, assets: assets,
+            cacheDirectory: derivedMediaCacheURL)
         let audioMix: AVAudioMix? = Self.makeAudioMix(
             placements: placements,
             originalTracks: originalAudioTracks.compactMap { $0 }.filter { !$0.segments.isEmpty },
             originalAudioVolume: Float(originalAudioVolume),
             music: musicResult,
             additionalAudio: audioResult.placements + adaptiveMusic,
-            ducking: SourceAudioMixPolicy.musicDucking(in: timeline),
+            duckingRegions: MusicSpeechDucking.regions(in: timeline, activity: speech.records),
             movieDuration: cursor.seconds,
             frameRate: timeline.frameRate,
-            endingFadeDuration: timeline.endingFadeDuration,
-            speechRanges: timeline.speechRecords == nil ? nil : timeline.items.flatMap { item -> [ClosedRange<Double>] in
-                guard item.overlay == nil, item.effectiveAudioAdjustments.effectiveVolume > 0, originalAudioVolume > 0,
-                      let id = item.assetID, let record = timeline.speechRecords?.first(where: { $0.assetID == id }) else { return [] }
-                return (record.transcript.speechRanges ?? record.transcript.sentences.map { $0.startTime...$0.endTime }).compactMap { range in
-                    let a = max(item.sourceStart, range.lowerBound); let b = min(item.sourceStart + item.sourceDuration, range.upperBound)
-                    guard b > a else { return nil }
-                    return SpeechTimeMap.playbackRange(anchor: SpeechCaptionAnchor(key: "mix", assetID: id, sourceStart: a, sourceEnd: b, words: []), item: item, timeline: timeline)
-                }
-            }
+            endingFadeDuration: timeline.endingFadeDuration
         )
 
         // Exact loudness mastering happens against an encoded first pass in
@@ -588,9 +586,10 @@ public actor PlaybackEngine {
             duration: cursor.seconds,
             renderedItemCount: placements.count,
             skippedItemIDs: skippedItemIDs,
-            warnings: sourceWarnings + [soundtrackWarning].compactMap { $0 },
+            warnings: sourceWarnings + [soundtrackWarning, speech.unavailable ? "Не удалось определить речь в части исходников — на этих участках музыка не приглушается автоматически." : nil].compactMap { $0 },
             derivedMediaCacheHits: derivedMediaCacheHits,
             derivedMediaCacheMisses: derivedMediaCacheMisses,
+            speechActivity: speech.records,
             temporaryFiles: temporaryFiles,
             audioMixBuilder: { updated in
                 let byID = Dictionary(uniqueKeysWithValues: updated.items.map { ($0.id, $0) })
@@ -603,18 +602,8 @@ public actor PlaybackEngine {
                     originalTracks: originalAudioTracks.compactMap { $0 }.filter { !$0.segments.isEmpty },
                     originalAudioVolume: Float(min(1, max(0, updated.effectiveOriginalAudioVolume))),
                     music: musicResult, additionalAudio: audioResult.placements + adaptiveMusic,
-                    ducking: SourceAudioMixPolicy.musicDucking(in: updated), movieDuration: cursor.seconds,
-                    frameRate: updated.frameRate, endingFadeDuration: updated.endingFadeDuration,
-                    speechRanges: updated.speechRecords == nil ? nil : updated.items.flatMap { item -> [ClosedRange<Double>] in
-                        guard item.overlay == nil, item.effectiveAudioAdjustments.effectiveVolume > 0,
-                              updated.effectiveOriginalAudioVolume > 0, let id = item.assetID,
-                              let record = updated.speechRecords?.first(where: { $0.assetID == id }) else { return [] }
-                        return (record.transcript.speechRanges ?? record.transcript.sentences.map { $0.startTime...$0.endTime }).compactMap { range in
-                            let a = max(item.sourceStart, range.lowerBound), b = min(item.sourceStart + item.sourceDuration, range.upperBound)
-                            guard b > a else { return nil }
-                            return SpeechTimeMap.playbackRange(anchor: SpeechCaptionAnchor(key: "mix", assetID: id, sourceStart: a, sourceEnd: b, words: []), item: item, timeline: updated)
-                        }
-                    })
+                    duckingRegions: MusicSpeechDucking.regions(in: updated, activity: speech.records), movieDuration: cursor.seconds,
+                    frameRate: updated.frameRate, endingFadeDuration: updated.endingFadeDuration)
             }
         )
     }
@@ -1295,7 +1284,8 @@ public actor PlaybackEngine {
                 track: destinationTrack,
                 start: renderedStart,
                 duration: renderedEnd - renderedStart,
-                duckingEnabled: segment.duckingEnabled
+                duckingEnabled: segment.duckingEnabled,
+                duckingTarget: MusicSpeechDucking.soundtrack
             ))
         }
         return placements
@@ -1367,7 +1357,7 @@ public actor PlaybackEngine {
         return (placements, temporaryFiles)
     }
 
-    private static func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], ducking: AudioDuckingSettings, movieDuration: Double, frameRate: Double, endingFadeDuration: Double?, speechRanges: [ClosedRange<Double>]? = nil) -> AVMutableAudioMix? {
+    private static func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], duckingRegions: [MusicDuckingRegion], movieDuration: Double, frameRate: Double, endingFadeDuration: Double?) -> AVMutableAudioMix? {
         guard !originalTracks.isEmpty || music != nil || !additionalAudio.isEmpty else { return nil }
         func clipVolume(_ placement: Placement) -> Float {
             originalAudioVolume * Float(placement.item.effectiveAudioAdjustments.effectiveVolume)
@@ -1510,7 +1500,7 @@ public actor PlaybackEngine {
         }
         for foreground in additionalAudio where foreground.clip.adjustments.duckOthers == true {
             let amount = Float(min(max(0, foreground.clip.adjustments.duckingAmount ?? 0.5), 1))
-            for background in additionalAudio where background.clip.id != foreground.clip.id {
+            for background in additionalAudio where background.clip.id != foreground.clip.id && background.clip.role != .music {
                 guard let value = parameters.first(where: { $0.trackID == background.track.trackID }) as? AVMutableAudioMixInputParameters else { continue }
                 let start = max(foreground.start, background.start)
                 let end = min(foreground.end, background.end)
@@ -1534,116 +1524,20 @@ public actor PlaybackEngine {
                 scheduleVolumeRamp(on: value, from: reduced, to: normal, timeRange: CMTimeRange(start: end - ramp, duration: ramp))
             }
         }
-        if ducking.enabled || additionalAudio.contains(where: { $0.duckingEnabled == true }) {
-            let audibleStoryRanges = (speechRanges?.map { (start: $0.lowerBound, end: $0.upperBound) } ?? (placements
-                .filter { $0.audioTrack != nil && clipVolume($0) > 0.001 }
-                .map { (start: $0.start.seconds, end: $0.end.seconds) }
-                + additionalAudio
-                .filter { $0.clip.role != .music && $0.clip.adjustments.effectiveVolume > 0.001 }
-                .map { (start: $0.start.seconds, end: $0.end.seconds) })
-                .sorted { $0.start < $1.start })
-            var mergedStoryRanges: [(start: Double, end: Double)] = []
-            for range in audibleStoryRanges {
-                if let last = mergedStoryRanges.last,
-                   range.start <= last.end + max(ducking.attack, ducking.release) {
-                    mergedStoryRanges[mergedStoryRanges.count - 1].end = max(last.end, range.end)
-                } else {
-                    mergedStoryRanges.append(range)
-                }
-            }
-            for background in additionalAudio where background.clip.role == .music {
-                guard background.duckingEnabled ?? ducking.enabled else { continue }
-                guard let value = parameters.first(where: {
-                    $0.trackID == background.track.trackID
-                }) as? AVMutableAudioMixInputParameters else { continue }
-                let normal = Float(background.clip.adjustments.effectiveVolume)
-                let reduced = normal * Float(ducking.attenuation)
-                for story in mergedStoryRanges {
-                    let start = max(story.start, background.start.seconds)
-                    let end = min(story.end, background.end.seconds)
-                    guard end > start else { continue }
-                    let attack = min(ducking.attack, max(0, (end - start) * 0.45))
-                    let release = min(
-                        ducking.release,
-                        max(0, (end - start) * 0.45),
-                        max(0, background.end.seconds - end)
-                    )
-                    let attackStart = max(background.start.seconds, start - attack)
-                    if start > attackStart + 0.001 {
-                        scheduleVolumeRamp(
-                            on: value,
-                            from: normal,
-                            to: reduced,
-                            timeRange: CMTimeRange(
-                                start: CMTime(seconds: attackStart, preferredTimescale: 600),
-                                end: CMTime(seconds: start, preferredTimescale: 600)
-                            )
-                        )
-                    } else {
-                        value.setVolume(reduced, at: CMTime(seconds: start, preferredTimescale: 600))
-                    }
-                    if release > 0.001 {
-                        scheduleVolumeRamp(
-                            on: value,
-                            from: reduced,
-                            to: normal,
-                            timeRange: CMTimeRange(
-                                start: CMTime(seconds: end, preferredTimescale: 600),
-                                duration: CMTime(seconds: release, preferredTimescale: 600)
-                            )
-                        )
-                    }
-                }
-            }
+        for background in additionalAudio where background.clip.role == .music {
+            guard let index = parameters.firstIndex(where: { $0.trackID == background.track.trackID }) else { continue }
+            let target = background.duckingTarget ?? background.clip.id.uuidString
+            parameters[index] = MusicSpeechDucking.applying(duckingRegions.filter { $0.target == target },
+                to: parameters[index], duration: movieDuration)
         }
         if let music {
-          for region in music.regions {
-            let value = AVMutableAudioMixInputParameters(track: region.track)
-            let normal = Float(music.directive.volume)
-            value.setVolume(normal, at: .zero)
-            if ducking.enabled {
-                let reduced = normal * Float(ducking.attenuation)
-                let sourceRanges = (speechRanges?.map { (start: $0.lowerBound, end: $0.upperBound) } ?? (placements
-                    .filter { $0.audioTrack != nil && clipVolume($0) > 0.001 }
-                    .map { (start: $0.start.seconds, end: $0.end.seconds) }
-                    + additionalAudio
-                    .filter { $0.clip.role != .music && $0.clip.adjustments.effectiveVolume > 0.001 }
-                    .map { (start: $0.start.seconds, end: $0.end.seconds) })
-                    .sorted { $0.start < $1.start })
-                var merged: [(start: Double, end: Double)] = []
-                for range in sourceRanges {
-                    if let last = merged.last, range.start <= last.end + max(ducking.attack, ducking.release) {
-                        merged[merged.count - 1].end = max(last.end, range.end)
-                    } else {
-                        merged.append(range)
-                    }
-                }
-                for range in merged {
-                    let attack = CMTime(seconds: ducking.attack, preferredTimescale: 600)
-                    let release = CMTime(seconds: ducking.release, preferredTimescale: 600)
-                    let start = CMTime(seconds: range.start, preferredTimescale: 600)
-                    let end = CMTime(seconds: range.end, preferredTimescale: 600)
-                    let attackStart = max(.zero, start - attack)
-                    if attackStart < start {
-                        scheduleVolumeRamp(
-                            on: value,
-                            from: normal,
-                            to: reduced,
-                            timeRange: CMTimeRange(start: attackStart, end: start)
-                        )
-                    } else {
-                        value.setVolume(reduced, at: start)
-                    }
-                    scheduleVolumeRamp(
-                        on: value,
-                        from: reduced,
-                        to: normal,
-                        timeRange: CMTimeRange(start: end, duration: release)
-                    )
-                }
+            for region in music.regions {
+                let value = AVMutableAudioMixInputParameters(track: region.track)
+                value.setVolume(Float(music.directive.volume), at: .zero)
+                let ducked = MusicSpeechDucking.applying(duckingRegions.filter { $0.target == MusicSpeechDucking.soundtrack },
+                    to: value, duration: movieDuration)
+                parameters.append(region.window.applying(to: ducked, movieDuration: movieDuration))
             }
-            parameters.append(region.window.applying(to: value, movieDuration: movieDuration))
-          }
         }
         // Apply to ordinary, adaptive and manually placed music alike, after
         // clip fades and speech ducking. Legacy projects also get the finish;
