@@ -249,7 +249,7 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
     #expect(first != ProductionCacheIdentity.hash(["photo", "hash", "1280x720", "4000"]))
 }
 
-@Test func productionPlaybackActuallyReusesDerivedPhotoMedia() async throws {
+@Test func productionPlaybackNeedsNoDerivedPhotoMovies() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -281,13 +281,14 @@ private func productionTimeline(itemCount: Int = 4) -> Timeline {
         let first = try await PlaybackEngine().build(
             timeline: timeline, assets: [asset], derivedMediaCacheURL: cacheURL
         )
-        #expect(first.derivedMediaCacheMisses == 1)
+        #expect(first.derivedMediaCacheMisses == 0)
         #expect(first.derivedMediaCacheHits == 0)
         let second = try await PlaybackEngine().build(
             timeline: timeline, assets: [asset], derivedMediaCacheURL: cacheURL
         )
-        #expect(second.derivedMediaCacheHits == 1)
+        #expect(second.derivedMediaCacheHits == 0)
         #expect(second.derivedMediaCacheMisses == 0)
+        #expect(!FileManager.default.fileExists(atPath: cacheURL.path))
         #expect(second.renderedItemCount == 1)
         #expect((try await second.composition.load(.duration)).seconds > 0.2)
     } catch DerivedMediaError.exportFailed(let reason) where reason.contains("-11834") || reason.contains("-12903") {

@@ -54,8 +54,11 @@ private struct OllamaWarmRequest: Encodable {
 public actor LocalAIModelManager {
     public static let shared = LocalAIModelManager()
 
-    private let baseURL = URL(string: "http://127.0.0.1:11434")!
+    private let baseURL: URL
+    private let executableOverride: URL?
     private var serverProcess: Process?
+    private var ownedRuntimeLogURL: URL?
+    private var isShuttingDown = false
     private var warmedModels: [String: TimeInterval] = [:]
     private var warming: [String: Task<Void, Error>] = [:]
     private var serviceStart: Task<Void, Error>?
@@ -65,13 +68,21 @@ public actor LocalAIModelManager {
     private var modelDigests: [String: String] = [:]
     private var modelDetails: [String: InstalledAIModel] = [:]
 
-    public init() {}
+    public init() { baseURL = LocalAIRuntimeConfiguration.baseURL; executableOverride = nil }
+    init(baseURL: URL, executable: URL) { self.baseURL = baseURL; executableOverride = executable }
 
     public nonisolated func authorizeDownload(model: String) {
         UserDefaults.standard.set(true, forKey: "VeloEdit.ModelDownloadConsent.\(model)")
     }
 
     public func prepareAuthorizedModel(model: String, progress: (@Sendable (LocalModelDownloadProgress) -> Void)? = nil) async throws {
+        try await ensureAuthorizedModelAvailable(model: model, progress: progress)
+        try await Self.recoveringRequest { try await self.warmUp(model: model) }
+    }
+
+    /// Establish the exact weights without loading them into GPU memory.
+    /// A fully cached film must not pay for an unused inference session.
+    public func ensureAuthorizedModelAvailable(model: String, progress: (@Sendable (LocalModelDownloadProgress) -> Void)? = nil) async throws {
         let status = await availability(model: model)
         if !status.installed {
             guard UserDefaults.standard.bool(forKey: "VeloEdit.ModelDownloadConsent.\(model)") else {
@@ -79,7 +90,6 @@ public actor LocalAIModelManager {
             }
             try await pull(model: model, progress: progress)
         }
-        try await Self.recoveringRequest { try await self.warmUp(model: model) }
     }
 
     static func recoveringRequest<T: Sendable>(retryTimeouts: Bool = true, _ operation: @Sendable () async throws -> T) async throws -> T {
@@ -88,6 +98,7 @@ public actor LocalAIModelManager {
             try Task.checkCancellation()
             do { return try await operation() }
             catch {
+                if error is LocalAIInferenceFailure { throw error }
                 if !retryTimeouts, (error as? URLError)?.code == .timedOut { throw error }
                 let cause = AutonomousFailureCause.classify(error)
                 guard cause == .transientNetwork || cause == .localService else { throw error }
@@ -208,12 +219,28 @@ public actor LocalAIModelManager {
         request.httpMethod = "POST"
         request.timeoutInterval = 45
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(OllamaWarmRequest(model: model))
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let body = try JSONSerialization.jsonObject(with: JSONEncoder().encode(OllamaWarmRequest(model: model))) as! [String: Any]
+        request.httpBody = try JSONSerialization.data(withJSONObject: FilmProcessContext.requestBody(body), options: [.sortedKeys])
+        let (_, response) = try await LocalAIInferenceClient.shared.response(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
         warmedModels[model] = ProcessInfo.processInfo.systemUptime
+    }
+
+    var ownedProcessIdentifier: Int32? { serverProcess?.isRunning == true ? serverProcess?.processIdentifier : nil }
+
+    func inferenceProgressWitness() -> LocalAIBackendProgress? {
+        if serverProcess?.isRunning == true, let url = ownedRuntimeLogURL {
+            return LocalAIBackendProgress(url: url)
+        }
+        // The isolated audit runner starts the same private runtime itself.
+        // No default/shared log is read for an unowned service.
+        if let path = ProcessInfo.processInfo.environment["VELOEDIT_AUDIT_RUNTIME_PROGRESS_LOG"],
+           ProcessInfo.processInfo.environment["VELOEDIT_AUDIT_RUNNER"] == "1" {
+            return LocalAIBackendProgress(url: URL(fileURLWithPath: path))
+        }
+        return nil
     }
 
     public func invalidateReadiness() {
@@ -222,6 +249,7 @@ public actor LocalAIModelManager {
     }
 
     public func ensureService() async throws {
+        guard !isShuttingDown else { throw CancellationError() }
         if await installedModels() != nil { return }
         if let task = serviceStart { return try await task.value }
         let task = Task { try await self.startService() }
@@ -230,7 +258,44 @@ public actor LocalAIModelManager {
         try await task.value
     }
 
+    /// Only the stored Process is ours. Never kill a service discovered by
+    /// port, model name or executable path; another app may own that service.
+    func recoverOwnedService(model: String) async throws {
+        try Task.checkCancellation()
+        guard !isShuttingDown else { throw CancellationError() }
+        let previousDigest = await installedModelDigest(model: model)
+        tagsSnapshot = nil; warmedModels.removeAll()
+        if serverProcess?.isRunning == true { try await startService() }
+        else { try await ensureService() }
+        try Task.checkCancellation()
+        if let previousDigest {
+            guard await installedModelDigest(model: model) == previousDigest else {
+                throw LocalAIInferenceFailure(model: model, reason: "файлы модели изменились во время восстановления")
+            }
+        }
+    }
+
+    /// Release only the runtime started by this app, after its work has stopped.
+    /// Otherwise an old child can survive an update and serve the new app with
+    /// the previous engine indefinitely. Never terminate a service by port/PID.
+    public func shutdownOwnedService() async {
+        isShuttingDown = true
+        serviceStart?.cancel()
+        for task in warming.values { task.cancel() }
+        tagsRequest?.cancel()
+        tagsSnapshot = nil
+        warmedModels.removeAll()
+        guard let process = serverProcess, process.isRunning else { return }
+        process.terminate()
+        for _ in 0..<40 where process.isRunning {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        if !process.isRunning { serverProcess = nil }
+    }
+
     private func startService() async throws {
+        try Task.checkCancellation()
+        guard !isShuttingDown else { throw CancellationError() }
         // Only a Process instance launched by this manager may be stopped.
         // A foreign service on the same port is never a termination target.
         if let process = serverProcess, process.isRunning {
@@ -240,16 +305,34 @@ public actor LocalAIModelManager {
         }
         warmedModels.removeAll()
         if serverProcess?.isRunning != true {
-            guard let executable = Self.ollamaExecutable() else { throw LocalAIModelError.ollamaNotInstalled }
+            try Task.checkCancellation()
+            guard !isShuttingDown else { throw CancellationError() }
+            guard let executable = executableOverride ?? Self.ollamaExecutable() else { throw LocalAIModelError.ollamaNotInstalled }
             let process = Process()
             process.executableURL = executable
             process.arguments = ["serve"]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
+            process.environment = LocalAIRuntimeConfiguration.serverEnvironment(
+                inherited: ProcessInfo.processInfo.environment, physicalMemory: ProcessInfo.processInfo.physicalMemory)
+            process.environment?["OLLAMA_HOST"] = "\(baseURL.host ?? "127.0.0.1"):\(baseURL.port ?? 11435)"
+            let logs = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("VeloEdit/Runtime", isDirectory: true)
+            try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+            let logURL = logs.appendingPathComponent("ollama.log")
+            if !FileManager.default.fileExists(atPath: logURL.path) {
+                FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            }
+            let log = try FileHandle(forWritingTo: logURL)
+            if try log.seekToEnd() > 8 * 1_048_576 {
+                try log.truncate(atOffset: 0)
+                try log.seek(toOffset: 0)
+            }
+            process.standardOutput = log
+            process.standardError = log
             try process.run()
             serverProcess = process
+            ownedRuntimeLogURL = logURL
         }
-        for _ in 0..<16 {
+        for _ in 0..<40 {
             if await installedModels() != nil { return }
             try await Task.sleep(for: .milliseconds(250))
         }

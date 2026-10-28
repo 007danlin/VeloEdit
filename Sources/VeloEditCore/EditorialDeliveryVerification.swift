@@ -34,12 +34,38 @@ public struct EditorialExportVerification: Codable, Hashable, Sendable {
     public var artifactSHA256: String? = nil
     public var artifactFileIdentity: String? = nil
     public var titleEvidence: [TitleReadabilityEvidence]? = nil
+    /// Independently checked against the audio inputs of this exact edit.
+    /// Nil in older reports retains the conservative audio requirements.
+    public var expectsAudio: Bool? = nil
     public var artifactIsCurrent: Bool {
         guard let outputURL, let fileSize, let fileModified,
               let info = try? FileManager.default.attributesOfItem(atPath: outputURL.path) else { return false }
-        return (info[.size] as? NSNumber)?.int64Value == fileSize
-            && (info[.modificationDate] as? Date)?.timeIntervalSince1970 == (fileModifiedTime ?? fileModified.timeIntervalSince1970)
-            && (artifactFileIdentity.map { $0 == FrameCacheKey.sourceIdentity(url: outputURL, contentHash: "export") } ?? true)
+        guard (info[.size] as? NSNumber)?.int64Value == fileSize else { return false }
+        let identity = FrameCacheKey.sourceIdentity(url: outputURL, contentHash: "export")
+        if (info[.modificationDate] as? Date)?.timeIntervalSince1970 == (fileModifiedTime ?? fileModified.timeIntervalSince1970),
+           artifactFileIdentity.map({ $0 == identity }) ?? true { return true }
+        // A player/Finder may update extended attributes and ctime without
+        // changing a single encoded byte. Re-establish identity by the full
+        // original digest; metadata alone cannot invalidate or renew proof.
+        return ExportArtifactIdentity.matches(outputURL, identity: identity, expectedSHA256: artifactSHA256)
+    }
+}
+
+private enum ExportArtifactIdentity {
+    // Avoid hashing a large, unchanged movie on every UI status refresh.
+    // The key includes inode, nanosecond mtime/ctime, size and expected digest.
+    private static let confirmed: NSCache<NSString, NSNumber> = {
+        let cache = NSCache<NSString, NSNumber>(); cache.countLimit = 32; return cache
+    }()
+    static func matches(_ url: URL, identity: String, expectedSHA256: String?) -> Bool {
+        guard let expectedSHA256, expectedSHA256.count == 64,
+              expectedSHA256.allSatisfy({ $0.isHexDigit }) else { return false }
+        let key = (identity + "|" + expectedSHA256) as NSString
+        if confirmed.object(forKey: key)?.boolValue == true { return true }
+        guard MusicStructureCache.contentIdentity(url) == expectedSHA256,
+              FrameCacheKey.sourceIdentity(url: url, contentHash: "export") == identity else { return false }
+        confirmed.setObject(true, forKey: key)
+        return true
     }
 }
 
@@ -61,7 +87,7 @@ public enum EditorialDeliveryVerifier {
     }
     public static func verify(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preview: [PerceptualRenderedFrameEvidence], cacheURL: URL, preferredVideoSources: [UUID: URL] = [:], sourceWarnings: [String] = []) async throws -> EditorialExportVerification {
         try Task.checkCancellation()
-        let key = EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
+        let key = EditorialRenderDependencies.artifactSignature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
         let directory = cacheURL.appendingPathComponent("EditorialControlExports")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let output = directory.appendingPathComponent(key + ".mp4")
@@ -159,7 +185,7 @@ public enum EditorialDeliveryVerifier {
         var titleEvidence: [TitleReadabilityEvidence] = []
         let titleSpan = trace?.begin("delivery.titles", fields: ["artifact": output.path, "signature": key])
         for title in timeline.effectiveTitleItems where title.enabled {
-            for time in TitleReadabilityInspector.times(title, frameRate: timeline.frameRate) {
+            for time in TitleReadabilityInspector.times(title, timeline: timeline) {
                 try Task.checkCancellation()
                 let requested = TimelineTiming.playbackTime(forTimelineTime: time, timeline: timeline)
                 let decoded = try? await titleGenerator.image(at: VideoFrameTiming.sampleTime(for: requested, frameRate: timeline.frameRate, duration: videoDuration ?? duration))
@@ -177,6 +203,7 @@ public enum EditorialDeliveryVerifier {
             try await measureEncodedAudio(asset: asset)
         }
         var report = EditorialExportVerification(renderSignature: EditorialRenderSignature.signature(timeline), probes: comparisons, durationDifference: abs((videoDuration ?? duration) - AutomaticFilmDurationPolicy.renderedDuration(of: timeline)), aspectRatioMatches: actualRatio.map { abs($0 - expectedRatio) < 0.005 } ?? false, encodedAudio: audio, provenance: "RenderEngine control MP4; independent AVAssetImageGenerator decode and AAC PCM measurement")
+        report.expectsAudio = await expectsAudio(timeline: timeline, assets: assets)
         let file = try CompletedExport.read(output, signature: key)
         report.titleEvidence = titleEvidence
         report.artifactSHA256 = file.sha256
@@ -190,6 +217,27 @@ public enum EditorialDeliveryVerifier {
         report.encodedHeight = size.map { Int($0.height) }
         try JSONEncoder.veloEdit.encode(report).write(to: directory.appendingPathComponent(key + ".json"), options: .atomic)
         return report
+    }
+
+    static func expectsAudio(timeline: Timeline, assets: [MediaAsset],
+                             sourceHasAudio: @Sendable (URL) async throws -> Bool = { url in
+                                 let tracks = try await AVURLAsset(url: url).loadTracks(withMediaType: .audio)
+                                 return !tracks.isEmpty
+                             }) async -> Bool {
+        if timeline.music?.trackID != nil || !(timeline.effectiveAdaptiveSoundtrack?.segments.isEmpty ?? true)
+            || !timeline.effectiveAudioClips.isEmpty { return true }
+        guard timeline.effectiveOriginalAudioVolume > 0 else { return false }
+        let byID = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var inspected = Set<UUID>()
+        for item in timeline.items where item.overlay == nil && item.kind == .video && !item.effectiveAudioAdjustments.muted {
+            guard let id = item.assetID, let source = byID[id] else { return true }
+            guard inspected.insert(id).inserted else { continue }
+            // Metadata alone cannot prove absence: the file may have changed,
+            // or an earlier probe may have failed. Unknown remains required.
+            guard let present = try? await sourceHasAudio(source.originalURL) else { return true }
+            if present { return true }
+        }
+        return false
     }
 
     static func measureEncodedAudio(asset: AVAsset) async throws -> EditorialAudioMasteringReport? {

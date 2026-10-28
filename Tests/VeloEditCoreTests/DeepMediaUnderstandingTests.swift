@@ -532,7 +532,7 @@ private struct FixtureSpeechRecognizer: LocalSpeechRecognizing {
     let event = AudioEventObservation(kind: .applause, startTime: 4.8, endTime: 5.4, confidence: 0.9, intensity: 0.86)
     let boundary = MomentBoundary(anticipationStart: 1, peakTime: 5, completionEnd: 8, confidence: 0.92)
     let candidate = p2Candidate(assetID: asset.id, start: 1, duration: 7, embedding: p2Embedding([1] + Array(repeating: 0, count: 63)), tracking: tracking, speech: speech, events: [event], boundary: boundary)
-    let plan = StoryPlan(prompt: "История с репликой и кульминацией", preset: .story, constraints: StoryConstraints(targetDuration: 7, targetClipCount: 1), chapters: [])
+    let plan = StoryPlan(prompt: "История с репликой и кульминацией, сохрани реплику целиком", preset: .story, constraints: StoryConstraints(targetDuration: 7, targetClipCount: 1), chapters: [])
     let structure = MusicStructure(
         bpm: 120,
         beatInterval: 0.5,

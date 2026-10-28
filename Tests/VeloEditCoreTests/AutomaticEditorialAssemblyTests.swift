@@ -11,6 +11,55 @@ import Testing
     private func analyses(_ candidates: [Candidate]) -> [AnalysisResult] {
         Dictionary(grouping: candidates, by: \.assetID).map { .init(assetID: $0.key, analyzedContentHash: "fixture", sceneTags: [], candidates: $0.value) }
     }
+
+    @Test func certifiedShortCutsReserveTheirExactRangesBeforeOverlapAndFamilyAllocation() throws {
+        let asset = UUID()
+        let candidates = [6.0, 7.55].map { candidate(asset: asset, start: $0, tag: "camping") }
+        let context = EditorialAnalysisContext(analyses: analyses(candidates), events: [])
+        let units = Dictionary(uniqueKeysWithValues: context.units.map { ($0.id, $0) })
+        let items = zip(candidates, [1.0, 3.8]).map { candidate, duration in
+            TimelineItem(candidateID: candidate.id, assetID: asset, kind: .video,
+                sourceStart: candidate.sourceStart, sourceDuration: duration,
+                timelineStart: 0, timelineDuration: duration)
+        }
+        let fixed = Dictionary(uniqueKeysWithValues: items.map { ($0.candidateID!, $0) })
+        let slots = AutomaticEditorialAssembly.slots(items: items, units: units, maximumShot: 10,
+            fps: 60, pacing: 0.5, fixedRanges: fixed)
+        #expect(slots.map(\.item.sourceStart) == [6, 7.55])
+        #expect(slots.map(\.capacity) == [60, 228])
+        let limited = AutomaticEditorialAssembly.limitedRuns(slots,
+            families: Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, "camp") }), fps: 60,
+            fixedFrames: fixed.mapValues { Int(($0.timelineDuration * 60).rounded()) })
+        #expect(limited.count == 2)
+        #expect(limited.map(\.item.sourceDuration) == [1, 3.8])
+        // An uncertified one-second candidate still has to meet the original
+        // minimum source capacity. A saved cut is not a global threshold change.
+        var short = candidates[0]
+        short.sourceDuration = 1
+        short.insights?.editorialEvidence?.usableRange = .init(start: 6, end: 7)
+        let shortContext = EditorialAnalysisContext(analyses: analyses([short]), events: [])
+        let fresh = AutomaticEditorialAssembly.slots(items: [items[0]],
+            units: Dictionary(uniqueKeysWithValues: shortContext.units.map { ($0.id, $0) }),
+            maximumShot: 10, fps: 60, pacing: 0.5)
+        #expect(fresh.isEmpty)
+    }
+
+    @Test func savedRangesCannotUndoFamilyRunCapacityOrThirdShotLimit() {
+        let candidates = (0..<3).map { candidate(asset: UUID(), start: Double($0 * 20), tag: "same-setup") }
+        let context = EditorialAnalysisContext(analyses: analyses(candidates), events: [])
+        let units = Dictionary(uniqueKeysWithValues: context.units.map { ($0.id, $0) })
+        let items = candidates.map { TimelineItem(candidateID: $0.id, assetID: $0.assetID,
+            kind: .video, sourceStart: $0.sourceStart, sourceDuration: 8, timelineStart: 0, timelineDuration: 8) }
+        let fixed = Dictionary(uniqueKeysWithValues: items.map { ($0.candidateID!, $0) })
+        let slots = AutomaticEditorialAssembly.slots(items: items, units: units, maximumShot: 10,
+            fps: 30, pacing: 0.5, fixedRanges: fixed)
+        let limited = AutomaticEditorialAssembly.limitedRuns(slots,
+            families: Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, "same-camera") }), fps: 30,
+            fixedFrames: fixed.mapValues { Int(($0.timelineDuration * 30).rounded()) })
+        #expect(limited.count <= 2)
+        #expect(limited.reduce(0) { $0 + $1.capacity } <= 12 * 30)
+        #expect(!limited.contains { $0.unit.id == candidates[2].id })
+    }
     private func fixture() -> (Timeline, StoryPlan, [AnalysisResult], [Event]) {
         let cameras = [UUID(), UUID()]
         let candidates = cameras.enumerated().flatMap { camera, id in
@@ -46,6 +95,78 @@ import Testing
         #expect(result.plan.constraints.targetDuration == 42)
         let review = EditorialQualityGate().review(timeline: result.timeline, plan: result.plan, analyses: analysis)
         #expect(!review.findings.contains { [.mechanicalCadence, .hardDuplicate, .durationPadding, .shotFamilyRunTooLong, .falseNarrativeRole].contains($0.kind) })
+    }
+
+    @Test func automaticClockSettlesBeforeExactSourceRangesAreReviewed() {
+        let (original, plan, analysis, events) = fixture()
+        let ids = Array(Set(original.items.compactMap(\.assetID))).sorted { $0.uuidString < $1.uuidString }
+        let assets = ids.enumerated().map { index, id in
+            MediaAsset(id: id, originalURL: URL(fileURLWithPath: "/tmp/clock-\(index).mov"), kind: .video,
+                byteSize: 1, contentHash: "clock-\(index)", metadata: .init(duration: 60,
+                    width: 1920, height: 1080, frameRate: 60))
+        }
+        var fractionalRoughCut = original
+        fractionalRoughCut.automaticallySelectFrameRate = true
+        fractionalRoughCut.frameRate = 60_000.0 / 1001
+        let result = AutomaticEditorialAssembly.prepareForSourceReview(timeline: fractionalRoughCut,
+            plan: plan, analyses: analysis, events: events, assets: assets)
+        #expect(result.timeline.frameRate == 60)
+        #expect(Set(result.timeline.items.compactMap(\.candidateID)) == Set(original.items.compactMap(\.candidateID)))
+        #expect(abs(result.timeline.duration - 42) < 0.001)
+        #expect(result.timeline.items.allSatisfy { abs($0.sourceDuration * 60 - ($0.sourceDuration * 60).rounded()) < 0.000_001 })
+        var integerRoughCut = original
+        integerRoughCut.automaticallySelectFrameRate = true
+        integerRoughCut.frameRate = 60
+        let expected = AutomaticEditorialAssembly.prepare(timeline: integerRoughCut, plan: plan,
+            analyses: analysis, events: events, assets: assets)
+        #expect(result.timeline.items.map(\.candidateID) == expected.timeline.items.map(\.candidateID))
+        #expect(result.timeline.items.map(\.sourceStart) == expected.timeline.items.map(\.sourceStart))
+        #expect(result.timeline.items.map(\.sourceDuration) == expected.timeline.items.map(\.sourceDuration))
+        #expect(result.timeline.effectiveTitleItems.map(\.text) == expected.timeline.effectiveTitleItems.map(\.text))
+        let repeated = AutomaticEditorialAssembly.prepareForSourceReview(timeline: result.timeline,
+            plan: result.plan, analyses: analysis, events: events, assets: assets)
+        #expect(repeated.timeline.frameRate == result.timeline.frameRate)
+        #expect(repeated.timeline.items.map(\.sourceStart) == result.timeline.items.map(\.sourceStart))
+        #expect(repeated.timeline.items.map(\.sourceDuration) == result.timeline.items.map(\.sourceDuration))
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_SAVED_CLOCK_PROJECT"] != nil))
+    func realSavedEditKeepsExactSourceRangesAfterClockSettlement() throws {
+        let path = try #require(ProcessInfo.processInfo.environment["VELOEDIT_SAVED_CLOCK_PROJECT"])
+        let project = try JSONDecoder.veloEdit.decode(ProjectManifest.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+        let draft = try #require(project.filmBuildRecovery?.draft)
+        var rough = draft.timeline
+        rough.frameRate = 60_000.0 / 1001
+        rough.automaticallySelectFrameRate = true
+        let result = AutomaticEditorialAssembly.prepareForSourceReview(timeline: rough, plan: draft.plan,
+            analyses: draft.analyses, events: draft.events, assets: project.assets)
+        let repeated = AutomaticEditorialAssembly.prepareForSourceReview(timeline: result.timeline, plan: result.plan,
+            analyses: draft.analyses, events: draft.events, assets: project.assets)
+        #expect(result.timeline.frameRate == TimelineFrameRatePolicy.applying(to: result.timeline, assets: project.assets).frameRate)
+        #expect(result.timeline.items.map(\.candidateID) == repeated.timeline.items.map(\.candidateID))
+        #expect(result.timeline.items.map(\.sourceStart) == repeated.timeline.items.map(\.sourceStart))
+        #expect(result.timeline.items.map(\.sourceDuration) == repeated.timeline.items.map(\.sourceDuration))
+        #expect(result.timeline.effectiveTitleItems.map(\.text) == repeated.timeline.effectiveTitleItems.map(\.text))
+        #expect(!result.timeline.items.isEmpty)
+        // This exercises saved real measurements only. It does not grant
+        // positive semantic decisions to any range or certify an MP4.
+    }
+
+    @Test func explicitClockRemainsUnchangedBeforeSourceReview() {
+        let (original, plan, analysis, events) = fixture()
+        var timeline = original
+        timeline.frameRate = 24
+        timeline.automaticallySelectFrameRate = false
+        let assets = analysis.map { a in MediaAsset(id: a.assetID,
+            originalURL: URL(fileURLWithPath: "/tmp/clock-manual.mov"), kind: .video,
+            byteSize: 1, contentHash: "manual", metadata: .init(duration: 60, width: 1920, height: 1080, frameRate: 60)) }
+        let result = AutomaticEditorialAssembly.prepareForSourceReview(timeline: timeline,
+            plan: plan, analyses: analysis, events: events, assets: assets)
+        let expected = AutomaticEditorialAssembly.prepare(timeline: timeline,
+            plan: plan, analyses: analysis, events: events, assets: assets)
+        #expect(result.timeline.frameRate == 24)
+        #expect(result.timeline.items.map(\.sourceStart) == expected.timeline.items.map(\.sourceStart))
+        #expect(result.timeline.items.map(\.sourceDuration) == expected.timeline.items.map(\.sourceDuration))
     }
 
     @Test func duplicateFastPathPreservesOverlapAndInformationThresholds() {

@@ -86,19 +86,34 @@ public struct ChapterTitleInput: Codable, Hashable, Sendable {
     public var evidence: [ChapterTitleEvidence]
     public var coverage: ChapterTitleCoverage
     public var limitations: [String]
+    /// Exact source/evidence provenance for reusable raw model responses.
+    /// Kept out of the language-model facts; never a content certificate.
+    public var responseCacheIdentity: String? = nil
 }
 
 /// Injectable two-stage interface. A verifier receives facts and the proposed
 /// wording, not the generator's confidence or previous automatic titles.
 public protocol ChapterTitleModel: Sendable {
     var identity: String { get }
+    var requiresWordingEdit: Bool { get }
     func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal
+    func editWording(_ theme: ChapterThemeProposal, input: ChapterTitleInput) async throws -> ChapterThemeProposal
     func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification
 }
 
+public extension ChapterTitleModel {
+    var requiresWordingEdit: Bool { false }
+    func editWording(_ theme: ChapterThemeProposal, input: ChapterTitleInput) async throws -> ChapterThemeProposal { theme }
+}
+
 public struct SmartChapterTitleEngine: Sendable {
-    public static let rulesVersion = 4
+    public static let rulesVersion = 9
     public init() {}
+
+    static func hasAutomaticTitles(_ timeline: Timeline) -> Bool {
+        timeline.effectiveTitleItems.contains { $0.kind == .chapter && AutomatedTitlePolicy.isGenerated($0) }
+            || timeline.chapterTitleDecisions?.contains { $0.source == .model || $0.source == .retained } == true
+    }
 
     public func applying(to source: Timeline, plan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult],
                          mode: AIPowerMode, model: any ChapterTitleModel, force: Bool = false,
@@ -153,6 +168,7 @@ public struct SmartChapterTitleEngine: Sendable {
             struct Signature: Encodable {
                 var version: Int; var model: String; var mode: String; var input: ChapterTitleInput
                 var sources: [String]; var observations: [ChapterTitleEvidence]; var restrictions: [String]
+                var reviewRules: String; var reviewReceipts: [String]
             }
             // Relative timing means moving an intact part does not invalidate
             // its semantics, while trim, content, observation and model changes do.
@@ -169,12 +185,42 @@ public struct SmartChapterTitleEngine: Sendable {
                     }.map { "\($0.sourceTime)|\($0.actionState.sorted())|\($0.confidence)" }.joined(separator: ";")
                     return "\(candidate.sourceStart)|\(candidate.sourceDuration)|\(candidate.insights?.sceneSummary ?? "")|\(candidate.tags.sorted())|\(candidate.insights?.speech?.text ?? "")|\(candidate.insights?.editorialEvidence?.analysisVersion ?? 0)|\(samples)"
                 }.joined(separator: "\n")
-                return "\(item.id)|\(asset?.fullContentHash ?? asset?.contentHash ?? item.assetID?.uuidString ?? "unknown")|\(item.sourceStart)|\(item.sourceDuration)|\(item.timelineDuration)|\(analysis?.schemaVersion ?? 0)|\(analysis?.analysisProfileKey ?? "unknown")|\(analysis?.analysisModelDigest ?? "unknown")|\(EditorialIdentity.hash(observations))"
+                return "\(asset?.fullContentHash ?? asset?.contentHash ?? item.assetID?.uuidString ?? "unknown")|\(item.sourceStart)|\(item.sourceDuration)|\(item.timelineDuration)|\(analysis?.schemaVersion ?? 0)|\(analysis?.analysisProfileKey ?? "unknown")|\(analysis?.analysisModelDigest ?? "unknown")|\(EditorialIdentity.hash(observations))"
             }
             let date = Self.trustedDate(items: items, assets: byAsset)
+            let receipts = items.compactMap { item -> String? in
+                (sourceAssessments ?? source.selectedContentReview?.source ?? []).last(where: {
+                    $0.phase == "source" && $0.itemID == item.id && $0.assetID == item.assetID
+                        && $0.sourceContentHash == item.assetID.flatMap { byAsset[$0]?.contentHash }
+                        && abs($0.sourceStart - item.sourceStart) < 0.000_001
+                        && abs($0.sourceDuration - item.sourceDuration) < 0.000_001
+                }).map { "\($0.model)|\($0.cacheKey)" }
+            }
             let signature = try Self.signature(Signature(version: Self.rulesVersion, model: model.identity, mode: mode.rawValue, input: relative,
                 sources: sourceKeys, observations: Self.relative(allEvidence, start: first.timelineStart),
-                restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt]))
+                restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt],
+                reviewRules: SelectedContentReviewer.version, reviewReceipts: receipts))
+            // New assembly UUIDs are not new visual evidence. Canonicalize
+            // only these identities; preserve source hashes, trims, order,
+            // all observations, exact review keys, rules and model weights.
+            var canonical = relative
+            canonical.partID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+            let canonicalItems = Dictionary(uniqueKeysWithValues: items.enumerated().map {
+                ($0.element.id, UUID(uuidString: String(format: "00000000-0000-0000-0000-%012llx", UInt64($0.offset + 1)))!)
+            })
+            func canonicalEvidence(_ values: [ChapterTitleEvidence]) -> [ChapterTitleEvidence] {
+                values.map { original in
+                    var value = original
+                    if let id = canonicalItems[value.itemID] { value.itemID = id }
+                    return value
+                }
+            }
+            canonical.evidence = canonicalEvidence(canonical.evidence)
+            input.responseCacheIdentity = try Self.signature(Signature(version: Self.rulesVersion,
+                model: model.identity, mode: mode.rawValue, input: canonical, sources: sourceKeys,
+                observations: canonicalEvidence(Self.relative(allEvidence, start: first.timelineStart)),
+                restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt],
+                reviewRules: SelectedContentReviewer.version, reviewReceipts: receipts))
             if !force, var cached = source.chapterTitleDecisions?.first(where: { $0.partID == part.id && $0.inputSignature == signature }) {
                 cached.evidence = evidence + cached.evidence.filter { $0.origin == .metadata }.map { old in
                     var value = old; value.timelineStart = first.timelineStart; value.timelineEnd = end; return value
@@ -197,7 +243,11 @@ public struct SmartChapterTitleEngine: Sendable {
                     for attempt in 0..<3 {
                       do {
                         decision.modelCalls += 1
-                        let theme = try await model.generate(generationInput)
+                        var theme = try await model.generate(generationInput)
+                        if model.requiresWordingEdit && !theme.titles.isEmpty {
+                            decision.modelCalls += 1
+                            theme = try await model.editWording(theme, input: generationInput)
+                        }
                         try Task.checkCancellation()
                         decision.theme = theme
                         for proposal in theme.titles.prefix(2) {
@@ -226,6 +276,7 @@ public struct SmartChapterTitleEngine: Sendable {
                         generationInput.limitations.append("Previous proposals failed verification: " + decision.verifications.suffix(2).flatMap(\.reasons).joined(separator: "; ") + ". Propose a supported whole-part activity or setting and cite the relevant observations across the part; do not merely repeat the same title and one evidence ID.")
                       } catch is CancellationError { throw CancellationError() }
                       catch {
+                        if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                         if attempt >= 1 { throw error }
                         generationInput.limitations.append("The previous response could not be completed or decoded. Return a compact complete JSON object; keep all required fields and evidence references.")
                       }
@@ -233,6 +284,7 @@ public struct SmartChapterTitleEngine: Sendable {
                     if decision.source == .fallback { decision.fallbackReason = "No proposed title passed grounding and whole-part verification" }
                 } catch is CancellationError { throw CancellationError() }
                 catch {
+                    if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                     try Task.checkCancellation()
                     decision.fallbackReason = String(describing: error)
                     // Retain only a title previously verified against these
@@ -330,7 +382,7 @@ public struct SmartChapterTitleEngine: Sendable {
                     output.append(.init(id: "e\(output.count)", assetID: asset, itemID: item.id,
                         sourceStart: item.sourceStart, sourceEnd: end,
                         timelineStart: item.timelineStart, timelineEnd: item.timelineStart + item.timelineDuration,
-                        origin: .visualSummary, observation: String(review.observation.prefix(1200)),
+                        origin: .visualSummary, observation: review.observation,
                         selected: true, frameTimes: review.sampleTimes, actionSequence: false))
                     if review.editorialPurpose == "action", let boundary = review.actionBoundary,
                        [.complete, .continuous].contains(boundary.verdict) {
@@ -338,7 +390,7 @@ public struct SmartChapterTitleEngine: Sendable {
                             sourceStart: item.sourceStart, sourceEnd: end,
                             timelineStart: item.timelineStart, timelineEnd: item.timelineStart + item.timelineDuration,
                             origin: .visualSequence,
-                            observation: String((boundary.startObservation + "; " + boundary.endObservation).prefix(1200)),
+                            observation: boundary.startObservation + "; " + boundary.endObservation,
                             selected: true, frameTimes: review.sampleTimes, actionSequence: true))
                     }
                 }

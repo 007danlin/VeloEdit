@@ -7,7 +7,7 @@ struct PhotoSourceAnalysis: Sendable {
     static let version = 1
     static let longEdge = 960
     static let frames = FrameCache(rootURL: FileManager.default.temporaryDirectory
-        .appendingPathComponent("VeloEdit-PhotoSource-v\(version)"))
+        .appendingPathComponent("VeloEdit-PhotoSource-v\(version)"), maximumDiskBytes: 256 * 1_024 * 1_024)
     let sample: VisualFrameSample
     let width: Int
     let height: Int

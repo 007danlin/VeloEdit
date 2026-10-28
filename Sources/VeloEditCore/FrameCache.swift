@@ -70,6 +70,8 @@ public actor FrameCache {
     private let rootURL: URL
     private let maximumMemoryEntries: Int
     private let maximumMemoryBytes: Int
+    private let maximumDiskBytes: Int64?
+    private var bytesUntilDiskTrim: Int64 = 0
     private var memory: [String: VisualFrameSample] = [:]
     private var memoryOrder: [String] = []
     private var memoryBytes = 0
@@ -78,10 +80,11 @@ public actor FrameCache {
     private var admissionWaiters: [CheckedContinuation<Void, Never>] = []
     private var inFlight: [String: (id: UUID, task: Task<VisualFrameSample, Error>)] = [:]
 
-    public init(rootURL: URL, maximumMemoryEntries: Int = 384, maximumMemoryBytes: Int = 96 * 1_024 * 1_024) {
+    public init(rootURL: URL, maximumMemoryEntries: Int = 384, maximumMemoryBytes: Int = 96 * 1_024 * 1_024, maximumDiskBytes: Int64? = nil) {
         self.rootURL = rootURL
         self.maximumMemoryEntries = max(1, maximumMemoryEntries)
         self.maximumMemoryBytes = max(0, maximumMemoryBytes)
+        self.maximumDiskBytes = maximumDiskBytes
     }
 
     func value(for key: FrameCacheKey) -> VisualFrameSample? { lookup(key)?.sample }
@@ -170,6 +173,34 @@ public actor FrameCache {
         var data = Data(SHA256.hash(data: payload))
         data.append(payload)
         try data.write(to: recordURL(for: identity), options: .atomic)
+        if let maximumDiskBytes {
+            bytesUntilDiskTrim -= Int64(data.count)
+            if bytesUntilDiskTrim <= 0 {
+                trimDisk(to: maximumDiskBytes)
+                // Amortize directory walks; at most 1/16 of the budget is
+                // added between passes, without per-frame filesystem scans.
+                bytesUntilDiskTrim = max(1, maximumDiskBytes / 16)
+            }
+        }
+    }
+
+    /// Bounded fallback caches evict regenerable observations, never sources.
+    /// Eviction is a cache miss; it cannot interrupt analysis or film creation.
+    private func trimDisk(to limit: Int64) {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey]
+        let records = ((try? FileManager.default.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: Array(keys))) ?? [])
+            .compactMap { url -> (url: URL, size: Int64, date: Date)? in
+                let name = url.lastPathComponent
+                guard name.hasSuffix(".frame-v2.bin"), name.count == 64 + ".frame-v2.bin".count,
+                      name.prefix(64).allSatisfy({ $0.isHexDigit }),
+                      let values = try? url.resourceValues(forKeys: keys),
+                      values.isRegularFile == true, values.isSymbolicLink != true else { return nil }
+                return (url, Int64(values.fileSize ?? 0), values.contentModificationDate ?? .distantPast)
+            }.sorted { $0.date < $1.date }
+        var total = records.reduce(Int64(0)) { $0 + $1.size }
+        for record in records where total > max(0, limit) {
+            if (try? FileManager.default.removeItem(at: record.url)) != nil { total -= record.size }
+        }
     }
 
     func removeMemoryEntries() {

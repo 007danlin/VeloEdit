@@ -8,7 +8,7 @@ public struct FilmBuildProgress: Sendable, Equatable {
         case analysis, preparing, evidence, moments, planning, findingMusic, analyzingMusic
         case assembling, reviewing, fallback, finishing, soundtrack, verifying, saving
         case previewFrames, controlExport, deliveryFrames, audioCheck, resuming
-        case sourceContent, renderedContent
+        case sourceContent, sourceFrames, sourceBoundaries, renderedContent
 
         public var title: String {
             switch self {
@@ -36,6 +36,8 @@ public struct FilmBuildProgress: Sendable, Equatable {
             case .audioCheck: return "Проверяю звук готового видео"
             case .resuming: return "Продолжаю сохранённую сборку"
             case .sourceContent: return "Проверяю содержание исходных фрагментов"
+            case .sourceFrames: return "Проверяю кадры исходных фрагментов"
+            case .sourceBoundaries: return "Проверяю границы действий"
             case .renderedContent: return "Проверяю содержание готового видео"
             }
         }
@@ -45,12 +47,15 @@ public struct FilmBuildProgress: Sendable, Equatable {
     public var completed: Int?
     public var total: Int?
     public var detail: String?
+    /// A waiting notification is not evidence that another unit of work finished.
+    public var isHeartbeat: Bool
 
-    public init(_ stage: Stage, completed: Int? = nil, total: Int? = nil, detail: String? = nil) {
+    public init(_ stage: Stage, completed: Int? = nil, total: Int? = nil, detail: String? = nil, isHeartbeat: Bool = false) {
         self.stage = stage
         self.completed = completed
         self.total = total
         self.detail = detail
+        self.isHeartbeat = isHeartbeat
     }
 
     /// This fraction describes only the named operation, never the entire build.

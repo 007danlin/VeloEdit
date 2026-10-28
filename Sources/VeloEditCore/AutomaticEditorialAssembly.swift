@@ -14,13 +14,49 @@ enum AutomaticEditorialAssembly {
         var frames: Int
     }
 
+    /// Allocate the existing edit on its resulting automatic clock before
+    /// source observers receive exact ranges. Otherwise a 59.94 rough edit
+    /// can select 60-fps footage, be reviewed, and only then change its clock;
+    /// the later allocation invalidates those completed observations.
+    /// No cache tolerance or source-review requirement is relaxed here.
+    static func prepareForSourceReview(timeline source: Timeline, plan original: StoryPlan,
+        analyses: [AnalysisResult], events: [Event], assets: [MediaAsset],
+        verifiedSource: [ShotContentAssessment] = [], excluded: Set<UUID> = []) -> (timeline: Timeline, plan: StoryPlan) {
+        let originalResult = prepare(timeline: source, plan: original, analyses: analyses,
+            events: events, assets: assets, excluded: excluded, verifiedSource: verifiedSource)
+        guard source.automaticallySelectFrameRate == true else { return originalResult }
+        var result = originalResult
+        var visited = Set<Double>()
+        for pass in 0..<4 {
+            let clocked = TimelineFrameRatePolicy.applying(to: result.timeline, assets: assets)
+            if clocked.frameRate == result.timeline.frameRate {
+                PerformanceTrace.current?.event("assembly.clock-settled", values: [
+                    "initialFPS": source.frameRate, "finalFPS": clocked.frameRate,
+                    "reallocations": Double(pass)])
+                return result
+            }
+            guard visited.insert(clocked.frameRate).inserted else { break }
+            // Reallocate the original measured ranges on the new clock.
+            // Feeding a previously rounded edit back in compounds rounding
+            // (20 s at 59.94 can become 20.0167 s at 60).
+            var unrounded = source
+            unrounded.frameRate = clocked.frameRate
+            result = prepare(timeline: unrounded, plan: original, analyses: analyses,
+                events: events, assets: assets, excluded: excluded, verifiedSource: verifiedSource)
+        }
+        // Unusual edits may oscillate between clock families. Preserve their
+        // prior behavior and require fresh review after any subsequent change.
+        PerformanceTrace.current?.event("assembly.clock-unsettled")
+        return originalResult
+    }
+
     static func prepare(timeline source: Timeline, plan original: StoryPlan, analyses: [AnalysisResult], events: [Event], assets: [MediaAsset] = [], excluded: Set<UUID> = [], preferShortShots: Bool = true, verifiedSource: [ShotContentAssessment] = []) -> (timeline: Timeline, plan: StoryPlan) {
         // Connected/manual edits and retiming carry their own contracts. This
         // policy owns the plain, automatically generated primary storyline.
         guard original.narrativeBeatPlan != nil, !source.items.isEmpty,
               source.items.allSatisfy({ !$0.locked && $0.overlay == nil && ($0.kind == .video || $0.kind == .photo) && !$0.isFreezeFrame && !$0.isReversed && $0.speedRamp == nil && abs($0.speed - 1) < 0.001 }),
               source.effectiveAudioClips.isEmpty else { return (source, original) }
-        let context = EditorialAnalysisContext(analyses: analyses, events: events)
+        let context = EditorialAnalysisContext(analyses: analyses, events: events).respectingSpeechIntent(original)
         let sourceMap = assets.isEmpty ? original.eventStory?.diagnostics?.sourceMap : SourceTimelineAnalyzer().analyze(assets: assets, analyses: analyses)
         let units = Dictionary(uniqueKeysWithValues: context.units.map { ($0.id, $0) })
         let kinds = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0.kind) })
@@ -45,13 +81,8 @@ enum AutomaticEditorialAssembly {
             guard !verifiedSource.isEmpty, let id = item.candidateID, !excluded.contains(id),
                   abs(item.timelineDuration * fps - (item.timelineDuration * fps).rounded()) < 0.001,
                   verifiedSource.contains(where: { review in
-                      review.itemID == item.id && review.assetID == item.assetID && review.phase == "source"
-                          && review.status == .usable && review.confidence >= 0.75 && review.sampleTimes.count == 5
+                      review.certifies(item: item, phase: "source", assets: assets)
                           && review.cameraAdjustmentSamples?.isEmpty != false
-                          && review.editorialPurpose.flatMap(SelectedContentReviewer.EditorialPurpose.init(rawValue:))?.isUseful == true
-                          && abs(review.sourceStart - item.sourceStart) < 0.000_001
-                          && abs(review.sourceDuration - item.sourceDuration) < 0.000_001
-                          && (assets.isEmpty || assets.contains { $0.id == item.assetID && $0.contentHash == review.sourceContentHash })
                   }) else { return nil }
             return (id, item)
         }, uniquingKeysWith: { first, _ in first })
@@ -112,22 +143,18 @@ enum AutomaticEditorialAssembly {
         var targetFrames = Int((target * fps).rounded())
         let clusterer = ShotFamilyClusterer()
         func makeSlots(_ media: [TimelineItem]) -> [Slot] {
-            let ranges = slots(items: media, units: units, maximumShot: maximumShot, fps: fps, pacing: plan.constraints.pacing, preferShortShots: preferShortShots)
+            let ranges = slots(items: media, units: units, maximumShot: maximumShot, fps: fps, pacing: plan.constraints.pacing,
+                preferShortShots: preferShortShots, fixedRanges: fixedRanges)
             let sequence = ordered(ranges, plan: original, events: events, sourceMap: sourceMap)
             // Longer measured ranges can recover duration. Repeating the same
             // setup cannot: retain the family limit in the long-shot fallback.
             let varied = observational ? ObservationalFramingPolicy.pruning(sequence) : sequence
-            let limited = limitedRuns(varied, families: context.families.familyByUnitID, fps: fps,
-                measuredStaticOnly: !preferShortShots)
-            return limited.map { slot in
-                guard let fixed = fixedRanges[slot.unit.id] else { return slot }
-                var copy = slot
-                copy.item.sourceStart = fixed.sourceStart
-                copy.item.sourceDuration = fixed.sourceDuration
-                copy.frames = Int((fixed.timelineDuration * fps).rounded())
-                copy.capacity = copy.frames
-                return copy
-            }
+            // Capacity and overlap must use certified cuts before family
+            // allocation. Restoring them afterwards can lose a short survivor
+            // behind its neighbour's unused source tail, or undo a family cap.
+            return limitedRuns(varied, families: context.families.familyByUnitID, fps: fps,
+                measuredStaticOnly: !preferShortShots,
+                fixedFrames: fixedRanges.mapValues { Int(($0.timelineDuration * fps).rounded()) })
         }
         var selected = makeSlots(items)
         if observational && verifiedSource.isEmpty {
@@ -486,7 +513,8 @@ enum AutomaticEditorialAssembly {
     /// Joint run capacity matters as well as each individual shot. Two safe
     /// eight-second shots from the same setup are not a safe sixteen-second
     /// run. Reserve the verifier's twelve-second ceiling before allocating.
-    static func limitedRuns(_ slots: [Slot], families: [UUID: String], fps: Double, measuredStaticOnly: Bool = false) -> [Slot] {
+    static func limitedRuns(_ slots: [Slot], families: [UUID: String], fps: Double, measuredStaticOnly: Bool = false,
+        fixedFrames: [UUID: Int] = [:]) -> [Slot] {
         var result: [Slot] = []
         var run = 0
         var lastFamily: String?
@@ -511,8 +539,16 @@ enum AutomaticEditorialAssembly {
             if run == 2, !protected(slot.unit), let prior = result.last {
                 let ceiling = Int(12 * fps)
                 if prior.capacity + slot.capacity > ceiling {
-                    if protected(prior.unit) {
+                    if protected(prior.unit) || fixedFrames[prior.unit.id] != nil {
                         slot.capacity = max(0, ceiling - prior.capacity)
+                    } else if fixedFrames[slot.unit.id] != nil {
+                        let remaining = max(0, ceiling - slot.capacity)
+                        if remaining >= Int(1.5 * fps) {
+                            result[result.count - 1].capacity = remaining
+                            result[result.count - 1].frames = min(prior.frames, remaining)
+                        } else {
+                            result.removeLast()
+                        }
                     } else {
                         let first = Int((Double(ceiling) * Double(prior.capacity) / Double(prior.capacity + slot.capacity)).rounded(.down))
                         result[result.count - 1].capacity = first
@@ -521,7 +557,10 @@ enum AutomaticEditorialAssembly {
                     }
                 }
             }
-            guard slot.capacity >= Int(1.5 * fps) else { continue }
+            // The initial candidate needs 1.5 s of capacity; final water filling
+            // can legitimately select a shorter cut. A completed receipt for
+            // that exact cut must not disappear on the next repair pass.
+            guard slot.capacity >= (fixedFrames[slot.unit.id] ?? Int(1.5 * fps)) else { continue }
             slot.frames = min(slot.frames, slot.capacity)
             result.append(slot)
         }
@@ -532,7 +571,8 @@ enum AutomaticEditorialAssembly {
         unit.candidate.locked || EditorialMomentPolicy.protectedRange(unit) != nil
     }
 
-    static func slots(items: [TimelineItem], units: [UUID: EditorialUnit], maximumShot: Double, fps: Double, pacing: Double, preferShortShots: Bool = true) -> [Slot] {
+    static func slots(items: [TimelineItem], units: [UUID: EditorialUnit], maximumShot: Double, fps: Double, pacing: Double,
+        preferShortShots: Bool = true, fixedRanges: [UUID: TimelineItem] = [:]) -> [Slot] {
         var result: [Slot] = []
         let sorted = items.sorted { $0.sourceStart == $1.sourceStart ? $0.id.uuidString < $1.id.uuidString : $0.sourceStart < $1.sourceStart }
         var ends: [UUID: Double] = [:]
@@ -548,6 +588,19 @@ enum AutomaticEditorialAssembly {
             let lower = max(unit.sourceRange.start, unit.evidence.usableRange.start)
             let upper = min(unit.sourceRange.end, unit.evidence.usableRange.end)
             let required = EditorialMomentPolicy.protectedRange(unit)
+            if let fixed = fixedRanges[id],
+               fixed.sourceStart >= max(lower, ends[asset, default: 0]) - 0.000_001,
+               fixed.sourceStart + fixed.sourceDuration <= upper + 0.000_001,
+               required.map({ fixed.sourceStart <= $0.start + 1 / fps
+                   && fixed.sourceStart + fixed.sourceDuration >= $0.end - 1 / fps }) ?? true {
+                let frames = Int((fixed.timelineDuration * fps).rounded())
+                guard frames > 0 else { continue }
+                item.sourceStart = fixed.sourceStart
+                item.sourceDuration = fixed.sourceDuration
+                ends[asset] = fixed.sourceStart + fixed.sourceDuration
+                result.append(Slot(item: item, unit: unit, capacity: frames, frames: frames))
+                continue
+            }
             let seed = required?.start ?? item.sourceStart
             let start = (max(lower, seed, ends[asset, default: 0]) * fps).rounded(.up) / fps
             let next = sorted.filter { $0.assetID == asset && $0.sourceStart > start + 0.001 }.map(\.sourceStart).min() ?? upper
@@ -614,7 +667,7 @@ enum AutomaticEditorialAssembly {
 
     static func reconcile(timeline: Timeline, plan original: StoryPlan, analyses: [AnalysisResult], events: [Event], context supplied: EditorialAnalysisContext? = nil, sourceMap suppliedMap: SourceMap? = nil) -> StoryPlan {
         var plan = original
-        let context = supplied ?? EditorialAnalysisContext(analyses: analyses, events: events)
+        let context = (supplied ?? EditorialAnalysisContext(analyses: analyses, events: events)).respectingSpeechIntent(original)
         let units = Dictionary(uniqueKeysWithValues: context.units.map { ($0.id, $0) })
         let sourceMap = suppliedMap ?? original.eventStory?.diagnostics?.sourceMap
         let groups = Dictionary(uniqueKeysWithValues: (sourceMap?.entries ?? []).map { ($0.assetID, $0.activityGroupID) })

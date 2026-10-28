@@ -27,6 +27,7 @@ public struct FilmBuildDraft: Codable, Sendable {
     public var resolvedMusicTrackID: UUID?
     public var directorBrief: DirectorBrief?
     public var checkpointReason: String
+    public var processProfile: FilmProcessProfile? = nil
     // Exact, positively reviewed source ranges survive native repair/resume.
     // This is not a delivery certificate; the final encoded file is reviewed
     // separately after all finishing changes.

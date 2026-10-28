@@ -77,6 +77,77 @@ enum EditorialRenderDependencies {
     // tracks used by connected clips. Old probes/mixes must be recomputed.
     // v5 also preserves requested source attenuation through export mastering.
     static let compositionVersion = 14
+    /// File reuse has a separate identity from a certificate for a timeline.
+    /// Only simple materialized video cuts are canonicalized here. Other edit
+    /// types keep the conservative existing dependency key until separately
+    /// validated; never guess how an unknown renderer uses object identities.
+    static func artifactSignature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack],
+                                       telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:], visualOnly: Bool = false) -> String {
+        func original() -> String {
+            signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry,
+                preferredVideoSources: preferredVideoSources, visualOnly: visualOnly)
+        }
+        guard !timeline.items.isEmpty, Set(timeline.items.map(\.id)).count == timeline.items.count,
+              Set(timeline.effectiveTitleItems.map(\.id)).count == timeline.effectiveTitleItems.count,
+              timeline.music == nil, timeline.adaptiveSoundtrack == nil,
+              timeline.effectiveAudioClips.isEmpty, timeline.effectiveTelemetryItems.isEmpty,
+              timeline.effectiveEffects.count <= 1,
+              timeline.effectiveEffects.allSatisfy({ $0.effectType == .pushIn && $0.keyframes.isEmpty
+                  && $0.effectStackPresetID == nil && $0.effectStackPresetInstanceID == nil }),
+              timeline.effectiveTransitionItems.isEmpty,
+              timeline.effectiveTitleItems.allSatisfy({ $0.speechAnchor == nil }),
+              timeline.items.allSatisfy({ $0.kind == .video && $0.overlay == nil && !$0.isFreezeFrame
+                  && !$0.isReversed && $0.speedRamp == nil && $0.speed == 1
+                  && $0.effect == nil && $0.transition == nil && $0.telemetryOverlay == nil }) else { return original() }
+        func identifier(_ value: Int) -> UUID {
+            UUID(uuidString: String(format: "00000000-0000-0000-0000-%012llx", UInt64(value)))!
+        }
+        var canonical = timeline
+        canonical.id = identifier(0); canonical.storyPlanID = identifier(0)
+        // These are selection/verification provenance, not compositor inputs.
+        // Materialized title text, layout, timing and masking remain below.
+        canonical.chapterTitleDecisions = nil
+        canonical.editingDecisionSelection = nil
+        canonical.editorialBeatPlan = nil
+        canonical.filmParts = nil
+        let ids = Dictionary(timeline.items.enumerated().map { ($0.element.id, identifier($0.offset + 1)) },
+            uniquingKeysWith: { first, _ in first })
+        for i in canonical.items.indices { canonical.items[i].id = ids[canonical.items[i].id]! }
+        for i in canonical.titleItems?.indices ?? 0..<0 {
+            canonical.titleItems?[i].id = identifier(timeline.items.count + i + 1)
+            canonical.titleItems?[i].filmPartID = nil
+            canonical.titleItems?[i].fulfilledChapterID = nil
+            if let id = canonical.titleItems?[i].targetClipID {
+                // An unresolved mask is not equivalent to a missing mask.
+                guard let replacement = ids[id] else { return original() }
+                canonical.titleItems?[i].targetClipID = replacement
+            }
+            if let id = canonical.titleItems?[i].anchorClipID {
+                guard let replacement = ids[id] else { return original() }
+                canonical.titleItems?[i].anchorClipID = replacement
+            }
+        }
+        // One static push-in is an analytic transform of time, parameters
+        // and the target clip; its UUID never seeds pixels or stack ordering.
+        // Preserve every render parameter and remap only that object identity.
+        // Other effects/stacks retain the conservative original key above.
+        for i in canonical.effects?.indices ?? 0..<0 {
+            canonical.effects?[i].id = identifier(timeline.items.count + timeline.effectiveTitleItems.count + i + 1)
+            if let id = canonical.effects?[i].targetClipID {
+                guard let replacement = ids[id] else { return original() }
+                canonical.effects?[i].targetClipID = replacement
+            }
+        }
+        let used = Set(timeline.items.compactMap(\.assetID))
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        let metadata = assets.filter { used.contains($0.id) }.sorted { $0.id.uuidString < $1.id.uuidString }.map {
+            $0.id.uuidString + ":" + ((try? encoder.encode($0.metadata)).map { EditorialIdentity.hash($0.base64EncodedString()) } ?? UUID().uuidString)
+        }.joined(separator: "|")
+        return EditorialIdentity.hash("plain-render-artifact-v2|visual-only:\(visualOnly)|" + signature(timeline: canonical,
+            assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources, visualOnly: visualOnly)
+            + "|source-metadata:" + metadata)
+    }
+
     static func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:], visualOnly: Bool = false) -> String {
         var timeline = timeline
         if visualOnly {
@@ -115,19 +186,27 @@ enum EditorialRenderDependencies {
 }
 
 public actor RenderedProbeCache {
-    public static let version = 13
+    public static let version = 15
     private struct Record: Codable {
         var version: Int
         var signature: String
         var digest: String
         var payload: Data
+        var titleIDs: [UUID]
     }
     private let directory: URL
     private let visualOnly: Bool
     public init(directory: URL, visualOnly: Bool = false) { self.directory = directory; self.visualOnly = visualOnly }
     private func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preferredVideoSources: [UUID: URL]) -> String {
-        EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry,
-            preferredVideoSources: preferredVideoSources, visualOnly: visualOnly)
+        if visualOnly {
+            return EditorialRenderDependencies.artifactSignature(timeline: timeline, assets: assets, tracks: tracks,
+                telemetry: telemetry, preferredVideoSources: preferredVideoSources, visualOnly: true)
+        }
+        return EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry,
+            preferredVideoSources: preferredVideoSources)
+    }
+    private func digest(payload: Data, titleIDs: [UUID]) -> String {
+        EditorialIdentity.hash(payload.base64EncodedString() + "|titles:" + titleIDs.map(\.uuidString).joined(separator: "|"))
     }
     public func load(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack] = [], telemetry: [UUID: TelemetrySummary] = [:], preferredVideoSources: [UUID: URL] = [:]) -> [PerceptualRenderedFrameEvidence]? {
         let key = signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
@@ -137,14 +216,22 @@ public actor RenderedProbeCache {
         let url = directory.appendingPathComponent(key + ".json")
         guard let data = try? Data(contentsOf: url) else { miss("dependency-changed-or-absent"); return nil }
         guard let record = try? JSONDecoder().decode(Record.self, from: data), record.version == Self.version else { miss("incompatible-version"); return nil }
-        guard record.signature == key, record.digest == EditorialIdentity.hash(record.payload.base64EncodedString()),
+        guard record.signature == key, record.digest == digest(payload: record.payload, titleIDs: record.titleIDs),
               var frames = try? JSONDecoder().decode([PerceptualRenderedFrameEvidence].self, from: record.payload), !frames.isEmpty else { miss("corrupt"); return nil }
+        let currentTitleIDs = timeline.effectiveTitleItems.map(\.id)
+        guard !visualOnly || (record.titleIDs.count == currentTitleIDs.count
+            && Set(record.titleIDs).count == record.titleIDs.count) else { miss("title-identity-mismatch"); return nil }
+        let titleMap = visualOnly ? Dictionary(uniqueKeysWithValues: zip(record.titleIDs, currentTitleIDs)) : [:]
+        let currentRenderSignature = EditorialRenderSignature.signature(timeline)
         for index in frames.indices {
             if visualOnly {
                 // Visual dependency equality is proven above. Rebind only these
                 // pixels; never carry semantic, audio or MP4 receipts across edits.
                 for titleIndex in frames[index].titleEvidence?.indices ?? 0..<0 {
-                    frames[index].titleEvidence?[titleIndex].renderSignature = EditorialRenderSignature.signature(timeline)
+                    guard let oldID = frames[index].titleEvidence?[titleIndex].titleID,
+                          let replacement = titleMap[oldID] else { miss("unbound-title-evidence"); return nil }
+                    frames[index].titleEvidence?[titleIndex].titleID = replacement
+                    frames[index].titleEvidence?[titleIndex].renderSignature = currentRenderSignature
                 }
                 frames[index].editorialClaims = nil
                 frames[index].audioMasteringReport = nil
@@ -153,6 +240,10 @@ public actor RenderedProbeCache {
             }
             guard var export = frames[index].exportVerification,
                   export.outputURL != nil || export.provenance.contains("RenderEngine control MP4") else { continue }
+            // Older delivery reports did not inspect source audio tracks.
+            // Refresh their technical proof while retaining preview pixels,
+            // the completed MP4 and independent content-review receipts.
+            guard export.expectsAudio != nil else { miss("missing-source-audio-evidence"); return nil }
             guard export.videoDuration != nil, export.artifactIsCurrent,
                   export.outputURL.map({ url in export.artifactSHA256 == MusicStructureCache.contentIdentity(url) }) == true else { miss("artifact-changed-or-corrupt"); return nil }
             export.fileModifiedTime = export.fileModifiedTime ?? export.fileModified?.timeIntervalSince1970
@@ -176,15 +267,41 @@ public actor RenderedProbeCache {
             frames[index].exportVerification = receipt
         }
         let payload = try JSONEncoder().encode(frames)
-        let record = Record(version: Self.version, signature: key, digest: EditorialIdentity.hash(payload.base64EncodedString()), payload: payload)
+        let titleIDs = timeline.effectiveTitleItems.map(\.id)
+        let record = Record(version: Self.version, signature: key,
+            digest: digest(payload: payload, titleIDs: titleIDs), payload: payload, titleIDs: titleIDs)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try JSONEncoder().encode(record).write(to: directory.appendingPathComponent(key + ".json"), options: .atomic)
     }
 }
 
+/// Ranking alternatives has a bounded local repair budget. Only work on the
+/// selected film consumes its durable budget; a preview prober can serve either
+/// purpose, so this distinction must come from the caller, not the prober type.
+enum EditorialRepairScope: String, Sendable {
+    case candidateVariant, selectedFilm
+}
+
+struct EditorialRenderReviewResult {
+    var timeline: Timeline
+    var plan: StoryPlan
+    /// Only exclusions belonging to the accepted repair, never a rejected
+    /// proposal. The caller persists these with the resulting edit.
+    var excludedCandidates: Set<UUID>
+}
+
 extension VeloEditPipeline {
-    static func editorialRenderReview(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false, normalizePresentation: Bool = true) async -> Timeline {
+    static func editorialRenderReview(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false, normalizePresentation: Bool = true, verifiedSource: [ShotContentAssessment] = [], excludedCandidates: Set<UUID> = [], repairScope: EditorialRepairScope = .selectedFilm) async -> Timeline {
+        await editorialRenderReviewResult(timeline: source, plan: inputPlan, assets: assets, analyses: analyses,
+            tracks: tracks, telemetry: telemetry, cacheURL: cacheURL, prober: prober,
+            repairsRemaining: suppliedRepairBudget, events: events, analyzeChapterTransitions: analyzeChapterTransitions,
+            normalizePresentation: normalizePresentation, verifiedSource: verifiedSource,
+            excludedCandidates: excludedCandidates, repairScope: repairScope).timeline
+    }
+
+    static func editorialRenderReviewResult(timeline source: Timeline, plan inputPlan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL, prober: any EditorialRenderedProbing = LocalEditorialRenderedProber(), repairsRemaining suppliedRepairBudget: Int? = nil, events: [Event] = [], analyzeChapterTransitions: Bool = false, normalizePresentation: Bool = true, verifiedSource: [ShotContentAssessment] = [], excludedCandidates: Set<UUID> = [], repairScope: EditorialRepairScope = .selectedFilm, duplicatesOnly: Bool = false) async -> EditorialRenderReviewResult {
         var plan = inputPlan
+        var repairExclusions = excludedCandidates
         // Materialize legacy/default framing before deriving the render
         // signature or decoding a preview. RenderEngine applies the same
         // migration before export; persisting it here makes preview, evidence
@@ -227,11 +344,11 @@ extension VeloEditPipeline {
                     break
                 } catch is CancellationError {
                     // Cancellation is a user action, not a recoverable fault.
-                    return timeline
+                    return .init(timeline: timeline, plan: inputPlan, excludedCandidates: excludedCandidates)
                 } catch {
                     let value = error as NSError
                     recoveryNotes.append("Проверка кадров, попытка \(attempt): \(value.domain) \(value.code): \(value.localizedDescription)")
-                    if Task.isCancelled { return timeline }
+                    if Task.isCancelled { return .init(timeline: timeline, plan: inputPlan, excludedCandidates: excludedCandidates) }
                 }
             }
         }
@@ -245,7 +362,8 @@ extension VeloEditPipeline {
                 plan: plan,
                 analyses: analyses,
                 frames: verifiedFrames,
-                tracks: tracks
+                tracks: tracks,
+                assets: assets
             )
             frames = verifiedFrames
         }
@@ -268,10 +386,13 @@ extension VeloEditPipeline {
         // fill/reframe -> full fit -> exclusion if the complete source remains
         // unsafe. Duplicate removal needs at most one state per primary.
         let repairsRemaining = min(6, suppliedRepairBudget ?? 6)
+        let repairFindings = timeline.editorialReview?.findings.filter {
+            !duplicatesOnly || $0.kind == .hardDuplicate
+        } ?? []
         if !Task.isCancelled, repairsRemaining > 0,
-           timeline.editorialReview?.findings.contains(where: { [.unreadableTitle, .unsafeReframe, .hardDuplicate].contains($0.kind) }) == true {
+           repairFindings.contains(where: { [.unreadableTitle, .unsafeReframe, .hardDuplicate].contains($0.kind) }) {
             var repaired = timeline
-            let unsafeIDs = Set(timeline.editorialReview?.findings.filter { $0.kind == .unsafeReframe }.flatMap(\.itemIDs) ?? [])
+            let unsafeIDs = Set(repairFindings.filter { $0.kind == .unsafeReframe }.flatMap(\.itemIDs))
             var unrepairableUnsafeIDs = Set<UUID>()
             for index in repaired.items.indices where unsafeIDs.contains(repaired.items[index].id) {
                 var adjustments = repaired.items[index].effectiveVideoAdjustments
@@ -294,7 +415,7 @@ extension VeloEditPipeline {
                 repaired.items[index].videoAdjustments = adjustments
                 repaired.items[index].explanation.append("Rendered safety repair: сохранён полный исходный кадр")
             }
-            let duplicateIDs = Set(timeline.editorialReview?.findings.filter { $0.kind == .hardDuplicate }.flatMap(\.itemIDs) ?? [])
+            let duplicateIDs = Set(repairFindings.filter { $0.kind == .hardDuplicate }.flatMap(\.itemIDs))
             let removalIDs = duplicateIDs.union(unrepairableUnsafeIDs)
             if !removalIDs.isEmpty {
                 var pendingDuplicateIDs = removalIDs
@@ -321,14 +442,22 @@ extension VeloEditPipeline {
                     beatPlan.reasons.append(EditorialContentBudgetPolicy.renderedSafetyRepairMarker)
                     repaired.editorialBeatPlan = beatPlan
                 }
+                repairExclusions.formUnion(removedCandidateIDs)
                 // Recover only unused, analysed source range on surviving
                 // unique clips. This keeps the honest content floor without
                 // loops, duplicated shots or manufactured freeze-frame padding.
                 let requiredDuration = min(timeline.duration, plan.contentBudget?.budget.safeRange.lowerBound ?? timeline.duration)
                 var missingDuration = max(0, requiredDuration - repaired.duration)
                 if missingDuration > 0.000_1 {
-                    let units = Dictionary(uniqueKeysWithValues: EditorialAnalysisContext(analyses: analyses).units.map { ($0.id, $0) })
+                    let units = Dictionary(uniqueKeysWithValues: EditorialAnalysisContext(analyses: analyses).respectingSpeechIntent(plan).units.map { ($0.id, $0) })
                     for index in repaired.items.indices.reversed() where missingDuration > 0.000_1 && repaired.items[index].overlay == nil && repaired.items[index].kind != .title {
+                        // Reallocation below can fill the gap with another
+                        // candidate. Do not first invalidate a certified cut
+                        // merely to extend an unrelated surviving shot.
+                        if repaired.editorialBeatPlan?.reasons.contains(AutomaticEditorialAssembly.marker) == true,
+                           verifiedSource.contains(where: { $0.certifies(item: repaired.items[index], phase: "source", assets: assets) }) {
+                            continue
+                        }
                         guard let candidateID = repaired.items[index].candidateID,
                               let unit = units[candidateID] else { continue }
                         let candidate = unit.candidate
@@ -358,7 +487,17 @@ extension VeloEditPipeline {
                     repaired.editorialBeatPlan = beatPlan
                 }
                 if repaired.editorialBeatPlan?.reasons.contains(AutomaticEditorialAssembly.marker) == true {
-                    let assembled = AutomaticEditorialAssembly.prepare(timeline: repaired, plan: plan, analyses: analyses, events: events, assets: assets, excluded: removedCandidateIDs)
+                    var assembled = AutomaticEditorialAssembly.prepareForSourceReview(timeline: repaired, plan: plan,
+                        analyses: analyses, events: events, assets: assets, verifiedSource: verifiedSource, excluded: repairExclusions)
+                    if !verifiedSource.isEmpty,
+                       !AutomaticFilmDelivery.preservesDelivery(assembled.timeline, original: timeline, plan: plan) {
+                        // Exact survivor preservation is preferred, not a way
+                        // to make a required duration impossible. The fallback
+                        // keeps every exclusion and rechecks all changed cuts.
+                        assembled = AutomaticEditorialAssembly.prepareForSourceReview(timeline: repaired, plan: plan,
+                            analyses: analyses, events: events, assets: assets, excluded: repairExclusions)
+                        PerformanceTrace.current?.event("repair.source-preservation-infeasible")
+                    }
                     repaired = assembled.timeline
                     plan = assembled.plan
                 }
@@ -383,7 +522,7 @@ extension VeloEditPipeline {
                     return value
                 }
             }
-            if timeline.editorialReview?.findings.contains(where: { $0.kind == .unreadableTitle }) == true {
+            if repairFindings.contains(where: { $0.kind == .unreadableTitle }) {
                 let failedIDs = Set(timeline.editorialReview?.findings.filter { $0.kind == .unreadableTitle }.flatMap(\.itemIDs) ?? [])
                 repaired.titleItems = timeline.effectiveTitleItems.map { title in
                     failedIDs.contains(title.id) ? EditorialPresentationPolicy.hardeningReadability(title) : title
@@ -391,18 +530,24 @@ extension VeloEditPipeline {
             }
             PerformanceTrace.current?.event("repair.proposed", fields: ["before": EditorialRenderSignature.signature(timeline),
                 "after": EditorialRenderSignature.signature(repaired), "remaining": String(repairsRemaining),
-                "reason": timeline.editorialReview?.findings.map { $0.kind.rawValue }.joined(separator: ",") ?? ""])
+                "reason": timeline.editorialReview?.findings.map { $0.kind.rawValue }.joined(separator: ",") ?? "",
+                "scope": repairScope.rawValue])
 
             guard AutomaticFilmDelivery.preservesDelivery(repaired, original: timeline, plan: plan),
-                  EditorialRenderSignature.signature(repaired) != EditorialRenderSignature.signature(timeline) else { return timeline }
-            if let store = AutonomousJobContext.store,
-               (try? await store.claimCompositionRepair(signature: EditorialRenderSignature.signature(repaired))) != true { return timeline }
-            repaired = await editorialRenderReview(timeline: repaired, plan: plan, assets: assets, analyses: analyses, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL, prober: prober, repairsRemaining: repairsRemaining - 1, events: events, analyzeChapterTransitions: analyzeChapterTransitions)
+                  EditorialRenderSignature.signature(repaired) != EditorialRenderSignature.signature(timeline) else {
+                return .init(timeline: timeline, plan: inputPlan, excludedCandidates: excludedCandidates)
+            }
+            if repairScope == .selectedFilm, let store = AutonomousJobContext.store,
+               (try? await store.claimCompositionRepair(signature: EditorialRenderSignature.signature(repaired))) != true {
+                return .init(timeline: timeline, plan: inputPlan, excludedCandidates: excludedCandidates)
+            }
+            let result = await editorialRenderReviewResult(timeline: repaired, plan: plan, assets: assets, analyses: analyses, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL, prober: prober, repairsRemaining: repairsRemaining - 1, events: events, analyzeChapterTransitions: analyzeChapterTransitions, normalizePresentation: duplicatesOnly ? normalizePresentation : true, verifiedSource: verifiedSource, excludedCandidates: repairExclusions, repairScope: repairScope, duplicatesOnly: duplicatesOnly)
+            repaired = result.timeline
             if let before = timeline.editorialReview, let after = repaired.editorialReview,
                after.criticalCount < before.criticalCount ||
                after.criticalCount == before.criticalCount &&
                    (after.blockingUnknowns.count < before.blockingUnknowns.count || after.highCount < before.highCount || after.candidateEligible) {
-                return repaired
+                return result
             }
         }
         if ProcessInfo.processInfo.environment["VELOEDIT_EDITORIAL_DIAGNOSTICS"] == "1",
@@ -413,6 +558,6 @@ extension VeloEditPipeline {
             let signature = EditorialRenderSignature.signature(timeline)
             try? data.write(to: directory.appendingPathComponent(signature + ".json"), options: .atomic)
         }
-        return timeline
+        return .init(timeline: timeline, plan: inputPlan, excludedCandidates: excludedCandidates)
     }
 }

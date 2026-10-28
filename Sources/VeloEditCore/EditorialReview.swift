@@ -89,7 +89,7 @@ public struct EditorialReview: Codable, Hashable, Sendable {
 public struct EditorialQualityGate: Sendable {
     public init() {}
     public func review(timeline: Timeline, plan: StoryPlan, analyses: [AnalysisResult], renderedFrames: [PerceptualRenderedFrameEvidence]? = nil, requireRenderedEvidence: Bool = false, requireCompleteEvidence: Bool = true, musicTracks: [LocalMusicTrack] = [], context suppliedContext: EditorialAnalysisContext? = nil) -> EditorialReview {
-        let context = suppliedContext ?? EditorialAnalysisContext(analyses: analyses)
+        let context = (suppliedContext ?? EditorialAnalysisContext(analyses: analyses)).respectingSpeechIntent(plan)
         let byID = Dictionary(uniqueKeysWithValues: context.units.map { ($0.id, $0) })
         let items = timeline.items.filter { $0.overlay == nil && $0.kind != .title }.sorted { $0.timelineStart < $1.timelineStart }
         var findings: [EditorialFinding] = []
@@ -159,7 +159,7 @@ public struct EditorialQualityGate: Sendable {
             if !isPhoto && item.storyRole == .climax && plan.narrativeBeatPlan != nil && !(unit.evidence.hasProgression && unit.evidence.completion >= 0.65) {
                 add(.falseNarrativeRole, 2, [item.id], .structuralReplan, "Climax label не подтверждён завершением действия")
             }
-            if unit.speechSeconds > 0, ExplicitDeliveryRequirements(plan: plan).originalAudioVolume != 0, let speech = unit.candidate.insights?.speech {
+            if unit.protectedSpeechSeconds > 0, ExplicitDeliveryRequirements(plan: plan).originalAudioVolume != 0, let speech = unit.candidate.insights?.speech {
                 if item.sourceStart > speech.phraseStart + 0.1 || item.sourceStart + item.sourceDuration < speech.phraseEnd - 0.1 {
                     add(.incompleteMoment, 2, [item.id], .structuralReplan, "Полезная речевая фраза обрезана")
                 }
@@ -462,7 +462,11 @@ public enum EditorialRenderSignature {
         copy.width = Int((aspect * 10_000).rounded())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash("title-renderer-v2|photo-motion-v2|speech-ducking-v1|audio-envelope-v2|" + $0.base64EncodedString()) } ?? "invalid-signature"
+        // New title pixels need a fresh export/readability receipt. Films
+        // without visible titles keep their existing render identity.
+        let titleRenderer = copy.effectiveTitleItems.contains(where: { $0.enabled && !$0.text.isEmpty })
+            ? "title-renderer-v3" : "title-renderer-v2"
+        return (try? encoder.encode(Snapshot(copy))).map { EditorialIdentity.hash(titleRenderer + "|photo-motion-v2|speech-ducking-v1|audio-envelope-v2|" + $0.base64EncodedString()) } ?? "invalid-signature"
     }
 }
 
@@ -475,7 +479,7 @@ public enum EditorialStructuralRepair {
         guard forceReplan || baseline.findings.contains(where: { structural.contains($0.kind) }) else { return sanitized }
         // One full replan is one bounded speculative operation. No random
         // shuffling, source extension or role-only repair is accepted.
-        let context = EditorialAnalysisContext(analyses: analyses)
+        let context = EditorialAnalysisContext(analyses: analyses).respectingSpeechIntent(plan)
         var rebuiltPlan = EditorialStoryPlanner.applying(to: plan, context: context)
         rebuiltPlan.contentBudget?.durationConstraintStatus = .compromisedInsufficientContent
         var rebuilt = EditorialIntentEnforcer.enforce(TimelineComposer().compose(plan: rebuiltPlan, assets: assets, analyses: analyses), plan: rebuiltPlan)

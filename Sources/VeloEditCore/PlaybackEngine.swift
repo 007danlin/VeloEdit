@@ -3,8 +3,8 @@ import AVFoundation
 import QuartzCore
 import CoreImage
 
-/// A ready-to-play, non-exported timeline. Temporary photo and music
-/// intermediates stay alive for as long as the playback object is retained.
+/// A ready-to-play timeline. Its tiny still clock and processed audio stay
+/// alive for as long as the playback object is retained; originals are read.
 public final class TimelinePlayback: @unchecked Sendable {
     public let composition: AVComposition
     public let videoComposition: AVVideoComposition?
@@ -18,9 +18,10 @@ public final class TimelinePlayback: @unchecked Sendable {
     public let derivedMediaCacheMisses: Int
     public let speechActivity: [SpeechActivityRecord]
     private let temporaryFiles: [URL]
+    private let temporaryWorkspace: TemporaryMediaWorkspace?
     private let audioMixBuilder: ((Timeline) -> AVAudioMix?)?
 
-    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, audioMasteringReport: EditorialAudioMasteringReport? = nil, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, speechActivity: [SpeechActivityRecord] = [], temporaryFiles: [URL], audioMixBuilder: ((Timeline) -> AVAudioMix?)? = nil) {
+    init(composition: AVComposition, videoComposition: AVVideoComposition?, audioMix: AVAudioMix?, audioMasteringReport: EditorialAudioMasteringReport? = nil, duration: Double, renderedItemCount: Int, skippedItemIDs: [UUID], warnings: [String] = [], derivedMediaCacheHits: Int = 0, derivedMediaCacheMisses: Int = 0, speechActivity: [SpeechActivityRecord] = [], temporaryFiles: [URL], temporaryWorkspace: TemporaryMediaWorkspace? = nil, audioMixBuilder: ((Timeline) -> AVAudioMix?)? = nil) {
         self.composition = composition
         self.videoComposition = videoComposition
         self.audioMix = audioMix
@@ -33,6 +34,7 @@ public final class TimelinePlayback: @unchecked Sendable {
         self.derivedMediaCacheMisses = derivedMediaCacheMisses
         self.speechActivity = speechActivity
         self.temporaryFiles = temporaryFiles
+        self.temporaryWorkspace = temporaryWorkspace
         self.audioMixBuilder = audioMixBuilder
     }
 
@@ -95,6 +97,7 @@ public actor PlaybackEngine {
         var naturalSize: CGSize
         var preferredTransform: CGAffineTransform
         var stabilizationReference: CGImage?
+        var stillSource: StillCompositionSource?
     }
 
     private struct AudioPlacement {
@@ -107,7 +110,9 @@ public actor PlaybackEngine {
         var end: CMTime { start + duration }
     }
 
-    public init() {}
+    private let temporaryRoot: URL
+    public init() { temporaryRoot = TemporaryMediaWorkspace.defaultRoot }
+    init(temporaryRoot: URL) { self.temporaryRoot = temporaryRoot }
 
     public func build(
         timeline: Timeline,
@@ -187,15 +192,18 @@ public actor PlaybackEngine {
                 || item.isFreezeFrame || item.isReversed || item.speedRamp != nil
                 || abs(item.sourceDuration - item.timelineDuration) >= 0.000_001
         }
-        let usesColorCompositor = requiresHDRConversion || requiresFrameSampling || playableItems.contains {
+        let usesColorCompositor = playableItems.contains { $0.kind == .photo || $0.kind == .title } || requiresHDRConversion || requiresFrameSampling || playableItems.contains {
             Self.requiresPixelProcessing($0.effectiveVideoAdjustments) ||
             $0.overlay?.style == .greenScreen || $0.telemetryOverlay != nil
         } || hasEndingFade || usesSafeFitBackground || !realtimeTelemetryItems.isEmpty || !realtimeEffects.isEmpty || !realtimeTitles.isEmpty || !realtimeTransitionItems.isEmpty
-        var temporaryFiles: [URL] = []
+        let workspace = TemporaryMediaWorkspace(root: temporaryRoot)
+        defer { withExtendedLifetime(workspace) {} }
+        var carrier: URL?
+
         var placements: [Placement] = []
         var skippedItemIDs: [UUID] = []
-        var derivedMediaCacheHits = 0
-        var derivedMediaCacheMisses = 0
+        let derivedMediaCacheHits = 0
+        let derivedMediaCacheMisses = 0
         var cursor = CMTime.zero
         var resourcePacer = ResourceWorkPacer()
         // Many cuts reference one camera file. Reuse loaded AVFoundation
@@ -219,77 +227,31 @@ public actor PlaybackEngine {
             var sourceURL: URL
             var sourceStart: Double
             var insertedSourceDuration: Double
-            if item.kind == .title {
-                // A title must be part of the actual video composition. A
-                // previous implementation borrowed an arbitrary background
-                // clip and depended on a Core Animation overlay that the live
-                // player intentionally strips on affected macOS versions.
-                // Baking the card makes titles identical in viewer and export.
-                let identity = Self.titleCacheIdentity(item: item, timeline: timeline)
-                let isPersistent = derivedMediaCacheURL != nil
-                let destination = derivedMediaCacheURL?.appendingPathComponent("title-\(identity).mov")
-                    ?? FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-title-\(UUID().uuidString).mov")
-                let cacheHit = isPersistent ? await Self.usableGeneratedVideo(destination) : false
-                if cacheHit {
-                    sourceURL = destination
-                } else {
-                    sourceURL = try await cachedGeneratedVideo(destination: destination, isPersistent: isPersistent) { temporary in
-                        try await self.titleCardGenerator.generate(
-                            text: item.title ?? "Мой фильм",
-                            style: item.effectiveTitleStyle,
-                            duration: item.timelineDuration,
-                            width: timeline.width,
-                            height: timeline.height,
-                            frameRate: timeline.frameRate,
-                            destination: temporary,
-                            codec: forceVideoComposition && derivedMediaCacheURL == nil ? .proRes4444 : .h264
-                        )
-                    }
+            var stillSource: StillCompositionSource?
+            if item.kind == .title || item.kind == .photo {
+                // One 16×16 clock frame serves every still, irrespective of
+                // duration/resolution/count. Actual pixels are rendered lazily.
+                if carrier == nil {
+                    let destination = try workspace.file("still-clock.mov")
+                    carrier = try await titleCardGenerator.generate(text: "", style: TitleStyle(),
+                        duration: 1.0 / 30, width: 16, height: 16, frameRate: 30, destination: destination)
                 }
-                if derivedMediaCacheURL != nil {
-                    if cacheHit { derivedMediaCacheHits += 1 } else { derivedMediaCacheMisses += 1 }
-                }
+                sourceURL = carrier!
                 sourceStart = 0
-                insertedSourceDuration = item.timelineDuration
-                if derivedMediaCacheURL == nil { temporaryFiles.append(sourceURL) }
-            } else if item.kind == .photo, let media {
-                let backgroundPreset = BackgroundPreset.preset(for: media)
-                let bakedMotion = item.effect.flatMap(ClipEffect.init(rawValue:))
-                    ?? backgroundPreset?.animationMotion
-                    ?? .zoomIn
-                let identity = Self.photoCacheIdentity(item: item, asset: media, timeline: timeline, preset: backgroundPreset)
-                let isPersistent = derivedMediaCacheURL != nil
-                let destination = derivedMediaCacheURL?.appendingPathComponent("photo-\(identity).mov")
-                    ?? FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-playback-\(UUID().uuidString).mov")
-                let cacheHit = isPersistent ? await Self.usableGeneratedVideo(destination) : false
-                if cacheHit {
-                    sourceURL = destination
-                } else {
-                    sourceURL = try await cachedGeneratedVideo(destination: destination, isPersistent: isPersistent) { temporary in
-                        try await StillImageVideoGenerator().generate(
-                            imageURL: media.originalURL,
-                            duration: item.timelineDuration,
-                            width: timeline.width,
-                            height: timeline.height,
-                            frameRate: timeline.frameRate,
-                            destination: temporary,
-                            // H.264 discards sub-code-value dithering and
-                            // introduces contour bands on smooth dark ramps.
-                            codec: (backgroundPreset?.isProceduralGradient == true ||
-                                (forceVideoComposition && derivedMediaCacheURL == nil)) ? .proRes4444 : .h264,
-                            motion: bakedMotion,
-                            subjectReframe: item.effectiveVideoAdjustments.subjectReframe,
-                            cropStyle: item.effectiveVideoAdjustments.crop,
-                            backgroundAnimationStyle: backgroundPreset?.animationStyle
-                        )
-                    }
-                }
-                if derivedMediaCacheURL != nil {
-                    if cacheHit { derivedMediaCacheHits += 1 } else { derivedMediaCacheMisses += 1 }
-                }
-                sourceStart = 0
-                insertedSourceDuration = item.timelineDuration
-                if derivedMediaCacheURL == nil { temporaryFiles.append(sourceURL) }
+                insertedSourceDuration = 1.0 / 30
+                let preset = media.flatMap { BackgroundPreset.preset(for: $0) }
+                let content: StillCompositionSource.Content
+                let identity: String
+                if item.kind == .title {
+                    content = .title(item.title ?? "Мой фильм", item.effectiveTitleStyle)
+                    identity = Self.titleCacheIdentity(item: item, timeline: timeline)
+                } else if let media {
+                    content = .photo(media.originalURL)
+                    identity = FrameCacheKey.sourceIdentity(url: media.originalURL, contentHash: media.contentHash)
+                } else { continue }
+                stillSource = StillCompositionSource(content: content, identity: identity, item: item,
+                    size: CGSize(width: timeline.width, height: timeline.height), frameRate: timeline.frameRate,
+                    preset: preset, intensity: CGFloat(max(0, min(1, BackgroundAnimationConfiguration.intensity))))
             } else if let media {
                 sourceURL = preferredVideoSources[media.id] ?? media.originalURL
                 sourceStart = item.sourceStart
@@ -384,19 +346,16 @@ public actor PlaybackEngine {
                 let audioSourceURL: URL
                 let audioSourceStart: Double
                 if ProcessedAudioGenerator.needsRender(audioAdjustments) {
-                    let temporary = FileManager.default.temporaryDirectory
-                        .appendingPathComponent("veloedit-processed-audio-\(UUID().uuidString)")
-                        .appendingPathExtension("caf")
+                    let temporary = try workspace.file("processed-audio.caf")
                     audioSourceURL = try await audioProcessor.generate(
                         sourceURL: media.originalURL,
                         sourceStart: item.sourceStart,
                         sourceDuration: item.sourceDuration,
                         adjustments: audioAdjustments,
                         destination: temporary,
-                        cacheDirectory: derivedMediaCacheURL
+                        cacheDirectory: derivedMediaCacheURL ?? temporary.deletingLastPathComponent()
                     )
                     audioSourceStart = 0
-                    if derivedMediaCacheURL == nil { temporaryFiles.append(temporary) }
                 } else {
                     audioSourceURL = media.originalURL
                     audioSourceStart = item.sourceStart
@@ -461,15 +420,15 @@ public actor PlaybackEngine {
                 audioTrack: insertedAudioTrack,
                 start: at,
                 duration: targetDuration,
-                naturalSize: metadata.size,
-                preferredTransform: metadata.transform,
-                stabilizationReference: stabilizationReference
+                naturalSize: stillSource?.size ?? metadata.size,
+                preferredTransform: stillSource == nil ? metadata.transform : .identity,
+                stabilizationReference: stabilizationReference,
+                stillSource: stillSource
             ))
             if item.overlay == nil { cursor = at + targetDuration }
         }
 
         guard !placements.isEmpty else {
-            temporaryFiles.forEach { try? FileManager.default.removeItem(at: $0) }
             throw DerivedMediaError.noVideoTrack
         }
 
@@ -540,9 +499,9 @@ public actor PlaybackEngine {
             musicTracks: musicTracks,
             to: composition,
             movieDuration: cursor,
-            derivedMediaCacheURL: derivedMediaCacheURL
+            derivedMediaCacheURL: derivedMediaCacheURL,
+            workspace: workspace
         )
-        temporaryFiles.append(contentsOf: audioResult.temporaryFiles)
         let soundtrackWarning = (adaptiveWarning != nil && musicResult != nil
             ? "Один из адаптивных музыкальных фрагментов недоступен — использован цельный основной трек."
             : unavailableSoundtrack) ?? (timeline.music != nil && musicResult == nil && adaptiveMusic.isEmpty
@@ -574,6 +533,7 @@ public actor PlaybackEngine {
         // optional audio-only transcode rejects a heterogeneous source mix.
         let audioMasteringReport: EditorialAudioMasteringReport? = nil
         progress?(ImportProgress(completed: playableItems.count, total: playableItems.count, currentName: "Просмотр готов"))
+        try Task.checkCancellation()
         if let derivedMediaCacheURL {
             let inUse = Set(composition.tracks.flatMap { $0.segments.compactMap(\.sourceURL) }.map { $0.resolvingSymlinksInPath() })
             Self.pruneDerivedMediaCache(derivedMediaCacheURL, maximumFiles: 128, maximumBytes: 2_000_000_000, protectedURLs: inUse)
@@ -590,7 +550,8 @@ public actor PlaybackEngine {
             derivedMediaCacheHits: derivedMediaCacheHits,
             derivedMediaCacheMisses: derivedMediaCacheMisses,
             speechActivity: speech.records,
-            temporaryFiles: temporaryFiles,
+            temporaryFiles: [],
+            temporaryWorkspace: workspace,
             audioMixBuilder: { updated in
                 let byID = Dictionary(uniqueKeysWithValues: updated.items.map { ($0.id, $0) })
                 let updatedPlacements = placements.map { placement in
@@ -608,56 +569,10 @@ public actor PlaybackEngine {
         )
     }
 
-    private func cachedGeneratedVideo(
-        destination: URL,
-        isPersistent: Bool,
-        generator: (URL) async throws -> URL
-    ) async throws -> URL {
-        guard isPersistent else { return try await generator(destination) }
-        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let temporary = destination.deletingLastPathComponent()
-            .appendingPathComponent(".\(destination.deletingPathExtension().lastPathComponent)-\(UUID().uuidString).partial.mov")
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        _ = try await generator(temporary)
-        guard await Self.usableGeneratedVideo(temporary) else {
-            throw DerivedMediaError.exportFailed("кэшированный источник preview не содержит декодируемого видео")
-        }
-        try? FileManager.default.removeItem(at: destination)
-        try FileManager.default.moveItem(at: temporary, to: destination)
-        return destination
-    }
-
-    private static func usableGeneratedVideo(_ url: URL) async -> Bool {
-        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 1_024 else { return false }
-        guard let tracks = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video) else { return false }
-        return !tracks.isEmpty
-    }
-
     private static func titleCacheIdentity(item: TimelineItem, timeline: Timeline) -> String {
         let style = (try? JSONEncoder.veloEdit.encode(item.effectiveTitleStyle)).map { $0.base64EncodedString() } ?? "style"
         return ProductionCacheIdentity.hash([
             "title-v5-verified-font-runs", item.title ?? "", style,
-            String(Int((item.timelineDuration * 1_000).rounded())),
-            "\(timeline.width)x\(timeline.height)@\(timeline.frameRate)"
-        ])
-    }
-
-    private static func photoCacheIdentity(
-        item: TimelineItem,
-        asset: MediaAsset,
-        timeline: Timeline,
-        preset: BackgroundPreset?
-    ) -> String {
-        ProductionCacheIdentity.hash([
-            preset?.isProceduralGradient == true ? "photo-v10-gradient-prores" : "photo-v11-stable-ken-burns",
-            FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash), item.effect ?? "zoom-in",
-            item.effectiveVideoAdjustments.crop.rawValue,
-            preset?.rawValue ?? "photo", preset?.animationStyle?.rawValue ?? "none",
-            item.effectiveVideoAdjustments.subjectReframe.map {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.sortedKeys]
-                return (try? encoder.encode($0).base64EncodedString()) ?? "invalid-reframe"
-            } ?? "no-reframe",
             String(Int((item.timelineDuration * 1_000).rounded())),
             "\(timeline.width)x\(timeline.height)@\(timeline.frameRate)"
         ])
@@ -867,7 +782,8 @@ public actor PlaybackEngine {
                     naturalSize: placement.naturalSize,
                     transform: Self.displayTransform(for: placement, active: active, renderSize: renderSize),
                     telemetry: placement.item.assetID.flatMap { telemetry[$0] },
-                    stabilizationReference: placement.stabilizationReference
+                    stabilizationReference: placement.stabilizationReference,
+                    stillSource: placement.stillSource
                 )
             }
             let primaries = active.filter { $0.item.overlay == nil }
@@ -1297,10 +1213,10 @@ public actor PlaybackEngine {
         musicTracks: [LocalMusicTrack],
         to composition: AVMutableComposition,
         movieDuration: CMTime,
-        derivedMediaCacheURL: URL?
+        derivedMediaCacheURL: URL?,
+        workspace: TemporaryMediaWorkspace
     ) async throws -> (placements: [AudioPlacement], temporaryFiles: [URL]) {
         var placements: [AudioPlacement] = []
-        var temporaryFiles: [URL] = []
         for clip in clips.sorted(by: { $0.timelineStart < $1.timelineStart }) {
             guard clip.timelineStart < movieDuration.seconds else { continue }
             let sourceURL: URL?
@@ -1317,19 +1233,16 @@ public actor PlaybackEngine {
             let inputURL: URL
             let sourceStart: Double
             if ProcessedAudioGenerator.needsRender(clip.adjustments) {
-                let temporary = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("veloedit-timeline-audio-\(UUID().uuidString)")
-                    .appendingPathExtension("caf")
+                let temporary = try workspace.file("timeline-audio.caf")
                 inputURL = try await audioProcessor.generate(
                     sourceURL: sourceURL,
                     sourceStart: clip.sourceStart,
                     sourceDuration: clip.sourceDuration,
                     adjustments: clip.adjustments,
                     destination: temporary,
-                    cacheDirectory: derivedMediaCacheURL
+                    cacheDirectory: derivedMediaCacheURL ?? temporary.deletingLastPathComponent()
                 )
                 sourceStart = 0
-                if derivedMediaCacheURL == nil { temporaryFiles.append(temporary) }
             } else {
                 inputURL = sourceURL
                 sourceStart = clip.sourceStart
@@ -1354,7 +1267,7 @@ public actor PlaybackEngine {
             }
             placements.append(AudioPlacement(clip: clip, track: destinationTrack, start: start, duration: targetDuration))
         }
-        return (placements, temporaryFiles)
+        return (placements, [])
     }
 
     private static func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], duckingRegions: [MusicDuckingRegion], movieDuration: Double, frameRate: Double, endingFadeDuration: Double?) -> AVMutableAudioMix? {

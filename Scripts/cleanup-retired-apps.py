@@ -31,14 +31,16 @@ def remove_if_unused(app: Path) -> bool:
     # running. An incomplete process scan is not evidence that deletion is safe.
     try:
         processes = subprocess.run(
-            ["/bin/ps", "-axo", "comm="], capture_output=True, text=True, timeout=30,
+            ["/bin/ps", "-axww", "-o", "comm="], capture_output=True, text=True, timeout=30,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
     if processes.returncode != 0 or processes.stderr.strip() or not processes.stdout.strip():
         return False
     prefixes = (str(app.resolve()) + "/", str(app.resolve().with_name("VeloEdit.app")) + "/")
-    if any(line.strip().startswith(prefixes) for line in processes.stdout.splitlines()):
+    # macOS ps can spell /private/var as /var; compare canonical paths.
+    if any(str(Path(line.strip()).resolve()).startswith(prefixes)
+           for line in processes.stdout.splitlines() if line.strip()):
         return False
     shutil.rmtree(app)
     return True

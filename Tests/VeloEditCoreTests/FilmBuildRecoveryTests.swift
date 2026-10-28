@@ -6,6 +6,17 @@ import ImageIO
 import UniformTypeIdentifiers
 @testable import VeloEditCore
 
+// These tests exercise recovery, rendering and preparation order. Weight
+// metadata is a fixture dependency; missing/changed real weights have their
+// own explicit failure tests in FilmContentDeliveryGateTests.
+private func recoveryTestPipeline(store: ProjectStore,
+    renderedProber: any EditorialRenderedProbing = LocalEditorialRenderedProber(),
+    contentReviewer: (any SelectedContentReviewing)? = nil,
+    analysisModelPreparer: (@Sendable (String) async throws -> Void)? = nil) -> VeloEditPipeline {
+    VeloEditPipeline(store: store, renderedProber: renderedProber, contentReviewer: contentReviewer,
+        analysisModelPreparer: analysisModelPreparer, modelDigestProvider: { _ in "recovery-fixture-weights" })
+}
+
 private actor PreparationCounter {
     var calls = 0
     func called() { calls += 1 }
@@ -28,7 +39,7 @@ private actor FinalExportCounter: EditorialRenderedProbing {
     draft.timeline.openingTitles = .init(policy: .selected, title: "Готовое название", templateID: "title.cinematic-clean.v1")
     try await store.checkpointFilmBuild(draft, ifRevision: await store.snapshot().revision)
     let prober = FinalExportCounter()
-    let finished = try await VeloEditPipeline(store: store, renderedProber: prober).resumeFilmBuild()
+    let finished = try await recoveryTestPipeline(store: store, renderedProber: prober).resumeFilmBuild()
     let probed = await prober.timelines
     #expect(probed.count == 1)
     let exported = try #require(probed.first)
@@ -44,7 +55,7 @@ private actor FinalExportCounter: EditorialRenderedProbing {
     let draft = try await savedBuild(store)
     try await store.update { $0.timelines = [draft.timeline]; $0.storyPlans = [draft.plan] }
     let prober = FinalExportCounter()
-    let checked = try await VeloEditPipeline(store: store, renderedProber: prober).verifyCurrentFilm(verifyExport: false)
+    let checked = try await recoveryTestPipeline(store: store, renderedProber: prober).verifyCurrentFilm(verifyExport: false)
     #expect(await prober.timelines.isEmpty)
     #expect(EditorialRenderSignature.signature(checked) == EditorialRenderSignature.signature(draft.timeline))
     #expect(checked.editorialReview?.evidenceDomains?.contains { $0.domain == .renderDecode && $0.isSufficient } == true)
@@ -85,7 +96,7 @@ private func preparationFixture(cached: Bool, kind: MediaKind = .photo) async th
     let root = await store.packageURL
     defer { try? FileManager.default.removeItem(at: root) }
     let counter = PreparationCounter()
-    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(),
+    let pipeline = recoveryTestPipeline(store: store, renderedProber: FixtureEditorialProber(),
         analysisModelPreparer: { _ in
             await counter.called()
             throw CocoaError(.fileReadUnknown)
@@ -101,7 +112,7 @@ private func preparationFixture(cached: Bool, kind: MediaKind = .photo) async th
     let root = await store.packageURL
     defer { try? FileManager.default.removeItem(at: root) }
     let counter = PreparationCounter()
-    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(),
+    let pipeline = recoveryTestPipeline(store: store, renderedProber: FixtureEditorialProber(),
         analysisModelPreparer: { _ in
             await counter.called()
             throw CocoaError(.fileReadUnknown)
@@ -137,7 +148,7 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     let reopened = try ProjectStore(open: root)
     #expect(await reopened.recoverableFilmBuild()?.draft?.phase == .verifying)
     let progress = FilmBuildProgressRecorder()
-    let pipeline = VeloEditPipeline(store: reopened)
+    let pipeline = recoveryTestPipeline(store: reopened)
     let completed = try await pipeline.resumeFilmBuild { await progress.record($0) }
     #expect(completed.id == saved.timeline.id)
     #expect(completed.items == saved.timeline.items)
@@ -147,7 +158,7 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     #expect(stages.first == .resuming && stages.contains(.verifying) && stages.last == .saving)
     let again = try ProjectStore(open: root)
     #expect(await again.recoverableFilmBuild() == nil)
-    await #expect(throws: (any Error).self) { _ = try await VeloEditPipeline(store: again).resumeFilmBuild() }
+    await #expect(throws: (any Error).self) { _ = try await recoveryTestPipeline(store: again).resumeFilmBuild() }
     #expect(await again.manifest.timelines.count == 1)
 }
 
@@ -167,7 +178,7 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     #expect(await store.recoverableFilmBuild() == nil)
     let reopened = try ProjectStore(open: root)
     #expect(await reopened.recoverableFilmBuild() == nil)
-    await #expect(throws: (any Error).self) { _ = try await VeloEditPipeline(store: reopened).resumeFilmBuild() }
+    await #expect(throws: (any Error).self) { _ = try await recoveryTestPipeline(store: reopened).resumeFilmBuild() }
     #expect(await reopened.manifest.timelines.isEmpty == true)
 }
 
@@ -274,7 +285,7 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     try await store.checkpointFilmBuild(saved, ifRevision: await store.snapshot().revision)
     let reopened = try ProjectStore(open: root)
     do {
-        _ = try await VeloEditPipeline(store: reopened, renderedProber: FixtureEditorialProber()).resumeFilmBuild()
+        _ = try await recoveryTestPipeline(store: reopened, renderedProber: FixtureEditorialProber()).resumeFilmBuild()
         Issue.record("A missing selected clip must fail, not deliver another film")
     } catch {
         #expect(error.localizedDescription.contains("пропущено 1"))
@@ -312,7 +323,7 @@ func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: F
     saved.timeline.titleItems = [TitleTimelineItem(kind: .chapter, text: "Лесная дорога", startTime: 1, duration: 5)]
     try await store.checkpointFilmBuild(saved, ifRevision: await store.snapshot().revision)
     let reopened = try ProjectStore(open: root)
-    let completed = try await VeloEditPipeline(store: reopened, renderedProber: FixtureEditorialProber()).resumeFilmBuild()
+    let completed = try await recoveryTestPipeline(store: reopened, renderedProber: FixtureEditorialProber()).resumeFilmBuild()
     #expect(completed.items == saved.timeline.items)
     #expect(completed.music == saved.timeline.music)
     #expect(completed.titleItems == saved.timeline.titleItems)
@@ -336,7 +347,7 @@ func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: F
         try await store.checkpointFilmBuild(saved, ifRevision: await store.snapshot().revision)
         let reopened = try ProjectStore(open: root)
         do {
-            _ = try await VeloEditPipeline(store: reopened, renderedProber: UnavailableProber()).resumeFilmBuild()
+            _ = try await recoveryTestPipeline(store: reopened, renderedProber: UnavailableProber()).resumeFilmBuild()
             Issue.record("Recovery must not publish without the selected audio and completed verification")
         } catch {
             #expect(error.localizedDescription.contains(missingMusic ? "Музыка сохранённого монтажа недоступна" : "Не удалось проверить сохранённый монтаж"))
@@ -354,7 +365,7 @@ func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: F
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try ProjectStore(createAt: root, name: "Best available recovery")
     var draft = try await savedBuild(store, phase: .checkingContent)
-    let best = try await VeloEditPipeline(store: store).resumeFilmBuild()
+    let best = try await recoveryTestPipeline(store: store).resumeFilmBuild()
     #expect(AutomaticFilmDelivery.technicalFailures(timeline: best).isEmpty)
     let request = FilmBuildRequest(kind: .create, prompt: "Собери фильм", preset: .memories)
     _ = try await store.beginEditorialGeneration(prompt: request.prompt, brief: nil)
@@ -367,7 +378,7 @@ func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: F
     draft.phase = .checkingContent
     try await store.checkpointFilmBuild(draft, ifRevision: await store.snapshot().revision)
     let reopened = try ProjectStore(open: root)
-    let restored = try await VeloEditPipeline(store: reopened).resumeFilmBuild()
+    let restored = try await recoveryTestPipeline(store: reopened).resumeFilmBuild()
     #expect(EditorialRenderSignature.signature(restored) == EditorialRenderSignature.signature(best))
     #expect(AutomaticFilmDelivery.technicalFailures(timeline: restored).isEmpty)
     #expect(restored.filmDeliveryReport?.warnings.contains { $0.contains("восстановлен лучший") } == true)
@@ -380,11 +391,62 @@ func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: F
     let root = await store.packageURL
     defer { try? FileManager.default.removeItem(at: root) }
     let counter = PreparationCounter()
-    let pipeline = VeloEditPipeline(store: store, renderedProber: FixtureEditorialProber(), analysisModelPreparer: { _ in
+    let pipeline = recoveryTestPipeline(store: store, renderedProber: FixtureEditorialProber(), analysisModelPreparer: { _ in
         await counter.called()
         throw CocoaError(.fileReadUnknown)
     })
     let film = try await pipeline.createFilm(prompt: "Собери фильм. Без музыки. Без титров.", preset: .memories, targetDuration: 8)
     #expect(await counter.calls == 0)
     #expect(!film.items.isEmpty)
+}
+
+
+@Test func stalledAnalysisPersistsAutomaticWaitAndNeverPublishesAnUncheckedFilm() async throws {
+    let store = try await preparationFixture(cached: false, kind: .video)
+    let root = await store.packageURL
+    defer { try? FileManager.default.removeItem(at: root) }
+    let pipeline = recoveryTestPipeline(store: store, renderedProber: FixtureEditorialProber(), analysisModelPreparer: { model in
+        throw LocalAIInferenceFailure(model: model, reason: "Simulated exhausted recovery")
+    })
+    await #expect(throws: LocalAIInferenceFailure.self) {
+        _ = try await pipeline.createFilm(prompt: "Собери фильм. Без музыки.", preset: .memories, targetDuration: 8)
+    }
+    let reopened = try ProjectStore(open: root)
+    #expect(await reopened.manifest.autonomousJob?.state == .waitingForExternalResource)
+    #expect(await reopened.manifest.autonomousJob?.inferenceRetryModel == "qwen3-vl:2b-instruct")
+    #expect(await reopened.manifest.timelines.isEmpty)
+    #expect(await reopened.recoverableFilmBuild()?.request.targetDuration == 8)
+}
+
+@Test func stalledFinalVerificationResumesTheExactDraftAndCompletesAfterRecovery() async throws {
+    struct StalledReviewer: SelectedContentReviewing {
+        func review(timeline: Timeline, assets: [MediaAsset], renderedURL: URL?, progress: FilmBuildProgressHandler?, pass: Int, reason: String?) async throws -> [ShotContentAssessment] {
+            throw LocalAIInferenceFailure(model: "unchanged-model", reason: "Simulated exhausted recovery")
+        }
+    }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = try ProjectStore(createAt: root, name: "Automatic recovery")
+    let saved = try await savedBuild(store, phase: .finishing)
+    await #expect(throws: LocalAIInferenceFailure.self) {
+        _ = try await recoveryTestPipeline(store: store, renderedProber: FixtureEditorialProber(), contentReviewer: StalledReviewer()).resumeFilmBuild()
+    }
+    let reopened = try ProjectStore(open: root)
+    #expect(await reopened.manifest.timelines.isEmpty)
+    #expect(await reopened.manifest.autonomousJob?.state == .waitingForExternalResource)
+    #expect(await reopened.recoverableFilmBuild()?.draft?.timeline.items == saved.timeline.items)
+    try await reopened.waitForLocalInference(.init(model: "unchanged-model", reason: "Recovered"), now: .distantPast)
+    #expect(try await reopened.activateAfterExternalWait())
+    let completed = try await recoveryTestPipeline(store: reopened, renderedProber: FixtureEditorialProber()).resumeFilmBuild()
+    #expect(completed.id == saved.timeline.id)
+    #expect(completed.items.map(\.id) == saved.timeline.items.map(\.id))
+    #expect(completed.items.map(\.assetID) == saved.timeline.items.map(\.assetID))
+    #expect(completed.items.map(\.sourceStart) == saved.timeline.items.map(\.sourceStart))
+    #expect(completed.items.map(\.sourceDuration) == saved.timeline.items.map(\.sourceDuration))
+    #expect(completed.items.map(\.timelineDuration) == saved.timeline.items.map(\.timelineDuration))
+    #expect(completed.music == saved.timeline.music)
+    #expect(completed.editorialReview?.exportVerification != nil)
+    #expect(await reopened.manifest.autonomousJob?.state == .completed)
+    #expect(await reopened.recoverableFilmBuild() == nil)
+    #expect(await reopened.manifest.timelines.count == 1)
 }

@@ -1177,7 +1177,7 @@ public struct PerceptualReviewEngine: Sendable {
                     }
                 }
                 if finding.severity == .critical, let replacement = replacement(for: item, available: available, used: used, features: features, ranker: ranker, context: context) {
-                    let range = MomentPhaseTrimmer().range(for: replacement, desiredDuration: min(max(item.sourceDuration, 1.8), replacement.sourceDuration))
+                    let range = MomentPhaseTrimmer().range(for: replacement, desiredDuration: min(max(item.sourceDuration, 1.8), replacement.sourceDuration), preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan))
                     calls.append(.replace(itemID: item.id, candidateID: replacement.id, sourceStart: range.sourceStart, sourceDuration: range.sourceDuration, role: item.storyRole ?? .action, reason: "P6 проверяет альтернативный полный дубль для critical perceptual finding"))
                 }
 
@@ -1185,7 +1185,7 @@ public struct PerceptualReviewEngine: Sendable {
                 guard let itemID = finding.itemIDs.last,
                       let item = timeline.items.first(where: { $0.id == itemID }), !item.locked,
                       let replacement = replacement(for: item, available: available, used: used, features: features, ranker: ranker, context: context) else { continue }
-                let range = MomentPhaseTrimmer().range(for: replacement, desiredDuration: min(item.sourceDuration, replacement.sourceDuration))
+                let range = MomentPhaseTrimmer().range(for: replacement, desiredDuration: min(item.sourceDuration, replacement.sourceDuration), preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan))
                 calls.append(.replace(itemID: item.id, candidateID: replacement.id, sourceStart: range.sourceStart, sourceDuration: range.sourceDuration, role: item.storyRole ?? .buildup, reason: "P6 проверяет визуально совместимый лучший дубль вместо perceptual defect"))
 
             case .unmotivatedEffect:

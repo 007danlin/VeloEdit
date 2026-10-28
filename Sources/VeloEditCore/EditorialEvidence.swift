@@ -140,6 +140,20 @@ public struct LocalEditorialEvidenceAnalyzer: EditorialEvidenceAnalyzing {
         }
         guard frames.contains(where: { !$0.observations.isEmpty }) else { return existing }
         var refreshed = LocalSubjectTracker().track(frames: frames)
+        // These tracks are derived from saved observations, not new subjects.
+        // Random identities made identical re-enrichment change cache inputs.
+        // Scope the identity to all measured geometry/times/confidences; keep
+        // unrelated prior tracking records and their external identities.
+        for index in refreshed.tracks.indices {
+            let track = refreshed.tracks[index]
+            let measurements = track.observations.map { value in
+                [value.timestamp, value.region.x, value.region.y, value.region.width,
+                 value.region.height, value.confidence].map { String($0.bitPattern) }.joined(separator: ",")
+            }.joined(separator: ";")
+            let identity = EditorialIdentity.uuid("editorial-track-v1|\(index)|\(track.kind.rawValue)|\(track.label)|\(measurements)")
+            if refreshed.mainSubjectID == track.id { refreshed.mainSubjectID = identity }
+            refreshed.tracks[index].id = identity
+        }
         // Preserve prior detections between the new samples. Re-enrichment
         // replaces its own tracks rather than accumulating copies forever.
         refreshed.tracks += (existing?.tracks ?? []).filter { !$0.label.hasPrefix(prefix) }
@@ -150,11 +164,56 @@ public struct LocalEditorialEvidenceAnalyzer: EditorialEvidenceAnalyzing {
 
 public struct EditorialCandidateMiner: Sendable {
     public static let completionMarker = "editorial-expanded-mining-v5-source-wide-complete"
+    static let scoreRule = "mining-technical-component-v1"
     public init() {}
+
+    static func measuredQuality(_ evidence: EditorialEvidence) -> Double {
+        evidence.samples.isEmpty
+            ? (evidence.entryQuality + evidence.exitQuality) / 2
+            : evidence.samples.reduce(0) { $0 + $1.quality } / Double(evidence.samples.count)
+    }
+
+    static func applyingMeasuredQuality(to candidate: Candidate, evidence: EditorialEvidence) -> Candidate {
+        guard evidence.confidence >= 0.55 else { return candidate }
+        var result = candidate
+        // Sharpness/exposure inform their existing component. They cannot
+        // replace interest, composition, stability and subject evidence.
+        result.scores.quality = measuredQuality(evidence)
+        let score = SemanticSceneIndex.bestTakeScore(result)
+        result.insights?.bestTakeScore = score
+        result.insights?.bestTakeScoreRule = scoreRule
+        return result
+    }
+
+    static func restoringLegacyScores(_ analyses: [AnalysisResult], assets: [MediaAsset]) -> [AnalysisResult] {
+        let byID = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return analyses.map { analysis in
+            guard let asset = byID[analysis.assetID], analysis.analyzedContentHash == asset.contentHash else { return analysis }
+            var result = analysis
+            result.candidates = analysis.candidates.map { candidate in
+                let end = candidate.sourceStart + candidate.sourceDuration
+                // Identify the historical producer by its source/range identity,
+                // never by filename or a coincidentally high quality score.
+                let id = EditorialIdentity.uuid("mining-v4|\(asset.id)|\(asset.contentHash)|\(candidate.sourceStart)|\(end)")
+                guard candidate.id == id, let insight = candidate.insights,
+                      insight.bestTakeScoreRule == nil, insight.visualEmbedding == nil,
+                      insight.semanticEventID == nil, insight.expressiveMoment == nil,
+                      candidate.momentBoundary == nil,
+                      let evidence = insight.editorialEvidence,
+                      evidence.analysisVersion == EditorialEvidenceCache.version, evidence.confidence >= 0.55,
+                      let old = insight.bestTakeScore, abs(old - measuredQuality(evidence)) < 1e-10 else { return candidate }
+                // Keep all decoded evidence, intervals and review receipts.
+                // Later semantic enrichment owns its own score and is untouched.
+                return applyingMeasuredQuality(to: candidate, evidence: evidence)
+            }
+            return result
+        }
+    }
     public static func requiresProductionization(_ analyses: [AnalysisResult]) -> Bool {
         !analyses.allSatisfy { $0.warnings.contains(completionMarker) }
     }
     public func expandIfNeeded(analyses: [AnalysisResult], assets: [MediaAsset], requestedDuration: Double?, force: Bool = false, analyzer: any EditorialEvidenceAnalyzing) async throws -> [AnalysisResult] {
+        let analyses = Self.restoringLegacyScores(analyses, assets: assets)
         // Completed source-wide mining cannot add any candidates. Check this
         // before the expensive provisional sequence search, especially when
         // reopening a project with hundreds of measured visual embeddings.
@@ -228,12 +287,10 @@ public struct EditorialCandidateMiner: Sendable {
                     do {
                         let evidence = try await analyzer.analyze(candidate: candidate, asset: asset)
                         candidate.insights?.editorialEvidence = evidence
-                        if evidence.confidence >= 0.55 {
-                            let measuredQuality = evidence.samples.isEmpty
-                                ? (evidence.entryQuality + evidence.exitQuality) / 2
-                                : evidence.samples.reduce(0) { $0 + $1.quality } / Double(evidence.samples.count)
-                            candidate.insights?.bestTakeScore = measuredQuality
-                        }
+                        // A cold build must have the same measured subject
+                        // geometry as reopening this candidate from cache.
+                        candidate.insights?.subjectTracking = LocalEditorialEvidenceAnalyzer.tracking(existing: nil, evidence: evidence)
+                        candidate = Self.applyingMeasuredQuality(to: candidate, evidence: evidence)
                         if EditorialUnit(candidate: candidate).usableDuration >= 1 { result[i].candidates.append(candidate) }
                     } catch is CancellationError { throw CancellationError() }
                     catch {

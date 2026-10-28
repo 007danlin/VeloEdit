@@ -173,7 +173,7 @@ public struct TimelineComposer: Sendable {
                 guard let candidate = candidates[id], let asset = assetsByID[candidate.assetID], !candidate.excluded else { continue }
                 let preferred = explicitRanges[id]?.sourceDuration
                     ?? plan.narrativeBeatPlan?.beats.first(where: { $0.candidateID == id })?.allocatedDuration
-                    ?? (asset.kind == .photo ? PhotoPresentationPolicy.duration : preferredDuration(candidate: candidate, role: chapter.role, pacing: plan.constraints.pacing, grammar: grammar))
+                    ?? (asset.kind == .photo ? PhotoPresentationPolicy.duration : preferredDuration(candidate: candidate, role: chapter.role, pacing: plan.constraints.pacing, grammar: grammar, preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan)))
                 let remaining = plan.constraints.targetDuration - cursor
                 guard remaining > 0.5 else { break }
                 let eventAllowance: Double = {
@@ -200,10 +200,10 @@ public struct TimelineComposer: Sendable {
                     if asset.kind == .photo {
                         return ExactCandidateRange(sourceStart: 0, sourceDuration: duration)
                     }
-                    if plan.narrativeBeatPlan != nil, let speech = candidate.insights?.speech, speech.confidence >= 0.65 {
+                    if plan.narrativeBeatPlan != nil, SpeechEditingPolicy.requiresCompletePhrases(plan: plan), let speech = candidate.insights?.speech, speech.confidence >= 0.65 {
                         return ExactCandidateRange(sourceStart: max(candidate.sourceStart, speech.phraseStart), sourceDuration: duration)
                     }
-                    let trimmed = MomentPhaseTrimmer().range(for: candidate, desiredDuration: duration)
+                    let trimmed = MomentPhaseTrimmer().range(for: candidate, desiredDuration: duration, preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan))
                     return ExactCandidateRange(sourceStart: trimmed.sourceStart, sourceDuration: trimmed.sourceDuration)
                 }()
                 let previousPrimary = items.last { $0.kind != .title && $0.overlay == nil }
@@ -640,9 +640,9 @@ public struct TimelineComposer: Sendable {
         return result
     }
 
-    private func preferredDuration(candidate: Candidate, role: StoryRole?, pacing: Double, grammar: AutonomousEditingGrammar?) -> Double {
+    private func preferredDuration(candidate: Candidate, role: StoryRole?, pacing: Double, grammar: AutonomousEditingGrammar?, preserveSpeech: Bool) -> Double {
         if candidate.insights?.editorialEvidence != nil {
-            return EditorialUnit(candidate: candidate).preferredDuration(pacing: pacing)
+            return EditorialUnit(candidate: candidate, preserveSpeech: preserveSpeech).preferredDuration(pacing: pacing)
         }
         let base: Double
         switch role {
@@ -682,7 +682,7 @@ public struct TimelineComposer: Sendable {
         assets: [UUID: MediaAsset]
     ) -> [UUID: ExactCandidateRange] {
         let ids = plan.chapters.flatMap(\.candidateIDs)
-        let units = ids.compactMap { candidates[$0].map { EditorialUnit(candidate: $0) } }
+        let units = ids.compactMap { candidates[$0].map { EditorialUnit(candidate: $0, preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan)) } }
         // Exact allocation can only consume independently analyzed usable
         // ranges. The remainder of the original file is never capacity.
         let capacity = units.reduce(0) { $0 + $1.usableDuration }
@@ -702,7 +702,7 @@ public struct TimelineComposer: Sendable {
         var allocation = Dictionary(uniqueKeysWithValues: units.map { ($0.id, $0.preferredDuration(pacing: plan.constraints.pacing)) })
         let preferred = allocation.values.reduce(0, +)
         if preferred > exact {
-            let fixed = units.filter { $0.speechSeconds > 0 || $0.evidence.hasProgression && $0.evidence.completion >= 0.65 }
+            let fixed = units.filter { $0.protectedSpeechSeconds > 0 || $0.evidence.hasProgression && $0.evidence.completion >= 0.65 }
             let fixedIDs = Set(fixed.map(\.id))
             let fixedSeconds = fixed.reduce(0) { $0 + allocation[$1.id, default: 0] }
             guard fixedSeconds <= exact else { return [:] }
@@ -718,8 +718,8 @@ public struct TimelineComposer: Sendable {
         }
         return Dictionary(uniqueKeysWithValues: units.compactMap { unit in
             guard let duration = allocation[unit.id], duration >= 0.5 else { return nil }
-            let range = MomentPhaseTrimmer().range(for: unit.candidate, desiredDuration: duration)
-            let desiredStart = unit.speechSeconds > 0 ? (unit.candidate.insights?.speech?.phraseStart ?? range.sourceStart) : range.sourceStart
+            let range = MomentPhaseTrimmer().range(for: unit.candidate, desiredDuration: duration, preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan))
+            let desiredStart = unit.protectedSpeechSeconds > 0 ? (unit.candidate.insights?.speech?.phraseStart ?? range.sourceStart) : range.sourceStart
             let lower = max(unit.candidate.sourceStart, unit.evidence.usableRange.start)
             let upper = min(unit.candidate.sourceStart + unit.candidate.sourceDuration, unit.evidence.usableRange.end)
             let start = max(lower, min(desiredStart, upper - duration))

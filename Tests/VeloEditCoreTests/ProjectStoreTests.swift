@@ -681,7 +681,7 @@ import AVFoundation
     #expect(edited.items.map(\.timelineDuration) == [2, 4, 6])
 }
 
-@Test func magicBrushRejectsCommandsThatWouldLeakAcrossTheWholeFilm() async throws {
+@Test func magicBrushMusicDoesNotLeakOutsideTheRequestedRange() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("veloedit")
     defer { try? FileManager.default.removeItem(at: root) }
     let store = try ProjectStore(createAt: root, name: "Без утечек")
@@ -697,10 +697,21 @@ import AVFoundation
     let snapshot = await pipeline.snapshot()
     let edited = try #require(snapshot.timelines.last)
 
-    #expect(!report.hasChanges)
-    #expect(!report.ignored.isEmpty)
-    #expect(edited.items == [item])
-    #expect(edited.music == nil)
+    #expect(report.hasChanges)
+    #expect(report.ignored.isEmpty)
+    #expect(edited.duration == 5)
+    #expect(edited.items.map(\.timelineStart) == [0, 1, 3])
+    #expect(edited.items.map(\.sourceStart) == [0, 1, 3])
+    #expect(edited.items.map(\.timelineDuration) == [1, 2, 2])
+    #expect(edited.items.allSatisfy { $0.kind == item.kind && $0.videoAdjustments == item.videoAdjustments })
+    let soundtrack = try #require(edited.effectiveAdaptiveSoundtrack)
+    #expect(soundtrack.userEdited == true)
+    #expect(soundtrack.segments.map(\.timelineStart) == [0, 1, 3])
+    #expect(soundtrack.segments.map(\.timelineDuration) == [1, 2, 2])
+    #expect(soundtrack.segments[0].directive.volume == 0)
+    #expect(soundtrack.segments[1].directive.volume > 0)
+    #expect(soundtrack.segments[2].directive.volume == 0)
+    #expect(soundtrack.segments.dropFirst().allSatisfy { $0.transitionDuration == 0 })
 }
 
 @Test func magicBrushSlicesAndUpdatesEveryStandaloneTrack() async throws {

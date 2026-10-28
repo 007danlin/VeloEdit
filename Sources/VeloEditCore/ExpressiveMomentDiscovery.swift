@@ -175,6 +175,7 @@ struct ExpressiveMomentDiscovery: Sendable {
                     observations += windows.compactMap { w in byIndex[w.index].map { (w, $0) } }
                 } catch is CancellationError { throw CancellationError() }
                 catch {
+                    if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                     // A malformed batch cannot assign invented observations.
                     // Retry each original row once with a single-row schema.
                     for window in windows {
@@ -185,6 +186,7 @@ struct ExpressiveMomentDiscovery: Sendable {
                             observations.append((window, judgement))
                         } catch is CancellationError { throw CancellationError() }
                         catch {
+                            if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                             completed = false
                             result[i].warnings.append("Expressive discovery incomplete: \(asset.displayName) window \(window.index): \(error.localizedDescription)")
                         }

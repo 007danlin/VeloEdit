@@ -777,9 +777,10 @@ public struct AutonomousDurationOptimizer: Sendable {
         requestedDuration: Double? = nil,
         requestIsExplicit: Bool = false,
         events: [Event] = [],
-        assets: [MediaAsset] = []
+        assets: [MediaAsset] = [],
+        preserveSpeech: Bool = true
     ) -> OptimalDurationDecision {
-        let context = EditorialAnalysisContext(analyses: analyses, events: events)
+        let context = EditorialAnalysisContext(analyses: analyses, events: events, preserveSpeech: preserveSpeech)
         let decision = ContentBudgetEngine().budget(units: context.units, families: context.families, requestedDuration: requestedDuration, requestIsExplicit: requestIsExplicit, style: style)
         let target = decision.requestedDuration.map { min($0, decision.supportedDuration) } ?? decision.budget.idealDuration
         var result = OptimalDurationDecision(seconds: target, confidence: decision.budget.confidence, safeRange: decision.budget.safeRange, strongMomentCount: decision.budget.strongUnitCount, reasons: [decision.reason, "Монтаж без искусственного растягивания; при невозможной длине материала недостаточно"])
@@ -843,7 +844,8 @@ public struct AutonomousDirectorEngine: Sendable {
             project: project, style: final, analyses: analyses, requestedDuration: resolvedRequestedDuration,
             requestIsExplicit: durationIsExplicit,
             events: events,
-            assets: assets
+            assets: assets,
+            preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(preset: fallbackPreset, prompt: prompt)
         )
         if !durationIsExplicit,
            let learned = personalProfile.durationPreferences?.preferredFilmDuration,

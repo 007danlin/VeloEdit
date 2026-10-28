@@ -351,7 +351,7 @@ import Testing
         let current = try await PlaybackEngine().build(timeline: timeline, assets: assets, musicTracks: [audio])
         let currentURLs = Set(current.composition.tracks.flatMap { $0.segments.compactMap(\.sourceURL) })
         let generatedURLs = currentURLs.subtracting([fixture.asset.originalURL])
-        #expect(generatedURLs.count == 3)
+        #expect(generatedURLs.count == 2) // One shared still clock plus processed audio.
         #expect(generatedURLs.isDisjoint(with: oldURLs))
         previous = nil
         #expect(currentURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })

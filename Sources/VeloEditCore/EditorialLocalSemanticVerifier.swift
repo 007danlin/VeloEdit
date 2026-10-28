@@ -5,14 +5,76 @@ import Foundation
 /// The observations are heuristic, but unlike the previous empty production
 /// boundary they are localized, reproducible and tied to a render signature.
 public enum EditorialLocalSemanticVerifier {
-    public static let version = 4
+    public static let version = 5
+
+    /// A storage split is not a repeated shot. Keep both intervals (and all
+    /// their probes/receipts), but do not delete their exact visual continuation
+    /// just because two middle frames look alike. This is deliberately limited
+    /// to unchanged, ordinary-speed video; similarity thresholds stay intact.
+    static func isUnchangedSourceContinuation(_ left: TimelineItem, _ right: TimelineItem,
+                                             timeline: Timeline, assets: [MediaAsset]) -> Bool {
+        let epsilon = 0.000_001
+        guard left.kind == .video, right.kind == .video,
+              let assetID = left.assetID, assetID == right.assetID,
+              let asset = assets.first(where: { $0.id == assetID && $0.kind == .video }),
+              !asset.missing,
+              left.overlay == nil, right.overlay == nil,
+              !left.isFreezeFrame, !right.isFreezeFrame, !left.isReversed, !right.isReversed,
+              left.speedRamp == nil, right.speedRamp == nil,
+              left.effect == nil, right.effect == nil,
+              left.telemetryOverlay == nil, right.telemetryOverlay == nil,
+              left.speed == 1, right.speed == 1,
+              [left.sourceStart, right.sourceStart, left.sourceDuration, right.sourceDuration,
+               left.timelineStart, right.timelineStart, left.timelineDuration, right.timelineDuration].allSatisfy(\.isFinite),
+              left.sourceDuration > 0, right.sourceDuration > 0,
+              left.sourceStart >= 0, right.sourceStart >= 0,
+              abs(left.sourceDuration - left.timelineDuration) < epsilon,
+              abs(right.sourceDuration - right.timelineDuration) < epsilon,
+              abs(left.sourceStart + left.sourceDuration - right.sourceStart) < epsilon,
+              abs(left.timelineStart + left.timelineDuration - right.timelineStart) < epsilon,
+              left.transition == nil, right.transition == nil,
+              !timeline.effectiveTransitionItems.contains(where: {
+                  $0.enabled && ([$0.incomingClipID, $0.outgoingClipID].contains(left.id)
+                      || [$0.incomingClipID, $0.outgoingClipID].contains(right.id))
+              }),
+              timeline.effectiveEffects.allSatisfy({ !$0.enabled }),
+              timeline.effectiveTelemetryItems.isEmpty,
+              !timeline.items.contains(where: { $0.overlay != nil }) else { return false }
+
+        var a = left.effectiveVideoAdjustments, b = right.effectiveVideoAdjustments
+        guard [CropStyle.fill, .fit].contains(a.crop), [CropStyle.fill, .fit].contains(b.crop) else { return false }
+        // nil means fill, not fit. Only an exact source/target aspect match
+        // makes these two different settings equivalent; never infer that from
+        // similar-looking thumbnails or tolerate a small but real crop.
+        if a.crop != b.crop {
+            guard Set([a.crop, b.crop]) == Set([CropStyle.fill, .fit]),
+                  let dimensions = asset.displayDimensions, timeline.width > 0, timeline.height > 0,
+                  Double(dimensions.width) * Double(timeline.height)
+                    == Double(dimensions.height) * Double(timeline.width) else { return false }
+        }
+        a.crop = .fill
+        b.crop = .fill
+        // isNeutral intentionally has display tolerances. Use exact values
+        // here: this rule must never hide a changed transform/effect.
+        func exactNeutral(_ value: VideoAdjustments) -> Bool {
+            value.rotationQuarterTurns == 0 && value.filter == .none && value.brightness == 0
+                && value.contrast == 1 && value.saturation == 1 && value.warmth == 0 && value.opacity == 1
+                && (value.exposure ?? 0) == 0 && (value.highlights ?? 0) == 0 && (value.shadows ?? 0) == 0
+                && (value.vignette ?? 0) == 0 && (value.grain ?? 0) == 0 && (value.tint ?? 0) == 0
+                && (value.stabilization ?? 0) == 0 && value.rollingShutterCorrection != true
+                && value.smoothSlowMotion != true && (value.sharpening ?? 0) == 0
+                && (value.denoise ?? 0) == 0 && (value.blur ?? 0) == 0 && value.subjectReframe == nil
+        }
+        return exactNeutral(a) && exactNeutral(b)
+    }
 
     public static func claims(
         timeline: Timeline,
         plan: StoryPlan,
         analyses: [AnalysisResult],
         frames: [PerceptualRenderedFrameEvidence],
-        tracks: [LocalMusicTrack]
+        tracks: [LocalMusicTrack],
+        assets: [MediaAsset] = []
     ) -> [EditorialSemanticClaim] {
         let items = TimelineTiming.retimed(timeline.items).filter { $0.overlay == nil && $0.kind != .title }
         guard !items.isEmpty else { return [] }
@@ -166,6 +228,7 @@ public enum EditorialLocalSemanticVerifier {
         // to the same setup later in the story.
         let representatives = Dictionary(uniqueKeysWithValues: items.compactMap { item in representative(item).map { (item.id, $0) } })
         var duplicateItems = Set<UUID>()
+        var continuationItems = Set<UUID>()
         var retained: [TimelineItem] = []
         for item in items {
             guard let current = representatives[item.id] else {
@@ -183,6 +246,10 @@ public enum EditorialLocalSemanticVerifier {
             let lowGain = unit(for: item).map { max($0.evidence.informationGain, $0.evidence.actionDelta) < 0.16 } ?? true
             let duplicatesRetained = lowGain && retained.last.map { earlier in
                 guard let previous = representatives[earlier.id] else { return false }
+                if isUnchangedSourceContinuation(earlier, item, timeline: timeline, assets: assets) {
+                    continuationItems.insert(item.id)
+                    return false
+                }
                 let distance = structuralDistance(previous.lumaFingerprint ?? [], current.lumaFingerprint ?? []) ?? 1
                 let hashDistance = previous.perceptualHash.flatMap { first in current.perceptualHash.map { (first ^ $0).nonzeroBitCount } } ?? 64
                 let sameFamily = earlier.candidateID.flatMap { context.families.familyByUnitID[$0] } == item.candidateID.flatMap { context.families.familyByUnitID[$0] }
@@ -195,7 +262,10 @@ public enum EditorialLocalSemanticVerifier {
             }
         }
         let duplicateTimelineItems = items.filter { duplicateItems.contains($0.id) }
-        if let value = claim(.visualNovelty, selected: duplicateItems.isEmpty ? items : duplicateTimelineItems, passed: duplicateItems.isEmpty, observation: duplicateItems.isEmpty ? "Соседние планы различимы по фактической композиции или изменению состояния" : "Найдены соседние визуально взаимозаменяемые планы без нового состояния", kind: .hardDuplicate, repair: .removeDuplicate) { result.append(value) }
+        let noveltyObservation = continuationItems.isEmpty
+            ? "Соседние планы различимы по фактической композиции или изменению состояния"
+            : "Повторные планы не обнаружены; точное продолжение исходного кадра сохранено без повторения исходного времени"
+        if let value = claim(.visualNovelty, selected: duplicateItems.isEmpty ? items : duplicateTimelineItems, passed: duplicateItems.isEmpty, observation: duplicateItems.isEmpty ? noveltyObservation : "Найдены соседние визуально взаимозаменяемые планы без нового состояния", kind: .hardDuplicate, repair: .removeDuplicate) { result.append(value) }
 
         func isStill(_ item: TimelineItem) -> Bool {
             item.kind == .photo || item.isFreezeFrame || unit(for: item)?.candidate.tags.contains("photo") == true

@@ -248,7 +248,7 @@ public struct DefaultMontageGlobalScorer: MontageGlobalScoring, Sendable {
         let rhythm = rhythmQuality(primaries, pacing: plan.constraints.pacing)
         let technical = technicalQuality(primaries, candidates: features.candidates)
         let subject = subjectComposition(primaries, candidates: features.candidates)
-        let speech = speechContinuity(primaries, candidates: features.candidates)
+        let speech = SpeechEditingPolicy.requiresCompletePhrases(plan: plan) ? speechContinuity(primaries, candidates: features.candidates) : 0.66
         let audioEvents = audioEventCoherence(primaries, candidates: features.candidates)
         let visual = visualSemanticQuality(primaries, candidates: features.candidates)
         let musicStructure = musicStructureQuality(timeline, primaries: primaries, candidates: features.candidates)

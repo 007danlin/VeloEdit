@@ -2,6 +2,10 @@ import Foundation
 
 extension VeloEditPipeline {
     func recordExternalDependencyIfNeeded(_ error: Error) async -> Bool {
+        if let failure = error as? LocalAIInferenceFailure {
+            do { try await store.waitForLocalInference(failure); return true }
+            catch { return false }
+        }
         let project = await store.manifest
         let missing = project.assets.filter { !FileManager.default.isReadableFile(atPath: $0.originalURL.path) }
         var cause = AutonomousFailureCause.classify(error)
@@ -31,6 +35,7 @@ extension VeloEditPipeline {
                 $0.state = .waitingForExternalResource
                 $0.externalFailureCause = cause
                 $0.externalResource = message
+                $0.inferenceRecoveryCount = nil; $0.inferenceRetryAt = nil; $0.inferenceRetryModel = nil
             }
             return true
         } catch { return false }
@@ -39,6 +44,7 @@ extension VeloEditPipeline {
     public func externalDependenciesAvailable() async -> Bool {
         let project = await store.manifest
         guard project.autonomousJob?.state == .waitingForExternalResource else { return false }
+        if let retryAt = project.autonomousJob?.inferenceRetryAt, retryAt > Date() { return false }
         switch project.autonomousJob?.externalFailureCause {
         case .missingSource:
             _ = try? await recoverMissingSources()
@@ -67,8 +73,18 @@ extension VeloEditPipeline {
             guard let (_, response) = try? await URLSession.shared.data(for: request), let response = response as? HTTPURLResponse else { return false }
             return (200..<500).contains(response.statusCode)
         case .localService:
+            if let model = project.autonomousJob?.inferenceRetryModel {
+                do {
+                    try project.autonomousJob?.processProfile?.validate(model: model)
+                    try await LocalAIInferenceClient.shared.recoverService(model: model)
+                    return await LocalAIModelManager.shared.availability(model: model).installed
+                } catch {
+                    try? await store.waitForLocalInference(.init(model: model, reason: error.localizedDescription))
+                    return false
+                }
+            }
             let preferences = project.preferences
-            let profile = AIAnalysisProfile.resolve(mode: preferences.effectiveAIPowerMode, advanced: preferences.effectiveAdvancedAISettings, thermalState: .nominal)
+            let profile = project.autonomousJob?.processProfile?.analysis ?? FilmProcessContext.analysis(preferences: preferences)
             return await LocalAIModelManager.shared.availability(model: profile.ollamaModelID).installed
         default: return false
         }

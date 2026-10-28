@@ -3,6 +3,82 @@ import Testing
 @testable import VeloEditCore
 
 @Suite struct SelectedContentReviewTests {
+    @Test func negativeAndUncertainInteractionStillRequireLiteralEvidence() throws {
+        for interaction in [SelectedContentReviewer.CameraInteraction.none, .unclear, .cameraAdjustment, .equipmentWork] {
+            for text in ["none", "unclear", "equipment-work", "0", ""] {
+                let frame = SelectedContentReviewer.CameraInteractionFrame(index: 0, interaction: interaction,
+                    confidence: 0.99, evidence: text)
+                #expect(!SelectedContentReviewer.literalInteractionEvidence(frame))
+            }
+        }
+        let absent = SelectedContentReviewer.CameraInteractionFrame(index: 0, interaction: .none,
+            confidence: 0.95, evidence: "No hands are visible over this open river")
+        #expect(SelectedContentReviewer.literalInteractionEvidence(absent))
+        let ambiguous = SelectedContentReviewer.CameraInteractionFrame(index: 0, interaction: .unclear,
+            confidence: 0.4, evidence: "A blurred foreground shape cannot be identified as a hand")
+        #expect(SelectedContentReviewer.literalInteractionEvidence(ambiguous))
+        let primary = SelectedContentReviewer.Answer(status: .usable, confidence: 0.99,
+            obstructedSamples: [], observation: "Readable river landscape", activity: "Scenery")
+        let contacts = (0..<5).map { index in var frame = absent; frame.index = index; return frame }
+        var uncertain = contacts; uncertain[2] = ambiguous; uncertain[2].index = 2
+        #expect(SelectedContentReviewer.applyingInteractionCertainty(uncertain, to: primary)?.status == .uncertain)
+    }
+
+    @Test func independentUnknownContactCannotBorrowPrimaryConfidence() throws {
+        let primary = SelectedContentReviewer.Answer(status: .usable, confidence: 0.99,
+            obstructedSamples: [], observation: "Clear readable river scene", activity: "Scenery")
+        let contacts = (0..<5).map { SelectedContentReviewer.CameraInteractionFrame(index: $0,
+            interaction: .none, confidence: 0.95, evidence: "No hands are visible in this frame") }
+        #expect(SelectedContentReviewer.applyingInteractionCertainty(contacts, to: primary)?.status == .usable)
+        for confidence in [0.0, 0.7] {
+            var ambiguous = contacts
+            ambiguous[4].confidence = confidence
+            let result = try #require(SelectedContentReviewer.applyingInteractionCertainty(ambiguous, to: primary))
+            #expect(result.status == .uncertain && result.confidence <= confidence)
+        }
+        var ambiguous = contacts
+        ambiguous[4].interaction = .unclear
+        #expect(SelectedContentReviewer.applyingInteractionCertainty(ambiguous, to: primary)?.status == .uncertain)
+        ambiguous[4].interaction = .cameraAdjustment
+        ambiguous[4].confidence = 0.8
+        #expect(SelectedContentReviewer.applyingInteractionCertainty(ambiguous, to: primary)?.status == .uncertain)
+        #expect(SelectedContentReviewer.applyingInteractionCertainty(Array(contacts.dropLast()), to: primary) == nil)
+        #expect(SelectedContentReviewer.applyingInteractionCertainty(Array(contacts.dropLast()), to: primary,
+            intentionalFadeSamples: [4])?.status == .usable)
+        var rejected = primary
+        rejected.status = .obstructed
+        #expect(SelectedContentReviewer.applyingInteractionCertainty(ambiguous, to: rejected)?.status == .obstructed)
+    }
+
+    private final class WorkClock: @unchecked Sendable {
+        let lock = NSLock()
+        private var time: Double = 100
+        func read() -> Double { lock.withLock { time } }
+        func advance(_ seconds: Double) { lock.withLock { time += seconds } }
+    }
+
+    @Test func shotBudgetUsesActiveWorkTimeAndKeepsCompletedExactResults() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let clock = WorkClock()
+        let reviewer = SelectedContentReviewer(cacheURL: root, model: "fixture", answerTransport: { request in
+            #expect(request.timeoutInterval <= 60)
+            return (Data(#"{"model":"fixture","done":true,"done_reason":"stop","message":{"content":"{\"observation\":\"literal verified observation\"}"}}"#.utf8),
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }, deadlineUptime: 160, workUptime: { clock.read() })
+        let body: [String: Any] = ["model": "fixture", "messages": [["role": "user", "content": "First exact observation"]]]
+        _ = try await reviewer.modelAnswer(body: body, responseURL: root.appendingPathComponent("first.json"))
+        // No Date deadline: only active time is charged. Once it is spent,
+        // unfinished work is bounded while the completed exact answer survives.
+        clock.advance(61)
+        _ = try await reviewer.modelAnswer(body: body, responseURL: root.appendingPathComponent("saved.json"))
+        let next: [String: Any] = ["model": "fixture", "messages": [["role": "user", "content": "Different unfinished observation"]]]
+        await #expect(throws: LocalAIInferenceFailure.self) {
+            try await reviewer.modelAnswer(body: next, responseURL: root.appendingPathComponent("next.json"))
+        }
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("next.json").path))
+    }
+
     @Test func verifierKeepsOneContextSizeWithoutChangingEvidence() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -20,7 +96,7 @@ import Testing
             #expect(options["num_predict"] == 320)
             let message = try #require((request["messages"] as? [[String: Any]])?.first)
             #expect(message["images"] as? [String] == ["all-original-pixels"])
-            #expect(message["content"] as? String == "Same independent question")
+            #expect(message["content"] as? String == "Image 0: [img]\nSame independent question")
         }
     }
 
@@ -34,15 +110,14 @@ import Testing
             let format = body["format"] as! [String: Any]
             let fields = format["required"] as! [String]
             let content: [String: Any]
-            if fields.contains("frames") {
-                content = ["frames": (0..<5).map { ["index": $0, "content": "landscape", "confidence": 0.95,
-                    "obstructionFraction": 0, "handlingEvidence": "none"] as [String: Any] },
-                    "observation": "Открытый вид на реку", "activity": "Пейзаж"]
+            if fields.contains("handlingEvidence") {
+                content = ["content": "landscape", "confidence": 0.95, "obstructionFraction": 0,
+                    "handlingEvidence": "none", "observation": "An open river and its banks are visible"]
             } else if fields.contains("purpose") {
                 content = ["scene": "A coherent river view", "orientation": "upright", "opaqueCoverFraction": 0,
                     "purpose": "establishing", "purposeConfidence": 0.95, "purposeEvidence": "The wide river and shore establish the location"]
             } else {
-                content = ["interaction": "none", "confidence": 0.95, "evidence": "No hands or camera contact are visible"]
+                content = ["b_interaction": "none", "c_confidence": 0.95, "a_observation": "No hands or camera contact are visible"]
             }
             let answer = String(data: try JSONSerialization.data(withJSONObject: content), encoding: .utf8)!
             return (try JSONSerialization.data(withJSONObject: ["model": "fixture", "done": true,
@@ -76,7 +151,8 @@ import Testing
         cachedTimeline.items = [timeline.items[2]]
         let cached = try await reviewer.review(timeline: cachedTimeline, assets: [asset], renderedURL: movie)
         #expect(cached.last?.status == .usable)
-        #expect(await transport.calls == calls)
+        // A different edit signature cannot borrow an MP4 certificate.
+        #expect(await transport.calls > calls)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_CONTENT_REVIEW_PROJECT"] != nil))
@@ -121,7 +197,7 @@ import Testing
                         "c_confidence": uncertainFollowingContact && images == ["fixture-image-7"] ? 0.7 : 0.95]
                 } else if (format["required"] as! [String]).contains("a_observation") {
                     content = ["a_observation": "One person bends on their legs and one person sits on a chair.",
-                        "sitting": 1, "standing": 0, "bending": 1, "other": 0, "confidence": 0.95]
+                        "peopleVisibility": "visible", "peopleCount": 2, "postures": ["sitting", "bending"], "confidence": 0.95]
                 } else {
                     let retained = !incorrectPositiveBoundary && images == [1,3,5,6,7].map { "fixture-image-\($0)" }
                         && prompt.contains("IMMEDIATELY AFTER CUT")
@@ -566,7 +642,8 @@ import Testing
         let rotated = try #require(SelectedContentReviewer.confirmHandling(primary, observer: observer))
         #expect(try #require(SelectedContentReviewer.resolve(rotated)).status == .obstructed)
         observer.frames[2].orientation = .unclear
-        #expect(SelectedContentReviewer.confirmHandling(primary, observer: observer) == nil)
+        let unknown = try #require(SelectedContentReviewer.confirmHandling(primary, observer: observer))
+        #expect(try #require(SelectedContentReviewer.resolve(unknown)).status == .uncertain)
         observer.frames[2].orientation = .upright
         observer.frames[2].index = 1
         #expect(SelectedContentReviewer.confirmHandling(primary, observer: observer) == nil)
@@ -616,6 +693,37 @@ import Testing
         #expect(try #require(SelectedContentReviewer.resolve(contradicted)).status == .usable)
     }
 
+    @Test(arguments: [0, 4]) func independentRotationConflictAtBoundaryCannotBecomeAUsableMajority(edge: Int) throws {
+        let primary = SelectedContentReviewer.FrameAnswer(frames: (0..<5).map {
+            .init(index: $0, content: .landscape, confidence: 0.95)
+        }, observation: "A readable landscape", activity: "unknown")
+        let upright = SelectedContentReviewer.OrientationAnswer(frames: (0..<5).map {
+            .init(index: $0, scene: "Trees rooted in the ground with crowns toward the sky",
+                  orientation: .upright, opaqueCoverFraction: 0, orientationBasis: .worldReference)
+        })
+        var rotated = upright
+        rotated.frames[edge].orientation = .sideways
+        let disputed = try #require(SelectedContentReviewer.confirmHandling(primary, observer: rotated,
+            independentPurpose: rotated))
+        let answer = try #require(SelectedContentReviewer.resolve(disputed))
+        #expect(answer.status == .uncertain)
+        #expect(answer.confirmedBoundaryRotationSamples?.isEmpty == true)
+        #expect(SelectedContentReviewer.valid(answer))
+        // A lone purpose guess contradicted by the neutral physical observer
+        // cannot reject an otherwise readable frame.
+        let corrected = try #require(SelectedContentReviewer.confirmHandling(primary, observer: upright,
+            independentPurpose: rotated))
+        #expect(try #require(SelectedContentReviewer.resolve(corrected)).status == .usable)
+        let neutralOnly = try #require(SelectedContentReviewer.confirmHandling(primary, observer: rotated,
+            independentPurpose: upright))
+        #expect(try #require(SelectedContentReviewer.resolve(neutralOnly)).status == .usable)
+        if edge == 4 {
+            let fade = try #require(SelectedContentReviewer.confirmHandling(primary, observer: rotated,
+                intentionalFadeSamples: [4], independentPurpose: rotated))
+            #expect(try #require(SelectedContentReviewer.resolve(fade, intentionalFadeSamples: [4])).status == .usable)
+        }
+    }
+
     @Test(arguments: [SelectedContentReviewer.OrientationBasis.overheadDetail, .uncertain])
     func overheadBagWorkCannotBeRotatedByObjectAngle(basis: SelectedContentReviewer.OrientationBasis) throws {
         let primary = SelectedContentReviewer.FrameAnswer(frames: (0..<5).map {
@@ -643,11 +751,43 @@ import Testing
             .init(index: $0, scene: "Only texture of the ground is visible", orientation: .sideways,
                 opaqueCoverFraction: 0, orientationBasis: .uncertain)
         })
-        #expect(SelectedContentReviewer.confirmHandling(primary, observer: observer) == nil)
+        var unknown = try #require(SelectedContentReviewer.confirmHandling(primary, observer: observer))
+        #expect(try #require(SelectedContentReviewer.resolve(unknown)).status == .uncertain)
         for i in observer.frames.indices { observer.frames[i].orientation = .upright }
-        #expect(SelectedContentReviewer.confirmHandling(primary, observer: observer) == nil)
+        unknown = try #require(SelectedContentReviewer.confirmHandling(primary, observer: observer))
+        #expect(try #require(SelectedContentReviewer.resolve(unknown)).status == .uncertain)
         for i in observer.frames.indices { observer.frames[i].orientationBasis = .overheadDetail }
-        #expect(SelectedContentReviewer.confirmHandling(primary, observer: observer) == nil)
+        unknown = try #require(SelectedContentReviewer.confirmHandling(primary, observer: observer))
+        #expect(try #require(SelectedContentReviewer.resolve(unknown)).status == .uncertain)
+    }
+
+    @Test(arguments: [[0, 2], [4], [1], []])
+    func hiddenOrientationRetainsOnlyCorroboratedNegativeEvidence(contactIndices: [Int]) throws {
+        let primary = SelectedContentReviewer.FrameAnswer(frames: (0..<5).map {
+            .init(index: $0, content: .event, confidence: 0.95)
+        }, observation: "The foreground hides orientation references", activity: "unknown")
+        let orientation = SelectedContentReviewer.OrientationAnswer(frames: (0..<5).map {
+            .init(index: $0, scene: "Foreground texture with no readable horizon",
+                orientation: .unclear, opaqueCoverFraction: 0.4, orientationBasis: .uncertain)
+        })
+        var contacts = (0..<5).map { index in
+            SelectedContentReviewer.CameraInteractionFrame(index: index,
+                interaction: contactIndices.contains(index) ? .cameraAdjustment : .none,
+                confidence: 0.9, evidence: contactIndices.contains(index)
+                    ? "A near hand touches the filming lens and obscures the scene"
+                    : "No visible hand contacts the filming camera")
+        }
+        let observed = try #require(SelectedContentReviewer.confirmHandling(primary, observer: orientation, contacts: contacts))
+        let answer = try #require(SelectedContentReviewer.resolve(observed))
+        let sustainedOrTail = contactIndices.count >= 2 || contactIndices.contains(4)
+        #expect(answer.status == (sustainedOrTail ? .obstructed : .uncertain))
+        #expect(answer.cameraAdjustmentSamples == (sustainedOrTail ? contactIndices : []))
+        #expect(answer.status != .usable)
+        for i in contacts.indices { contacts[i].confidence = 0.8 }
+        let weak = try #require(SelectedContentReviewer.confirmHandling(primary, observer: orientation, contacts: contacts))
+        #expect(try #require(SelectedContentReviewer.resolve(weak)).status == .uncertain)
+        let incomplete = SelectedContentReviewer.OrientationAnswer(frames: Array(orientation.frames.dropLast()))
+        #expect(SelectedContentReviewer.confirmHandling(primary, observer: incomplete, contacts: contacts) == nil)
     }
 
     @Test func independentGearAndOpenViewCorrectActualBagCoverClaims() throws {
@@ -681,6 +821,67 @@ import Testing
         for i in [2, 4] { covered.frames[i].opaqueCoverFraction = 0.8 }
         let rejected = try #require(SelectedContentReviewer.confirmHandling(primary, observer: covered, contacts: contacts))
         #expect(try #require(SelectedContentReviewer.resolve(rejected)).status == .obstructed)
+    }
+
+    @Test func uncertainOrientationCannotEraseObservedOpaqueCover() throws {
+        // Actual five-frame 2B observations from IMG_4758, 0.0667–1.8 s.
+        // The neutral observer could not orient the obscured scene. Previously
+        // that replaced lens-cover with uncertain and the search tried another
+        // overlapping interval instead of retaining the existing negative.
+        let contents: [SelectedContentReviewer.FrameContent] = [.lensCover, .event, .event, .lensCover, .lensCover]
+        let fractions = [0.75, 0.85, 0.85, 0.95, 0.95]
+        let orientations: [SelectedContentReviewer.SceneOrientation] = [.inverted, .unclear, .unclear, .unclear, .inverted]
+        let primary = SelectedContentReviewer.FrameAnswer(frames: (0..<5).map {
+            .init(index: $0, content: contents[$0], confidence: $0 == 0 ? 0.99 : 0.95,
+                obstructionFraction: fractions[$0], handlingEvidence: .directLensContact)
+        }, observation: "A blurred foreground hand obscures the outdoor scene", activity: "unknown")
+        let orientation = SelectedContentReviewer.OrientationAnswer(frames: (0..<5).map {
+            .init(index: $0, scene: "A close foreground hand and partially visible grass",
+                orientation: orientations[$0], opaqueCoverFraction: 0,
+                orientationBasis: [0, 4].contains($0) ? .worldReference : .overheadDetail,
+                purpose: .some(.none), purposeConfidence: 0, purposeEvidence: "The view has no readable subject")
+        })
+        let contacts = (0..<5).map {
+            SelectedContentReviewer.CameraInteractionFrame(index: $0, interaction: .none,
+                confidence: $0 == 3 ? 0 : 0.8, evidence: "No identifiable hand interaction is visible")
+        }
+        let checked = try #require(SelectedContentReviewer.confirmHandling(primary, observer: orientation,
+            contacts: contacts, independentPurpose: orientation))
+        #expect(checked.frames.allSatisfy { $0.orientationUnresolved == true })
+        var oldAggregation = checked
+        for index in oldAggregation.frames.indices where oldAggregation.frames[index].orientationUnresolved == true {
+            oldAggregation.frames[index].content = .uncertain
+            oldAggregation.frames[index].orientationUnresolved = nil
+        }
+        #expect(SelectedContentReviewer.resolve(oldAggregation)?.status == .uncertain)
+        let physical = try #require(SelectedContentReviewer.resolve(checked))
+        #expect(physical.status == .obstructed && physical.obstructedSamples == [0, 3, 4])
+        #expect(physical.cameraAdjustmentSamples == [] && physical.confirmedBoundaryRotationSamples == [])
+        let interaction = try #require(SelectedContentReviewer.applyingInteractionCertainty(contacts, to: physical))
+        let purpose = try #require(SelectedContentReviewer.applyingPurpose(orientation, to: interaction))
+        #expect(purpose.status == .obstructed && purpose.confidence == 0.95)
+        // An aggregate negative is not a source certificate or a claim that
+        // rotation/contact was confirmed. Old persisted frames remain readable.
+        let oldFrame = Data(#"{"index":0,"content":"event","confidence":0.95,"obstructionFraction":0,"handlingEvidence":"none"}"#.utf8)
+        #expect(try JSONDecoder().decode(SelectedContentReviewer.FrameVerdict.self, from: oldFrame).orientationUnresolved == nil)
+    }
+
+    @Test(arguments: [0, 1, 2])
+    func retainingCoverStillRequiresSustainedEvidenceAndNeverCertifiesUnknownOrientation(coverCount: Int) throws {
+        let primary = SelectedContentReviewer.FrameAnswer(frames: (0..<5).map {
+            .init(index: $0, content: $0 < coverCount ? .lensCover : .event, confidence: 0.95,
+                obstructionFraction: $0 < coverCount ? 0.8 : 0)
+        }, observation: "The image lacks reliable gravity references", activity: "unknown")
+        let orientation = SelectedContentReviewer.OrientationAnswer(frames: (0..<5).map {
+            .init(index: $0, scene: "Foreground material without a readable horizon", orientation: .unclear,
+                opaqueCoverFraction: 0.4, orientationBasis: .uncertain)
+        })
+        let checked = try #require(SelectedContentReviewer.confirmHandling(primary, observer: orientation))
+        let answer = try #require(SelectedContentReviewer.resolve(checked))
+        #expect(answer.status == (coverCount >= 2 ? .obstructed : .uncertain))
+        #expect(answer.status != .usable)
+        let restored = try JSONDecoder().decode(SelectedContentReviewer.FrameAnswer.self, from: JSONEncoder().encode(checked))
+        #expect(SelectedContentReviewer.resolve(restored)?.status == answer.status)
     }
 
     @Test func repeatedUncorroboratedRotationCannotBecomeAConfidentVerdict() throws {
@@ -766,14 +967,84 @@ import Testing
         observer.frames[2].orientation = .sideways
         observer.frames[3].orientation = .sideways
         #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .usable)
-        // One transitional incidental image must not suppress a real action.
+        // A contradictory image is not proof that the whole action is bad,
+        // but the majority cannot certify that unexplained interval either.
         observer.frames[0].purpose = .some(.none)
-        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .usable)
+        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .uncertain)
         observer.frames[1].purpose = .unclear
         observer.frames[2].purposeConfidence = 0.4
         #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .uncertain)
         observer.frames[2].purposeConfidence = .nan
         #expect(SelectedContentReviewer.applyingPurpose(observer, to: technical) == nil)
+    }
+
+    @Test func unresolvedPurposeCannotBorrowConfidenceFromOtherFrames() throws {
+        let technical = SelectedContentReviewer.Answer(status: .usable, confidence: 0.95,
+            obstructedSamples: [], observation: "The beginning shows a readable scene", activity: "unknown")
+        let good = SelectedContentReviewer.OrientationAnswer(frames: (0..<5).map {
+            .init(index: $0, scene: "Coherent place", orientation: .upright, opaqueCoverFraction: 0,
+                purpose: .establishing, purposeConfidence: 0.95, purposeEvidence: "A readable view establishes the place")
+        })
+        for index in 0..<5 {
+            for purpose in [SelectedContentReviewer.EditorialPurpose.none, .unclear, .establishing] {
+                var observation = good
+                observation.frames[index].purpose = purpose
+                observation.frames[index].purposeConfidence = 0
+                let result = try #require(SelectedContentReviewer.applyingPurpose(observation, to: technical))
+                #expect(result.status == .uncertain)
+            }
+        }
+        var groundTail = good
+        for index in [3, 4] {
+            groundTail.frames[index].purpose = .some(.none)
+            groundTail.frames[index].purposeConfidence = 0
+            groundTail.frames[index].purposeEvidence = "Only incidental ground, no readable subject"
+        }
+        #expect(try #require(SelectedContentReviewer.applyingPurpose(groundTail, to: technical)).status == .uncertain)
+        #expect(try #require(SelectedContentReviewer.applyingPurpose(groundTail, to: technical,
+            intentionalFadeSamples: [3, 4])).status == .usable)
+        for index in [3, 4] { groundTail.frames[index].purposeConfidence = 0.95 }
+        let rejected = try #require(SelectedContentReviewer.applyingPurpose(groundTail, to: technical))
+        #expect(rejected.status == .unmotivated && rejected.unmotivatedEnding == true)
+    }
+
+    @Test func purposeClarificationUsesTheSameImageAndModelAndKeepsBothReplies() async throws {
+        actor Observer {
+            var requests: [[String: Any]] = []
+            func respond(_ request: URLRequest) throws -> (Data, URLResponse) {
+                let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+                requests.append(body)
+                let content: [String: Any] = ["scene": "Incidental ground without a subject", "orientation": "upright",
+                    "opaqueCoverFraction": 0, "purpose": "none", "purposeConfidence": requests.count == 1 ? 0 : 0.95,
+                    "purposeEvidence": "No readable subject or coherent view of a place"]
+                let reply = String(data: try JSONSerialization.data(withJSONObject: content), encoding: .utf8)!
+                return (try JSONSerialization.data(withJSONObject: ["model": "fixture", "done": true, "done_reason": "stop",
+                    "message": ["content": reply]]), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            func verify() throws {
+                #expect(requests.count == 2)
+                for body in requests {
+                    #expect(body["model"] as? String == "fixture")
+                    let messages = try #require(body["messages"] as? [[String: Any]])
+                    #expect(messages.first?["images"] as? [String] == ["unchanged-rendered-pixels"])
+                }
+                let prompts = requests.compactMap { ($0["messages"] as? [[String: Any]])?.first?["content"] as? String }
+                #expect(Set(prompts).count == 2)
+            }
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let observer = Observer()
+        let reviewer = SelectedContentReviewer(cacheURL: root, model: "fixture", answerTransport: { try await observer.respond($0) })
+        let sample = VisualFrameSample(timestamp: 0, motion: 0, exposure: 0.5, detail: 0.5, labels: [],
+            labelConfidence: 1, faceCount: 0, jpegBase64: "unchanged-rendered-pixels", histogram: [], luminanceFingerprint: [])
+        let response = root.appendingPathComponent("purpose.json")
+        let result = try await reviewer.inspectPurpose(samples: [sample], indices: [0], responseURL: response)
+        #expect(result.frames.first?.purpose == .some(.none) && result.frames.first?.purposeConfidence == 0.95)
+        _ = try await reviewer.inspectPurpose(samples: [sample], indices: [0], responseURL: response)
+        try await observer.verify()
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("purpose.frame-0.json").path))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("purpose.frame-0-clarified.json").path))
     }
 
     @Test func adjustingTheCameraIsNotMadeUsefulByAnOpenView() throws {
@@ -859,7 +1130,7 @@ import Testing
         observer.frames[4].purposeEvidence = "Hands operate an identifiable fishing reel"
         #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .usable)
         observer.frames[0].purpose = .some(.none)
-        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .usable)
+        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .uncertain)
         var contradictory = rejected
         contradictory.status = .usable
         #expect(!SelectedContentReviewer.valid(contradictory))
@@ -887,7 +1158,7 @@ import Testing
         var contradiction = answer; contradiction.status = .usable
         #expect(!SelectedContentReviewer.valid(contradiction))
         observer.frames[1].purpose = .detail
-        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .usable)
+        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .uncertain)
         observer.frames[0].purpose = .detail
         #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .usable)
     }
@@ -919,6 +1190,12 @@ import Testing
         #expect(!SelectedContentReviewer.needsHeadwearBoundaryCheck(["A person in a hat paddles on the river"]))
         #expect(!SelectedContentReviewer.needsHeadwearBoundaryCheck(["Holding that fishing rod while standing"]))
         #expect(!SelectedContentReviewer.needsHeadwearBoundaryCheck(["Packing a chair into its bag"]))
+        #expect(!SelectedContentReviewer.needsHeadwearBoundaryCheck([
+            "Both are holding tablets. The person on the left is wearing a grey sweatshirt and cap, while the other wears headphones."]))
+        #expect(!SelectedContentReviewer.needsHeadwearBoundaryCheck(["A person wearing a cap is holding a tablet"]))
+        #expect(!SelectedContentReviewer.needsHeadwearBoundaryCheck(["Holding a tablet while wearing a hat"]))
+        #expect(SelectedContentReviewer.needsHeadwearBoundaryCheck(["The helmet is being held above the person's head"]))
+        #expect(SelectedContentReviewer.needsHeadwearBoundaryCheck(["Hands are pulling a balaclava over the face"]))
     }
 
     @Test func contradictoryPhysicalCountsAreUncertainEvidenceNotAnUnavailableProbe() throws {
@@ -1090,7 +1367,7 @@ import Testing
         #expect(brokenEnding.status == .unmotivated && brokenEnding.unmotivatedEnding == true)
         observer.frames[4].purpose = .establishing
         observer.frames[2].purpose = .some(.none)
-        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .usable)
+        #expect(try #require(SelectedContentReviewer.applyingPurpose(observer, to: technical)).status == .uncertain)
         observer.frames[2].purpose = .establishing
         observer.frames[4].purpose = .some(.none)
         observer.frames[3].purpose = .some(.none)

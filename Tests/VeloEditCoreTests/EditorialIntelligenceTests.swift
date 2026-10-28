@@ -650,6 +650,7 @@ private func editorialRegressionRunsThroughRenderedWinner(_ fixture: EditorialRe
     let analyses = eiAnalysis([speech, cutaway, second])
     let assets = [speech, cutaway, second].map { MediaAsset(id: $0.assetID, originalURL: URL(fileURLWithPath: "/tmp/\($0.assetID).mov"), kind: .video, byteSize: 1, contentHash: $0.id.uuidString, metadata: MediaMetadata(duration: 35, hasAudio: true)) }
     var plan = eiPlan(duration: 28)
+    plan.prompt += ". Сохрани речевые фразы целиком."
     plan.chapters = [StoryChapter(title: "Рассказ", candidateIDs: [speech.id])]
     plan.narrativeBeatPlan = NarrativeBeatPlan(pattern: .minimalMontage, beats: [], reasons: [])
     let primary = TimelineItem(candidateID: speech.id, assetID: speech.assetID, kind: .video, sourceStart: 1, sourceDuration: 28, timelineStart: 0, timelineDuration: 28)
@@ -660,6 +661,81 @@ private func editorialRegressionRunsThroughRenderedWinner(_ fixture: EditorialRe
     #expect(timeline.items.filter { $0.overlay?.style == .cutaway }.count == 2)
     let findings = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses).findings
     #expect(!findings.contains { [.incompleteMoment, .longSpeechWithoutVisualDevelopment].contains($0.kind) })
+}
+
+@Test func speechIntentDoesNotTurnAudibleVisualFilmsIntoVlogs() {
+    for preset in [FilmPreset.story, .summerFilm, .cinematic, .memories] {
+        for prompt in ["Выбери красивые кадры", "Сохрани оригинальный звук", "В кадре есть речь и люди", "Речь можно обрезать, главное красивый кадр", "Не нужно сохранять речь целиком", "Сохрани речной пейзаж", "Сохрани условия съёмки", "Keep the sword in the frame"] {
+            #expect(!SpeechEditingPolicy.requiresCompletePhrases(preset: preset, prompt: prompt))
+        }
+    }
+    for prompt in ["Сохрани понятные действия и речь", "Оставь реплики целиком", "Без обрыва слов", "Keep complete sentences", "Do not cut speech"] {
+        #expect(SpeechEditingPolicy.requiresCompletePhrases(preset: .story, prompt: prompt))
+    }
+    #expect(SpeechEditingPolicy.requiresCompletePhrases(preset: .vlog, prompt: "Красивый кадр"))
+    #expect(!SpeechEditingPolicy.requiresCompletePhrases(preset: .story,
+        prompt: "Сохрани речь. Теперь речь можно обрезать, главное кадр."))
+}
+
+@Test func speechIntentPreservesVisualEvidenceAndOnlyRequiresRequestedPhrases() throws {
+    var candidate = eiCandidate(setup: "portrait at river", duration: 8)
+    candidate.insights?.speech = SpeechEditingEvidence(text: "A complete spoken sentence.", phraseStart: 0, phraseEnd: 8,
+        confidence: 0.95, startsAtPhraseBoundary: true, endsAtPhraseBoundary: true)
+    let analyses = eiAnalysis([candidate])
+    var plan = eiPlan(duration: 4)
+    let clip = TimelineItem(candidateID: candidate.id, assetID: candidate.assetID, kind: .video,
+        sourceStart: 2, sourceDuration: 4, timelineStart: 0, timelineDuration: 4)
+    let timeline = Timeline(storyPlanID: plan.id, items: [clip])
+    let context = EditorialAnalysisContext(analyses: analyses)
+    let asset = MediaAsset(id: candidate.assetID, originalURL: URL(fileURLWithPath: "/tmp/speech-intent.mov"), kind: .video,
+        byteSize: 1, contentHash: "fixture", metadata: MediaMetadata(duration: 8, hasAudio: true))
+    let visual = context.respectingSpeechIntent(plan)
+    #expect(visual.units[0].candidate == context.units[0].candidate)
+    #expect(visual.units[0].evidence == context.units[0].evidence)
+    #expect(visual.units[0].speechSeconds == 8)
+    #expect(visual.units[0].protectedSpeechSeconds == 0)
+    #expect(EditorialMomentPolicy.protectedRange(visual.units[0]) == nil)
+    #expect(MomentPhaseTrimmer().range(for: candidate, desiredDuration: 4, preserveSpeech: false).sourceDuration == 4)
+    #expect(MomentPhaseTrimmer().range(for: candidate, desiredDuration: 4, preserveSpeech: true).sourceDuration == 8)
+    func speechFindings(_ plan: StoryPlan) -> [EditorialFinding] {
+        EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses, context: context).findings.filter {
+            $0.kind == .incompleteMoment && $0.reason.contains("речевая")
+        }
+    }
+    #expect(speechFindings(plan).isEmpty)
+    let visualRequestSignature = AutomaticFilmDelivery.requestSignature(plan)
+    #expect(AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan, assets: [asset], analyses: analyses)
+        .requirements?.first(where: { $0.rule == "actionCompletion" })?.passed == true)
+    plan.directorBrief?.sourceAudioPolicy = .duck
+    #expect(speechFindings(plan).isEmpty)
+    plan.preset = .vlog
+    #expect(speechFindings(plan).count == 1)
+    #expect(AutomaticFilmDelivery.requestSignature(plan) != visualRequestSignature)
+    #expect(AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan, assets: [asset], analyses: analyses)
+        .requirements?.first(where: { $0.rule == "actionCompletion" })?.passed == false)
+    plan.preset = .story
+    plan.prompt += ". Сохрани речь целиком."
+    #expect(speechFindings(plan).count == 1)
+}
+
+@Test func speechIntentStillRejectsOcclusionAndCutVisualActions() {
+    var candidate = eiCandidate(setup: "person sitting down", duration: 8, progression: true)
+    candidate.momentBoundary = MomentBoundary(anticipationStart: 0, peakTime: 4, completionEnd: 8, confidence: 0.95)
+    candidate.insights?.speech = SpeechEditingEvidence(text: "Background speech", phraseStart: 0, phraseEnd: 8,
+        confidence: 0.95, startsAtPhraseBoundary: true, endsAtPhraseBoundary: true)
+    let plan = eiPlan(duration: 4)
+    let clip = TimelineItem(candidateID: candidate.id, assetID: candidate.assetID, kind: .video,
+        sourceStart: 2, sourceDuration: 4, timelineStart: 0, timelineDuration: 4)
+    let timeline = Timeline(storyPlanID: plan.id, items: [clip])
+    let analyses = eiAnalysis([candidate])
+    let unit = EditorialAnalysisContext(analyses: analyses).respectingSpeechIntent(plan).units[0]
+    #expect(EditorialMomentPolicy.protectedRange(unit)?.end == 8)
+    let findings = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses).findings
+    #expect(findings.contains { $0.kind == .incompleteMoment && $0.reason.contains("действия") })
+    #expect(!findings.contains { $0.kind == .incompleteMoment && $0.reason.contains("речевая") })
+    candidate.insights?.editorialEvidence?.foregroundOcclusion = 0.8
+    let obscured = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: eiAnalysis([candidate]))
+    #expect(obscured.findings.contains { $0.kind == .foregroundOcclusion })
 }
 
 @Test func editorialCurrentPromptAddsTypedTitleAndMuteIntent() {
@@ -864,6 +940,54 @@ private func editorialRegressionRunsThroughRenderedWinner(_ fixture: EditorialRe
     #expect(LocalEditorialEvidenceAnalyzer.tracking(existing: refreshed, evidence: evidence)?.tracks.count == 2)
 }
 
+@Test func identicalEditorialTrackingSurvivesEnrichmentAndPersistenceWithoutNewIdentity() throws {
+    let people: [NormalizedRegion] = [.init(x: 0.1, y: 0.2, width: 0.2, height: 0.6), .init(x: 0.7, y: 0.2, width: 0.2, height: 0.6)]
+    let evidence = EditorialEvidence(samples: [1.0, 2, 3].map {
+        .init(sourceTime: $0, subjectRegions: people, subjectKinds: [.person, .person], confidence: 0.9)
+    }, usableRange: .init(start: 0, end: 4), confidence: 0.9)
+    let first = try #require(LocalEditorialEvidenceAnalyzer.tracking(existing: nil, evidence: evidence))
+    let reopened = try JSONDecoder().decode(SubjectTrackingSummary.self, from: JSONEncoder().encode(first))
+    let repeated = try #require(LocalEditorialEvidenceAnalyzer.tracking(existing: reopened, evidence: evidence))
+    #expect(first == repeated)
+    #expect(repeated.tracks.count == 2)
+    #expect(repeated.mainSubject != nil)
+    #expect(repeated.tracks.allSatisfy { $0.observations.count == 3 && $0.meanConfidence == first.tracks[0].meanConfidence })
+    var changed = evidence
+    changed.samples[1].subjectRegions[0].x += 0.03
+    let moved = try #require(LocalEditorialEvidenceAnalyzer.tracking(existing: reopened, evidence: changed))
+    #expect(moved.tracks[0].id != first.tracks[0].id)
+    #expect(moved.tracks[0].observations[1].region.x == changed.samples[1].subjectRegions[0].x)
+}
+
+private struct EITrackingMinerAnalyzer: EditorialEvidenceAnalyzing {
+    func analyze(candidate: Candidate, asset: MediaAsset) async throws -> EditorialEvidence {
+        let person = NormalizedRegion(x: 0.2, y: 0.2, width: 0.2, height: 0.6)
+        return EditorialEvidence(samples: (0..<12).map {
+            .init(sourceTime: candidate.sourceStart + Double($0) * candidate.sourceDuration / 12,
+                subjectRegions: [person], subjectKinds: [.person], quality: 0.9, confidence: 0.9)
+        }, usableRange: .init(start: candidate.sourceStart, end: candidate.sourceStart + candidate.sourceDuration),
+            informationGain: 0.7, entryQuality: 0.9, exitQuality: 0.9, confidence: 0.9)
+    }
+}
+
+@Test func newlyMinedCandidatesAlreadyContainTheSameTrackingAsWarmEnrichment() async throws {
+    let asset = MediaAsset(originalURL: URL(fileURLWithPath: "/tmp/miner-tracking.mov"), kind: .video,
+        byteSize: 1, contentHash: "tracking-fixture", metadata: .init(duration: 18))
+    let original = eiCandidate(assetID: asset.id, setup: "opening", duration: 4, progression: true)
+    let analysis = AnalysisResult(assetID: asset.id, analyzedContentHash: asset.contentHash,
+        candidates: [original], scenes: [.init(startTime: 0, endTime: 18, qualityScore: 0.9)])
+    let expanded = try await EditorialCandidateMiner().expandIfNeeded(analyses: [analysis], assets: [asset],
+        requestedDuration: 12, force: true, analyzer: EITrackingMinerAnalyzer())
+    let mined = expanded[0].candidates.filter { $0.id != original.id }
+    #expect(!mined.isEmpty)
+    for candidate in mined {
+        let evidence = try #require(candidate.insights?.editorialEvidence)
+        let cold = try #require(candidate.insights?.subjectTracking)
+        #expect(cold.tracks.count == 1 && cold.analyzedFrameCount == 12)
+        #expect(LocalEditorialEvidenceAnalyzer.tracking(existing: cold, evidence: evidence) == cold)
+    }
+}
+
 private actor RecoveringEditorialProber: EditorialRenderedProbing {
     enum Failure: Error { case temporarilyUnavailable }
     var calls = 0
@@ -1064,6 +1188,138 @@ private actor RepairAwareEditorialProber: EditorialRenderedProbing {
     #expect(result.editorialBeatPlan?.beats.count == 1)
     #expect(result.items.first?.effectiveVideoAdjustments.crop == .fit)
     #expect(result.editorialReview?.findings.contains { [.unsafeReframe, .hardDuplicate].contains($0.kind) } == false)
+
+    // The same real recursive repairs while ranking alternatives must not
+    // spend the selected film's durable allowance. In particular, recursion
+    // must keep the candidate scope instead of reverting to the default.
+    do {
+        let store = try ProjectStore(createAt: cache.appendingPathComponent("budget.veloedit"), name: "Repair scope", recoveryDirectory: cache.appendingPathComponent("recovery"))
+        _ = try await store.beginAutonomousJob(kind: .film)
+        for _ in 0..<3 {
+            let variant = await AutonomousJobContext.$store.withValue(store) {
+                await VeloEditPipeline.editorialRenderReview(timeline: timeline, plan: plan, assets: [], analyses: eiAnalysis(candidates), tracks: [], telemetry: [:], cacheURL: cache, prober: RepairAwareEditorialProber(), repairScope: .candidateVariant)
+            }
+            #expect(variant.items.filter { $0.overlay == nil }.count == 1)
+            #expect(await store.manifest.autonomousJob?.compositionRepairSignatures?.isEmpty != false)
+        }
+        let selected = await AutonomousJobContext.$store.withValue(store) {
+            await VeloEditPipeline.editorialRenderReview(timeline: timeline, plan: plan, assets: [], analyses: eiAnalysis(candidates), tracks: [], telemetry: [:], cacheURL: cache, prober: RepairAwareEditorialProber())
+        }
+        #expect(selected.items.filter { $0.overlay == nil }.count == 1)
+        #expect(selected.editorialReview?.findings.contains { [.unsafeReframe, .hardDuplicate].contains($0.kind) } == false)
+        let claims = await store.manifest.autonomousJob?.compositionRepairSignatures ?? []
+        #expect(claims.count > 1 && claims.count <= 6)
+    } catch {
+        Issue.record(error)
+    }
+}
+
+private actor ProvenanceRepairProber: EditorialRenderedProbing {
+    let rejected: UUID
+    init(rejected: UUID) { self.rejected = rejected }
+    func frames(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL) async throws -> [PerceptualRenderedFrameEvidence] {
+        var frames = try await FixtureEditorialProber().frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
+        let rejectedItems = timeline.items.filter { $0.candidateID == rejected }
+        if !frames.isEmpty {
+            frames[0].editorialClaims = frames[0].editorialClaims?.map { original in
+                var claim = original
+                if claim.domain == .visualNovelty, !rejectedItems.isEmpty {
+                    claim.status = .failed
+                    claim.itemIDs = rejectedItems.map(\.id)
+                    claim.probeTimes = frames.map(\.timelineTime).filter { time in rejectedItems.contains { time >= $0.timelineStart && time < $0.timelineStart + $0.timelineDuration } }
+                    claim.finding = .init(kind: .hardDuplicate, severity: 3, itemIDs: claim.itemIDs,
+                        repair: .removeDuplicate, reason: "Synthetic rendered duplicate requiring real native reassembly")
+                }
+                claim.renderSignature = EditorialRenderSignature.signature(timeline)
+                return claim
+            }
+        }
+        return frames
+    }
+}
+
+@Test func renderedReassemblyRetainsExactSourceCertificatesAndPriorExclusions() async throws {
+    let candidates = (0..<6).map { index in
+        var candidate = eiCandidate(setup: "distinct-place-\(index)", duration: 9,
+            quality: index == 4 ? 1 : 0.9, progression: true)
+        // Continuous activity has no indivisible nine-second completion.
+        // The source receipts below certify shorter continuous intervals.
+        candidate.insights?.editorialEvidence?.completion = 0
+        return candidate
+    }
+    let durations: [Double] = [3, 4, 5, 4]
+    var cursor = 0.0
+    let items = candidates.prefix(4).enumerated().map { index, c in
+        defer { cursor += durations[index] }
+        return TimelineItem(candidateID: c.id, assetID: c.assetID, kind: .video,
+            sourceStart: 1, sourceDuration: durations[index], timelineStart: cursor, timelineDuration: durations[index])
+    }
+    var plan = eiPlan(duration: 16)
+    let beats = NarrativeBeatPlan(pattern: .minimalMontage, beats: items.map { item in
+        EditorialNarrativeBeat(candidateID: item.candidateID!, purpose: .development,
+            viewerInformation: "Distinct synthetic action", requiredChange: 0, familyID: nil,
+            minimumEvidence: 0.38, durationRange: 0.5...9, allocatedDuration: item.timelineDuration, fulfilled: true)
+    }, reasons: [AutomaticEditorialAssembly.marker])
+    plan.narrativeBeatPlan = beats
+    var timeline = Timeline(storyPlanID: plan.id, frameRate: 30, items: items)
+    timeline.editorialBeatPlan = beats
+    let receipts = items.map { item in ShotContentAssessment(itemID: item.id, assetID: item.assetID!,
+        sourceContentHash: "fixture", sourceStart: item.sourceStart, sourceDuration: item.sourceDuration,
+        sampleTimes: [1.02, 1.25, 1.5, 1.75, 1.98], phase: "source", model: "fixture", cacheKey: item.id.uuidString,
+        status: .usable, confidence: 0.95, obstructedSamples: [], observation: "Readable synthetic action",
+        activity: "continuous", editorialPurpose: "action", actionBoundary: .init(startObservation: "Action visible",
+            endObservation: "Action visible", followingObservation: "Action continues", verdict: .continuous, confidence: 0.95)) }
+    let cache = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: cache) }
+    let prober = ProvenanceRepairProber(rejected: candidates[3].id)
+    let result = await VeloEditPipeline.editorialRenderReview(timeline: timeline, plan: plan, assets: [],
+        analyses: eiAnalysis(candidates), tracks: [], telemetry: [:], cacheURL: cache,
+        prober: prober, verifiedSource: receipts,
+        excludedCandidates: [candidates[4].id])
+    #expect(!result.items.contains { [candidates[3].id, candidates[4].id].contains($0.candidateID) })
+    #expect(result.items.contains { $0.candidateID == candidates[5].id })
+    #expect(abs(result.duration - 16) < 0.001)
+    for original in items.prefix(3) {
+        let survivor = try #require(result.items.first { $0.candidateID == original.candidateID })
+        #expect(survivor.sourceStart == original.sourceStart)
+        #expect(survivor.sourceDuration == original.sourceDuration)
+        #expect(survivor.timelineDuration == original.timelineDuration)
+    }
+    #expect(result.editorialReview?.findings.contains { $0.kind == .hardDuplicate } == false)
+    // A structural/pixel repair is not source or final-MP4 semantic evidence.
+    #expect(result.selectedContentReview?.passes(timeline: result) != true)
+
+    // Early scheduling must return the actual accepted exclusions together
+    // with the edit. Otherwise the next source alternative can reinsert the
+    // same measured duplicate and invalidate an unrelated certified range.
+    let early = await VeloEditPipeline.editorialRenderReviewResult(timeline: timeline, plan: plan, assets: [],
+        analyses: eiAnalysis(candidates), tracks: [], telemetry: [:], cacheURL: cache,
+        prober: prober, normalizePresentation: false, verifiedSource: receipts,
+        excludedCandidates: [candidates[4].id], duplicatesOnly: true)
+    #expect(early.excludedCandidates == Set([candidates[3].id, candidates[4].id]))
+    #expect(!early.timeline.items.contains { $0.candidateID.map(early.excludedCandidates.contains) == true })
+    #expect(abs(early.timeline.duration - 16) < 0.001)
+    for original in items.prefix(3) {
+        let survivor = try #require(early.timeline.items.first { $0.candidateID == original.candidateID })
+        #expect(survivor.sourceStart == original.sourceStart)
+        #expect(survivor.sourceDuration == original.sourceDuration)
+    }
+    #expect(early.timeline.selectedContentReview?.passes(timeline: early.timeline) != true)
+    var recovery = FilmContentRepairState()
+    recovery.sourceSearch = FilmSourceSelectionSearch()
+    recovery.sourceSearch?.excluded = early.excludedCandidates
+    let restored = try JSONDecoder().decode(FilmContentRepairState.self, from: JSONEncoder().encode(recovery))
+    let settledAgain = AutomaticEditorialAssembly.prepareForSourceReview(timeline: early.timeline,
+        plan: early.plan, analyses: eiAnalysis(candidates), events: [], assets: [], verifiedSource: receipts,
+        excluded: restored.sourceSearch?.excluded ?? [])
+    #expect(!settledAgain.timeline.items.contains { $0.candidateID.map(early.excludedCandidates.contains) == true })
+
+    let noRepair = await VeloEditPipeline.editorialRenderReviewResult(timeline: timeline, plan: plan, assets: [],
+        analyses: eiAnalysis(candidates), tracks: [], telemetry: [:], cacheURL: cache,
+        prober: prober, repairsRemaining: 0, normalizePresentation: false,
+        excludedCandidates: [candidates[4].id], duplicatesOnly: true)
+    #expect(noRepair.excludedCandidates == Set([candidates[4].id]))
+    #expect(noRepair.timeline.items.map(\.candidateID) == timeline.items.map(\.candidateID))
 }
 
 @Test func editorialRenderedProbeDoesNotRetryCancellation() async {

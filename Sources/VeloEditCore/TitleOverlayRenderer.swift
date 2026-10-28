@@ -175,7 +175,11 @@ public enum TitleOverlayRenderer {
             rect = rect.offsetBy(dx: motion.offset.width, dy: motion.offset.height)
 
             context.saveGState()
-            if element.reveal != .none {
+            // A finished reveal must not keep clipping to the typographic
+            // layout box. Glyph overhangs (notably the Cyrillic Д), outlines
+            // and shadows can extend beyond it even when all text fits.
+            let clipsReveal = element.reveal != .none && motion.reveal < 1
+            if clipsReveal {
                 let progress = CGFloat(min(max(0, motion.reveal), 1))
                 let revealRect: CGRect
                 switch element.reveal {
@@ -201,7 +205,7 @@ public enum TitleOverlayRenderer {
                 artworkContext.saveGState()
                 artworkContext.concatenate(context.ctm)
                 artworkContext.setAlpha(CGFloat(elementOpacity * motion.opacity))
-                if element.reveal != .none {
+                if clipsReveal {
                     // The active context already contains the animated reveal clip.
                     artworkContext.clip(to: context.boundingBoxOfClipPath)
                 }

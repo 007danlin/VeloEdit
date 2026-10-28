@@ -110,7 +110,7 @@ public enum EditorialProbeSchedule {
         for effect in timeline.effectiveEffects where effect.enabled { interval(effect.startTime, effect.duration) }
         for title in timeline.effectiveTitleItems where title.enabled {
             interval(title.startTime, title.duration)
-            requested += TitleReadabilityInspector.times(title, frameRate: timeline.frameRate)
+            requested += TitleReadabilityInspector.times(title, timeline: timeline)
         }
         for telemetry in timeline.effectiveTelemetryItems { interval(telemetry.timelineStart, telemetry.timelineDuration) }
         return Array(Set(requested.filter { $0.isFinite && $0 >= 0 && $0 < timeline.duration }.map { Int(($0 * 600).rounded()) }))
@@ -151,8 +151,13 @@ public enum EditorialEvidenceVerifier {
                 || !unit.candidate.tags.isDisjoint(with: ["person", "people", "cycling", "fishing"])
         }
         let hasTitles = timeline.effectiveTitleItems.contains(where: \.enabled)
-        let audible = timeline.music?.trackID != nil || !(timeline.effectiveAdaptiveSoundtrack?.segments.isEmpty ?? true)
+        let export = frames.compactMap(\.exportVerification).first { $0.renderSignature == renderSignature }
+        let conservativelyAudible = timeline.music?.trackID != nil || !(timeline.effectiveAdaptiveSoundtrack?.segments.isEmpty ?? true)
             || !timeline.effectiveAudioClips.isEmpty || timeline.effectiveOriginalAudioVolume > 0 && items.contains { $0.kind == .video && !$0.effectiveAudioAdjustments.muted }
+        // A source without audio does not acquire an audio track merely
+        // because its volume slider is nonzero. Still measure any actual
+        // encoded track, and never exempt legacy/unknown source evidence.
+        let audible = export?.encodedAudio != nil || (export?.expectsAudio ?? conservativelyAudible)
         let optional: Set<EditorialEvidenceDomain> = Set((expectsPeople ? [] : [.subjectCoverage, .faceSafety, .bodySafety])
             + (hasTitles ? [] : [.titleGrounding, .titleReadability])
             + (timeline.effectiveTelemetryItems.isEmpty ? [.telemetryMeaningfulness] : [])
@@ -186,7 +191,6 @@ public enum EditorialEvidenceVerifier {
             set(.contentBudgetUpperBound, passed: valid && timeline.duration <= upper + tolerance, reason: "Фактически \(timeline.duration) с; безопасный максимум \(upper) с", kinds: [.durationPadding])
         }
         set(.sourceAudioPolicy, passed: !findings.contains { $0.kind == .audioPolicyViolation }, reason: "Проверены embedded и detached дорожки против явного intent", kinds: [.audioPolicyViolation])
-        let export = frames.compactMap(\.exportVerification).first { $0.renderSignature == renderSignature }
         if let export {
             set(.previewExportParity, passed: export.aspectRatioMatches && export.durationDifference <= 2 / max(1, timeline.frameRate) && export.probes.allSatisfy(\.passed), coverage: EditorialProbeSchedule.coverage(required: schedule, observed: export.probes.filter(\.passed).map(\.time)), reason: export.provenance, kinds: [.previewExportMismatch])
         }

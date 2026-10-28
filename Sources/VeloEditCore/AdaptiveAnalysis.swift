@@ -118,6 +118,8 @@ actor AdaptiveFrameSampler {
         try await extract(url: url, sourceHash: sourceHash, timestamps: timestamps, maximumSize: 384, purpose: .aiDirector, frameCache: frameCache).samples
     }
 
+    static let selectedContentRepresentation = "preferred-transform|tol=0/600|jpeg=.68|vision-v2"
+
     func selectedContentSamples(url: URL, sourceHash: String, timestamps: [Double], frameCache: FrameCache, maximumSize: Int = 384) async throws -> [VisualFrameSample] {
         try await extract(url: url, sourceHash: sourceHash, timestamps: timestamps, maximumSize: maximumSize,
             purpose: .aiDirector, frameCache: frameCache, exactTiming: true).samples
@@ -234,7 +236,7 @@ actor AdaptiveFrameSampler {
         for timestamp in timestamps {
             try Task.checkCancellation()
             let key = FrameCacheKey(sourceFile: sourceIdentity, timestamp: timestamp, resolution: maximumSize, processingPurpose: purpose,
-                representation: exactTiming ? "preferred-transform|tol=0/600|jpeg=.68|vision-v2" : "preferred-transform|tol=150/600|jpeg=.68|vision-v2",
+                representation: exactTiming ? Self.selectedContentRepresentation : "preferred-transform|tol=150/600|jpeg=.68|vision-v2",
                 decodeTimeScale: 600)
             try await resourcePacer.checkpoint()
             let trace = PerformanceTrace.current
@@ -248,11 +250,14 @@ actor AdaptiveFrameSampler {
                 let visionStarted = ProcessInfo.processInfo.systemUptime
                 let vision = Self.visionFeatures(for: image)
                 trace?.event("frame.vision", values: ["seconds": ProcessInfo.processInfo.systemUptime - visionStarted])
+                let encodeStarted = ProcessInfo.processInfo.systemUptime
+                let encodedImage = Self.jpegBase64(image)
+                trace?.event("frame.encode", values: ["seconds": ProcessInfo.processInfo.systemUptime - encodeStarted])
                 var sample = VisualFrameSample(
                     timestamp: timestamp, motion: 0,
                     exposure: max(0, 1 - abs(mean - 128) / 128), detail: Self.detail(fingerprint, width: 32),
                     labels: vision.labels, labelConfidence: vision.confidence, faceCount: vision.faceCount,
-                    jpegBase64: Self.jpegBase64(image), histogram: Self.histogram(fingerprint),
+                    jpegBase64: encodedImage, histogram: Self.histogram(fingerprint),
                     luminanceFingerprint: fingerprint, subjects: vision.subjects)
                 sample.actualTimestamp = actualTime.seconds.isFinite ? actualTime.seconds : nil
                 sample.pixelWidth = image.width
@@ -510,20 +515,21 @@ private struct DeepSceneEnvelope: Decodable {
     let scenes: [DeepFrameJudgement]
 }
 
-private struct VLMSceneInput: Sendable {
+struct VLMSceneInput: Sendable {
     let index: Int
     let frames: [VisualFrameSample]
     let telemetry: TelemetryMoment?
     var sourceWindow: ClosedRange<Double>? = nil
+    var independentRecheck = false
 }
 
 actor OllamaVisionRuntime {
-    private let baseURL = URL(string: "http://127.0.0.1:11434")!
+    private let baseURL = LocalAIRuntimeConfiguration.baseURL
 
     static func responseSchema(indices: [Int]) -> [String: Any] {
         var fields: [String: Any] = [
             "index": ["type": "integer", "enum": indices],
-            "scene": ["type": "string"], "reason": ["type": "string"],
+            "scene": ["type": "string", "minLength": 12], "reason": ["type": "string", "minLength": 12],
             "tags": ["type": "array", "items": ["type": "string"], "maxItems": 8]
         ]
         for name in ["interest", "action", "quality", "stability", "storyValue"] {
@@ -548,26 +554,41 @@ actor OllamaVisionRuntime {
             guard let index = judgement.index, requested.contains(index), result[index] == nil else {
                 // Never attach a renumbered/duplicate scene to another clip,
                 // or trap inside Dictionary(uniqueKeysWithValues:).
+                PerformanceTrace.current?.event("vlm.invalid-response", fields: ["reason": "missing-unrequested-or-duplicate-index",
+                    "index": judgement.index.map(String.init) ?? "missing",
+                    "requested": indices.map(String.init).joined(separator: ",")])
+                throw URLError(.cannotParseResponse)
+            }
+            guard VisionEvidenceLayout.isStandaloneDescription(judgement.scene ?? ""),
+                  VisionEvidenceLayout.isStandaloneDescription(judgement.reason ?? "") else {
+                PerformanceTrace.current?.event("vlm.invalid-description", fields: ["index": String(index),
+                    "scene": String((judgement.scene ?? "").prefix(500)),
+                    "reason": String((judgement.reason ?? "").prefix(500))])
                 throw URLError(.cannotParseResponse)
             }
             let scores = [judgement.interest, judgement.action, judgement.quality, judgement.stability, judgement.storyValue].compactMap { $0 }
             guard scores.count == 5, scores.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
                   judgement.scene?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
-                  judgement.tags?.isEmpty == false else { throw URLError(.cannotParseResponse) }
+                  judgement.tags?.isEmpty == false else {
+                PerformanceTrace.current?.event("vlm.invalid-response", fields: ["reason": "scores-or-tags",
+                    "index": String(index)], values: ["scoreCount": Double(scores.count),
+                    "scoresInRange": scores.allSatisfy({ $0.isFinite && (0...1).contains($0) }) ? 1 : 0,
+                    "tagCount": Double(judgement.tags?.count ?? 0)])
+                throw URLError(.cannotParseResponse)
+            }
             result[index] = judgement
         }
-        guard Set(result.keys) == requested else { throw URLError(.cannotParseResponse) }
+        guard Set(result.keys) == requested else {
+            PerformanceTrace.current?.event("vlm.invalid-response", fields: ["reason": "missing-scene-indices",
+                "requested": indices.map(String.init).joined(separator: ","),
+                "returned": result.keys.sorted().map(String.init).joined(separator: ",")])
+            throw URLError(.cannotParseResponse)
+        }
         return result
     }
 
     func isAvailable(model: String) async -> Bool {
-        var request = URLRequest(url: baseURL.appendingPathComponent("api/tags"))
-        request.timeoutInterval = 1.5
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
-              let tags = try? JSONDecoder().decode(OllamaModelTags.self, from: data) else { return false }
-        if model.contains(":") { return tags.models.contains { $0.name == model } }
-        return tags.models.contains { $0.name == model || $0.name == "\(model):latest" }
+        await LocalAIModelManager.shared.availability(model: model).installed
     }
 
     fileprivate func analyzeBatch(
@@ -577,11 +598,12 @@ actor OllamaVisionRuntime {
         timeout: TimeInterval,
         cache: DeepAnalysisCache? = nil,
         cacheContext: String? = nil,
-        metrics: AnalysisMetricsRecorder? = nil
+        metrics: AnalysisMetricsRecorder? = nil,
+        shareIdenticalImages: Bool = false
     ) async throws -> [Int: DeepFrameJudgement] {
         do {
             return try await LocalAIModelManager.recoveringRequest(retryTimeouts: false) {
-                try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics)
+                try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics, shareIdenticalImages: shareIdenticalImages)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -595,11 +617,12 @@ actor OllamaVisionRuntime {
             for scene in scenes {
                 try Task.checkCancellation()
                 do {
-                    let answer = try await requestBatch(scenes: [scene], model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics)
+                    let answer = try await requestBatch(scenes: [scene], model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics, shareIdenticalImages: shareIdenticalImages)
                     recovered.merge(answer) { _, new in new }
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
+                    if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                     if (error as? URLError)?.code == .cancelled { throw error }
                 }
             }
@@ -607,89 +630,146 @@ actor OllamaVisionRuntime {
         }
     }
 
+    static func sceneGrouping(scenes: [VLMSceneInput], layout: VisionEvidenceLayout, sharesImages: Bool) -> String {
+        var nextImage = 1
+        return scenes.enumerated().map { position, scene in
+            let references = sharesImages ? layout.references[position]
+                : Array(nextImage..<(nextImage + scene.frames.count))
+            nextImage += scene.frames.count
+            let sequence = zip(references, scene.frames).map { image, frame in
+                let outside = scene.sourceWindow.map { !$0.contains(frame.timestamp) } ?? false
+                return "image \(image) at \(frame.timestamp)s outside=\(outside)"
+            }.joined(separator: "; ")
+            let window = scene.sourceWindow.map { ", selected=[\($0.lowerBound),\($0.upperBound)]s" } ?? ""
+            let telemetry = scene.telemetry.map { "\($0.explanation), \(Int($0.score * 100))%" } ?? "none"
+            return "scene index=\(scene.index): frames=\(scene.frames.count)\(window), sequence=\(sequence), telemetry=\(telemetry)"
+        }.joined(separator: "\n")
+    }
+
     private func requestBatch(
         scenes: [VLMSceneInput], model: String, thinking: Bool, timeout: TimeInterval,
-        cache: DeepAnalysisCache?, cacheContext: String?, metrics: AnalysisMetricsRecorder?
+        cache: DeepAnalysisCache?, cacheContext: String?, metrics: AnalysisMetricsRecorder?, shareIdenticalImages: Bool
     ) async throws -> [Int: DeepFrameJudgement] {
         var resourcePacer = ResourceWorkPacer()
         try await resourcePacer.checkpoint()
-        let images = scenes.flatMap { $0.frames.map(\.jpegBase64).filter { !$0.isEmpty } }
-        guard !images.isEmpty else { throw URLError(.cannotDecodeContentData) }
-        let grouping = scenes.map { scene in
-            let telemetry = scene.telemetry.map { "\($0.explanation), \(Int($0.score * 100))%" } ?? "нет"
-            return "scene index=\(scene.index): frames=\(scene.frames.count), telemetry=\(telemetry)"
-        }.joined(separator: "\n")
-        let prompt = """
-        Оцени несколько коротких сцен видео. Изображения приложены последовательно группами в указанном порядке:
+        let originalImages = scenes.flatMap { $0.frames.map(\.jpegBase64) }
+        guard !originalImages.isEmpty, originalImages.allSatisfy({ !$0.isEmpty }) else {
+            throw URLError(.cannotDecodeContentData)
+        }
+        let layout = VisionEvidenceLayout(frames: scenes.map(\.frames))
+        let sharesImages = shareIdenticalImages && layout.images.count < originalImages.count
+        let images = sharesImages ? layout.images : originalImages
+        let grouping = Self.sceneGrouping(scenes: scenes, layout: layout, sharesImages: sharesImages)
+        let standardPrompt = """
+        Оцени несколько коротких сцен видео. \(sharesImages
+            ? "Изображения пронумерованы от 1 в порядке приложений. sequence задаёт все кадры каждой сцены в хронологическом порядке и время в исходнике. Один и тот же кадр может относиться к нескольким сценам; повторные ссылки сохраняют отдельные моменты времени. Для каждой сцены используй именно её полную sequence; оцени каждую сцену независимо, даже если её кадры совпадают. Для каждой сцены напиши самостоятельное буквальное описание видимого места, объектов и действия, понятное без других оценок. Не заменяй scene или reason ссылками на другие сцены (same as scene, see scene, как в сцене). Совпадение кадров между сценами не доказывает отсутствие движения внутри сцены."
+            : "Изображения приложены последовательно группами в указанном порядке:")
+        sequence явно связывает номера приложенных изображений с моментами исходника. selected задаёт оцениваемый интервал; кадры с outside=true являются контекстом, не приписывай их события выбранному интервалу.
         \(grouping)
         Верни JSON по заданной схеме: ровно одну оценку на каждую указанную сцену. Сохраняй её исходный index, не перенумеровывай и не добавляй сцен.
-        scene: коротко опиши видимое место, главный объект и действие. tags: до восьми конкретных английских меток содержания; различай bicycle, buggy/UTV, car и motorcycle только когда это видно. reason: одно короткое объяснение монтажной ценности.
+        scene: коротко опиши видимое место, главный объект и действие самостоятельным обычным предложением. scene и reason не могут содержать номер/индекс сцены, фрагмент JSON, ссылку на другую сцену или перечень полей вместо наблюдения. Если содержание неразличимо, опиши именно видимое перекрытие или неопределённость, не придумывай событие. tags: до восьми конкретных английских меток содержания; различай bicycle, buggy/UTV, car и motorcycle только когда это видно. reason: одно короткое объяснение монтажной ценности.
         Оцени каждую сцену независимо: interest — интерес зрителя, action — изменение действия между кадрами, quality — видимость и техническое качество изображения, stability — устойчивость камеры, storyValue — ценность для истории. Шкала 0...1: quality=0 означает нечитаемый или испорченный кадр, около 0.5 — обычный пригодный кадр, около 0.8 — ясный хороший кадр. Низкая action не означает низкое quality: спокойный пейзаж и портрет могут быть ценными. Не присваивай всем полям одну оценку. Не выдумывай события, движение или звук, которых не подтверждают изображения.
         """
-        let payload: [String: Any] = ["model": model,
+        let primaryPrompt = model.contains(":2b-") ? """
+        Review each video interval below using ALL images in its sequence, in time order. Image numbers refer to the numbered attachments. selected is the interval being scored; outside=true marks context outside that interval, not events inside it. Repeated image references retain their separate times.
+        \(grouping)
+        Return one JSON scene per listed index. Keep the original indices. Assess each interval independently.
+        scene: one short ordinary English sentence describing the visible setting, subject and observable action in the selected interval. If obscured or ambiguous, describe that uncertainty. reason: one short ordinary sentence explaining its editing value. Neither field may be an index, placeholder, JSON fragment or reference to another scene. Do not repeat phrases or explanations. Emit each required field once, then close the object. tags: up to eight distinct visible English content labels; distinguish bicycle, buggy/UTV, car and motorcycle only with visual evidence.
+        Scores are probabilities from 0 to 1: interest = viewer interest; action = observed change between images; quality = readability and technical image quality; stability = camera steadiness; storyValue = value for the story. Quality 0 is unreadable/spoiled, 0.5 ordinary usable, 0.8 clear and good. Calm landscapes and portraits can be valuable with low action. Do not give every score the same value. Do not invent motion, sound, events or completed tasks that the selected images do not establish.
+        """ : standardPrompt
+        let prompt = primaryPrompt + (scenes.allSatisfy(\.independentRecheck) ? """
+
+        INDEPENDENT TECHNICAL RECHECK: Examine the supplied interval anew. In scene and reason state the directly visible evidence for readability, accidental opaque cover, loss of framing, camera steadiness and whether an apparent action is actually supported across the selected images. Do not turn normal equipment, intentional close-ups or continuous scenery into defects. Do not assume an unseen task outcome. Keep the same scoring definitions; do not lower a score merely because this is a recheck. You have not been given another observer's answer.
+        """ : "")
+        let payload = try FilmProcessContext.requestBody(LocalVisionMessageEncoding.separatingImages(in: ["model": model,
             "messages": [["role": "user", "content": prompt, "images": images]],
             "stream": true, "think": thinking, "keep_alive": "10m",
             // Structured scene judgements are short. A model stuck repeating
             // text must return control to batch repair/local recovery.
-            "options": ["num_predict": max(768, scenes.count * 384) + (thinking ? 4096 : 0)],
-            "format": Self.responseSchema(indices: scenes.map(\.index))]
+            "options": ["num_predict": max(768, scenes.count * 384) + (thinking ? 4096 : 0),
+                "temperature": FilmProcessProfile.defaultSemanticSampling.temperature,
+                "seed": FilmProcessProfile.defaultSemanticSampling.seed],
+            "format": Self.responseSchema(indices: scenes.map(\.index))], firstIndex: 1))
         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let preparedRequest = request
+        var repairRequest = request
+        repairRequest.httpBody = try JSONSerialization.data(
+            withJSONObject: LocalModelResponseValidation.repairBody(payload, additionalInstruction: "DESCRIPTION REPAIR: scene and reason must each be a self-contained ordinary sentence about the supplied images. A number, scene index, placeholder, quoted JSON or reference to another scene is not an observation. Describe visible uncertainty literally instead of inventing an action."), options: [.sortedKeys])
+        let preparedRequests = [request, repairRequest]
         let indices = scenes.map(\.index)
         let trace = PerformanceTrace.current
+        trace?.event("vlm.input", fields: ["model": model, "indices": indices.map(String.init).joined(separator: ","),
+            "sceneFrameCounts": scenes.map { String($0.frames.count) }.joined(separator: ","),
+            "assessmentPass": scenes.allSatisfy(\.independentRecheck) ? "independent-technical-recheck" : "selection"],
+                     values: ["frameOccurrences": Double(originalImages.count), "imageAttachments": Double(images.count)])
         let produce: @Sendable () async throws -> String = {
+          for (attempt, preparedRequest) in preparedRequests.enumerated() {
             let started = ProcessInfo.processInfo.systemUptime
             var recorded = false
+            var diagnosticReply: Data?
             do {
-                let configuration = URLSessionConfiguration.ephemeral
-                configuration.timeoutIntervalForRequest = timeout
-                configuration.timeoutIntervalForResource = timeout + 600
-                let session = URLSession(configuration: configuration)
-                defer { session.invalidateAndCancel() }
-                let (bytes, response) = try await session.bytes(for: preparedRequest)
+                let observer = FilmBuildReporting.handler
+                let (data, response) = try await LocalAIInferenceClient.shared.response(for: preparedRequest, progress: { update in
+                    var update = update; update.stage = .analysis
+                    await observer?(update)
+                })
+                diagnosticReply = data
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     throw NSError(domain: "OllamaHTTP", code: (response as? HTTPURLResponse)?.statusCode ?? 0)
                 }
                 var stream = OllamaVisionStream(expectedModel: model)
-                var receivedText = false
-                for try await line in bytes.lines where !line.isEmpty {
-                    try Task.checkCancellation()
-                    try stream.append(line)
-                    if !receivedText && !stream.content.isEmpty {
-                        receivedText = true
-                        trace?.event("vlm.first-token", fields: ["model": model],
-                                     values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
-                    }
-                    if stream.finished { break }
-                }
+                try stream.append(String(decoding: data, as: UTF8.self))
                 let content = try stream.completedContent()
                 _ = try Self.parseBatch(content, indices: indices)
+                try await AutonomousJobContext.store?.recordInferenceProgress()
                 await metrics?.recordVLMCall(latency: ProcessInfo.processInfo.systemUptime - started)
                 recorded = true
                 trace?.event("vlm.runtime", fields: ["model": model], values: stream.measurements)
+                if attempt > 0 { trace?.event("vlm.format-repaired", fields: ["model": model]) }
                 return content
             } catch {
                 if !recorded { await metrics?.recordVLMCall(latency: ProcessInfo.processInfo.systemUptime - started) }
                 let failure = error as NSError
+                if let diagnosticReply,
+                   let envelope = try? JSONSerialization.jsonObject(with: diagnosticReply) as? [String: Any] {
+                    let content = (envelope["message"] as? [String: Any])?["content"] as? String ?? ""
+                    // Failed generations never enter the semantic cache.
+                    // Retain bounded literal output in the local diagnostic
+                    // trace so truncation, repetitions and invalid fields can
+                    // be distinguished without rerunning a model blindly.
+                    trace?.event("vlm.failed-output", fields: ["model": model,
+                        "attempt": String(attempt), "doneReason": envelope["done_reason"] as? String ?? "unknown",
+                        "content": String(content.prefix(16_000)),
+                        "contentSHA256": SHA256.hash(data: Data(content.utf8)).map { String(format: "%02x", $0) }.joined()],
+                        values: ["contentCharacters": Double(content.count), "recordedCharacters": Double(min(content.count, 16_000))])
+                }
                 trace?.event("vlm.failed", fields: ["error": String(describing: type(of: error)),
                     "domain": failure.domain, "code": String(failure.code), "message": failure.localizedDescription,
                     "model": model], values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
+                if attempt == 0, error is DecodingError || (error as? URLError)?.code == .cannotParseResponse {
+                    try Task.checkCancellation()
+                    continue
+                }
                 throw error
             }
+          }
+          throw URLError(.cannotParseResponse)
         }
-        if let cache, let cacheContext,
-           let digest = await LocalAIModelManager.shared.installedModelDigest(model: model) {
+        let currentDigest = await LocalAIModelManager.shared.installedModelDigest(model: model)
+        try FilmProcessContext.current?.validate(model: model, digest: currentDigest)
+        if let cache, let cacheContext, let digest = currentDigest {
             let windows = scenes.map { scene in
                 "\(scene.index):\(scene.sourceWindow?.lowerBound.bitPattern ?? 0):\(scene.sourceWindow?.upperBound.bitPattern ?? 0):" + scene.frames.map {
                     "\($0.timestamp.bitPattern)/\($0.actualTimestamp?.bitPattern ?? 0)"
                 }.joined(separator: ",")
             }.joined(separator: "|")
-            var input = Data("vision-v1|\(digest)|\(cacheContext)|\(windows)|".utf8)
+            var input = Data("vision-v2-format-repair|\(digest)|\(cacheContext)|\(windows)|".utf8)
             input.append(preparedRequest.httpBody ?? Data())
+            input.append(preparedRequests[1].httpBody ?? Data())
             let identity = SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined()
             let response = try await cache.visionResponse(identity: identity, indices: indices, produce: produce)
             if response.reused { await metrics?.recordVLMCacheHit() }
@@ -697,7 +777,7 @@ actor OllamaVisionRuntime {
                 "origin": response.reused ? "reused" : "computed", "indices": indices.map(String.init).joined(separator: ",")])
             return try Self.parseBatch(response.content, indices: indices)
         }
-        // Independent rechecks deliberately omit the cache, even with equal inputs.
+        // Requests without a durable operation context remain fresh.
         return try Self.parseBatch(try await produce(), indices: indices)
     }
 }
@@ -800,8 +880,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
             progress?(samplingLabel, 0.05)
             detailedProgress?(AnalysisStageUpdate(stage: .adaptiveSampling, label: samplingLabel, fraction: 0.05))
             let cacheRoot = FileManager.default.temporaryDirectory
-                .appendingPathComponent("VeloEdit-FrameCache/\(asset.contentHash)", isDirectory: true)
-            let effectiveFrameCache = frameCache ?? FrameCache(rootURL: cacheRoot)
+                .appendingPathComponent("VeloEdit-FrameCache-v2", isDirectory: true)
+            let effectiveFrameCache = frameCache ?? FrameCache(rootURL: cacheRoot, maximumDiskBytes: 256 * 1_024 * 1_024)
             let previousCenters = previous?.candidates.map { $0.sourceStart + $0.sourceDuration / 2 } ?? []
             sampling = try await AdaptiveFrameSampler().sample(
                 url: analysisURL,
@@ -984,6 +1064,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
             let batches = stride(from: 0, to: selectedIndices.count, by: profile.scenesPerVLMRequest).map {
                 Array(selectedIndices[$0..<min(selectedIndices.count, $0 + profile.scenesPerVLMRequest)])
             }
+            let shareIdenticalImages = profile.mode == .balanced || profile.mode == .quality
+            var previousImages: [String] = []
             for (batchNumber, indices) in batches.enumerated() {
                 try await resourcePacer.checkpoint()
                 let scenePosition = min(selectedIndices.count, batchNumber * profile.scenesPerVLMRequest + 1)
@@ -997,7 +1079,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                     currentScene: scenePosition,
                     sceneCount: selectedIndices.count
                 ))
-                let inputs = indices.map { index in
+                var inputs = indices.map { index in
                     VLMSceneInput(
                         index: index,
                         frames: nearbyFrames(for: candidates[index], in: samples),
@@ -1008,6 +1090,12 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                         sourceWindow: candidates[index].sourceStart...(candidates[index].sourceStart + candidates[index].sourceDuration)
                     )
                 }
+                if shareIdenticalImages {
+                    let order = VisionEvidenceLayout.order(frames: inputs.map(\.frames), after: previousImages)
+                    inputs = order.map { inputs[$0] }
+                    let layout = VisionEvidenceLayout(frames: inputs.map(\.frames))
+                    previousImages = layout.images
+                }
                 do {
                     let judgements = try await runtime.analyzeBatch(
                         scenes: inputs,
@@ -1016,7 +1104,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                         timeout: profile.vlmPrefillTimeout(imageCount: inputs.reduce(0) { $0 + $1.frames.count }),
                         cache: deepCache,
                         cacheContext: profile.cacheKey + "|" + FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash),
-                        metrics: metrics
+                        metrics: metrics,
+                        shareIdenticalImages: shareIdenticalImages
                     )
                     for index in indices {
                         guard let judgement = judgements[index] else {
@@ -1029,6 +1118,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
+                    if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                     deepFailures += indices.count
                 }
             }
@@ -1036,16 +1126,23 @@ public struct AdaptiveLocalAnalyzer: Sendable {
             if profile.rechecksImportantScenes {
                 // Always independently verify the strongest/ambiguous planned
                 // moments, even when none passes the former arbitrary threshold.
+                // Separate provenance keeps this independent of the primary
+                // answer. Exact weights, source interval and image bytes already
+                // key the cache; a new job ID adds no new visual evidence.
+                let recheckContext = "independent-recheck-v2|\(profile.cacheKey)|"
+                    + FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
                 let recheck = selectedIndices.sorted {
                     abs(candidates[$0].scores.composite - 0.72) < abs(candidates[$1].scores.composite - 0.72)
                 }.prefix(execution.plannedRechecks)
                 for index in recheck {
                     try await resourcePacer.checkpoint()
-                    let inputs = [VLMSceneInput(index: index, frames: nearbyFrames(for: candidates[index], in: samples), telemetry: nil)]
+                    let inputs = [VLMSceneInput(index: index, frames: nearbyFrames(for: candidates[index], in: samples), telemetry: nil,
+                        sourceWindow: candidates[index].sourceStart...(candidates[index].sourceStart + candidates[index].sourceDuration), independentRecheck: true)]
                     do {
                         let judgements = try await runtime.analyzeBatch(
                             scenes: inputs, model: profile.ollamaModelID, thinking: profile.thinkingEnabled,
-                            timeout: profile.vlmPrefillTimeout(imageCount: inputs[0].frames.count), metrics: metrics)
+                            timeout: profile.vlmPrefillTimeout(imageCount: inputs[0].frames.count),
+                            cache: deepCache, cacheContext: recheckContext, metrics: metrics)
                         if let judgement = judgements[index] {
                             apply(judgement, to: &candidates[index])
                             execution.evaluatedRechecks += 1
@@ -1055,6 +1152,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                         throw CancellationError()
                     } catch {
                         if (error as? URLError)?.code == .cancelled { throw CancellationError() }
+                        if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                         baseline.warnings.append("Независимая перепроверка сцены не завершена: \(error.localizedDescription)")
                     }
                 }

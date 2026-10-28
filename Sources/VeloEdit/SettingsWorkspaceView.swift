@@ -4,6 +4,7 @@ import VeloEditCore
 
 struct SettingsWorkspaceView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updater: AppUpdater
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -21,6 +22,53 @@ struct SettingsWorkspaceView: View {
             case .general: GeneralSettingsView()
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onAppear {
+                if updater.availableVersion != nil {
+                    model.settingsTab = .general
+                    updater.markUpdateSeen()
+                }
+            }
+    }
+}
+
+struct AppUpdateSettingsCard: View {
+    @EnvironmentObject private var updater: AppUpdater
+
+    var body: some View {
+        SettingsSectionCard("Обновления VeloEdit") {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 5) {
+                    if let version = updater.availableVersion {
+                        Label("Доступна версия \(version)", systemImage: "arrow.down.circle.fill")
+                            .font(.headline).foregroundStyle(.blue)
+                    }
+                    Text(updater.status).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button(updater.installationRequested ? "Показать установку…"
+                       : updater.highlightsUpdate ? "Установить обновление…" : "Проверить обновления…") {
+                    if updater.highlightsUpdate { updater.installAvailableUpdate() }
+                    else { updater.checkForUpdates() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!updater.canCheckForUpdates)
+                .accessibilityIdentifier("app-update-action")
+            }
+            Toggle("Проверять обновления автоматически", isOn: Binding(
+                get: { updater.automaticallyChecksForUpdates },
+                set: { updater.setAutomaticChecks($0) }))
+            if let date = updater.lastCheckDate {
+                Text("Последняя проверка: \(date.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(updater.highlightsUpdate ? Color.blue : Color.clear, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .accessibilityIdentifier("app-update-card")
     }
 }
 
@@ -153,6 +201,8 @@ private struct StorageSettingsView: View {
     @ViewBuilder private var statistics: some View {
         statistic("Проекты на диске", bytes: model.storageProjects.reduce(0) { $0 + $1.totalBytes })
         statistic("Можно очистить", bytes: model.storageProjects.reduce(0) { $0 + $1.reclaimableBytes })
+        statistic("Временные медиа", bytes: model.storageTemporaryMediaBytes)
+            .help("Рабочие медиа, кэш кадров и остатки предыдущих версий. Рабочие файлы удаляются после использования, остатки после сбоя — при запуске; кэш кадров ограничен по размеру.")
         if let free = model.storageAvailableCapacity {
             statistic("Свободно на системном диске", bytes: free)
         }

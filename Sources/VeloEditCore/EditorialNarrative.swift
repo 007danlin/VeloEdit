@@ -170,7 +170,7 @@ public struct EditorialSequenceSearch: EditorialSequenceSearching {
             }
             var eligible = scored.filter { pair in
                 let unit = remaining[pair.index]
-                let protected = unit.speechSeconds > 0 || unit.evidence.hasProgression && unit.evidence.completion >= 0.65
+                let protected = unit.protectedSpeechSeconds > 0 || unit.evidence.hasProgression && unit.evidence.completion >= 0.65
                 return pair.score > 0 && ((!protected && selected.isEmpty) || seconds + unit.preferredDuration(pacing: pacing) <= target + 0.05 || unit.candidate.locked)
             }
             if hypothesis.pattern == .eventChapters {
@@ -290,7 +290,7 @@ public struct EditorialSequenceSearch: EditorialSequenceSearching {
 public enum EditorialStoryPlanner {
     public static func applying(to source: StoryPlan, context input: EditorialAnalysisContext, events: [Event] = [], strategy: String = "contextual", priority: [UUID: Double] = [:]) -> StoryPlan {
         var plan = source
-        var context = input
+        var context = input.respectingSpeechIntent(source)
         // Repair/fallback can receive a filtered candidate pool without the
         // full Event objects. The verified scopes already in StoryPlan must
         // survive that boundary; otherwise the search can interleave events.

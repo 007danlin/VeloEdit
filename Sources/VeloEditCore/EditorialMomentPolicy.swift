@@ -12,7 +12,7 @@ public struct EditorialMomentDecision: Codable, Hashable, Sendable {
 enum EditorialMomentPolicy {
     static func protectedRange(_ unit: EditorialUnit) -> EditorialSourceRange? {
         var starts: [Double] = [], ends: [Double] = []
-        if let speech = unit.candidate.insights?.speech, speech.confidence >= 0.65 {
+        if unit.speechContinuityRequired != false, let speech = unit.candidate.insights?.speech, speech.confidence >= 0.65 {
             starts.append(speech.phraseStart); ends.append(speech.phraseEnd)
         }
         if let boundary = unit.candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65 {

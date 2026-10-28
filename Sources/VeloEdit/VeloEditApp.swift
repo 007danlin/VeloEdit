@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import VeloEditCore
 
 @main
 struct VeloEditApp: App {
@@ -10,6 +11,7 @@ struct VeloEditApp: App {
 
     init() {
         DistributionSelfCheck.exitIfRequested()
+        TemporaryMediaMaintenance.performStartupMaintenance()
     }
 
     var body: some Scene {
@@ -19,7 +21,18 @@ struct VeloEditApp: App {
                     ContentView()
                 }
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        DirectorModelSetupBanner(setup: directorModelSetup).environmentObject(model)
+                        if model.project == nil {
+                            DirectorModelSetupBanner(setup: directorModelSetup).environmentObject(model)
+                                .task {
+                                    directorModelSetup.startIfNeeded()
+                                    directorModelSetup.refreshInstallation()
+                                    while !Task.isCancelled {
+                                        do { try await Task.sleep(for: .seconds(5)) }
+                                        catch { return }
+                                        directorModelSetup.refreshInstallation()
+                                    }
+                                }
+                        }
                     }
             }
                 .preferredColorScheme(.dark)
@@ -32,8 +45,13 @@ struct VeloEditApp: App {
                     appDelegate.updater = updater
                     appDelegate.model = model
                     appDelegate.directorModelSetup = directorModelSetup
-                    directorModelSetup.startIfNeeded()
+                    if model.project == nil { directorModelSetup.startIfNeeded() }
                     updater.start(model: model)
+                }
+                .onChange(of: model.project?.id) { _, projectID in
+                    // Project work owns its chosen mode and exact download.
+                    // Initial Fast setup must not compete with another mode.
+                    if projectID != nil { directorModelSetup.stop() }
                 }
                 .onChange(of: directorModelSetup.isInstalled) { _, installed in
                     if installed { Task { await model.refreshDirectorRuntimeStatus() } }
@@ -101,6 +119,10 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
                 let stopped = await model.stopForApplicationTermination(preserveProgress: true)
                 let saved = stopped ? await model.saveProjectForUpdateRelaunch() : false
                 if !saved { updater?.restartWasCancelled() }
+                if saved {
+                    directorModelSetup?.stop()
+                    await LocalAIModelManager.shared.shutdownOwnedService()
+                }
                 isFlushingAutosave = false
                 sender.reply(toApplicationShouldTerminate: saved)
             }
@@ -152,6 +174,10 @@ final class VeloEditAppDelegate: NSObject, NSApplicationDelegate {
                 alert.addButton(withTitle: "Остаться")
                 alert.addButton(withTitle: "Выйти без сохранения")
                 shouldQuit = alert.runModal() == .alertSecondButtonReturn
+            }
+            if shouldQuit {
+                directorModelSetup?.stop()
+                await LocalAIModelManager.shared.shutdownOwnedService()
             }
             isFlushingAutosave = false
             sender.reply(toApplicationShouldTerminate: shouldQuit)

@@ -7,6 +7,7 @@ import VeloEditCore
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var updater: AppUpdater
     @EnvironmentObject private var intro: FirstLaunchCoordinator
     @State private var isRenamingProject = false
     @State private var projectName = ""
@@ -47,8 +48,14 @@ struct ContentView: View {
             if model.openingProjectURL == nil,
                let job = model.project?.autonomousJob, job.state == .waitingForExternalResource {
                 HStack {
-                    Image(systemName: "externaldrive")
-                    Text(job.externalResource ?? "Ожидаю материалы")
+                    Image(systemName: job.inferenceRetryModel == nil ? "externaldrive" : "arrow.clockwise")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(job.externalResource ?? "Ожидаю материалы")
+                        if let retryAt = job.inferenceRetryAt {
+                            Text("Повторная попытка после \(retryAt.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     Spacer()
                     Button("Отменить", action: model.cancelOperation)
                 }
@@ -161,10 +168,19 @@ struct ContentView: View {
                 .zIndex(1)
 
             WindowHeaderButton(systemImage: "gearshape", label: "Настройки") {
+                if updater.availableVersion != nil {
+                    model.settingsTab = .general
+                    updater.markUpdateSeen()
+                }
                 model.openSection(.settings)
             }
                 .frame(width: 30, height: 32)
                 .zIndex(1)
+            if updater.showsUpdateDot {
+                Circle().fill(Color.blue).frame(width: 7, height: 7)
+                    .accessibilityLabel("Доступно обновление VeloEdit")
+                    .help("Доступно обновление — откройте настройки")
+            }
         }
         .padding(.horizontal, 6)
         .fixedSize(horizontal: true, vertical: false)
@@ -4985,6 +5001,7 @@ private struct AIPowerSelector: View {
                     .accessibilityValue(mode == model.aiPowerMode ? "Выбрано" : "Не выбрано")
                     .accessibilityHint(modeDescription(mode))
                     .accessibilityIdentifier("ai-power-\(mode.rawValue)")
+                    .disabled(model.isCreatingFilm)
 
                     if model.downloadingAIPowerMode == mode {
                         ProgressView(value: model.aiModelDownloadProgress)
@@ -5018,8 +5035,8 @@ private struct AIPowerSelector: View {
         .overlay(Capsule().stroke(Color(nsColor: .separatorColor).opacity(0.45)))
         .fixedSize(horizontal: true, vertical: false)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Глубина анализа видео")
-        .help("Режим меняет анализ видео. Чат во всех режимах использует Qwen3 4B; точные команды применяются без ожидания нейросети. Сравнение роликов работает во всех режимах.")
+        .accessibilityLabel("Режим сборки фильма")
+        .help("Режим задаёт модель и глубину всей сборки: анализ, проверку фрагментов, титров и готового фильма. Профиль сохраняется при запуске задания.")
         .alert(downloadAlertTitle, isPresented: downloadConfirmationPresented) {
             Button("Отмена", role: .cancel) { pendingDownloadMode = nil }
             Button("Загрузить") {
@@ -5878,6 +5895,7 @@ struct GeneralSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                AppUpdateSettingsCard()
                 SettingsSectionCard("Знакомство с VeloEdit") {
                     HStack(spacing: 12) {
                         SettingsActionDescription(icon: "play.rectangle", title: "Вступление и инструкция",
@@ -5937,27 +5955,6 @@ struct GeneralSettingsView: View {
                 }
 
                 SettingsSectionCard("Обслуживание") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 12) {
-                            SettingsActionDescription(icon: "arrow.down.circle", title: "Обновления VeloEdit",
-                                                      description: updater.status)
-                            Spacer(minLength: 12)
-                            Button("Проверить обновления…", action: updater.checkForUpdates)
-                                .buttonStyle(.borderedProminent)
-                                .disabled(!updater.canCheckForUpdates)
-                        }
-                        Toggle("Проверять обновления автоматически", isOn: Binding(
-                            get: { updater.automaticallyChecksForUpdates },
-                            set: { updater.setAutomaticChecks($0) }
-                        ))
-                        if let date = updater.lastCheckDate {
-                            Text("Последняя проверка: \(date.formatted(date: .abbreviated, time: .shortened))")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Divider()
-
                     HStack(spacing: 12) {
                         SettingsActionDescription(
                             icon: "stethoscope",
@@ -6009,7 +6006,7 @@ struct GeneralSettingsView: View {
     }
 }
 
-private struct SettingsSectionCard<Content: View>: View {
+struct SettingsSectionCard<Content: View>: View {
     let title: String
     let content: Content
 

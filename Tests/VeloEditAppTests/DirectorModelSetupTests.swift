@@ -7,13 +7,17 @@ private final class SetupBackend {
     var installed = false
     var downloadCalls = 0
     var fails = false
+    var availabilityFails = false
     var registersModel = true
     var suspend = false
     var continuation: CheckedContinuation<Void, Error>?
     var progress: (@Sendable (Double) -> Void)?
 
     var client: DirectorModelSetupClient {
-        DirectorModelSetupClient(isInstalled: { await self.installed }, download: { progress in
+        DirectorModelSetupClient(isInstalled: {
+            if await self.availabilityFails { throw URLError(.cannotConnectToHost) }
+            return await self.installed
+        }, download: { progress in
             try await self.download(progress)
         })
     }
@@ -68,6 +72,77 @@ struct DirectorModelSetupTests {
         try await eventually { setup.isInstalled }
         #expect(backend.downloadCalls == 0)
         #expect(!setup.showsCompletion)
+    }
+
+    @Test func modelInstalledElsewhereClearsStalePrompt() async throws {
+        let backend = SetupBackend()
+        let setup = DirectorModelSetup(defaults: defaults(), client: backend.client)
+        setup.startIfNeeded()
+        try await eventually { setup.phase == .awaitingDownload }
+        setup.stop() // Opening a project stops initial setup.
+        backend.installed = true
+        setup.refreshInstallation() // Returning home must recheck.
+        try await eventually { setup.isInstalled }
+        #expect(backend.downloadCalls == 0)
+        #expect(!setup.showsCompletion)
+    }
+
+    @Test func refreshNeverResumesAnAuthorizedDownload() async throws {
+        let backend = SetupBackend()
+        let preferences = defaults()
+        preferences.set(true, forKey: DirectorModelSetup.authorizedKey)
+        let setup = DirectorModelSetup(defaults: preferences, client: backend.client)
+        setup.refreshInstallation()
+        try await eventually { setup.phase == .awaitingDownload }
+        #expect(backend.downloadCalls == 0)
+    }
+
+    @Test func refreshRecognizesInstalledModelEvenWhenPaused() async throws {
+        let backend = SetupBackend()
+        let setup = DirectorModelSetup(defaults: defaults(), client: backend.client)
+        setup.pause()
+        backend.installed = true
+        setup.refreshInstallation()
+        try await eventually { setup.isInstalled }
+        #expect(backend.downloadCalls == 0)
+        #expect(!setup.showsCompletion)
+    }
+
+    @Test func refreshFailureKeepsDismissedBannerHidden() async throws {
+        let backend = SetupBackend()
+        backend.availabilityFails = true
+        let setup = DirectorModelSetup(defaults: defaults(), client: backend.client)
+        setup.pause()
+        setup.refreshInstallation()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(setup.phase == .paused)
+        #expect(backend.downloadCalls == 0)
+    }
+
+    @Test func diskCheckRequiresEveryCompleteBlob() throws {
+        let storage = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: storage) }
+        let manifest = storage.appendingPathComponent("manifests/registry.ollama.ai/library/qwen3-vl/2b-instruct")
+        let blobs = storage.appendingPathComponent("blobs")
+        try FileManager.default.createDirectory(at: manifest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: blobs, withIntermediateDirectories: true)
+        let digest = String(repeating: "a", count: 64)
+        let configDigest = String(repeating: "b", count: 64)
+        let data = try JSONSerialization.data(withJSONObject: [
+            "config": ["digest": "sha256:" + configDigest, "size": 2],
+            "layers": [["digest": "sha256:" + digest, "size": 4]]
+        ])
+        try data.write(to: manifest)
+        let weight = blobs.appendingPathComponent("sha256-" + digest)
+        #expect(!DirectorModelSetupClient.hasDownloadedModel("qwen3-vl:2b-instruct", storage: storage))
+        try Data([1, 2]).write(to: blobs.appendingPathComponent("sha256-" + configDigest))
+        try Data([1, 2]).write(to: weight)
+        #expect(!DirectorModelSetupClient.hasDownloadedModel("qwen3-vl:2b-instruct", storage: storage))
+        try Data([1, 2, 3, 4]).write(to: weight)
+        #expect(DirectorModelSetupClient.hasDownloadedModel("qwen3-vl:2b-instruct", storage: storage))
+        #expect(!DirectorModelSetupClient.hasDownloadedModel("qwen3-vl:4b-instruct", storage: storage))
+        try FileManager.default.removeItem(at: weight)
+        #expect(!DirectorModelSetupClient.hasDownloadedModel("qwen3-vl:2b-instruct", storage: storage))
     }
 
     @Test func offlineFailureCanBeRetried() async throws {

@@ -1,10 +1,51 @@
 import Foundation
 import Sparkle
 import Testing
+import SwiftUI
+import AppKit
 @testable import VeloEdit
 
 @MainActor
 struct AppUpdaterTests {
+    @Test func backgroundNoticeSurvivesOpeningSettingsUntilInstallOrDismissal() {
+        let updater = AppUpdater()
+        updater.announceUpdate(version: "2.0")
+        #expect(updater.showsUpdateDot && updater.highlightsUpdate)
+        updater.markUpdateSeen()
+        #expect(!updater.showsUpdateDot && updater.highlightsUpdate)
+        updater.announceUpdate(version: "2.0")
+        #expect(!updater.showsUpdateDot)
+        updater.markInstallationRequested()
+        #expect(!updater.highlightsUpdate && !updater.showsUpdateDot)
+        updater.standardUserDriverWillFinishUpdateSession()
+        #expect(!updater.highlightsUpdate && updater.availableVersion == nil)
+        updater.announceUpdate(version: "2.1")
+        #expect(updater.showsUpdateDot && updater.highlightsUpdate)
+        #expect(updater.supportsGentleScheduledUpdateReminders)
+        #expect(updater.responds(to: NSSelectorFromString("standardUserDriverShouldHandleShowingScheduledUpdate:andInImmediateFocus:")))
+    }
+
+    @Test func renderUpdateNoticeForVisualReview() throws {
+        guard let path = ProcessInfo.processInfo.environment["VELOEDIT_UPDATE_REVIEW_DIR"] else { return }
+        let directory = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        _ = NSApplication.shared
+        let updater = AppUpdater()
+        updater.announceUpdate(version: "2.0")
+        for installing in [false, true] {
+            if installing { updater.markInstallationRequested() }
+            let view = AppUpdateSettingsCard().environmentObject(updater)
+                .padding(24).frame(width: 800).preferredColorScheme(.dark)
+            let host = NSHostingView(rootView: view)
+            host.frame = CGRect(origin: .zero, size: host.fittingSize)
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let png = try #require(bitmap.representation(using: .png, properties: [:]))
+            try png.write(to: directory.appendingPathComponent(installing ? "update-installing.png" : "update-available.png"))
+        }
+    }
+
     private func sparkle(delegate: AppUpdater) -> SPUUpdater {
         SPUUpdater(hostBundle: .main, applicationBundle: .main,
                    userDriver: AppUpdateUserDriver(hostBundle: .main, delegate: nil), delegate: delegate)

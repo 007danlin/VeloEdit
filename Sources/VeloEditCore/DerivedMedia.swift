@@ -327,7 +327,7 @@ public actor ThermalAwareScheduler {
     public func statusLabel() -> String {
         switch refresh() {
         case .cool: return ProcessInfo.processInfo.isLowPowerModeEnabled ? "Энергосбережение: одна AI-задача" : "Температура нормальная"
-        case .warm: return "Mac нагрелся — глубина анализа снижена"
+        case .warm: return "Mac нагрелся — ограничена параллельная нагрузка"
         case .hot: return "Охлаждаю Mac — тяжёлые AI-задачи приостановлены"
         }
     }

@@ -83,11 +83,19 @@ struct AutomaticFilmDeliveryTests {
         let item = TimelineItem(candidateID: candidate.id, assetID: asset.id, kind: .photo,
             sourceDuration: 12, timelineStart: 0, timelineDuration: 12, videoAdjustments: .init(crop: .fit))
         let timeline = Timeline(storyPlanID: plan.id, width: 320, height: 180, frameRate: 15, items: [item])
-        let draft = FilmBuildDraft(phase: .verifying, timeline: timeline, plan: plan, analyses: analyses,
+        var draft = FilmBuildDraft(phase: .verifying, timeline: timeline, plan: plan, analyses: analyses,
             tracks: [], sourceMap: .empty, events: [], personalTaste: .init(), checkpointReason: "Interrupted quality check")
+        // Exercise current-version recovery, not migration of an unbound
+        // legacy draft through fresh analysis and photo-duration selection.
+        let digest = "automatic-delivery-fixture-weights"
+        let profile = FilmProcessProfile(analysis: FilmProcessContext.analysis(preferences: await store.manifest.preferences), modelDigest: digest)
+        draft.processProfile = profile
+        _ = try await store.beginAutonomousJob(kind: .film)
+        try await store.updateAutonomousJob { $0.processProfile = profile }
         try await store.checkpointFilmBuild(draft, ifRevision: await store.snapshot().revision)
         let pipeline = VeloEditPipeline(store: store, renderedProber: PersistentQualityProber(kind: kind),
-            personalTasteStore: LocalPersonalTasteStore(url: root.appendingPathComponent("taste.json")))
+            personalTasteStore: LocalPersonalTasteStore(url: root.appendingPathComponent("taste.json")),
+            modelDigestProvider: { _ in digest })
         let result = try await pipeline.resumeFilmBuild()
         #expect(result.items.contains { $0.id == item.id })
         #expect(result.duration == 12)

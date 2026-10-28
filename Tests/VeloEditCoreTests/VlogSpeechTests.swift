@@ -207,8 +207,13 @@ final class VlogSpeechTests: XCTestCase {
         let store = try ProjectStore(createAt: root.appendingPathComponent("test.veloedit"), name: "Vlog test")
         try await store.update { project in project.assets = [asset]; project.preferences.aiPowerMode = .fast }
         let speech = CountingSpeech(transcript: transcript())
-        let pipeline = VeloEditPipeline(store: store, speechRecognizer: speech)
-        let brief = DirectorBrief(requestedDuration: 3, musicPolicy: .none, sourceAudioPolicy: .preserve, durationMode: .exact, effectsPolicy: DirectorEffectsPolicy.none, subtitleStyle: .social)
+        let pipeline = VeloEditPipeline(store: store, speechRecognizer: speech,
+            modelDigestProvider: { _ in "vlog-speech-fixture-weights" })
+        // This fixture asserts properties of every title and then expects all
+        // speech captions to disappear on mute. An automatic film-opening
+        // title is independent of speech, so keep it out of this fixture.
+        let brief = DirectorBrief(requestedDuration: 3, musicPolicy: .none, sourceAudioPolicy: .preserve, durationMode: .exact,
+            effectsPolicy: DirectorEffectsPolicy.none, subtitleStyle: .social, openingTitles: .init(policy: .off))
         let result = try await pipeline.createFilm(prompt: "Стиль: Влог", preset: .vlog, directorBrief: brief)
         let calls = await speech.calls
         XCTAssertEqual(calls, 1)

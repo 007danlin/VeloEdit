@@ -1,10 +1,6 @@
 import Foundation
 import VeloEditCore
 
-#if canImport(FoundationModels)
-import FoundationModels
-#endif
-
 struct DirectorAIReply: Sendable {
     let text: String
     let runtimeLabel: String
@@ -156,9 +152,11 @@ final class LocalDirectorAgent {
     init(responseProvider: ResponseProvider? = nil) {
         self.responseProvider = responseProvider
     }
-    nonisolated static let ollamaModel = "qwen3:4b-instruct"
-    private static let ollamaRuntimeLabel = "Qwen3 4B Instruct · локальная нейросеть"
-    private static let ollamaBaseURL = URL(string: "http://127.0.0.1:11434")!
+    nonisolated static let ollamaModel = "qwen3-vl:2b-instruct"
+    private static func runtimeLabel(_ mode: AIPowerMode) -> String {
+        AIAnalysisProfile.resolve(mode: mode).modelID + " · локальная нейросеть"
+    }
+    private static let ollamaBaseURL = LocalAIRuntimeConfiguration.baseURL
     private var ollamaHistory: [OllamaMessage] = []
     private var modelRequestActive = false
     private var conversationGeneration: UInt64 = 0
@@ -167,16 +165,9 @@ final class LocalDirectorAgent {
         "Проверяю локальную нейросеть…"
     }
 
-    func runtimeStatus() async -> String {
-        // Status polling does not start Ollama. First-launch model preparation
-        // and actual AI requests own service startup.
-        if await hasOllamaModel(startService: false) { return Self.ollamaRuntimeLabel }
-        #if canImport(FoundationModels)
-        if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
-            return "Apple Intelligence · локальная нейросеть"
-        }
-        #endif
-        return "Базовый алгоритм · это не нейросеть"
+    func runtimeStatus(mode: AIPowerMode = .fast) async -> String {
+        if await hasOllamaModel(startService: false, mode: mode) { return Self.runtimeLabel(mode) }
+        return "Нужна модель " + AIAnalysisProfile.resolve(mode: mode).modelID
     }
 
     func reset() {
@@ -319,7 +310,7 @@ final class LocalDirectorAgent {
     private func generateAdvice(_ prompt: String, context: DirectorContext, detailed: Bool) async throws -> DirectorAIReply {
         let requestData = DirectorAdviceRequest(prompt: prompt, context: context, history: compactAdviceHistory, detailed: detailed)
         PerformanceTrace.current?.event("director.loading")
-        let available = await hasOllamaModel(startService: true)
+        let available = await hasOllamaModel(startService: true, mode: context.aiPowerMode)
         try Task.checkCancellation()
         if available {
             var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
@@ -327,24 +318,16 @@ final class LocalDirectorAgent {
             request.timeoutInterval = detailed ? 30 : 6
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(requestData)
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            let (data, response) = try await LocalAIInferenceClient.shared.response(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
             var stream = DirectorReplyStream()
-            for try await line in bytes.lines where !line.isEmpty {
+            for line in [String(decoding: data, as: UTF8.self)] {
                 try Task.checkCancellation()
                 _ = try stream.append(line) // Metadata must be validated before any text is shown.
             }
             try Task.checkCancellation()
-            return try validatedAdvice(try stream.completedContent(), context: context, detailed: detailed, runtime: Self.ollamaRuntimeLabel, allowsProposedTitle: DirectorAdviceRequest.requestsTitle(prompt))
+            return try validatedAdvice(try stream.completedContent(), context: context, detailed: detailed, runtime: Self.runtimeLabel(context.aiPowerMode), allowsProposedTitle: DirectorAdviceRequest.requestsTitle(prompt))
         }
-        #if canImport(FoundationModels)
-        if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
-            let session = LanguageModelSession(instructions: DirectorAdviceRequest.instructions)
-            let response = try await session.respond(to: requestData.messages.last!.content + "\nJSON: {\"stance\":\"keep|trim|compare|reorder|clarify|insufficientEvidence\",\"targetID\":\"\",\"evidenceIDs\":[],\"reply\":\"\"}")
-            try Task.checkCancellation()
-            return try validatedAdvice(response.content, context: context, detailed: detailed, runtime: "Apple Intelligence · локальная нейросеть", allowsProposedTitle: DirectorAdviceRequest.requestsTitle(prompt))
-        }
-        #endif
         throw URLError(.cannotConnectToHost)
     }
 
@@ -383,7 +366,7 @@ final class LocalDirectorAgent {
         onPartialReply: (@MainActor @Sendable (String) -> Void)?,
         repairingPlan: Bool = false
     ) async throws -> DirectorAIReply {
-        let ollamaAvailable = await hasOllamaModel(startService: true)
+        let ollamaAvailable = await hasOllamaModel(startService: true, mode: context.aiPowerMode)
         try Task.checkCancellation()
         let requestModeInstruction = mode == .advisory
             ? "РЕЖИМ СОВЕТА: предложи музыку, название или объясни звук по данным анализа. Ничего не применяй, пиши в настоящем времени, верни commands: [] и пустой normalizedBrief. Обязательно скажи, что исходник и Timeline не изменены."
@@ -435,19 +418,11 @@ final class LocalDirectorAgent {
             messages.append(OllamaMessage(role: "user", content: "Предыдущая попытка не дала корректного полного плана; ничего не применено. Составь план заново для всего исходного запроса. Используй только перечисленные action, коды и цели, включи все поля команды. reply сократи до одной фразы, не повторяй каталог. Не теряй ни одну запрошенную правку."))
         }
         if !ollamaAvailable {
-            #if canImport(FoundationModels)
-            if #available(macOS 26.0, *), SystemLanguageModel.default.isAvailable {
-                let session = LanguageModelSession(instructions: editingSystem.content)
-                let response = try await session.respond(to: messages.dropFirst().map(\.content).joined(separator: "\n") + "\nВерни полный JSON: {\"reply\":\"\",\"normalizedBrief\":\"\",\"commands\":[{\"action\":\"код\",\"target\":\"selected\",\"value\":\"\",\"secondaryTarget\":\"\"}]}")
-                try Task.checkCancellation()
-                return try Self.decodeReply(response.content, userMessage: userMessage, runtimeLabel: "Apple Intelligence · локальная нейросеть", allowsFootageReplacement: allowsFootageReplacement, mode: mode)
-            }
-            #endif
             // No generation was attempted. The existing deterministic planner
             // can still resolve supported commands and reports omissions.
             return DirectorAIReply(text: "Проверяю доступные монтажные команды.", runtimeLabel: "Базовый алгоритм · это не нейросеть", normalizedBrief: nil, isFallback: true)
         }
-        var payload = OllamaChatRequest(model: Self.ollamaModel, messages: messages)
+        var payload = OllamaChatRequest(model: AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID, messages: messages)
         if repairingPlan { payload.options.numPredict = 2400 }
         var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
@@ -456,12 +431,12 @@ final class LocalDirectorAgent {
         request.httpBody = try JSONEncoder().encode(payload)
 
         let started = ProcessInfo.processInfo.systemUptime
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let (data, response) = try await LocalAIInferenceClient.shared.response(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
         var stream = DirectorReplyStream()
-        for try await line in bytes.lines where !line.isEmpty {
+        for line in [String(decoding: data, as: UTF8.self)] {
             try Task.checkCancellation()
             if try stream.append(line) != nil {
                 PerformanceTrace.current?.event("director.reply-field-ready", values: ["seconds": ProcessInfo.processInfo.systemUptime - started])
@@ -476,7 +451,7 @@ final class LocalDirectorAgent {
         let reply = decoded.reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reply.isEmpty else { throw URLError(.cannotParseResponse) }
 
-        return try Self.decodeReply(content, userMessage: userMessage, runtimeLabel: Self.ollamaRuntimeLabel,
+        return try Self.decodeReply(content, userMessage: userMessage, runtimeLabel: Self.runtimeLabel(context.aiPowerMode),
                                     allowsFootageReplacement: allowsFootageReplacement && mode == .edit, mode: mode)
     }
 
@@ -724,16 +699,8 @@ final class LocalDirectorAgent {
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func hasOllamaModel(startService: Bool) async -> Bool {
-        await LocalAIModelManager.shared.availability(model: Self.ollamaModel, startService: startService).installed
+    private func hasOllamaModel(startService: Bool, mode: AIPowerMode) async -> Bool {
+        await LocalAIModelManager.shared.availability(model: AIAnalysisProfile.resolve(mode: mode).modelID, startService: startService).installed
     }
 
-    #if canImport(FoundationModels)
-    @available(macOS 26.0, *)
-    private func makeAppleSession() -> LanguageModelSession {
-        LanguageModelSession(instructions: """
-            Ты режиссёр с искусственным интеллектом в локальном приложении VeloEdit. Отвечай по-русски, естественно, конкретно и дружелюбно. Обязательно учитывай точные числа и не выдавай стандартные параметры за пожелания пользователя.
-            """)
-    }
-    #endif
 }

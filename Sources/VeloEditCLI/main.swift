@@ -5,6 +5,7 @@ import VeloEditCore
 @main
 struct VeloEditCLI {
     static func main() async {
+        TemporaryMediaMaintenance.performStartupMaintenance()
         do { try await run(Array(CommandLine.arguments.dropFirst())) }
         catch {
             let nsError = error as NSError

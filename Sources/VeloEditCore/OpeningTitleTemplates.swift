@@ -17,9 +17,12 @@ extension TitleTemplateRegistry {
         compact.duration = 5
         compact.defaultAnimation = .init(entrance: .none, exit: .none, duration: 0)
         compact.layout.elements.removeAll { $0.content == .secondaryText }
-        // The approved landscape origin moves the group left and down. Give
-        // portrait its own authored frames so that offset stays inside canvas.
+        // The chapter style moves the group left and down relative to the
+        // opening layout. Keep its landscape text inside the safe margin,
+        // including the first glyph's overhang and readability outline.
+        // Portrait retains its separately authored placement.
         for index in compact.layout.elements.indices {
+            compact.layout.elements[index].frame.x += 0.03
             if compact.layout.elements[index].id == "primary" {
                 compact.layout.elements[index].portraitFrame = .init(x: 0.20, y: 0.32, width: 0.74, height: 0.22)
             } else if compact.layout.elements[index].id == "hairline" {

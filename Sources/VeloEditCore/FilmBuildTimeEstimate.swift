@@ -67,7 +67,7 @@ public struct FilmBuildTimeEstimate {
     /// Until this Mac has measured the current operation, a workload heuristic
     /// is useful internally but is not a trustworthy countdown for the user.
     public var hasMeasuredPace: Bool {
-        if childStage == .sourceContent || childStage == .renderedContent {
+        if let childStage, [.sourceContent, .sourceFrames, .sourceBoundaries, .renderedContent].contains(childStage) {
             return child?.measuredCompletion != nil
         }
         return work.measuredCompletion != nil || work.suppliedCompletion != nil
@@ -116,7 +116,7 @@ public struct FilmBuildTimeEstimate {
             child = nil
             childStage = nil
             work.update(fraction: update.fraction, total: update.total, eta: nil, now: now)
-        } else if Self.verificationStages.contains(update.stage) {
+        } else if Self.verificationStages.contains(update.stage) || [.sourceFrames, .sourceBoundaries].contains(update.stage) {
             // Render callbacks are nested inside a variant review, finishing or verification.
             // They must not mark all preceding variants/parent operations as finished.
             if childStage != update.stage {
@@ -145,8 +145,14 @@ public struct FilmBuildTimeEstimate {
         if let stage = childStage, var nested = child {
             let nestedRemaining = nested.remaining(now: now)
             child = nested
-            if step == .verifying, let index = Self.verificationStages.firstIndex(of: stage) {
-                current = nestedRemaining + Self.verificationStages.dropFirst(index + 1)
+            if step == .verifying {
+                let later: [FilmBuildProgress.Stage]
+                if stage == .sourceFrames { later = [.sourceBoundaries, .renderedContent] }
+                else if stage == .sourceBoundaries { later = [.renderedContent] }
+                else if let index = Self.verificationStages.firstIndex(of: stage) {
+                    later = Array(Self.verificationStages.dropFirst(index + 1))
+                } else { later = [] }
+                current = nestedRemaining + later
                     .reduce(0) { $0 + childBudget(for: $1) }
             } else if (step == .reviewing || step == .fallback),
                       let total = work.total, total > 0, let fraction = work.fraction {
@@ -195,6 +201,8 @@ public struct FilmBuildTimeEstimate {
         case .controlExport: share = 0.60
         case .deliveryFrames: share = 0.15
         case .audioCheck: share = 0.05
+        case .sourceFrames: share = 0.7
+        case .sourceBoundaries: share = 0.3
         default: share = 1
         }
         return max(3, budget(for: .verifying) * share)

@@ -13,10 +13,11 @@ import Testing
     #expect(profile.maximumVLMScenes == 2)
 }
 
-@Test func maximumDoesNotSelectThirtyBillionParametersOnBaseMemory() {
+@Test func maximumKeepsItsModelAndReportsUnsupportedMemory() {
     let baseMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
     let largeMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 32 * 1_073_741_824, thermalState: .nominal)
-    #expect(baseMemory.ollamaModelID == "qwen3-vl:8b-instruct")
+    #expect(baseMemory.ollamaModelID == "qwen3-vl:30b-a3b-instruct")
+    #expect(throws: FilmProcessProfileError.self) { try FilmProcessProfile(analysis: baseMemory).validateDevice(physicalMemory: 16 * 1_073_741_824) }
     #expect(baseMemory.quantization == .q4)
     #expect(largeMemory.ollamaModelID == "qwen3-vl:30b-a3b-instruct")
 }
@@ -53,10 +54,10 @@ import Testing
     #expect(dense.allSatisfy { $0 >= 0 && $0 < 120 })
 }
 
-@Test func manualModelUsesItsInstalledQuantization() {
+@Test func legacyManualModelCannotRedefineNamedMode() {
     let advanced = AdvancedAISettings(enabled: true, runtime: .ollama, modelID: "my-local-vlm", quantization: .q8)
     let profile = AIAnalysisProfile.resolve(mode: .fast, advanced: advanced, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
-    #expect(profile.modelID == "my-local-vlm")
+    #expect(profile.modelID == "qwen3-vl:2b-instruct")
     #expect(profile.quantization == .modelProvided)
     #expect(profile.mode == .fast)
 }

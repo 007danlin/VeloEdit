@@ -118,10 +118,15 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
     public var shotFamilyID: String?
     public var discardReason: EditorialDiscardReason? = nil
     public var evidence: EditorialEvidence
+    // Optional for compatibility with persisted units made before intent-aware
+    // speech editing. Source observations themselves remain unchanged.
+    public var speechContinuityRequired: Bool? = nil
+    public var protectedSpeechSeconds: Double { speechContinuityRequired == false ? 0 : speechSeconds }
     public var sourceRange: EditorialSourceRange { .init(start: candidate.sourceStart, end: candidate.sourceStart + candidate.sourceDuration) }
 
-    public init(candidate: Candidate, eventID: UUID? = nil, sceneID: UUID? = nil) {
+    public init(candidate: Candidate, eventID: UUID? = nil, sceneID: UUID? = nil, preserveSpeech: Bool = true) {
         self.candidate = candidate
+        speechContinuityRequired = preserveSpeech
         self.eventID = eventID
         self.sceneID = sceneID
         semanticEventID = candidate.insights?.semanticEventID
@@ -157,9 +162,9 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
         let range = max(0, min(sourceRange.end, evidence.usableRange.end) - max(sourceRange.start, evidence.usableRange.start))
         guard discardReason == nil, !evidence.hasHardOcclusion, quality >= 0.38 else { return 0 }
         if let boundary = candidate.momentBoundary, boundary.confirmedActionConfidence >= 0.65 {
-            return min(range, max(speechSeconds, boundary.completionEnd - boundary.anticipationStart))
+            return min(range, max(protectedSpeechSeconds, boundary.completionEnd - boundary.anticipationStart))
         }
-        if speechSeconds > 0 { return min(range, speechSeconds) }
+        if protectedSpeechSeconds > 0 { return min(range, protectedSpeechSeconds) }
         if evidence.hasProgression { return evidence.completion >= 0.65 && evidence.unchangedSeconds <= 15 ? range : min(range, 15) }
         if let observation = candidate.insights?.expressiveMoment, observation.supportsObservation,
            observation.covers(candidate), evidence.confidence >= 0.55 { return min(range, 10) }
@@ -171,7 +176,7 @@ public struct EditorialUnit: Codable, Hashable, Sendable, Identifiable {
 
     public func preferredDuration(pacing: Double) -> Double {
         if candidate.tags.contains("photo") { return min(usableDuration, PhotoPresentationPolicy.duration) }
-        if speechSeconds > 0 || (candidate.momentBoundary?.confirmedActionConfidence ?? 0) >= 0.65 { return usableDuration }
+        if protectedSpeechSeconds > 0 || (candidate.momentBoundary?.confirmedActionConfidence ?? 0) >= 0.65 { return usableDuration }
         if evidence.hasProgression && evidence.completion >= 0.65 { return usableDuration }
         if let duration = ExpressiveMomentPolicy.duration(self, pacing: pacing) { return duration }
         let base = evidence.atmosphereValue >= 0.65 ? 4.2 : evidence.actionDelta >= 0.18 ? 1.6 : 2.5
@@ -535,13 +540,13 @@ public struct EditorialAnalysisContext: Sendable {
     public var expandedMiningPerformed: Bool
     public var units: [EditorialUnit]
     public var families: ShotFamilyIndex
-    public init(analyses: [AnalysisResult], events: [Event] = []) {
+    public init(analyses: [AnalysisResult], events: [Event] = [], preserveSpeech: Bool = true) {
         expandedMiningPerformed = !analyses.isEmpty && analyses.allSatisfy { $0.warnings.contains(EditorialCandidateMiner.completionMarker) }
         let scopes = events.reduce(into: [UUID: (UUID, UUID)]()) { result, event in
             for scene in event.effectiveScenes { for id in scene.candidateIDs { result[id] = (event.id, scene.id) } }
         }
         units = analyses.flatMap(\.directorCandidates).filter { !$0.excluded }.map { candidate in
-            EditorialUnit(candidate: candidate, eventID: scopes[candidate.id]?.0, sceneID: scopes[candidate.id]?.1)
+            EditorialUnit(candidate: candidate, eventID: scopes[candidate.id]?.0, sceneID: scopes[candidate.id]?.1, preserveSpeech: preserveSpeech)
         }
         // An imported document is evaluated, not automatically inserted as a
         // visually novel ending to unrelated outdoor footage. Maps/navigation,
@@ -562,5 +567,12 @@ public struct EditorialAnalysisContext: Sendable {
         }
         families = ShotFamilyClusterer().cluster(units: units)
         for index in units.indices { units[index].shotFamilyID = families.familyByUnitID[units[index].id] }
+    }
+
+    func respectingSpeechIntent(_ plan: StoryPlan) -> Self {
+        var result = self
+        let required = SpeechEditingPolicy.requiresCompletePhrases(plan: plan)
+        for index in result.units.indices { result.units[index].speechContinuityRequired = required }
+        return result
     }
 }

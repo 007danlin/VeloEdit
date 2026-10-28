@@ -188,6 +188,9 @@ struct RequestFulfillmentTests {
         frames[0].exportVerification = export
         let cache = RenderedProbeCache(directory: root.appendingPathComponent("cache"))
         try await cache.store(frames, timeline: timeline, assets: [])
+        #expect(await cache.load(timeline: timeline, assets: []) == nil)
+        frames[0].exportVerification?.expectsAudio = true
+        try await cache.store(frames, timeline: timeline, assets: [])
         let restored = try #require(await cache.load(timeline: timeline, assets: [])?.first?.exportVerification)
         let reopened = try JSONDecoder.veloEdit.decode(EditorialExportVerification.self, from: JSONEncoder.veloEdit.encode(restored))
         #expect(reopened.fileModifiedTime != nil && reopened.artifactIsCurrent)

@@ -23,6 +23,24 @@ private func buildEstimate(calibration: [String: Double] = [:]) -> FilmBuildTime
     #expect(!estimate.hasMeasuredPace)
 }
 
+@Test func contentReviewGroupedBoundariesDoNotInheritFramePhaseElapsedTime() {
+    var estimate = buildEstimate(calibration: ["verifying": 1])
+    estimate.observe(.init(.verifying), now: 0)
+    estimate.observe(.init(.sourceFrames, completed: 0, total: 13), now: 0)
+    estimate.observe(.init(.sourceFrames, completed: 12, total: 13), now: 1_200)
+    #expect(estimate.hasMeasuredPace)
+    estimate.observe(.init(.sourceFrames, completed: 13, total: 13), now: 1_300)
+    estimate.observe(.init(.sourceBoundaries, completed: 0, total: 13), now: 1_300)
+    #expect(!estimate.hasMeasuredPace)
+    estimate.observe(.init(.sourceBoundaries, completed: 1, total: 13), now: 1_330)
+    #expect(estimate.hasMeasuredPace)
+    let remaining = estimate.remaining(now: 1_330)
+    #expect(remaining > 360) // Twelve boundaries plus separate exported-MP4 review and delivery.
+    #expect(remaining < 1_000) // The preceding 1,300 seconds cannot become each boundary's cost.
+    estimate.observe(.init(.renderedContent, completed: 0, total: 13), now: 1_690)
+    #expect(!estimate.hasMeasuredPace)
+}
+
 @Test func filmBuildEstimateIncludesWorkAfterAnalysis() {
     var estimate = buildEstimate()
     estimate.observe(step: .analysis, fraction: 0.5, total: 100, secondsRemaining: 30, now: 10)

@@ -23,6 +23,7 @@ private actor IncompleteCitationTitleModel: ChapterTitleModel {
 private actor TitleModelProbe: ChapterTitleModel {
     nonisolated let identity: String
     var calls = 0
+    var receivedCacheIdentities: [String?] = []
     let text: String
     let kind: String
     let rejects: Bool
@@ -33,6 +34,7 @@ private actor TitleModelProbe: ChapterTitleModel {
     }
     func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal {
         calls += 1
+        receivedCacheIdentities.append(input.responseCacheIdentity)
         if delay > 0 { try await Task.sleep(nanoseconds: delay) }
         if fails { throw URLError(.cannotParseResponse) }
         return .init(theme: "Сплав", setting: "Река", secondaryActivities: ["Сборы", "Привал"], contradictions: [], unknowns: [],
@@ -47,6 +49,140 @@ private actor TitleModelProbe: ChapterTitleModel {
 
 @Suite(.serialized)
 struct SmartChapterTitlesTests {
+    private actor LanguageRepairModel: ChapterTitleModel {
+        nonisolated let identity = "language-repair-fixture"
+        var generated = 0
+        var checked = 0
+        var receivedSpecificFeedback = false
+        func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal {
+            generated += 1
+            receivedSpecificFeedback = input.limitations.contains { $0.contains("synthetic grammar defect") }
+            let title = generated == 1 ? "Лодка плывутся" : "Сплав по реке"
+            return .init(theme: "Сплав", setting: "Река", secondaryActivities: [], contradictions: [], unknowns: [],
+                titles: [.init(text: title, claims: [.init(text: title, kind: "activity",
+                    evidenceIDs: input.evidence.filter(\.selected).map(\.id))])])
+        }
+        func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification {
+            checked += 1
+            return .init(accepted: checked > 1,
+                reasons: [checked == 1 ? "synthetic grammar defect: inconsistent word forms" : "Grounded, grammatical chapter title"],
+                unsupportedClaims: [], evidenceIDs: proposal.claims.flatMap(\.evidenceIDs), coversWholePart: true)
+        }
+    }
+
+    @Test func languageOnlyRejectionMustBeRepairedAndIndependentlyVerified() async throws {
+        let (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        let model = LanguageRepairModel()
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan,
+            assets: assets, analyses: analyses, mode: .fast, model: model)
+        #expect(await model.generated == 2)
+        #expect(await model.checked == 2)
+        #expect(await model.receivedSpecificFeedback)
+        let decision = try #require(result.chapterTitleDecisions?.first)
+        #expect(decision.text == "Сплав по реке")
+        #expect(decision.verifications.map(\.accepted) == [false, true])
+        #expect(decision.modelID == model.identity)
+        #expect(result.items == timeline.items)
+    }
+
+    @Test func editedWordingMustPassIndependentVerificationAndCannotReuseTheOriginalVerdict() async throws {
+        actor EditedModel: ChapterTitleModel {
+            nonisolated let identity = "same-selected-model"
+            nonisolated let requiresWordingEdit = true
+            var checked: [String] = []
+            func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal {
+                .init(theme: "Сплав", setting: "Река", secondaryActivities: [], contradictions: [], unknowns: [],
+                    titles: [.init(text: "Сплав по реке", claims: [.init(text: "Сплав по реке", kind: "activity", evidenceIDs: input.evidence.map(\.id))])])
+            }
+            func editWording(_ theme: ChapterThemeProposal, input: ChapterTitleInput) async throws -> ChapterThemeProposal {
+                var edited = theme; edited.titles[0].text = "На Марсе"; return edited
+            }
+            func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification {
+                checked.append(proposal.text)
+                return .init(accepted: false, reasons: ["The edit invents a place"], unsupportedClaims: ["Марс"],
+                    evidenceIDs: input.evidence.map(\.id), coversWholePart: false)
+            }
+        }
+        let (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        let model = EditedModel()
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan,
+            assets: assets, analyses: analyses, mode: .fast, model: model)
+        #expect(await model.checked == ["На Марсе", "На Марсе", "На Марсе"])
+        let decision = try #require(result.chapterTitleDecisions?.first)
+        #expect(decision.source == .fallback && decision.text != "На Марсе")
+        #expect(decision.modelCalls == 9)
+        #expect(decision.verifications.allSatisfy { !$0.accepted })
+        #expect(result.items == timeline.items)
+    }
+
+    @Test func rawTitleCacheProvenanceIgnoresOnlyNewAssemblyIDs() async throws {
+        let (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        let model = TitleModelProbe()
+        _ = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan,
+            assets: assets, analyses: analyses, mode: .balanced, model: model)
+        var rebuilt = timeline
+        for i in rebuilt.items.indices { rebuilt.items[i].id = UUID() }
+        _ = try await SmartChapterTitleEngine().applying(to: rebuilt, plan: plan,
+            assets: assets, analyses: analyses, mode: .balanced, model: model)
+        let initial = await model.receivedCacheIdentities
+        #expect(initial.count == 2 && initial[0] != nil && initial[0] == initial[1])
+        rebuilt.items[0].sourceStart += 0.1
+        _ = try await SmartChapterTitleEngine().applying(to: rebuilt, plan: plan,
+            assets: assets, analyses: analyses, mode: .balanced, model: model)
+        let changed = await model.receivedCacheIdentities
+        #expect(changed.last! != initial[0])
+    }
+
+    private actor CachedTitleTransport {
+        var calls = 0
+        func send(_ request: URLRequest) throws -> (Data, URLResponse) {
+            calls += 1
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            let messages = body["messages"] as! [[String: Any]]
+            let generation = (messages[0]["content"] as! String).contains("Предложи название")
+            let content = generation
+                ? #"{"theme":"Река","setting":"Берег","secondaryActivities":[],"contradictions":[],"unknowns":[],"titles":[{"text":"У реки","claims":[{"text":"У реки","kind":"setting","evidenceIDs":["e0"]}]}]}"#
+                : #"{"accepted":true,"reasons":["A river is visible throughout the selected part"],"unsupportedClaims":[],"evidenceIDs":["e0"],"coversWholePart":true}"#
+            let bytes = try JSONSerialization.data(withJSONObject: ["model": body["model"]!, "done": true,
+                "done_reason": "stop", "message": ["content": content]])
+            return (bytes, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+    }
+
+    @Test func titleResponseCacheRetainsIndependentVerificationAndExactEvidenceAndWeights() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transport = CachedTitleTransport()
+        var model = LocalChapterTitleModel(model: "qwen3-vl:2b-instruct", digest: "weights-a", mode: .fast, responseCacheURL: root)
+        model.answerTransport = { try await transport.send($0) }
+        let evidence = ChapterTitleEvidence(id: "e0", assetID: UUID(), itemID: UUID(),
+            sourceStart: 0, sourceEnd: 5, timelineStart: 0, timelineEnd: 5,
+            origin: .visualSummary, observation: "A wide river runs between wooded banks", selected: true,
+            frameTimes: [0, 1, 2, 3, 4], actionSequence: false)
+        var input = ChapterTitleInput(partID: UUID(), ordinal: 1, duration: 5, language: "ru", maxCharacters: 48,
+            evidence: [evidence], coverage: .init(selectedSeconds: 5, observedSeconds: 5,
+                sampledEvidenceCount: 1, availableEvidenceCount: 1, beginning: true, middle: true, end: true),
+            limitations: [], responseCacheIdentity: "exact-source-images-and-review-a")
+        let first = try await model.generate(input)
+        let verified = try await model.verify(first.titles[0], input: input)
+        #expect(verified.accepted)
+        #expect(await transport.calls == 2)
+        input.partID = UUID(); input.evidence[0].itemID = UUID()
+        let reused = try await model.generate(input)
+        _ = try await model.verify(reused.titles[0], input: input)
+        #expect(await transport.calls == 2)
+        input.responseCacheIdentity = "same-words-but-different-source-images-or-review"
+        _ = try await model.generate(input)
+        #expect(await transport.calls == 3)
+        input.evidence[0].observation += " A bird crosses the image."
+        _ = try await model.generate(input)
+        #expect(await transport.calls == 4)
+        var changedModel = LocalChapterTitleModel(model: "qwen3-vl:2b-instruct", digest: "weights-b", mode: .fast, responseCacheURL: root)
+        changedModel.answerTransport = { try await transport.send($0) }
+        _ = try await changedModel.generate(input)
+        #expect(await transport.calls == 5)
+    }
+
     @Test func rejectedSingleShotCitationGetsOneGroundedRetryBeforeNumberedFallback() async throws {
         let (timeline, plan, assets, analyses) = fixture(partCount: 1)
         let model = IncompleteCitationTitleModel()
@@ -206,6 +342,33 @@ struct SmartChapterTitlesTests {
         #expect(after.items == before.items)
     }
 
+    @Test func lateFrameAndBoundaryFactsSurviveTitleCollectionAndCompaction() async throws {
+        let (before, plan, assets, analyses) = fixture(partCount: 1)
+        var reviews = exactReviews(before, assets: assets)
+        let longBeginning = String(repeating: "People paddle beside the trees. ", count: 60)
+        let lastFrame = "FRAME 4: The boats are now beside a concrete landing."
+        let endState = "At the selected end the paddles rest across the boats."
+        for i in reviews.indices {
+            reviews[i].observation = longBeginning + lastFrame
+            reviews[i].actionBoundary?.startObservation = longBeginning
+            reviews[i].actionBoundary?.endObservation = endState
+        }
+        let after = try await SmartChapterTitleEngine().applying(to: before, plan: plan, assets: assets,
+            analyses: analyses, mode: .fast, model: TitleModelProbe(), sourceAssessments: reviews)
+        let decision = try #require(after.chapterTitleDecisions?.first)
+        let input = ChapterTitleInput(partID: decision.partID, ordinal: 0, duration: 30, language: "ru",
+            maxCharacters: 60, evidence: decision.evidence, coverage: decision.coverage, limitations: [])
+        let compact = LocalChapterTitleModel.compact(input)
+        #expect(compact.evidence.map(\.id) == input.evidence.map(\.id))
+        for item in before.items {
+            let evidence = compact.evidence.filter { $0.itemID == item.id }
+            #expect(evidence.contains { $0.origin == .visualSummary && $0.observation.hasSuffix(lastFrame) })
+            #expect(evidence.contains { $0.origin == .visualSequence && $0.observation.hasSuffix(endState) })
+            #expect(evidence.allSatisfy { !$0.observation.contains("Unselected landing") })
+            #expect(evidence.allSatisfy { $0.selected && $0.frameTimes.count == 5 })
+        }
+    }
+
     @Test func failedExactProbesCannotBorrowOldSceneCertainty() async throws {
         let (before, plan, assets, analyses) = fixture(partCount: 1)
         var reviews = exactReviews(before, assets: assets)
@@ -215,6 +378,42 @@ struct SmartChapterTitlesTests {
             analyses: analyses, mode: .balanced, model: model, sourceAssessments: reviews)
         #expect(after.effectiveTitleItems.first?.text == "Часть 1")
         #expect(await model.calls == 0)
+    }
+
+    @Test func changedExactReceiptRechecksTitlesEvenWhenItsDescriptionIsUnchanged() async throws {
+        let (before, plan, assets, analyses) = fixture(partCount: 1)
+        let model = TitleModelProbe()
+        var reviews = exactReviews(before, assets: assets)
+        let generated = try await SmartChapterTitleEngine().applying(to: before, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: model, sourceAssessments: reviews)
+        #expect(await model.calls == 2)
+        #expect(SmartChapterTitleEngine.hasAutomaticTitles(generated))
+        let cached = try await SmartChapterTitleEngine().applying(to: generated, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: model, sourceAssessments: reviews)
+        #expect(await model.calls == 2)
+        #expect(cached == generated)
+        // The receipt binds rules, exact images and weights. Identical prose
+        // from a different receipt must not inherit the previous title check.
+        reviews[0].cacheKey = "changed-images-or-rules-or-weights"
+        let refreshed = try await SmartChapterTitleEngine().applying(to: cached, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: model, sourceAssessments: reviews)
+        #expect(await model.calls == 4)
+        let responseScopes = await model.receivedCacheIdentities
+        #expect(responseScopes.count == 2 && responseScopes[0] != responseScopes[1])
+        #expect(refreshed.chapterTitleDecisions?.first?.inputSignature != generated.chapterTitleDecisions?.first?.inputSignature)
+        #expect(refreshed.items == generated.items)
+        for i in reviews.indices { reviews[i].status = .uncertain; reviews[i].confidence = 0 }
+        let uncertain = try await SmartChapterTitleEngine().applying(to: refreshed, plan: plan, assets: assets,
+            analyses: analyses, mode: .balanced, model: model, sourceAssessments: reviews)
+        #expect(uncertain.chapterTitleDecisions?.first?.source == .fallback)
+        #expect(uncertain.effectiveTitleItems.first?.text == "Часть 1")
+        #expect(await model.calls == 4)
+    }
+
+    @Test func manualOnlyRecoveredTitlesDoNotRequestAutomaticChapterCreation() {
+        var (timeline, _, _, _) = fixture(partCount: 1)
+        timeline.titleItems = [.init(kind: .chapter, text: "Наше название", startTime: 1, duration: 5)]
+        #expect(!SmartChapterTitleEngine.hasAutomaticTitles(timeline))
     }
 
     @Test func staleHashAndChangedSourceRangeCannotSupplyExactTitleEvidence() async throws {
@@ -386,7 +585,7 @@ extension SmartChapterTitlesTests {
             try JSONEncoder.veloEdit.encode(named.chapterTitleDecisions).write(to: URL(fileURLWithPath: output), options: .atomic)
         }
         #expect(named.chapterTitleDecisions?.first?.source == .model)
-        #expect(named.chapterTitleDecisions?.first?.modelCalls == 2)
+        #expect(named.chapterTitleDecisions?.first?.modelCalls == 3)
     }
 }
 
@@ -411,6 +610,26 @@ extension SmartChapterTitlesTests {
             try JSONEncoder.veloEdit.encode(Report(parts: expected, titles: named.effectiveTitleItems, decisions: named.chapterTitleDecisions ?? [],
                 unchangedMontage: named.items == source.items, model: "Injected unavailable model: verifies safety and membership, not semantics"))
                 .write(to: URL(fileURLWithPath: output), options: .atomic)
+        }
+    }
+}
+
+
+extension SmartChapterTitlesTests {
+    @Test func stalledTitleModelWaitsInsteadOfFallingBackToUnverifiedText() async throws {
+        struct StalledModel: ChapterTitleModel {
+            let identity = "unchanged-title-model"
+            func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal {
+                throw LocalAIInferenceFailure(model: identity, reason: "No response")
+            }
+            func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification {
+                throw LocalAIInferenceFailure(model: identity, reason: "No response")
+            }
+        }
+        let (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        await #expect(throws: LocalAIInferenceFailure.self) {
+            _ = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: assets,
+                analyses: analyses, mode: .balanced, model: StalledModel())
         }
     }
 }

@@ -22,7 +22,7 @@ public enum AIPowerMode: String, Codable, CaseIterable, Identifiable, Sendable, 
         case .fast: return "2B · короткая выборка сцен · без proxy и анализа звука"
         case .balanced: return "4B · ключевые сцены и пейзажи · анализ звука"
         case .quality: return "8B · все кандидаты · подробный анализ · речь при доступности Speech"
-        case .maximum: return "Больше контекста кадров · независимая перепроверка важных сцен"
+        case .maximum: return "30B-A3B · больше контекста кадров · независимая перепроверка важных сцен"
         }
     }
 }
@@ -103,7 +103,7 @@ public struct AdvancedAISettings: Codable, Hashable, Sendable {
     }
 }
 
-public struct AIAnalysisProfile: Hashable, Sendable {
+public struct AIAnalysisProfile: Codable, Hashable, Sendable {
     public let mode: AIPowerMode
     public let runtime: LocalAIRuntime
     public let ollamaModelID: String
@@ -120,7 +120,7 @@ public struct AIAnalysisProfile: Hashable, Sendable {
     public let thinkingEnabled: Bool
 
     public var modelID: String { ollamaModelID }
-    public static let cacheVersion = "pipeline-v8-ai-evidence"
+    public static let cacheVersion = "pipeline-v15-concise-scene-observations"
     public var cacheKey: String {
         [Self.cacheVersion, mode.rawValue, "ollama", modelID].joined(separator: ":")
     }
@@ -239,11 +239,7 @@ public struct AIAnalysisProfile: Hashable, Sendable {
         case .quality:
             base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:8b-instruct", mlxModelID: "mlx-community/Qwen3-VL-8B-Instruct-4bit", quantization: .q4, proxyLongEdge: 1080, coarseInterval: 4, denseInterval: 0.67, maximumCoarseFrames: 110, maximumDeepCandidates: 12, framesPerCandidate: 8, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
         case .maximum:
-            // A 30B quantized VLM needs substantially more unified memory than
-            // a base MacBook Air. Falling back here prevents memory pressure
-            // and swap from making the nominally "maximum" mode worse.
-            let canUse30B = physicalMemory >= 32 * 1_073_741_824
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: canUse30B ? "qwen3-vl:30b-a3b-instruct" : "qwen3-vl:8b-instruct", mlxModelID: "", quantization: .q4, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:30b-a3b-instruct", mlxModelID: "", quantization: .q4, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
         }
 
         var result = base
@@ -251,7 +247,8 @@ public struct AIAnalysisProfile: Hashable, Sendable {
             result = AIAnalysisProfile(
                 mode: mode,
                 runtime: advanced.runtime == .mlx ? .ollama : advanced.runtime,
-                ollamaModelID: advanced.modelID.isEmpty || (advanced.runtime == .mlx && advanced.modelID.contains("/")) ? base.ollamaModelID : advanced.modelID,
+                // Legacy custom-model settings never redefine a named mode.
+                ollamaModelID: base.ollamaModelID,
                 mlxModelID: "",
                 quantization: .modelProvided,
                 proxyLongEdge: base.proxyLongEdge,

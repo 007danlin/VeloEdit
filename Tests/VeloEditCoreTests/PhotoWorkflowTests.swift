@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 @testable import VeloEditCore
 
 @Suite(.serialized) struct PhotoWorkflowTests {
-    @Test func kenBurnsPreviewAndExportStayCenteredAndReplaceLegacyCache() async throws {
+    @Test func kenBurnsPreviewAndExportStayCenteredWithoutReadingLegacyMovies() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -35,9 +35,9 @@ import UniformTypeIdentifiers
         _ = try await StillImageVideoGenerator().generate(imageURL: file, duration: 6, width: 320, height: 180,
             frameRate: 30, destination: cache.appendingPathComponent("photo-\(legacyKey).mov"), motion: nil)
         let playback = try await PlaybackEngine().build(timeline: timeline, assets: [asset], derivedMediaCacheURL: cache)
-        #expect(playback.derivedMediaCacheMisses == 1 && playback.derivedMediaCacheHits == 0)
+        #expect(playback.derivedMediaCacheMisses == 0 && playback.derivedMediaCacheHits == 0)
         let reused = try await PlaybackEngine().build(timeline: timeline, assets: [asset], derivedMediaCacheURL: cache)
-        #expect(reused.derivedMediaCacheHits == 1 && reused.derivedMediaCacheMisses == 0)
+        #expect(reused.derivedMediaCacheHits == 0 && reused.derivedMediaCacheMisses == 0)
         let output = root.appendingPathComponent("export.mp4")
         _ = try await RenderEngine().render(timeline: timeline, assets: [asset], quality: .maximum, destination: output)
         for (movie, composition) in [(playback.composition as AVAsset, playback.videoComposition),
@@ -190,7 +190,7 @@ import UniformTypeIdentifiers
         #expect(!playback.updateTitleContents(from: revised, to: moved))
     }
 
-    @Test func reorderedPhotosReuseRenderedCacheAndFadeOnlyAtNewMovieEnd() async throws {
+    @Test func reorderedPhotosNeedNoRenderedCacheAndFadeOnlyAtNewMovieEnd() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -204,12 +204,13 @@ import UniformTypeIdentifiers
         let timeline = Timeline(storyPlanID: UUID(), width: 320, height: 180, items: items, endingFadeDuration: 3)
         let cache = root.appendingPathComponent("Derived")
         let first = try await PlaybackEngine().build(timeline: timeline, assets: [asset], derivedMediaCacheURL: cache)
-        #expect(first.derivedMediaCacheMisses == 1)
+        #expect(first.derivedMediaCacheMisses == 0)
         var reordered = try JSONDecoder.veloEdit.decode(Timeline.self, from: JSONEncoder.veloEdit.encode(timeline))
         #expect(TimelineMutationEngine.movePrimaryItem(in: &reordered, id: items[2].id, toPrimaryIndex: 1))
         let next = try await PlaybackEngine().build(timeline: reordered, assets: [asset], derivedMediaCacheURL: cache)
         #expect(next.derivedMediaCacheMisses == 0)
-        #expect(next.derivedMediaCacheHits == 3)
+        #expect(next.derivedMediaCacheHits == 0)
+        #expect(!FileManager.default.fileExists(atPath: cache.path))
         let generator = AVAssetImageGenerator(asset: next.composition)
         generator.videoComposition = next.videoComposition
         generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero

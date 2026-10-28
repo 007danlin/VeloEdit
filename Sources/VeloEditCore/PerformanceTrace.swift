@@ -1,7 +1,8 @@
 import Foundation
 import os
 
-/// Opt-in JSONL evidence with one monotonic clock for the complete operation.
+/// JSONL evidence with one monotonic clock for the complete operation. Film
+/// jobs save it under project Logs/Performance; other callers may opt in.
 /// No media, prompts or images are written. Unavailable measurements stay absent.
 public final class PerformanceTrace: @unchecked Sendable {
     @TaskLocal public static var current: PerformanceTrace?
@@ -12,9 +13,8 @@ public final class PerformanceTrace: @unchecked Sendable {
     private let file: FileHandle?
     private let log = OSLog(subsystem: "app.veloedit", category: "Performance")
 
-    public init(name: String, projectID: UUID? = nil, revision: String? = nil) {
-        if let directory = ProcessInfo.processInfo.environment["VELOEDIT_TRACE_DIRECTORY"] {
-            let root = URL(fileURLWithPath: directory, isDirectory: true)
+    public init(name: String, projectID: UUID? = nil, revision: String? = nil, directory: URL? = nil) {
+        if let root = ProcessInfo.processInfo.environment["VELOEDIT_TRACE_DIRECTORY"].map({ URL(fileURLWithPath: $0, isDirectory: true) }) ?? directory {
             try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let url = root.appendingPathComponent("\(operationID).jsonl")
             FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -45,11 +45,28 @@ public final class PerformanceTrace: @unchecked Sendable {
         try? file?.synchronize()
     }
 
+    func resources(_ name: String, fields: [String: String] = [:], values: [String: Double] = [:]) {
+        guard file != nil else { return }
+        let process = AnalysisResourceSnapshot.capture()
+        var fields = fields
+        var values = values
+        fields["thermal"] = process.thermalState
+        values["processPeakRSS"] = process.residentMemoryBytes.map { Double($0) }
+        values["processCPUSeconds"] = process.cpuTimeSeconds
+        if let memory = SystemMemoryUsage.capture() {
+            values["systemUsedBytes"] = Double(memory.usedBytes)
+            values["systemTotalBytes"] = Double(memory.totalBytes)
+            values["memoryPressure"] = memory.pressure.map { Double($0.rawValue) }
+        }
+        event(name, fields: fields, values: values)
+    }
+
     public static func measure<T>(name: String, projectID: UUID? = nil, revision: String? = nil,
+                                  directory: URL? = nil,
                                   fields: [String: String] = [:],
                                   operation: () async throws -> T) async rethrows -> T {
         // Nested pipeline operations retain the parent correlation ID.
-        let trace = current ?? PerformanceTrace(name: name, projectID: projectID, revision: revision)
+        let trace = current ?? PerformanceTrace(name: name, projectID: projectID, revision: revision, directory: directory)
         let ownsTrace = current == nil
         let span = UUID().uuidString
         let signpost = OSSignpostID(log: trace.log)

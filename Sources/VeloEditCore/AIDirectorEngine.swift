@@ -1152,8 +1152,8 @@ public struct TimelineSelfReviewer: Sendable {
         for item in primaries where item.timelineDuration > Self.maximumDuration(for: item.storyRole, pacing: plan.constraints.pacing) * 1.35 {
             if item.kind == .photo && item.timelineDuration <= PhotoPresentationPolicy.duration { continue }
             if let candidate = item.candidateID.flatMap({ candidateByID[$0] }) {
-                let unit = EditorialUnit(candidate: candidate)
-                if (unit.evidence.hasProgression || unit.speechSeconds > 0), item.sourceDuration <= unit.usableDuration + 0.05 { continue }
+                let unit = EditorialUnit(candidate: candidate, preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan))
+                if (unit.evidence.hasProgression || unit.protectedSpeechSeconds > 0), item.sourceDuration <= unit.usableDuration + 0.05 { continue }
             }
             issues.append(DirectorReviewIssue(kind: .overlongClip, severity: 0.58, itemIDs: [item.id], message: "Фрагмент длиннее, чем допускает его роль и темп фильма"))
         }
@@ -1409,7 +1409,7 @@ public struct AIDirectorEngine: Sendable {
             let minimum = role == .action ? 1.15 : 1.6
             let desired = min(candidate.sourceDuration, max(minimum, maximum * (0.58 + candidate.scores.interest * 0.42)))
             if item.kind != .photo && item.sourceDuration > desired + 0.35 {
-                let range = MomentPhaseTrimmer().range(for: candidate, desiredDuration: desired)
+                let range = MomentPhaseTrimmer().range(for: candidate, desiredDuration: desired, preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan))
                 calls.append(.trim(itemID: item.id, sourceStart: range.sourceStart, sourceDuration: range.sourceDuration, reason: "Длительность выбрана по роли \(role?.localizedTitle ?? "сцены") с сохранением anticipation и reaction вокруг peak"))
             }
 
@@ -1636,7 +1636,7 @@ public struct AIDirectorEngine: Sendable {
         let ranker = ContextualHighlightRanker()
         var calls: [DirectorToolCall] = []
         func phaseRange(_ candidate: Candidate, maximum: Double) -> MomentTrimRange {
-            MomentPhaseTrimmer().range(for: candidate, desiredDuration: min(candidate.sourceDuration, maximum))
+            MomentPhaseTrimmer().range(for: candidate, desiredDuration: min(candidate.sourceDuration, maximum), preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan))
         }
 
         for issue in review.issues.sorted(by: { $0.severity > $1.severity }) {

@@ -9,6 +9,7 @@ struct DirectorModelSetupClient: Sendable {
     @MainActor static var live: Self {
         let modelID = LocalDirectorAgent.ollamaModel
         return Self(isInstalled: {
+            if Self.hasDownloadedModel(modelID, storage: LocalAIModelManager.modelStorageURL) { return true }
             let manager = LocalAIModelManager.shared
             try await manager.ensureService()
             let availability = await manager.availability(model: modelID)
@@ -20,9 +21,38 @@ struct DirectorModelSetupClient: Sendable {
             try await manager.pull(model: modelID) { progress($0.fraction) }
         })
     }
+
+    /// The service's model index can lag behind files installed by another
+    /// runtime. A manifest alone is insufficient after an interrupted download.
+    static func hasDownloadedModel(_ model: String, storage: URL) -> Bool {
+        struct Manifest: Decodable {
+            struct Blob: Decodable { let digest: String; let size: Int64 }
+            let config: Blob
+            let layers: [Blob]
+        }
+        let parts = model.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              parts.allSatisfy({ !$0.isEmpty && !$0.contains("/") && $0 != "." && $0 != ".." }) else { return false }
+        let manifestURL = storage.appendingPathComponent("manifests/registry.ollama.ai/library/\(parts[0])/\(parts[1])")
+        guard let data = try? Data(contentsOf: manifestURL),
+              let manifest = try? JSONDecoder().decode(Manifest.self, from: data),
+              !manifest.layers.isEmpty else { return false }
+        return ([manifest.config] + manifest.layers).allSatisfy { blob in
+            let digest = blob.digest
+            guard digest.hasPrefix("sha256:"), digest.count == 71,
+                  digest.dropFirst(7).allSatisfy({ "0123456789abcdef".contains($0) }),
+                  blob.size > 0 else { return false }
+            let url = storage.appendingPathComponent("blobs/" + digest.replacingOccurrences(of: ":", with: "-"))
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  attributes[.type] as? FileAttributeType == .typeRegular,
+                  let size = attributes[.size] as? NSNumber else { return false }
+            return size.int64Value == blob.size
+        }
+    }
 }
 
-/// App-level setup, independent of any project or video-analysis model.
+/// Initial Fast-mode setup before opening a project. Project jobs prepare
+/// their own selected model through the shared mode profile.
 @MainActor
 final class DirectorModelSetup: ObservableObject {
     enum Phase: Equatable {
@@ -30,7 +60,7 @@ final class DirectorModelSetup: ObservableObject {
         case failed(String)
     }
 
-    static let authorizedKey = "VeloEdit.DirectorModelSetup.DownloadAuthorized"
+    static let authorizedKey = "VeloEdit.DirectorModelSetup.Mode2B.DownloadAuthorized"
     static let pausedKey = "VeloEdit.DirectorModelSetup.Paused"
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var progress: Double = 0
@@ -61,6 +91,13 @@ final class DirectorModelSetup: ObservableObject {
         begin()
     }
 
+    /// Downloads can finish in a project or another Ollama client after the
+    /// initial check. Refresh without granting or reusing download consent.
+    func refreshInstallation() {
+        guard task == nil, phase != .installed else { return }
+        begin(allowDownload: false)
+    }
+
     func pause() {
         defaults.set(true, forKey: Self.pausedKey)
         stop()
@@ -83,11 +120,11 @@ final class DirectorModelSetup: ObservableObject {
         task = nil
     }
 
-    private func begin() {
+    private func begin(allowDownload: Bool = true) {
         guard task == nil else { return }
         let id = UUID()
         attemptID = id
-        phase = .checking
+        if allowDownload || phase == .idle { phase = .checking }
         progress = 0
         showsCompletion = false
         task = Task { [weak self, client] in
@@ -106,7 +143,7 @@ final class DirectorModelSetup: ObservableObject {
                     self.phase = .paused
                     return
                 }
-                guard self.defaults.bool(forKey: Self.authorizedKey) else {
+                guard allowDownload, self.defaults.bool(forKey: Self.authorizedKey) else {
                     self.phase = .awaitingDownload
                     return
                 }
@@ -132,7 +169,7 @@ final class DirectorModelSetup: ObservableObject {
                 self.phase = .installed
             } catch {
                 guard self.attemptID == id, !Task.isCancelled else { return }
-                self.phase = .failed(error.localizedDescription)
+                self.phase = self.defaults.bool(forKey: Self.pausedKey) ? .paused : .failed(error.localizedDescription)
             }
         }
     }
@@ -143,7 +180,7 @@ struct DirectorModelSetupBanner: View {
     @ObservedObject var setup: DirectorModelSetup
 
     var body: some View {
-        if setup.phase != .idle && setup.phase != .paused && (setup.phase != .installed || setup.showsCompletion) {
+        if setup.phase != .idle && setup.phase != .checking && setup.phase != .paused && (setup.phase != .installed || setup.showsCompletion) {
             HStack(spacing: 12) {
                 Image(systemName: setup.isInstalled ? "checkmark.circle.fill" : "sparkles")
                     .foregroundStyle(setup.isInstalled ? Color.green : Color.accentColor)
@@ -161,7 +198,7 @@ struct DirectorModelSetupBanner: View {
                 case .checking, .downloading, .verifying:
                     Button("Позже", action: setup.pause)
                 case .awaitingDownload:
-                    Button("Загрузить · 2,5 ГБ", action: setup.retry)
+                    Button("Загрузить · 1,9 ГБ", action: setup.retry)
                     Button("Ручной монтаж", action: model.beginManualOnboarding)
                     Button("Позже", action: setup.pause)
                 case .paused:
@@ -197,11 +234,11 @@ struct DirectorModelSetupBanner: View {
     private var detail: String {
         switch setup.phase {
         case .idle, .checking: return "Проверяем, установлена ли локальная модель."
-        case .awaitingDownload: return "Для чата нужно один раз скачать около 2,5 ГБ. Загрузка начнётся по вашей команде; ручной монтаж доступен сразу. Модели анализа видео загружаются отдельно."
+        case .awaitingDownload: return "Для чата нужно один раз скачать около 1,9 ГБ. Загрузка начнётся по вашей команде; ручной монтаж доступен сразу. Эта же 2B используется во всём режиме «Быстрый». Другие режимы загружаются при выборе."
         case .verifying: return "Проверяем готовность ИИ. Это может занять несколько секунд."
-        case .downloading: return "Один раз загрузим около 2,5 ГБ. Затем ИИ работает на этом Mac без интернета. Можно продолжать монтаж."
+        case .downloading: return "Один раз загрузим около 1,9 ГБ. Затем ИИ работает на этом Mac без интернета. Можно продолжать монтаж."
         case .installed: return "Локальная модель установлена. Можно общаться с режиссёром."
-        case .paused: return "Для чата с локальной нейросетью нужно загрузить около 2,5 ГБ."
+        case .paused: return "Для чата с локальной нейросетью нужно загрузить около 1,9 ГБ."
         case .failed(let message): return message
         }
     }

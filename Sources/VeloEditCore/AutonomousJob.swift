@@ -25,6 +25,7 @@ public enum AutonomousFailureCause: String, Codable, Sendable {
 
     public static func classify(_ error: Error) -> Self {
         if error is CancellationError || (error as? URLError)?.code == .cancelled { return .cancelled }
+        if error is LocalAIInferenceFailure { return .localService }
         if let error = error as? URLError {
             switch error.code {
             case .timedOut, .networkConnectionLost, .cannotConnectToHost, .notConnectedToInternet, .cannotFindHost, .dnsLookupFailed: return .transientNetwork
@@ -86,6 +87,10 @@ public struct AutonomousJob: Codable, Identifiable, Sendable {
     public var compositionRepairSignatures: [String]?
     public var externalResource: String?
     public var externalFailureCause: AutonomousFailureCause?
+    public var inferenceRecoveryCount: Int?
+    public var inferenceRetryAt: Date?
+    public var inferenceRetryModel: String?
+    public var processProfile: FilmProcessProfile?
     public var explicitCancellation = false
     public var updatedAt = Date()
     public var resultTimelineID: UUID?
@@ -130,6 +135,11 @@ extension ProjectStore {
 
     public func activateAfterExternalWait() throws -> Bool {
         guard let job = manifest.autonomousJob, job.state == .waitingForExternalResource, !job.explicitCancellation else { return false }
+        if let retryAt = job.inferenceRetryAt, job.externalFailureCause == .localService {
+            guard retryAt <= Date() else { return false }
+            try updateAutonomousJob { $0.state = .queued; $0.inferenceRetryAt = nil }
+            return true
+        }
         guard job.attempts.count < job.maximumRecoveries else {
             try updateAutonomousJob { $0.state = .failed }
             return false
@@ -141,6 +151,30 @@ extension ProjectStore {
         }
         return true
     }
+    func waitForLocalInference(_ failure: LocalAIInferenceFailure, now: Date = Date()) throws {
+        guard manifest.autonomousJob?.explicitCancellation != true else { throw CancellationError() }
+        try updateAutonomousJob { job in
+            let count = min(32, (job.inferenceRecoveryCount ?? 0) + 1)
+            let backoff = job.processProfile?.recoveryBackoffSeconds ?? [30, 60, 120, 240, 300]
+            let delay = backoff[min(count - 1, backoff.count - 1)]
+            job.inferenceRecoveryCount = count
+            job.inferenceRetryAt = now.addingTimeInterval(delay)
+            job.inferenceRetryModel = failure.model
+            job.externalFailureCause = .localService
+            job.externalResource = count < 3
+                ? "Восстанавливаю модель · попытка \(count). Готовые проверки сохранены; следующая попытка через \(Int(delay)) с."
+                : "Пока нет нового результата после \(count) восстановлений. Проверки сохранены. Следующая попытка той же моделью через \(Int(delay)) с; время завершения пока неизвестно."
+            job.state = .waitingForExternalResource
+        }
+    }
+
+    func recordInferenceProgress() throws {
+        guard manifest.autonomousJob?.inferenceRecoveryCount != nil else { return }
+        try updateAutonomousJob { job in
+            job.inferenceRecoveryCount = nil; job.inferenceRetryAt = nil; job.inferenceRetryModel = nil
+        }
+    }
+
     func updateAutonomousJob(_ mutate: (inout AutonomousJob) -> Void) throws {
         try persistOperationalState { project in
             guard var job = project.autonomousJob else { return }
@@ -173,6 +207,7 @@ extension ProjectStore {
     /// exit preserves resumable checkpoints instead of recording user cancel.
     public func prepareAutonomousJobForRestart() throws {
         guard let job = manifest.autonomousJob, job.state != .completed else { return }
+        if job.state == .waitingForExternalResource { return }
         try updateAutonomousJob {
             $0.state = .queued
             $0.explicitCancellation = false

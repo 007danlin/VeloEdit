@@ -57,7 +57,7 @@ struct DirectorAdviceRequest: Encodable {
         let required = ["stance", "targetID", "evidenceIDs", "reply"]
         let additionalProperties = false
     }
-    let model = LocalDirectorAgent.ollamaModel
+    let model: String
     let messages: [Message]
     let stream = true
     let think = false
@@ -71,6 +71,7 @@ struct DirectorAdviceRequest: Encodable {
     """
 
     init(prompt: String, context: DirectorContext, history: String, detailed: Bool) {
+        model = AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID
         options = Options(num_predict: detailed ? 800 : 256)
         let data = context.moment?.compactModelData ?? "{\"targetID\":\"\",\"limitations\":[\"Нет локального анализа\"]}"
         let titleInstruction = Self.requestsTitle(prompt)

@@ -1,9 +1,5 @@
 import Foundation
 import CryptoKit
-import CoreGraphics
-import CoreText
-import ImageIO
-import UniformTypeIdentifiers
 
 public enum ShotContentStatus: String, Codable, Hashable, Sendable {
     case usable, obstructed, unmotivated, uncertain
@@ -39,6 +35,16 @@ public struct ShotContentAssessment: Codable, Hashable, Sendable {
         confidence >= 0.8 && ((status == .obstructed && rejectsRange) || actionBoundary?.rejectsCut == true)
     }
 
+    func certifies(item: TimelineItem, phase expectedPhase: String, assets: [MediaAsset]) -> Bool {
+        itemID == item.id && assetID == item.assetID && phase == expectedPhase
+            && (assets.isEmpty || assets.contains { $0.id == item.assetID && $0.contentHash == sourceContentHash })
+            && abs(sourceStart - item.sourceStart) < 0.000_001
+            && abs(sourceDuration - item.sourceDuration) < 0.000_001
+            && sampleTimes.count >= 5 && status == .usable && confidence >= 0.75
+            && editorialPurpose.flatMap(SelectedContentReviewer.EditorialPurpose.init(rawValue:))?.isUseful == true
+            && (expectedPhase != "source" || actionBoundary?.passes == true)
+    }
+
     var rejectsRange: Bool {
         (status == .obstructed && confidence >= 0.7
             && (obstructedSamples.count >= 2 || !(cameraAdjustmentSamples ?? []).isEmpty
@@ -62,14 +68,7 @@ public struct SelectedContentReviewReport: Codable, Hashable, Sendable {
         return !items.isEmpty && items.allSatisfy { item in
             [("source", source), ("mp4", rendered)].allSatisfy { phase, observations in
                 observations.contains { assessment in
-                    assessment.itemID == item.id && assessment.assetID == item.assetID
-                        && assessment.phase == phase
-                        && (assets.isEmpty || assets.contains { $0.id == item.assetID && $0.contentHash == assessment.sourceContentHash })
-                        && abs(assessment.sourceStart - item.sourceStart) < 0.000_001
-                        && abs(assessment.sourceDuration - item.sourceDuration) < 0.000_001
-                        && assessment.sampleTimes.count >= 5 && assessment.status == .usable && assessment.confidence >= 0.75
-                        && assessment.editorialPurpose.flatMap(SelectedContentReviewer.EditorialPurpose.init(rawValue:))?.isUseful == true
-                        && (phase != "source" || assessment.actionBoundary?.passes == true)
+                    assessment.certifies(item: item, phase: phase, assets: assets)
                 }
             }
         }
@@ -82,21 +81,41 @@ public protocol SelectedContentReviewing: Sendable {
                 progress: FilmBuildProgressHandler?, pass: Int, reason: String?) async throws -> [ShotContentAssessment]
 }
 
+/// Refresh observations after structural/duration repairs and before titles
+/// consume them. This is an in-job ordering guard, not a persistent cache or a
+/// certificate: the mandatory reviewer has already validated the frozen model,
+/// rules and images earlier in the job. An unchanged negative result stays
+/// negative; the rendered MP4 still requires its separate complete review.
+enum SelectedSourceEvidenceRefresh {
+    static func reviewIfChanged(timeline: Timeline, assets: [MediaAsset],
+        observations: [ShotContentAssessment], reviewer: any SelectedContentReviewing,
+        progress: FilmBuildProgressHandler?, pass: Int) async throws -> [ShotContentAssessment] {
+        let videos = timeline.items.filter { OriginalMediaType.isVideo($0, assets: assets) }
+        let current = videos.allSatisfy { item in
+            observations.contains { review in
+                review.itemID == item.id && review.assetID == item.assetID && review.phase == "source"
+                    && assets.contains { $0.id == item.assetID && $0.contentHash == review.sourceContentHash }
+                    && abs(review.sourceStart - item.sourceStart) < 0.000_001
+                    && abs(review.sourceDuration - item.sourceDuration) < 0.000_001
+                    && review.sampleTimes.count >= 5
+            }
+        }
+        guard !current else { return observations }
+        PerformanceTrace.current?.event("review.source-inputs-changed-before-titles")
+        return try await reviewer.review(timeline: timeline, assets: assets, renderedURL: nil,
+            progress: progress, pass: pass,
+            reason: "Проверяю изменённые фрагменты перед титрами и экспортом")
+    }
+}
+
 /// A bounded second look at the selected footage. It does not replace the
 /// existing analysis/ranker, force an effect, or run a new source-wide scan.
 struct SelectedContentReviewer: SelectedContentReviewing {
-    static let version = "selected-content-v58-camera-target-corroboration"
-    static func verificationModel(preferred: String) async -> String {
-        // A tiny model is useful for broad indexing, but real clip checks
-        // exposed contradictory/truncated verdicts. Do not silently certify
-        // with it. Use an already installed stronger verifier; never download.
-        guard preferred == "qwen3-vl:2b-instruct" else { return preferred }
-        let runtime = OllamaVisionRuntime()
-        if ProcessInfo.processInfo.physicalMemory >= 32 * 1_024 * 1_024 * 1_024,
-           await runtime.isAvailable(model: "qwen3-vl:30b-a3b-instruct") { return "qwen3-vl:30b-a3b-instruct" }
-        if await runtime.isAvailable(model: "qwen3-vl:8b-instruct") { return "qwen3-vl:8b-instruct" }
-        return "qwen3-vl:4b-instruct"
-    }
+    static let version = "selected-content-v80-preserve-physical-cover"
+    // Aggregation changed, but the independent questions, their validators,
+    // weights and exact images did not. Recompute the verdict from preserved
+    // raw evidence; never inherit a certificate produced by the old rules.
+    static let observationVersion = "selected-content-v72-probability-scale-recovery"
     struct Answer: Codable {
         var status: ShotContentStatus
         var confidence: Double
@@ -125,6 +144,9 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         var cameraAdjustmentConfirmed: Bool? = nil
         // Agreement of primary technical and neutral orientation observations.
         var rotationConfirmed: Bool? = nil
+        // Missing or contradictory gravity references cannot erase a physical
+        // lens-cover observation. They still forbid certifying a clear shot.
+        var orientationUnresolved: Bool? = nil
     }
     struct FrameAnswer: Codable {
         var frames: [FrameVerdict]
@@ -181,15 +203,48 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         return CameraInteractionFrame(index: claim.index, interaction: interaction,
             confidence: min(claim.confidence, target.confidence), evidence: target.observation)
     }
+    static func retainingCameraTargetUncertainty(_ claim: CameraInteractionFrame,
+                                                 target: HandTargetObservation) -> CameraInteractionFrame? {
+        guard claim.interaction == .cameraAdjustment,
+              claim.confidence.isFinite, (0...1).contains(claim.confidence),
+              target.confidence.isFinite, (0...1).contains(target.confidence),
+              target.observation.split(whereSeparator: \.isWhitespace).count >= 6 else { return nil }
+        if let corroborated = corroboratingCameraClaim(claim, with: target) { return corroborated }
+        // A valid but unresolved physical target is evidence of uncertainty,
+        // not malformed JSON. Keep collecting every remaining observation.
+        // This cannot certify a clear shot or confirm a lens-contact rejection.
+        return CameraInteractionFrame(index: claim.index, interaction: .unclear,
+            confidence: min(claim.confidence, target.confidence),
+            evidence: "Camera observer: \(claim.evidence) Target observer: \(target.observation)")
+    }
     static func literalInteractionEvidence(_ frame: CameraInteractionFrame) -> Bool {
         let evidence = frame.evidence.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !evidence.isEmpty else { return false }
-        guard frame.interaction != .none && frame.interaction != .unclear else { return true }
+        guard evidence.split(whereSeparator: { !$0.isLetter }).count >= 3 else { return false }
         // A real steering frame returned camera-adjustment with the entire
         // evidence field set to "equipment-work". An enum label, even with
         // high confidence, is not an independent observation of contact.
         let compact = evidence.lowercased().filter(\.isLetter)
         return !["cameraadjustment", "equipmentwork", "socialgesture", "none", "unclear"].contains(compact)
+    }
+
+    static func applyingInteractionCertainty(_ contacts: [CameraInteractionFrame], to original: Answer,
+                                             intentionalFadeSamples: [Int] = []) -> Answer? {
+        let required = Set(0..<5).subtracting(intentionalFadeSamples)
+        guard Set(contacts.map(\.index)) == required, contacts.count == required.count,
+              contacts.allSatisfy({ $0.confidence.isFinite && (0...1).contains($0.confidence)
+                  && literalInteractionEvidence($0) }) else { return nil }
+        var answer = original
+        // The independent observer is mandatory even when the primary never
+        // claims camera handling. An uncertain "none" cannot silently pass
+        // just because the corroboration branch was not entered.
+        if original.status == .usable, contacts.contains(where: {
+            $0.interaction == .unclear || $0.confidence < 0.75
+                || $0.interaction == .cameraAdjustment && $0.confidence < 0.9
+        }) {
+            answer.status = .uncertain
+            answer.confidence = min(answer.confidence, contacts.map(\.confidence).min() ?? 0)
+        }
+        return answer
     }
     /// Technical readability is insufficient. A random patch of ground and a
     /// cropped coat can be sharp and upright without contributing anything.
@@ -208,6 +263,13 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         guard !inspected.isEmpty else { return nil }
         let useful = inspected.filter { $0.purpose?.isUseful == true && ($0.purposeConfidence ?? 0) >= 0.75 }
         let empty = inspected.filter { $0.purpose == .some(.none) && ($0.purposeConfidence ?? 0) >= 0.75 }
+        // A majority cannot certify observations the model did not establish.
+        // In real footage 4B reported an incidental ending as `none, 0.0`,
+        // confusing certainty with usefulness. Ignoring those two samples let
+        // a camera drop pass on the strength of its earlier coherent frames.
+        let unresolved = inspected.contains {
+            $0.purpose == .unclear || ($0.purposeConfidence ?? 0) < 0.75
+        }
         // A real automatic replacement showed a route in its first samples,
         // then drifted into incidental bank/fence views. A scenery-only shot
         // needs sustained framing; a bare majority cannot certify its tail.
@@ -237,7 +299,7 @@ struct SelectedContentReviewer: SelectedContentReviewing {
             result.status = .unmotivated
             result.confidence = empty.compactMap(\.purposeConfidence).min() ?? 0
             result.editorialPurpose = EditorialPurpose.none.rawValue
-        } else if useful.count >= majority && technical.status == .usable {
+        } else if !unresolved && empty.isEmpty && useful.count >= majority && technical.status == .usable {
             result.editorialPurpose = useful.first!.purpose!.rawValue
             result.confidence = min(result.confidence, useful.compactMap(\.purposeConfidence).min() ?? 0)
         } else {
@@ -248,8 +310,11 @@ struct SelectedContentReviewer: SelectedContentReviewing {
     }
 
     static func confirmHandling(_ primary: FrameAnswer, observer: OrientationAnswer,
-                                contacts: [CameraInteractionFrame] = [], intentionalFadeSamples: [Int] = []) -> FrameAnswer? {
+                                contacts: [CameraInteractionFrame] = [], intentionalFadeSamples: [Int] = [],
+                                independentPurpose: OrientationAnswer? = nil) -> FrameAnswer? {
         guard observer.frames.count == 5, Set(observer.frames.map(\.index)) == Set(0..<5),
+              independentPurpose == nil || (independentPurpose?.frames.count == 5
+                  && Set(independentPurpose?.frames.map(\.index) ?? []) == Set(0..<5)),
               observer.frames.allSatisfy({ !$0.scene.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                   && $0.opaqueCoverFraction.isFinite && (0...1).contains($0.opaqueCoverFraction) }),
               Set(contacts.map(\.index)).count == contacts.count,
@@ -257,6 +322,7 @@ struct SelectedContentReviewer: SelectedContentReviewing {
                   && literalInteractionEvidence($0) }) else { return nil }
         let observations = Dictionary(uniqueKeysWithValues: observer.frames.map { ($0.index, $0) })
         let interactions = Dictionary(uniqueKeysWithValues: contacts.map { ($0.index, $0) })
+        let purposeObservations = Dictionary(uniqueKeysWithValues: (independentPurpose?.frames ?? []).map { ($0.index, $0) })
         var result = primary
         let cameraClaims = contacts.filter { $0.interaction == .cameraAdjustment && $0.confidence >= 0.75 }
         let laterEquipment = contacts.filter { $0.index >= 2 && $0.interaction == .equipmentWork && $0.confidence >= 0.75 }
@@ -274,6 +340,7 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         for index in result.frames.indices {
             result.frames[index].cameraAdjustmentConfirmed = nil
             result.frames[index].rotationConfirmed = nil
+            result.frames[index].orientationUnresolved = nil
             if intentionalFadeSamples.contains(result.frames[index].index) { result.frames[index].handlingEvidence = .none; continue }
             guard let observed = observations[result.frames[index].index] else { return nil }
             let interaction = interactions[result.frames[index].index]
@@ -300,9 +367,25 @@ struct SelectedContentReviewer: SelectedContentReviewing {
             let rotated = observed.orientation == .inverted || observed.orientation == .sideways
             let primaryRotation = result.frames[index].handlingEvidence == .invertedScene
             let corroboratesRotation = primaryRotation || primary.frames[index].content == .cameraHandling
-            guard (observed.orientation != .unclear
+            let orientationEstablished = (observed.orientation != .unclear
                     && ((!rotated && !primaryRotation) || observed.orientationBasis == .worldReference))
-                    || overheadGear else { return nil }
+                    || overheadGear
+            if !orientationEstablished {
+                // Opaque contact can hide the world references needed to
+                // measure rotation. An unknown orientation is not permission
+                // to use the frame, nor a reason to erase independently
+                // corroborated lens contact. All observers have already run.
+                result.frames[index].orientationUnresolved = true
+                result.frames[index].handlingEvidence = .none
+                if let interaction, interaction.interaction == .cameraAdjustment,
+                   interaction.confidence >= 0.9,
+                   !(approachToGear && cameraClaims.contains { $0.index == result.frames[index].index }) {
+                    result.frames[index].handlingEvidence = .directLensContact
+                    result.frames[index].cameraAdjustmentConfirmed = true
+                    result.frames[index].confidence = min(result.frames[index].confidence, interaction.confidence)
+                }
+                continue
+            }
             if rotated && observed.orientationBasis == .worldReference {
                 if corroboratesRotation {
                     result.frames[index].rotationConfirmed = primaryRotation && result.frames[index].confidence >= 0.9
@@ -313,7 +396,16 @@ struct SelectedContentReviewer: SelectedContentReviewing {
                     // gear resolves the observed bag false positive; otherwise
                     // repeated disagreement stays uncertain and cannot pass.
                     result.frames[index].handlingEvidence = .none
-                    if !readableGear && unsupportedRotations >= 2 { result.frames[index].content = .uncertain }
+                    let purposeOrientation = purposeObservations[result.frames[index].index]?.orientation
+                    let independentRotation = purposeOrientation == .sideways || purposeOrientation == .inverted
+                    // The purpose and neutral observers can both notice a
+                    // rotated boundary that the primary missed. Do not let
+                    // a one-frame disagreement disappear in a usable majority.
+                    // This preserves uncertainty; purpose confidence is not
+                    // an orientation score or a positive rotation certificate.
+                    if independentRotation || !readableGear && unsupportedRotations >= 2 {
+                        result.frames[index].orientationUnresolved = true
+                    }
                 }
             } else if approachToGear && cameraClaims.contains(where: { $0.index == result.frames[index].index }) {
                 result.frames[index].handlingEvidence = .none
@@ -350,8 +442,8 @@ struct SelectedContentReviewer: SelectedContentReviewing {
             }
         }
         result.observation = "Независимая проверка положения сцены: " + observer.frames.sorted { $0.index < $1.index }.map {
-            "FRAME \($0.index): \($0.orientation.rawValue)"
-        }.joined(separator: "; ") + ". " + (observer.frames.first?.scene ?? "")
+            "FRAME \($0.index): \($0.orientation.rawValue) — \($0.scene)"
+        }.joined(separator: "; ")
         if !contacts.isEmpty {
             result.observation += " Взаимодействие рук: " + contacts.sorted { $0.index < $1.index }.map {
                 "FRAME \($0.index): \($0.interaction.rawValue) — \($0.evidence)"
@@ -385,7 +477,7 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         let confirmedContacts = observedContacts.count >= 2 ? observedContacts : observedContacts.filter { $0.index == 4 }
         let boundaryRotations = covers.filter { $0.rotationConfirmed == true && ($0.index == 0 || $0.index == 4) }
         let interrupted = covers.count >= 2 || !confirmedContacts.isEmpty || !boundaryRotations.isEmpty
-        let uncertain = inspected.contains { $0.content == .uncertain || $0.confidence < 0.75
+        let uncertain = inspected.contains { $0.content == .uncertain || $0.orientationUnresolved == true || $0.confidence < 0.75
             || ($0.content == .event || $0.content == .landscape) && $0.obstructionFraction >= 0.55 }
         // A real response contained all five valid classifications but no
         // prose. Preserve those facts without inventing an action description.
@@ -413,7 +505,41 @@ struct SelectedContentReviewer: SelectedContentReviewing {
     typealias AnswerTransport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     var answerTransport: AnswerTransport? = nil
     var requestProgress: FilmBuildProgressHandler? = nil
-    var deadline: Date? = nil
+    // Match the inference watchdog's active-uptime clock. A real 8B audit
+    // slept for 15 minutes: a calendar deadline expired after only 75 seconds
+    // of active work and discarded the unfinished shot after wake-up.
+    var deadlineUptime: TimeInterval? = nil
+    var workUptime: @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    var inferenceClient: LocalAIInferenceClient = .shared
+    var modelDigestOverride: String? = nil
+    var evidenceContext: String? = nil
+    var observationProgress: ObservationProgress? = nil
+    // Only automatic film assembly supplies this callback. It must establish
+    // an admissible replacement before retiring an already rejected export.
+    // A partial report never satisfies the final all-items delivery gate.
+    var renderedReplacementAvailable: (@Sendable ([ShotContentAssessment]) -> Bool)? = nil
+
+    actor ObservationProgress {
+        private var completed: Set<String> = []
+        func record(_ key: String) { completed.insert(key) }
+        var count: Int { completed.count }
+    }
+
+    // No decoded images are retained while other shots are checked. Every
+    // finished model observation already has its exact-request disk receipt;
+    // this pending value is never a completed source certificate.
+    private struct PendingSourceBoundary {
+        var index: Int
+        var reviewer: SelectedContentReviewer
+        var assessment: ShotContentAssessment
+        var answer: Answer
+        var sourceURL: URL
+        var sourceIdentity: String
+        var contextTimes: [Double]
+        var receipt: URL
+        var responseURL: URL
+        var consumedSeconds: Double
+    }
 
     func review(timeline: Timeline, assets: [MediaAsset], renderedURL: URL? = nil,
                 progress: FilmBuildProgressHandler? = nil, pass: Int = 1, reason: String? = nil) async throws -> [ShotContentAssessment] {
@@ -427,44 +553,90 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         var available: Bool
         if answerTransport != nil { available = true }
         else { available = await OllamaVisionRuntime().isAvailable(model: model) }
+        let modelIdentity: String
+        if answerTransport != nil { modelIdentity = "injected-transport" }
+        else {
+            let digest = await LocalAIModelManager.shared.installedModelDigest(model: model)
+            try FilmProcessContext.current?.validate(model: model, digest: digest)
+            modelIdentity = digest ?? UUID().uuidString
+        }
         // A full independent observation takes several model requests. A 90 s
         // shot / 180 s film deadline discarded every result on a real 24-shot
         // film. Bound each shot, not the entire movie; uncertainty is not a pass.
-        let stage: FilmBuildProgress.Stage = renderedURL == nil ? .sourceContent : .renderedContent
+        let profile = FilmProcessContext.current ?? FilmProcessProfile(analysis: .resolve(mode: .fast))
+        let singleImageContext = FilmProcessContext.current?.singleImageReviewContextTokens
+        let groupSourceObservers = renderedURL == nil && singleImageContext != nil
+        let stage: FilmBuildProgress.Stage = renderedURL != nil ? .renderedContent
+            : groupSourceObservers ? .sourceFrames : .sourceContent
         var consecutiveFailures = 0
-        var result: [ShotContentAssessment] = []
+        var result = [ShotContentAssessment?](repeating: nil, count: items.count)
+        var pendingBoundaries: [PendingSourceBoundary] = []
+        if FilmProcessContext.current != nil {
+            PerformanceTrace.current?.event("review.observers.phase", fields: ["model": model, "phase": phase + (groupSourceObservers || renderedURL != nil ? ".frames" : ".interleaved")],
+                values: ["shots": Double(items.count), "contextTokens": Double(singleImageContext ?? profile.contextTokens)])
+        }
         for (index, item) in items.enumerated() {
             try Task.checkCancellation()
             guard let assetID = item.assetID, let asset = byID[assetID] else { continue }
+            let started = workUptime()
+            let completedBeforeShot = groupSourceObservers ? index : result.lazy.compactMap { $0 }.count
+            var deferredBoundary = false
             var reviewer = self
-            reviewer.deadline = min(deadline ?? .distantFuture, Date().addingTimeInterval(600))
+            reviewer.deadlineUptime = min(deadlineUptime ?? .infinity,
+                workUptime() + (FilmProcessContext.current?.shotBudgetSeconds ?? 600))
             let operation = phase == "source" ? "исходного видео" : "готового видео"
+            let operationPrefix = groupSourceObservers || renderedURL != nil ? "кадры " : ""
+            let observations = ObservationProgress()
+            reviewer.observationProgress = observations
             reviewer.requestProgress = { update in
-                await progress?(FilmBuildProgress(stage, completed: index, total: items.count,
-                    detail: "Проверка \(pass): \(operation) \(index + 1) из \(items.count). \(update.detail ?? "")" + (reason.map { " · " + $0 } ?? "")))
+                let saved = await observations.count
+                await progress?(FilmBuildProgress(stage, completed: completedBeforeShot, total: items.count,
+                    detail: "Проверка \(pass): \(operationPrefix)\(operation) \(index + 1) из \(items.count). \(update.detail ?? "")"
+                        + (saved > 0 ? " · Получено наблюдений: \(saved)" : "")
+                        + (reason.map { " · " + $0 } ?? ""), isHeartbeat: update.isHeartbeat))
             }
-            let fractions = [0.02, 0.25, 0.5, 0.75, 0.98]
+            let fractions = profile.reviewFractions
             let times = fractions.map { fraction in
                 renderedURL == nil ? item.sourceStart + item.sourceDuration * fraction
                     : TimelineTiming.playbackTime(forTimelineTime: item.timelineStart + item.timelineDuration * fraction, timeline: timeline)
             }
             let identity = renderedURL.map { FrameCacheKey.sourceIdentity(url: $0, contentHash: EditorialRenderSignature.signature(timeline)) }
                 ?? FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
-            let key = EditorialIdentity.hash("\(Self.version)|\(model)|\(phase)|\(identity)|\(times)")
+            let end = item.sourceStart + item.sourceDuration
+            let lastTime = max(0, (asset.metadata.duration ?? end) - 1 / max(24, asset.metadata.frameRate ?? 30))
+            let contextTimes = renderedURL == nil
+                ? [max(0, item.sourceStart - profile.boundaryLeadSeconds)] + times
+                    + [min(lastTime, end + profile.boundaryNearSeconds), min(lastTime, end + profile.boundaryFollowingSeconds)]
+                : []
+            // A corrected duration/frame rate may move the post-cut evidence
+            // even when the selected interval itself stays byte-identical.
+            let frameIdentity = "\(AdaptiveFrameSampler.selectedContentRepresentation)|\(model)|\(modelIdentity)|\(phase)|\(identity)|\(times)|\(contextTimes)"
+            let key = EditorialIdentity.hash("\(Self.version)|\(profile.reviewIdentity)|\(frameIdentity)")
+            let observationKey = EditorialIdentity.hash("\(Self.observationVersion)|\(profile.observationIdentity)|\(frameIdentity)")
+            // The completed-shot receipt remains tied to this exact MP4.
+            // A newly exported file must be decoded again. Its individual VLM
+            // replies may reuse an earlier MP4 reply only when the source
+            // interval, requested output times, rules, weights AND actual JPEG
+            // request bytes match. New generated timeline IDs alone must not
+            // force the model to judge identical rendered pixels again.
+            reviewer.evidenceContext = renderedURL == nil ? observationKey
+                : Self.renderedResponseContext(asset: asset, item: item, times: times, profile: profile)
             let receipt = root.appendingPathComponent(key + ".json")
             var assessment = ShotContentAssessment(itemID: item.id, assetID: assetID, sourceContentHash: asset.contentHash, sourceStart: item.sourceStart,
                 sourceDuration: item.sourceDuration, sampleTimes: times, phase: phase, model: model, cacheKey: key,
                 status: .uncertain, confidence: 0, obstructedSamples: [],
                 observation: "Локальная проверка содержания недоступна", activity: "unknown")
-            await progress?(FilmBuildProgress(stage, completed: index, total: items.count,
-                detail: "Проверка \(pass): \(operation) \(index + 1) из \(items.count)"))
+            await progress?(FilmBuildProgress(stage, completed: completedBeforeShot, total: items.count,
+                detail: "Фрагмент \(index + 1) из \(items.count) · \(asset.displayName). Подготавливаю кадры"))
             if let data = try? Data(contentsOf: receipt), let cached = try? JSONDecoder().decode(Answer.self, from: data),
-               Self.valid(cached) {
+               Self.valid(cached), phase != "source" || cached.status != .usable || cached.actionBoundary != nil {
+                PerformanceTrace.current?.event("review.cache", fields: ["model": model, "phase": phase, "key": key, "origin": "reused"])
                 assessment = Self.applying(cached, to: assessment)
-            } else if available, reviewer.deadline.map({ $0 > Date() }) ?? true {
+            } else if available, reviewer.deadlineUptime.map({ $0 > workUptime() }) ?? true {
+                PerformanceTrace.current?.event("review.cache", fields: ["model": model, "phase": phase, "key": key, "origin": "computed"])
                 do {
                     let samples = try await AdaptiveFrameSampler().selectedContentSamples(url: renderedURL ?? asset.originalURL,
-                        sourceHash: identity, timestamps: times, frameCache: frameCache)
+                        sourceHash: identity, timestamps: times, frameCache: frameCache, maximumSize: profile.reviewLongEdge)
                     guard samples.count == times.count,
                           zip(samples, times).allSatisfy({ abs(($0.0.actualTimestamp ?? $0.0.timestamp) - $0.1) <= 0.1 }) else {
                         throw URLError(.cannotDecodeContentData)
@@ -474,34 +646,43 @@ struct SelectedContentReviewer: SelectedContentReviewing {
                             movieDuration: AutomaticFilmDurationPolicy.renderedDuration(of: timeline), frameRate: timeline.frameRate)
                         return (fade?.opacity(at: time) ?? 1) < 0.35 ? index : nil
                     }
-                    var answer = try await reviewer.judge(samples: samples, intentionalFadeSamples: exemptions,
-                        responseURL: cacheURL.appendingPathComponent("SelectedContentResponses").appendingPathComponent(key + ".json"))
-                    if renderedURL == nil, answer.status == .usable {
-                        let end = item.sourceStart + item.sourceDuration
-                        let lastTime = max(0, (asset.metadata.duration ?? end) - 1 / max(24, asset.metadata.frameRate ?? 30))
-                        let contextTimes = [max(0, item.sourceStart - 1)] + times
-                            + [min(lastTime, end + 0.25), min(lastTime, end + 4)]
+                    var answer = try await FilmProcessContext.$minimumReviewContextTokens.withValue(singleImageContext) {
+                        try await reviewer.judge(samples: samples, intentionalFadeSamples: exemptions,
+                            responseURL: cacheURL.appendingPathComponent("SelectedContentResponses").appendingPathComponent(key + ".json"))
+                    }
+                    if groupSourceObservers, answer.status == .usable {
+                        pendingBoundaries.append(PendingSourceBoundary(index: index, reviewer: reviewer,
+                            assessment: assessment, answer: answer, sourceURL: asset.originalURL,
+                            sourceIdentity: identity, contextTimes: contextTimes, receipt: receipt,
+                            responseURL: cacheURL.appendingPathComponent("SelectedContentResponses").appendingPathComponent(key + ".action.json"),
+                            consumedSeconds: workUptime() - started))
+                        deferredBoundary = true
+                    } else if renderedURL == nil, answer.status == .usable {
                         let context = try await AdaptiveFrameSampler().selectedContentSamples(url: asset.originalURL,
-                            sourceHash: identity, timestamps: contextTimes, frameCache: frameCache)
+                            sourceHash: identity, timestamps: contextTimes, frameCache: frameCache, maximumSize: profile.reviewLongEdge)
                         guard context.count == 8,
                               zip(context, contextTimes).allSatisfy({ abs(($0.0.actualTimestamp ?? $0.0.timestamp) - $0.1) <= 0.1 }) else {
                             throw URLError(.cannotDecodeContentData)
                         }
                         let objectTimes = [1, 3, 5, 6, 7].map { contextTimes[$0] }
                         let objectSamples = try await AdaptiveFrameSampler().selectedContentSamples(url: asset.originalURL,
-                            sourceHash: identity, timestamps: objectTimes, frameCache: frameCache, maximumSize: 1280)
-                        answer = try Self.applyingBoundary(try await reviewer.inspectActionBoundary(samples: context, objectSamples: objectSamples,
-                            responseURL: cacheURL.appendingPathComponent("SelectedContentResponses").appendingPathComponent(key + ".action.json")), to: answer)
+                            sourceHash: identity, timestamps: objectTimes, frameCache: frameCache, maximumSize: profile.boundaryLongEdge)
+                        let boundary = try await FilmProcessContext.$minimumReviewContextTokens.withValue(profile.contextTokens) {
+                            try await reviewer.inspectActionBoundary(samples: context, objectSamples: objectSamples,
+                                responseURL: cacheURL.appendingPathComponent("SelectedContentResponses").appendingPathComponent(key + ".action.json"))
+                        }
+                        answer = try Self.applyingBoundary(boundary, to: answer)
                     }
                     consecutiveFailures = 0
-                    assessment = Self.applying(answer, to: assessment)
+                    if !deferredBoundary { assessment = Self.applying(answer, to: assessment) }
                     // Unknown results are retryable. A timeout cannot poison
                     // the persistent cache as a successful content review.
-                    if answer.status != .uncertain {
+                    if !deferredBoundary, answer.status != .uncertain {
                         try JSONEncoder().encode(answer).write(to: receipt, options: .atomic)
                     }
                 } catch is CancellationError { throw CancellationError() }
                 catch {
+                    if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
                     assessment.observation = "Содержание не проверено: \(error.localizedDescription)"
                     // A slow or ambiguous shot says nothing about the next
                     // one. Stop network attempts only when the local service
@@ -511,11 +692,98 @@ struct SelectedContentReviewer: SelectedContentReviewing {
                     if consecutiveFailures >= 2 { available = false }
                 }
             }
-            result.append(assessment)
-            await progress?(FilmBuildProgress(stage, completed: index + 1, total: items.count,
-                detail: "Обработано \(index + 1) из \(items.count) · подтверждено \(result.filter { $0.status != .uncertain }.count)"))
+            if !deferredBoundary { result[index] = assessment }
+            let completed = result.compactMap { $0 }
+            await progress?(FilmBuildProgress(stage, completed: groupSourceObservers ? index + 1 : completed.count, total: items.count,
+                detail: groupSourceObservers
+                    ? "Проверка кадров: обработано \(index + 1) из \(items.count). Границы действий проверяются отдельно."
+                    : "Обработано \(completed.count) из \(items.count) · подтверждено \(completed.filter { $0.status != .uncertain }.count)"))
+            if renderedURL != nil, index + 1 < items.count,
+               !assessment.certifies(item: item, phase: "mp4", assets: assets),
+               renderedReplacementAvailable?(completed) == true {
+                PerformanceTrace.current?.event("review.rejected-export-retired", fields: ["model": model],
+                    values: ["completedRanges": Double(completed.count), "totalRanges": Double(items.count)])
+                await progress?(FilmBuildProgress(stage, completed: index + 1, total: items.count,
+                    detail: "Найден неподтверждённый фрагмент. Подготовлена замена; новый монтаж пройдёт полную проверку."))
+                break
+            }
         }
-        return result
+        // Stay at the existing large allocation for all temporal comparisons;
+        // switching context for every shot would repeatedly reload the model.
+        if !pendingBoundaries.isEmpty, answerTransport == nil {
+            let digest = await LocalAIModelManager.shared.installedModelDigest(model: model)
+            try FilmProcessContext.current?.validate(model: model, digest: digest)
+        }
+        if !pendingBoundaries.isEmpty {
+            PerformanceTrace.current?.event("review.observers.phase", fields: ["model": model, "phase": "source.boundaries"],
+                values: ["shots": Double(pendingBoundaries.count), "contextTokens": Double(profile.contextTokens)])
+        }
+        let boundaryCount = pendingBoundaries.count
+        for (boundaryIndex, pending) in pendingBoundaries.enumerated() {
+            try Task.checkCancellation()
+            var reviewer = pending.reviewer
+            var assessment = pending.assessment
+            let completedBeforeBoundary = boundaryIndex
+            let remaining = max(0, profile.shotBudgetSeconds - pending.consumedSeconds)
+            reviewer.deadlineUptime = min(deadlineUptime ?? .infinity, workUptime() + remaining)
+            let observations = reviewer.observationProgress
+            reviewer.requestProgress = { update in
+                let saved = await observations?.count ?? 0
+                await progress?(FilmBuildProgress(.sourceBoundaries, completed: completedBeforeBoundary, total: boundaryCount,
+                    detail: "Проверка \(pass): границы действий исходного видео \(pending.index + 1) из \(items.count). \(update.detail ?? "")"
+                        + (saved > 0 ? " · Получено наблюдений: \(saved)" : "")
+                        + (reason.map { " · " + $0 } ?? ""), isHeartbeat: update.isHeartbeat))
+            }
+            await progress?(FilmBuildProgress(.sourceBoundaries, completed: boundaryIndex, total: boundaryCount,
+                detail: "Подготавливаю проверку границ · фрагмент \(pending.index + 1) из \(items.count)"))
+            if available, remaining > 0, reviewer.deadlineUptime.map({ $0 > workUptime() }) ?? true {
+                do {
+                    let context = try await AdaptiveFrameSampler().selectedContentSamples(url: pending.sourceURL,
+                        sourceHash: pending.sourceIdentity, timestamps: pending.contextTimes,
+                        frameCache: frameCache, maximumSize: profile.reviewLongEdge)
+                    guard context.count == 8,
+                          zip(context, pending.contextTimes).allSatisfy({ abs(($0.0.actualTimestamp ?? $0.0.timestamp) - $0.1) <= 0.1 }) else {
+                        throw URLError(.cannotDecodeContentData)
+                    }
+                    let objectTimes = [1, 3, 5, 6, 7].map { pending.contextTimes[$0] }
+                    let objectSamples = try await AdaptiveFrameSampler().selectedContentSamples(url: pending.sourceURL,
+                        sourceHash: pending.sourceIdentity, timestamps: objectTimes,
+                        frameCache: frameCache, maximumSize: profile.boundaryLongEdge)
+                    let boundary = try await FilmProcessContext.$minimumReviewContextTokens.withValue(profile.contextTokens) {
+                        try await reviewer.inspectActionBoundary(samples: context, objectSamples: objectSamples,
+                            responseURL: pending.responseURL)
+                    }
+                    let answer = try Self.applyingBoundary(boundary, to: pending.answer)
+                    assessment = Self.applying(answer, to: assessment)
+                    consecutiveFailures = 0
+                    if answer.status != .uncertain {
+                        try JSONEncoder().encode(answer).write(to: pending.receipt, options: .atomic)
+                    }
+                } catch is CancellationError { throw CancellationError() }
+                catch {
+                    if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
+                    assessment.observation = "Границы действия не проверены: \(error.localizedDescription)"
+                    let code = (error as? URLError)?.code
+                    consecutiveFailures = [.cannotConnectToHost, .cannotFindHost].contains(code) ? consecutiveFailures + 1 : 0
+                    if consecutiveFailures >= 2 { available = false }
+                }
+            } else {
+                assessment.observation = "Кадры проверены; проверка границ действия ещё не завершена. Наблюдения сохранены."
+            }
+            result[pending.index] = assessment
+            let completed = result.compactMap { $0 }
+            await progress?(FilmBuildProgress(.sourceBoundaries, completed: boundaryIndex + 1, total: boundaryCount,
+                detail: "Границы действий: фрагмент \(pending.index + 1) из \(items.count) · обработано \(completed.count), подтверждено \(completed.filter { $0.status != .uncertain }.count)"))
+        }
+        return result.compactMap { $0 }
+    }
+
+    static func renderedResponseContext(asset: MediaAsset, item: TimelineItem,
+                                        times: [Double], profile: FilmProcessProfile) -> String {
+        let source = FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash)
+        return EditorialIdentity.hash(["mp4-exact-pixels-v1", profile.observationIdentity, source,
+            String(item.sourceStart.bitPattern), String(item.sourceDuration.bitPattern),
+            times.map { String($0.bitPattern) }.joined(separator: ",")].joined(separator: "|"))
     }
 
     private static func applying(_ answer: Answer, to original: ShotContentAssessment) -> ShotContentAssessment {
@@ -569,58 +837,158 @@ struct SelectedContentReviewer: SelectedContentReviewing {
     }
 
     private func judge(samples: [VisualFrameSample], intentionalFadeSamples: [Int], responseURL: URL) async throws -> Answer {
-        let prompt = """
-        The image is a contact sheet of FIVE chronological frames of one documentary clip, labeled FRAME 0 through FRAME 4. Inspect all five cells. For each frame classify its MAIN visible content: event (recognizable people, activity, vehicle interior, meaningful detail), landscape (route/scenery), lens-cover (accidental opaque foreground concealing the scene), camera-handling (clear accidental camera adjustment/repositioning, e.g. upside-down selfie while rotating the camera; not an intended filmed activity), uncertain.
-        Estimate obstructionFraction: fraction of the ENTIRE frame hidden by an accidental opaque foreground obstruction, 0 to 1. This is NOT the area occupied by a normal subject/object. A fishing rod, hands working with fishing equipment, opening a bag, a close portrait, steering hands, buggy roll cage, seat belts or passenger legs are normal event content. Do not count these as lens obstruction. If a hand/sleeve actually obscures only a small part of the scene, obstructionFraction is small, not 1. A tiny visible corner behind an opaque material hiding most of the scene does not mean the view is unobstructed.
-        Do not mark normal walking/driving/paddling motion or purposeful work with gear as camera-handling. Use the sequence to distinguish camera adjustment from activity. observation: one concise Russian sentence of visible evidence. activity: short Russian activity or unknown. Give five frames with index, content, obstructionFraction, confidence. Return only JSON.
-        Camera-handling needs VISIBLE proof, not an inference from subject motion. Set handlingEvidence to inverted-scene ONLY if the entire scene is upside down or rotated at least 90 degrees, to direct-lens-contact ONLY if a hand/face visibly contacts the lens/camera rather than fishing gear or another object, else none. With handlingEvidence none classify normal activity as event or landscape, never camera-handling. Camera motion alone and hands reaching toward the fishing rod are not proof of handling the camera. Do not invent hidden contact. Focus on the observable scene.
-        Confirmed intentional final fade indices: \(intentionalFadeSamples). The planned fade itself is not an accidental obstruction. Inspect other cells independently.
-        """
-        let frameFields: [String: Any] = ["index": ["type": "integer", "minimum": 0, "maximum": 4],
-            "content": ["type": "string", "enum": ["event", "landscape", "lens-cover", "camera-handling", "uncertain"]],
-            "obstructionFraction": ["type": "number", "minimum": 0, "maximum": 1],
-            "confidence": ["type": "number", "minimum": 0, "maximum": 1],
-            "handlingEvidence": ["type": "string", "enum": ["none", "inverted-scene", "direct-lens-contact"]]]
-        let fields: [String: Any] = [
-            "frames": ["type": "array", "minItems": 5, "maxItems": 5,
-                "items": ["type": "object", "additionalProperties": false, "required": frameFields.keys.sorted(), "properties": frameFields]],
-            "observation": ["type": "string", "maxLength": 300], "activity": ["type": "string", "maxLength": 80]]
-        let body: [String: Any] = ["model": model, "stream": false, "think": false, "keep_alive": "10m",
-            "options": ["num_predict": 480, "num_ctx": 4096, "temperature": 0, "seed": 0, "repeat_penalty": 1.15],
-            "format": ["type": "object", "additionalProperties": false, "required": fields.keys.sorted(), "properties": fields],
-            "messages": [["role": "user", "content": prompt, "images": [try Self.contactSheet(samples)]]]]
-        let content = try await modelAnswer(body: body, responseURL: responseURL)
-        var frameAnswer = try JSONDecoder().decode(FrameAnswer.self, from: Data(content.utf8))
+        // A five-cell collage has a sixth blank area and letterboxing. Real
+        // 30B observations attributed that padding to the source (birds,
+        // speech, waterfall) and invented rotation in a natural pan. Observe
+        // each original sampled image at full review resolution in every
+        // mode, keeping its independent purpose/contact checks beside it.
+        var (frameAnswer, observer, contacts, orientation) = try await inspectFrameEvidence(samples: samples,
+            primary: nil, intentionalFadeSamples: intentionalFadeSamples, responseURL: responseURL)
         for index in frameAnswer.frames.indices {
             frameAnswer.frames[index].cameraAdjustmentConfirmed = nil
             frameAnswer.frames[index].rotationConfirmed = nil
         }
         // Every selected frame gets an independent observation. A contact-sheet
         // model previously repeated the first cell and missed later rotations.
-        let observer = try await inspectPurpose(samples: samples,
-            responseURL: responseURL.deletingPathExtension().appendingPathExtension("purpose.json"))
         // Do not let the primary classifier decide whether the independent
         // contact observer runs: real footage passed as scenery despite a hand
         // reaching straight toward the lens at the cut.
-        let contacts = try await inspectCameraInteraction(samples: samples,
-            indices: samples.indices.filter { !intentionalFadeSamples.contains($0) },
-            responseURL: responseURL.deletingPathExtension().appendingPathExtension("contact.json"))
-        if frameAnswer.frames.contains(where: { $0.handlingEvidence != .none || $0.content == .cameraHandling })
-            || contacts.contains(where: { $0.interaction == .cameraAdjustment && $0.confidence >= 0.9 }) {
-            let orientation = try await inspectOrientation(samples: samples,
-                responseURL: responseURL.deletingPathExtension().appendingPathExtension("orientation.json"))
+        if let orientation {
             guard let confirmed = Self.confirmHandling(frameAnswer, observer: orientation,
-                contacts: contacts, intentionalFadeSamples: intentionalFadeSamples) else { throw URLError(.cannotParseResponse) }
+                contacts: contacts, intentionalFadeSamples: intentionalFadeSamples,
+                independentPurpose: observer) else { throw URLError(.cannotParseResponse) }
             frameAnswer = confirmed
         }
         guard let technical = Self.resolve(frameAnswer, intentionalFadeSamples: intentionalFadeSamples),
-              let answer = Self.applyingPurpose(observer, to: technical, intentionalFadeSamples: intentionalFadeSamples), Self.valid(answer) else {
+              let purposeful = Self.applyingPurpose(observer, to: technical, intentionalFadeSamples: intentionalFadeSamples),
+              let answer = Self.applyingInteractionCertainty(contacts, to: purposeful,
+                  intentionalFadeSamples: intentionalFadeSamples), Self.valid(answer) else {
             throw URLError(.cannotParseResponse)
         }
         return answer
     }
 
-    private func inspectPurpose(samples: [VisualFrameSample], responseURL: URL) async throws -> OrientationAnswer {
+    /// Schedule every independent observer for an image while its prefix is
+    /// still hot. Scheduling never adds another observer's answer to a prompt.
+    /// Once a handling claim requires neutral orientation, all sampled images
+    /// are still inspected, including earlier images before the claim appeared.
+    func inspectFrameEvidence(samples: [VisualFrameSample], primary: FrameAnswer?, intentionalFadeSamples: [Int],
+                              responseURL: URL) async throws
+        -> (FrameAnswer, OrientationAnswer, [CameraInteractionFrame], OrientationAnswer?) {
+        var frames = primary?.frames ?? []
+        var descriptions: [String] = []
+        var purposes: [OrientationFrame] = []
+        var contacts: [CameraInteractionFrame] = []
+        var orientations: [OrientationFrame] = []
+        var needsOrientation = frames.contains { $0.handlingEvidence != .none || $0.content == .cameraHandling }
+        let orientationURL = responseURL.deletingPathExtension().appendingPathExtension("orientation.json")
+        for index in samples.indices {
+            if primary == nil {
+                let technical = try await inspectTechnicalFrames(samples: samples, indices: [index],
+                    intentionalFadeSamples: intentionalFadeSamples, responseURL: responseURL)
+                frames += technical.frames
+                descriptions.append(technical.observation)
+                needsOrientation = needsOrientation || technical.frames.contains {
+                    $0.handlingEvidence != .none || $0.content == .cameraHandling
+                }
+            }
+            let (purpose, contact) = try await inspectIndependentFrames(samples: samples, indices: [index],
+                intentionalFadeSamples: intentionalFadeSamples, responseURL: responseURL)
+            purposes += purpose.frames
+            contacts += contact
+            // The independent purpose observer also inspects scene orientation.
+            // Its rotation finding must reach the neutral physical check even
+            // when the primary called the image readable and no hand is visible.
+            // A useful landscape can still be sideways in the exported film.
+            needsOrientation = needsOrientation || purpose.frames.contains {
+                $0.orientation == .sideways || $0.orientation == .inverted
+            }
+            needsOrientation = needsOrientation || contact.contains {
+                $0.interaction == .unclear || $0.interaction == .cameraAdjustment && $0.confidence >= 0.9
+            }
+            if needsOrientation {
+                orientations += try await inspectOrientation(samples: samples, indices: [index], responseURL: orientationURL).frames
+            }
+        }
+        if needsOrientation {
+            let completed = Set(orientations.map(\.index))
+            let missing = samples.indices.filter { !completed.contains($0) }
+            orientations += try await inspectOrientation(samples: samples, indices: missing, responseURL: orientationURL).frames
+            orientations.sort { $0.index < $1.index }
+        }
+        let technical = primary ?? FrameAnswer(frames: frames, observation: descriptions.joined(separator: "; "), activity: "unknown")
+        return (technical, OrientationAnswer(frames: purposes), contacts,
+            needsOrientation ? OrientationAnswer(frames: orientations) : nil)
+    }
+
+    /// Each mode receives one observable question and one full sampled image
+    /// at a time, with no artificial blank cells or letterboxing to classify. The
+    /// independent purpose/contact/orientation and action checks still follow.
+    private func inspectTechnicalFrames(samples: [VisualFrameSample], indices: [Int], intentionalFadeSamples: [Int],
+                                                  responseURL: URL) async throws -> FrameAnswer {
+        struct Observation: Decodable {
+            var observation: String
+            var content: FrameContent
+            var obstructionFraction: Double
+            var confidence: Double
+            var handlingEvidence: HandlingEvidence
+        }
+        var frames: [FrameVerdict] = []
+        var observations: [String] = []
+        for index in indices {
+            let sample = samples[index]
+            let fields: [String: Any] = ["observation": ["type": "string", "minLength": 12, "maxLength": 200],
+                "content": ["type": "string", "enum": ["event", "landscape", "lens-cover", "camera-handling", "uncertain"]],
+                "obstructionFraction": ["type": "number", "minimum": 0, "maximum": 1],
+                "confidence": ["type": "number", "minimum": 0, "maximum": 1],
+                "handlingEvidence": ["type": "string", "enum": ["none", "inverted-scene", "direct-lens-contact"]]]
+            let prompt = """
+            Inspect this ONE image literally. First describe what is visible in one short English sentence.
+            Classify its main content: event (a readable filmed subject or activity, including people, animals/wildlife, vehicles, purposeful hands or equipment), landscape (place or route), lens-cover (accidental opaque material hides the scene), camera-handling (visible direct lens contact or the whole scene rotated at least 90 degrees), uncertain.
+            obstructionFraction is the fraction hidden by accidental opaque material, NOT the size of a normal subject. Hands using gear, a bag, passenger legs and a roll cage are subjects, not lens covers. Only actual contact with the filming lens is direct-lens-contact; hands touching another object are none. Camera movement cannot be inferred from one image. Do not invent hidden contact or rotation. When evidence is unclear, use uncertain.
+            This frame is an intentional final fade: \(intentionalFadeSamples.contains(index)). A planned fade is not a lens cover. Return only JSON.
+            """
+            let body: [String: Any] = ["model": model, "stream": false, "think": false,
+                "options": ["num_ctx": 4096, "num_predict": 240, "temperature": 0, "seed": 0],
+                "format": ["type": "object", "required": fields.keys.sorted(), "additionalProperties": false, "properties": fields],
+                "messages": [["role": "user", "content": prompt, "images": [sample.jpegBase64]]]]
+            let content = try await modelAnswer(body: body,
+                responseURL: responseURL.deletingPathExtension().appendingPathExtension("technical-frame-\(index).json"),
+                progressDetail: "Проверяю читаемость · кадр \(index + 1) из \(samples.count)",
+                responseFieldOrder: FilmProcessContext.current?.technicalObservationFirst == true
+                    ? ["observation", "confidence", "content", "handlingEvidence", "obstructionFraction"] : nil,
+                repairInstruction: "OBSERVATION FORMAT: observation must describe the visible image in a literal sentence of at least three words, including unclear or obscured views.",
+                validateObservation: { content in
+                    let observation = try JSONDecoder().decode(Observation.self, from: Data(content.utf8))
+                    guard observation.observation.split(whereSeparator: \.isWhitespace).count >= 3 else { throw URLError(.cannotParseResponse) }
+                })
+            let observation = try JSONDecoder().decode(Observation.self, from: Data(content.utf8))
+            frames.append(FrameVerdict(index: index, content: observation.content, confidence: observation.confidence,
+                obstructionFraction: observation.obstructionFraction, handlingEvidence: observation.handlingEvidence))
+            observations.append("FRAME \(index): " + observation.observation)
+        }
+        return FrameAnswer(frames: frames, observation: observations.joined(separator: "; "), activity: "unknown")
+    }
+
+    func inspectIndependentFrames(samples: [VisualFrameSample], indices: [Int]? = nil, intentionalFadeSamples: [Int],
+                                  responseURL: URL) async throws -> (OrientationAnswer, [CameraInteractionFrame]) {
+        var purposes: [OrientationFrame] = []
+        var contacts: [CameraInteractionFrame] = []
+        // Keep the current image's prefix hot. These are still separate,
+        // unchanged prompts; neither observer sees the other one's answer.
+        for index in indices ?? Array(samples.indices) {
+            let purpose = try await inspectPurpose(samples: samples, indices: [index],
+                responseURL: responseURL.deletingPathExtension().appendingPathExtension("purpose.json"))
+            purposes += purpose.frames
+            if !intentionalFadeSamples.contains(index) {
+                contacts += try await inspectCameraInteraction(samples: samples, indices: [index],
+                    responseURL: responseURL.deletingPathExtension().appendingPathExtension("contact.json"))
+            }
+        }
+        return (OrientationAnswer(frames: purposes), contacts)
+    }
+
+    func inspectPurpose(samples: [VisualFrameSample], indices: [Int], responseURL: URL) async throws -> OrientationAnswer {
         // Real contact-sheet requests repeated the first cell's description
         // and missed later 90-degree camera turns. Inspect each exact image
         // independently; no negative/positive label is supplied to the observer.
@@ -634,7 +1002,8 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         }
         let prompt = """
         Inspect this SINGLE documentary image literally. Describe its main visible subject. Is the scene upright, sideways (about 90 degrees), inverted (about 180 degrees), or unclear? Judge sky, ground and people relative to the image edges, not one object. opaqueCoverFraction means accidental opaque material hiding the view, not a normal filmed subject.
-        Assess visible editorial purpose, without inventing a story: action (readable person/gear interaction or travel activity), reaction (readable human response), portrait (recognizable face/person intentionally framed), detail (clearly framed relevant object with legible features), establishing (a coherent, readable view of a place or route), none (incidental ground/fence/fragmented body edge with no readable subject or activity), unclear. A cropped torso/coat at the edge, scraps of bank/vegetation and a fence do NOT become a portrait or an establishing shot merely because they are visible. Ordinary greenery alone is not evidence of a composed scenery view. A downward accidental view with no focal subject has purpose none. Conversely, hands visibly operating a fishing rod, opening equipment, steering, a passenger in a vehicle, a person walking along a visible route, and a coherent river/road view can have clear purpose. Do not require a face in purposeful POV or equipment detail. Do not confuse prettiness with narrative usefulness. purposeEvidence must name what the image actually reveals and how its framing supports the selected purpose; for none describe what is missing. Use short literal English statements. Return only JSON.
+        Assess visible editorial purpose, without inventing a story: action (readable human or animal activity, gear interaction, or travel), reaction (readable human response), portrait (recognizable face/person intentionally framed), detail (clearly framed relevant object with legible features), establishing (a coherent, readable view of a place or route), none (incidental ground/fence/fragmented body edge with no readable subject or activity), unclear. A cropped torso/coat at the edge, scraps of bank/vegetation and a fence do NOT become a portrait or an establishing shot merely because they are visible. Ordinary greenery alone is not evidence of a composed scenery view. A downward accidental view with no focal subject has purpose none. Conversely, hands visibly operating a fishing rod, opening equipment, steering, a passenger in a vehicle, a person walking along a visible route, and a coherent river/road view can have clear purpose. Do not require a face in purposeful POV or equipment detail. Wildlife and landscapes do not need human interaction to be useful: judge whether the animal, activity or place is visibly readable and coherently framed. Do not confuse prettiness with narrative usefulness. purposeEvidence must name what the image actually reveals and how its framing supports the selected purpose; for none describe what is missing. Use short literal English statements. Return only JSON.
+        purposeConfidence measures certainty that your selected category is correct, including none. It is NOT an amount of usefulness. A clearly observed absence of purpose can have high confidence. If the image does not establish a category, use unclear and low confidence. Never increase confidence to make a clip pass.
         """
         let fields: [String: Any] = ["scene": ["type": "string", "maxLength": 120],
             "orientation": ["type": "string", "enum": ["upright", "sideways", "inverted", "unclear"]],
@@ -643,13 +1012,28 @@ struct SelectedContentReviewer: SelectedContentReviewing {
             "purposeConfidence": ["type": "number", "minimum": 0, "maximum": 1],
             "purposeEvidence": ["type": "string", "maxLength": 160]]
         var frames: [OrientationFrame] = []
-        for (index, sample) in samples.enumerated() {
+        for index in indices {
+            guard samples.indices.contains(index) else { throw URLError(.cannotParseResponse) }
+            let sample = samples[index]
             let body: [String: Any] = ["model": model, "stream": false, "think": false,
                 "options": ["num_ctx": 4096, "num_predict": 300, "temperature": 0, "seed": 0],
                 "format": ["type": "object", "required": fields.keys.sorted(), "properties": fields],
                 "messages": [["role": "user", "content": prompt, "images": [sample.jpegBase64]]]]
-            let content = try await modelAnswer(body: body, responseURL: responseURL.deletingPathExtension().appendingPathExtension("frame-\(index).json"))
-            let observation = try JSONDecoder().decode(SingleFrame.self, from: Data(content.utf8))
+            let content = try await modelAnswer(body: body, responseURL: responseURL.deletingPathExtension().appendingPathExtension("frame-\(index).json"),
+                progressDetail: "Оцениваю содержание · кадр \(index + 1) из \(samples.count)")
+            var observation = try JSONDecoder().decode(SingleFrame.self, from: Data(content.utf8))
+            if observation.purpose == .unclear || observation.purposeConfidence < 0.75 {
+                // One targeted re-observation addresses the unresolved
+                // classification. Keep the same model and exact image, record
+                // both replies, and retain uncertainty when this cannot help.
+                var clarification = body
+                clarification["messages"] = [["role": "user", "images": [sample.jpegBase64],
+                    "content": prompt + " The previous observation did not establish the purpose category with sufficient certainty. Inspect this image again independently. Distinguish no useful subject (none) from inability to tell (unclear). Confidence is certainty of the chosen category, including a negative finding, not how useful or attractive the shot is. State only visible evidence. If it remains ambiguous, preserve that uncertainty."]]
+                let clarified = try await modelAnswer(body: clarification,
+                    responseURL: responseURL.deletingPathExtension().appendingPathExtension("frame-\(index)-clarified.json"),
+                    progressDetail: "Уточняю неопределённую оценку содержания · кадр \(index + 1) из \(samples.count)")
+                observation = try JSONDecoder().decode(SingleFrame.self, from: Data(clarified.utf8))
+            }
             frames.append(.init(index: index, scene: observation.scene, orientation: observation.orientation,
                 opaqueCoverFraction: observation.opaqueCoverFraction, purpose: observation.purpose,
                 purposeConfidence: observation.purposeConfidence, purposeEvidence: observation.purposeEvidence))
@@ -658,10 +1042,22 @@ struct SelectedContentReviewer: SelectedContentReviewing {
     }
 
     private func inspectCameraInteraction(samples: [VisualFrameSample], indices: [Int], responseURL: URL) async throws -> [CameraInteractionFrame] {
-        struct SingleFrame: Decodable { var interaction: CameraInteraction; var confidence: Double; var evidence: String }
-        let prompt = "Inspect the SINGLE image for visible hand interaction. Classify camera-adjustment only for a clearly foreshortened near-camera reach straight toward the filming lens, visible contact with it, or manipulation of the filming camera. This can occur while most of the scene remains visible; covered area alone is not proof. Classify social-gesture for a wave, thumbs-up, peace sign or other communication toward the viewer without manipulating the camera. A gesture addressed to the viewer is not camera adjustment. Classify equipment-work when the hand visibly grips/operates an identifiable fishing rod, steering wheel, bag, case, helmet or other filmed equipment. POV hands and an angled scene alone are not camera-adjustment. Classify none when no hand interaction is visible; use unclear when the target cannot be identified. Evidence must be a literal English description naming the visible hand action and its target. A class label such as equipment-work is not evidence. Do not invent contact with a hidden camera. Return only JSON."
-        let fields: [String: Any] = ["interaction": ["type": "string", "enum": ["camera-adjustment", "equipment-work", "social-gesture", "none", "unclear"]],
-            "confidence": ["type": "number", "minimum": 0, "maximum": 1], "evidence": ["type": "string", "maxLength": 130]]
+        struct SingleFrame: Decodable {
+            var interaction: CameraInteraction
+            var confidence: Double
+            var evidence: String
+            enum CodingKeys: String, CodingKey {
+                case evidence = "a_observation", interaction = "b_interaction", confidence = "c_confidence"
+            }
+        }
+        // Paired real-scene checks found 8B emits percentages; the same wording
+        // changed 2B's interaction categories, so preserve the other models' prompts.
+        let probabilityScale = model == AIAnalysisProfile.resolve(mode: .quality).modelID
+            ? " c_confidence must be a decimal probability from 0.0 to 1.0 inclusive, never a percentage: for example 0.95, not 95 or 100." : ""
+        let prompt = "Inspect the SINGLE image for visible hand interaction. First write a_observation: a literal English sentence about the visible hands and their targets, or their absence. If no hands are visible, say so and describe the visible scene; do not invent fingers or an action just to fill this field. If a possible hand or its target is obscured, explain that uncertainty. Then choose b_interaction and c_confidence.\(probabilityScale) Confidence measures how well the CHOSEN CLASS describes this image, including none; it is not the probability that camera manipulation exists. Use low confidence when the visible evidence is ambiguous. A bare class label is never an observation. Classify camera-adjustment only for a clearly foreshortened near-camera reach straight toward the filming lens, visible contact with it, or manipulation of the filming camera. This can occur while most of the scene remains visible; covered area alone is not proof. Classify social-gesture for a wave, thumbs-up, peace sign or other communication toward the viewer without manipulating the camera. A gesture addressed to the viewer is not camera adjustment. Classify equipment-work when the hand visibly grips/operates an identifiable fishing rod, steering wheel, bag, case, helmet or other filmed equipment. POV hands and an angled scene alone are not camera-adjustment. Classify none when no hand interaction is visible; use unclear when the target cannot be identified. The observation must describe the actual presence or absence of hands and interaction. A class label such as equipment-work or none is not evidence. Do not invent contact with a hidden camera. Return only JSON."
+        let fields: [String: Any] = ["a_observation": ["type": "string", "minLength": 12, "maxLength": 180],
+            "b_interaction": ["type": "string", "enum": ["camera-adjustment", "equipment-work", "social-gesture", "none", "unclear"]],
+            "c_confidence": ["type": "number", "minimum": 0, "maximum": 1]]
         var result: [CameraInteractionFrame] = []
         for index in indices.sorted() {
             guard samples.indices.contains(index) else { throw URLError(.cannotParseResponse) }
@@ -670,9 +1066,10 @@ struct SelectedContentReviewer: SelectedContentReviewing {
                 let body: [String: Any] = ["model": model, "stream": false, "think": false,
                     "options": ["num_ctx": 4096, "num_predict": 160, "temperature": 0, "seed": 0],
                     "format": ["type": "object", "required": fields.keys.sorted(), "properties": fields],
-                    "messages": [["role": "user", "content": prompt + (attempt == 0 ? "" : " Describe the actual visible fingers/hand and the object they act on in a sentence; do not put a classification label in evidence."), "images": [samples[index].jpegBase64]]]]
+                    "messages": [["role": "user", "content": prompt + (attempt == 0 ? "" : " OBSERVATION REPAIR: The prior answer lacked a literal observation. State what the image actually shows about hands and their target. When no hands are visible, explicitly describe their absence; when obscured, describe the ambiguity. Do not invent a hand, use a bare label, or raise confidence just to pass validation."), "images": [samples[index].jpegBase64]]]]
                 let content = try await modelAnswer(body: body,
-                    responseURL: responseURL.deletingPathExtension().appendingPathExtension("frame-\(index)-attempt-\(attempt).json"))
+                    responseURL: responseURL.deletingPathExtension().appendingPathExtension("frame-\(index)-attempt-\(attempt).json"),
+                    progressDetail: "Проверяю движения камеры · кадр \(index + 1) из \(samples.count), попытка \(attempt + 1)")
                 let observation = try JSONDecoder().decode(SingleFrame.self, from: Data(content.utf8))
                 let frame = CameraInteractionFrame(index: index, interaction: observation.interaction,
                     confidence: observation.confidence, evidence: observation.evidence)
@@ -688,7 +1085,7 @@ struct SelectedContentReviewer: SelectedContentReviewing {
                 let target = try await inspectHandTarget(sample: samples[index],
                     responseURL: responseURL.deletingPathExtension()
                         .appendingPathExtension("target-frame-\(index).json"))
-                guard let corroborated = Self.corroboratingCameraClaim(accepted, with: target) else {
+                guard let corroborated = Self.retainingCameraTargetUncertainty(accepted, target: target) else {
                     throw URLError(.cannotParseResponse)
                 }
                 accepted = corroborated
@@ -708,11 +1105,18 @@ struct SelectedContentReviewer: SelectedContentReviewing {
             "options": ["num_ctx": 4096, "num_predict": 250, "temperature": 0, "seed": 0],
             "format": ["type": "object", "required": ["observation", "target", "confidence"], "properties": fields],
             "messages": [["role": "user", "content": prompt, "images": [sample.jpegBase64]]]]
-        let content = try await modelAnswer(body: body, responseURL: responseURL)
+        let content = try await modelAnswer(body: body, responseURL: responseURL,
+            progressDetail: "Уточняю положение рук относительно камеры",
+            repairInstruction: "OBSERVATION FORMAT: observation must describe the visible hand and target, absence or uncertainty in at least six words. Do not invent a target or increase confidence.",
+            validateObservation: { content in
+                let target = try JSONDecoder().decode(HandTargetObservation.self, from: Data(content.utf8))
+                guard target.confidence.isFinite, (0...1).contains(target.confidence),
+                      target.observation.split(whereSeparator: \.isWhitespace).count >= 6 else { throw URLError(.cannotParseResponse) }
+            })
         return try JSONDecoder().decode(HandTargetObservation.self, from: Data(content.utf8))
     }
 
-    private func inspectOrientation(samples: [VisualFrameSample], responseURL: URL) async throws -> OrientationAnswer {
+    private func inspectOrientation(samples: [VisualFrameSample], indices: [Int], responseURL: URL) async throws -> OrientationAnswer {
         // Keep the neutral physical observer separate from editorial judgement.
         // Combining the questions made normal downward equipment close-ups
         // falsely "sideways". The isolated prompt passed real rotated footage
@@ -729,12 +1133,15 @@ struct SelectedContentReviewer: SelectedContentReviewing {
             "orientationBasis": ["type": "string", "enum": ["world-reference", "overhead-detail", "uncertain"]],
             "opaqueCoverFraction": ["type": "number", "minimum": 0, "maximum": 1]]
         var frames: [OrientationFrame] = []
-        for (index, sample) in samples.enumerated() {
+        for index in indices {
+            guard samples.indices.contains(index) else { throw URLError(.cannotParseResponse) }
+            let sample = samples[index]
             let body: [String: Any] = ["model": model, "stream": false, "think": false,
                 "options": ["num_ctx": 4096, "num_predict": 180, "temperature": 0, "seed": 0],
                 "format": ["type": "object", "required": ["scene", "orientation", "orientationBasis", "opaqueCoverFraction"], "properties": fields],
                 "messages": [["role": "user", "content": prompt, "images": [sample.jpegBase64]]]]
-            let content = try await modelAnswer(body: body, responseURL: responseURL.deletingPathExtension().appendingPathExtension("frame-\(index).json"))
+            let content = try await modelAnswer(body: body, responseURL: responseURL.deletingPathExtension().appendingPathExtension("frame-\(index).json"),
+                progressDetail: "Проверяю положение изображения · кадр \(index + 1) из \(samples.count)")
             let observation = try JSONDecoder().decode(SingleFrame.self, from: Data(content.utf8))
             frames.append(.init(index: index, scene: observation.scene, orientation: observation.orientation,
                 opaqueCoverFraction: observation.opaqueCoverFraction, orientationBasis: observation.orientationBasis))
@@ -742,34 +1149,73 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         return OrientationAnswer(frames: frames)
     }
 
-    func modelAnswer(body: [String: Any], responseURL: URL) async throws -> String {
-        var body = body
+    func modelAnswer(body: [String: Any], responseURL: URL, progressDetail: String = "Проверяю выбранные кадры",
+                     responseFieldOrder: [String]? = nil,
+                     responseArrayItemFieldOrders: [String: [String]] = [:],
+                     repairInstruction: String = "",
+                     validateObservation: (@Sendable (String) throws -> Void)? = nil) async throws -> String {
+        let repair = LocalModelResponseValidation.repairBody(body, additionalInstruction: repairInstruction)
+        // Both recipes have exact, separately verifiable request/response pairs.
+        // A previously repaired observation never needs to repeat its bad reply.
+        var originalCacheInvalid = false
+        for (index, recipe) in [body, repair].enumerated() {
+            do {
+                if let content = try await modelAnswerAttempt(body: recipe, responseURL: responseURL,
+                    progressDetail: progressDetail, responseFieldOrder: responseFieldOrder, responseArrayItemFieldOrders: responseArrayItemFieldOrders,
+                    cacheOnly: true, validateObservation: validateObservation) { return content }
+            } catch {
+                guard (error as? URLError)?.code == .cannotParseResponse || error is DecodingError else { throw error }
+                // A saved malformed observation is a known failure, not a cache
+                // miss. Do not resend its unchanged prompt before the repair.
+                guard index == 0 else { throw error }
+                originalCacheInvalid = true
+            }
+        }
+        if originalCacheInvalid {
+            guard (FilmProcessContext.current?.responseRepairAttempts ?? 1) > 0 else { throw URLError(.cannotParseResponse) }
+            try Task.checkCancellation()
+            return try await modelAnswerAttempt(body: repair, responseURL: responseURL,
+                progressDetail: "Уточняю формат сохранённого ответа · " + progressDetail,
+                responseFieldOrder: responseFieldOrder, responseArrayItemFieldOrders: responseArrayItemFieldOrders,
+                cacheOnly: false, validateObservation: validateObservation)!
+        }
+        do {
+            return try await modelAnswerAttempt(body: body, responseURL: responseURL,
+                progressDetail: progressDetail, responseFieldOrder: responseFieldOrder, responseArrayItemFieldOrders: responseArrayItemFieldOrders,
+                cacheOnly: false, validateObservation: validateObservation)!
+        } catch {
+            guard (error as? URLError)?.code == .cannotParseResponse || error is DecodingError else { throw error }
+            guard (FilmProcessContext.current?.responseRepairAttempts ?? 1) > 0 else { throw error }
+            try Task.checkCancellation()
+            return try await modelAnswerAttempt(body: repair, responseURL: responseURL,
+                progressDetail: "Уточняю формат ответа · " + progressDetail,
+                responseFieldOrder: responseFieldOrder, responseArrayItemFieldOrders: responseArrayItemFieldOrders, cacheOnly: false, validateObservation: validateObservation)!
+        }
+    }
+
+    private func modelAnswerAttempt(body: [String: Any], responseURL: URL, progressDetail: String,
+                                    responseFieldOrder: [String]?,
+                                    responseArrayItemFieldOrders: [String: [String]],
+                                    cacheOnly: Bool,
+                                    validateObservation: (@Sendable (String) throws -> Void)?) async throws -> String? {
+        var body = try FilmProcessContext.requestBody(LocalVisionMessageEncoding.separatingImages(in: body))
         if var options = body["options"] as? [String: Any] {
-            // The multi-image boundary observer needs 8K. Alternating 4K/8K
-            // reloaded the same local model (20 s in the observed film) twice
-            // per shot. Keep one context size without reducing input evidence.
-            options["num_ctx"] = max(8192, options["num_ctx"] as? Int ?? 8192)
+            // New frozen jobs group one-image observations separately from
+            // temporal comparisons. Honor that stage's verified allocation;
+            // legacy standalone callers retain their former 8K minimum.
+            let minimum = FilmProcessContext.minimumContextTokens(for: body) ?? 8192
+            options["num_ctx"] = max(minimum, options["num_ctx"] as? Int ?? minimum)
             body["options"] = options
             body["keep_alive"] = "10m"
         }
-        let operation = responseURL.lastPathComponent.components(separatedBy: ".").dropFirst().joined(separator: ".")
-        let observer = requestProgress
-        await observer?(FilmBuildProgress(.verifying, detail: operation.contains("action") ? "Проверяю границы действия" : operation.contains("purpose") ? "Оцениваю содержание кадра" : "Проверяю видимость и положение кадра"))
-        let heartbeat = Task {
-            var seconds = 0
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(10)) } catch { return }
-                seconds += 10
-                await observer?(FilmBuildProgress(.verifying, detail: "Модель проверяет кадр · \(seconds) с"))
-            }
-        }
-        defer { heartbeat.cancel() }
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:11434/api/chat")!)
+        let legacyBody = body
+        if answerTransport == nil { body["stream"] = true }
+        var request = URLRequest(url: LocalAIRuntimeConfiguration.baseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"
-        let remaining = deadline?.timeIntervalSinceNow ?? 120
+        let remaining = deadlineUptime.map { $0 - workUptime() } ?? 120
         request.timeoutInterval = max(0.1, min(120, remaining))
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        request.httpBody = try LocalAIRequestEncoding.data(body, responseFieldOrder: responseFieldOrder, responseArrayItemFieldOrders: responseArrayItemFieldOrders)
         try FileManager.default.createDirectory(at: responseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         // Exact local requests and responses let an audit inspect the images
         // actually received by the model, rather than trusting a summary.
@@ -777,28 +1223,73 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         let requestURL = responseURL.deletingPathExtension().appendingPathExtension("request.json")
         // Earlier cache writers could overwrite a request before comparing it
         // with its old response. Their pairs have no reliable provenance.
-        let exactCache = responseURL.deletingLastPathComponent().appendingPathComponent("ByExactRequestV2")
+        let exactCache = responseURL.deletingLastPathComponent().appendingPathComponent("ByExactRequestV3")
         try FileManager.default.createDirectory(at: exactCache, withIntermediateDirectories: true)
-        let digest = SHA256.hash(data: requestData).map { String(format: "%02x", $0) }.joined()
+        let modelDigest: String?
+        if let modelDigestOverride { modelDigest = modelDigestOverride }
+        else if answerTransport != nil { modelDigest = "injected-transport" }
+        else { modelDigest = await LocalAIModelManager.shared.installedModelDigest(model: model) }
+        if answerTransport == nil { try FilmProcessContext.current?.validate(model: model, digest: modelDigest) }
+        let scope = Self.observationVersion + "|" + (evidenceContext ?? "exact-request") + "|"
+        var identity = Data((scope + (modelDigest ?? UUID().uuidString)).utf8)
+        identity.append(requestData)
+        let digest = SHA256.hash(data: identity).map { String(format: "%02x", $0) }.joined()
         let exactReceipt = exactCache.appendingPathComponent(digest + ".json")
         let exactRequest = exactCache.appendingPathComponent(digest + ".request.json")
-        func verifiedContent(_ data: Data) -> String? {
-            guard let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
-                  envelope.done == true, envelope.done_reason == "stop", envelope.model == model,
-                  let content = envelope.message?.content,
-                  (try? JSONSerialization.jsonObject(with: Data(content.utf8))) != nil else { return nil }
+        // Rejected, completed answers are not successful checks. Remember their
+        // exact recipe separately so restarting a job cannot resend the same
+        // deterministically invalid answer before its targeted repair.
+        let rejectedCache = responseURL.deletingLastPathComponent().appendingPathComponent("RejectedByExactRequestV1")
+        func verifiedContent(_ data: Data) throws -> String {
+            let envelope = try JSONDecoder().decode(Envelope.self, from: data)
+            guard envelope.done == true, envelope.done_reason == "stop", envelope.model == model,
+                  let content = envelope.message?.content else { throw URLError(.cannotParseResponse) }
+            try LocalModelResponseValidation.validate(content, schema: body["format"] as? [String: Any])
+            // Caller invariants must hold before caching, progress or reuse.
+            // JSON shape alone does not establish a usable observation.
+            try validateObservation?(content)
             return content
         }
-        if (try? Data(contentsOf: exactRequest)) == requestData,
-           let data = try? Data(contentsOf: exactReceipt), let content = verifiedContent(data) {
-            // Remove the old response before associating this path with a new
-            // request, so an interrupted write cannot create a false pair.
-            if FileManager.default.fileExists(atPath: responseURL.path) { try FileManager.default.removeItem(at: responseURL) }
-            try requestData.write(to: requestURL, options: .atomic)
-            try data.write(to: responseURL, options: .atomic)
-            return content
+        // Streaming changes delivery only. A complete old response remains
+        // reusable when every model input is byte-identical except `stream`.
+        // Retain the original pair so its transport provenance is not relabelled.
+        let legacyData = try LocalAIRequestEncoding.data(legacyBody, responseFieldOrder: responseFieldOrder, responseArrayItemFieldOrders: responseArrayItemFieldOrders)
+        for candidateData in requestData == legacyData ? [requestData] : [requestData, legacyData] {
+            var candidateIdentity = Data((scope + (modelDigest ?? UUID().uuidString)).utf8)
+            candidateIdentity.append(candidateData)
+            let key = SHA256.hash(data: candidateIdentity).map { String(format: "%02x", $0) }.joined()
+            if (try? Data(contentsOf: exactCache.appendingPathComponent(key + ".request.json"))) == candidateData,
+               let data = try? Data(contentsOf: exactCache.appendingPathComponent(key + ".json")) {
+                let content: String
+                do { content = try verifiedContent(data) }
+                catch {
+                    PerformanceTrace.current?.event("review.request.cache-invalid", fields: ["model": model, "key": key, "operation": progressDetail])
+                    throw error
+                }
+                if FileManager.default.fileExists(atPath: responseURL.path) { try FileManager.default.removeItem(at: responseURL) }
+                try candidateData.write(to: requestURL, options: .atomic)
+                try data.write(to: responseURL, options: .atomic)
+                await observationProgress?.record(key)
+                await requestProgress?(FilmBuildProgress(.verifying, detail: "Использую сохранённый ответ · " + progressDetail))
+                PerformanceTrace.current?.event("review.request.cache", fields: ["model": model, "key": key, "origin": "reused", "operation": progressDetail])
+                return content
+            }
+            if (try? Data(contentsOf: rejectedCache.appendingPathComponent(key + ".request.json"))) == candidateData,
+               let data = try? Data(contentsOf: rejectedCache.appendingPathComponent(key + ".json")),
+               let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
+               envelope.done == true, envelope.model == model,
+               ["stop", "length"].contains(envelope.done_reason ?? ""), envelope.message?.content != nil {
+                do { _ = try verifiedContent(data) }
+                catch {
+                    PerformanceTrace.current?.event("review.request.known-failure", fields: ["model": model, "key": key, "operation": progressDetail])
+                    await requestProgress?(FilmBuildProgress(.verifying, detail: "Сохранённый ответ требует исправления · " + progressDetail))
+                    throw error
+                }
+            }
         }
-        guard deadline.map({ $0 > Date() }) ?? true else { throw URLError(.timedOut) }
+        if cacheOnly { return nil }
+        PerformanceTrace.current?.event("review.request.cache", fields: ["model": model, "key": digest, "origin": "computed", "operation": progressDetail])
+        guard deadlineUptime.map({ $0 > workUptime() }) ?? true else { throw LocalAIInferenceFailure(model: model, reason: "текущая проверка не завершилась вовремя") }
         // Legacy raw pairs remain available for audit, never for certification.
         // Keep both sides before replacing a path, including on network failure.
         if FileManager.default.fileExists(atPath: responseURL.path) {
@@ -810,28 +1301,53 @@ struct SelectedContentReviewer: SelectedContentReviewing {
             }
         }
         try requestData.write(to: requestURL, options: .atomic)
-        let (data, response) = try await transportResponse(for: request)
+        let (data, response) = try await transportResponse(for: request, detail: progressDetail)
         try data.write(to: responseURL, options: .atomic)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-        guard let content = verifiedContent(data) else {
-            throw URLError(.cannotParseResponse)
+        let content: String
+        do { content = try verifiedContent(data) }
+        catch {
+            // A transport failure, incomplete stream or wrong model is not a
+            // deterministic answer. It must remain recoverable on the same model.
+            if let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
+               envelope.done == true, envelope.model == model,
+               ["stop", "length"].contains(envelope.done_reason ?? ""), envelope.message?.content != nil {
+                try FileManager.default.createDirectory(at: rejectedCache, withIntermediateDirectories: true)
+                try requestData.write(to: rejectedCache.appendingPathComponent(digest + ".request.json"), options: .atomic)
+                try data.write(to: rejectedCache.appendingPathComponent(digest + ".json"), options: .atomic)
+                PerformanceTrace.current?.event("review.request.rejected", fields: ["model": model, "key": digest, "operation": progressDetail])
+            }
+            throw error
         }
         try requestData.write(to: exactRequest, options: .atomic)
         try data.write(to: exactReceipt, options: .atomic)
+        await observationProgress?.record(digest)
+        await requestProgress?(FilmBuildProgress(.verifying, detail: "Наблюдение сохранено · " + progressDetail))
+        try await AutonomousJobContext.store?.recordInferenceProgress()
         return content
     }
 
-    private func transportResponse(for request: URLRequest) async throws -> (Data, URLResponse) {
+    private func transportResponse(for request: URLRequest, detail: String) async throws -> (Data, URLResponse) {
+        if answerTransport == nil {
+            await requestProgress?(FilmBuildProgress(.verifying, detail: detail))
+            let observer = requestProgress
+            return try await inferenceClient.response(for: request, progress: { update in
+                var contextual = update
+                contextual.detail = detail + " · " + (update.detail ?? "")
+                await observer?(contextual)
+            },
+                maximumDuration: deadlineUptime.map { $0 - workUptime() }, preservingRequestBody: true)
+        }
         for attempt in 0..<2 {
             do {
                 var request = request
-                if let deadline {
-                    guard deadline > Date() else { throw URLError(.timedOut) }
-                    request.timeoutInterval = min(request.timeoutInterval, deadline.timeIntervalSinceNow)
+                if let deadlineUptime {
+                    let remaining = deadlineUptime - workUptime()
+                    guard remaining > 0 else { throw URLError(.timedOut) }
+                    request.timeoutInterval = min(request.timeoutInterval, remaining)
                 }
-                let result: (Data, URLResponse)
-                if let answerTransport { result = try await answerTransport(request) }
-                else { result = try await URLSession.shared.data(for: request) }
+                let attemptDetail = attempt == 0 ? detail : "Повторяю запрос после сбоя · " + detail
+                let result = try await transportAttempt(for: request, detail: attemptDetail)
                 // Ollama reports a model startup timeout as HTTP 500 rather
                 // than a URLSession timeout. Retry the same evidence once;
                 // never turn a failed startup into a visual verdict.
@@ -854,33 +1370,33 @@ struct SelectedContentReviewer: SelectedContentReviewing {
         throw URLError(.networkConnectionLost)
     }
 
-    static func contactSheet(_ samples: [VisualFrameSample]) throws -> String {
-        let rows = (samples.count + 2) / 3
-        guard (1...9).contains(samples.count), let context = CGContext(data: nil, width: 960, height: rows * 214,
-            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw URLError(.cannotDecodeContentData) }
-        context.setFillColor(CGColor(gray: 0.04, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: 960, height: rows * 214))
-        for (index, sample) in samples.enumerated() {
-            guard let bytes = Data(base64Encoded: sample.jpegBase64),
-                  let source = CGImageSourceCreateWithData(bytes as CFData, nil),
-                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw URLError(.cannotDecodeContentData) }
-            let x = Double(index % 3) * 320, bottom = Double(rows - 1 - index / 3) * 214
-            let scale = min(320 / Double(image.width), 180 / Double(image.height))
-            let width = Double(image.width) * scale, height = Double(image.height) * scale
-            context.draw(image, in: CGRect(x: x + (320 - width) / 2, y: bottom + 34 + (180 - height) / 2, width: width, height: height))
-            context.textPosition = CGPoint(x: x + 10, y: bottom + 8)
-            let label = NSAttributedString(string: "FRAME \(index)", attributes: [
-                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, 22, nil),
-                NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1)])
-            CTLineDraw(CTLineCreateWithAttributedString(label), context)
+    private func transportAttempt(for request: URLRequest, detail: String) async throws -> (Data, URLResponse) {
+        let observer = requestProgress
+        await observer?(FilmBuildProgress(.verifying, detail: detail))
+        let started = ProcessInfo.processInfo.systemUptime
+        let heartbeat = Task {
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                guard !Task.isCancelled else { return }
+                let seconds = Int(ProcessInfo.processInfo.systemUptime - started)
+                await observer?(FilmBuildProgress(.verifying,
+                    detail: "\(detail) · ожидаю ответ \(seconds) с", isHeartbeat: true))
+            }
         }
-        guard let image = context.makeImage() else { throw URLError(.cannotDecodeContentData) }
-        let bytes = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(bytes, UTType.jpeg.identifier as CFString, 1, nil) else { throw URLError(.cannotDecodeContentData) }
-        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else { throw URLError(.cannotDecodeContentData) }
-        return (bytes as Data).base64EncodedString()
+        do {
+            let result: (Data, URLResponse)
+            if let answerTransport { result = try await answerTransport(request) }
+            else { result = try await URLSession.shared.data(for: request) }
+            heartbeat.cancel()
+            await heartbeat.value
+            try Task.checkCancellation()
+            await observer?(FilmBuildProgress(.verifying, detail: "Получен ответ · " + detail))
+            return result
+        } catch {
+            heartbeat.cancel()
+            await heartbeat.value
+            throw error
+        }
     }
 
     /// Refuse the observed bad interval and all overlapping mining windows.
@@ -918,7 +1434,7 @@ struct SelectedContentReviewer: SelectedContentReviewing {
                           // uncertain visual evidence. Keep this cut for retry;
                           // the mandatory delivery check still cannot pass.
                           && review.confidence > 0
-                          && (review.status == .uncertain || review.confidence < 0.75)
+                          && (review.status == .uncertain || review.status == .unmotivated || review.confidence < 0.75)
                   }) else { return nil }
             return candidateID
         })

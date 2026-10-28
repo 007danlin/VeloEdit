@@ -30,6 +30,39 @@ import Testing
         #expect(batch[4]?.action == 0.1)
         #expect(batch[4]?.tags?.contains("buggy") == true)
     }
+    @Test func malformedDescriptionsCannotBecomeRankedOrCachedSceneEvidence() throws {
+        for field in ["scene", "reason"] {
+            for text in ["1", ":{", "scene index=1", "{0} A person stands by the river", "{\"index\": 2, \"action\": 0}", "See scene 1 for the details"] {
+                var value = scene(4); value[field] = text
+                let content = try json([value])
+                #expect(throws: URLError.self) { try OllamaVisionRuntime.parseBatch(content, indices: [4]) }
+            }
+        }
+        for description in ["A hand covers the view.", "The dark image does not reveal a readable scene.", "Человек стоит у берега реки.", "A device screen shows {status: ready} beside the controls."] {
+            var value = scene(4); value["scene"] = description
+            let result = try OllamaVisionRuntime.parseBatch(json([value]), indices: [4])
+            #expect(result[4]?.scene == description)
+        }
+    }
+
+    @Test func groupedSceneInputsKeepEveryImageAndDistinguishOutsideContext() {
+        func frame(_ image: String, at time: Double) -> VisualFrameSample {
+            .init(timestamp: time, motion: 0, exposure: 0.5, detail: 0.5, labels: [], labelConfidence: 1,
+                faceCount: 0, jpegBase64: image, histogram: [], luminanceFingerprint: [])
+        }
+        let scenes = [VLMSceneInput(index: 4, frames: [frame("a", at: 1), frame("b", at: 2)], telemetry: nil, sourceWindow: 1...3),
+            VLMSceneInput(index: 9, frames: [frame("b", at: 2), frame("c", at: 4)], telemetry: nil, sourceWindow: 3...5)]
+        let layout = VisionEvidenceLayout(frames: scenes.map(\.frames))
+        for shared in [false, true] {
+            let text = OllamaVisionRuntime.sceneGrouping(scenes: scenes, layout: layout, sharesImages: shared)
+            #expect(text.contains("scene index=4: frames=2, selected=[1.0,3.0]s"))
+            #expect(text.contains("scene index=9: frames=2, selected=[3.0,5.0]s"))
+            #expect(text.contains("image 1 at 1.0s outside=false; image 2 at 2.0s outside=false"))
+            #expect(text.contains(shared ? "image 2 at 2.0s outside=true; image 3 at 4.0s outside=false"
+                : "image 3 at 2.0s outside=true; image 4 at 4.0s outside=false"))
+        }
+    }
+
     @Test func invalidSceneIdentityNeverCrashesOrSilentlyLabelsAnotherClip() throws {
         for values in [[scene(4), scene(4)], [scene(0), scene(7)], [scene(4)], [scene(0), scene(4), scene(7)]] {
             let content = try json(values)

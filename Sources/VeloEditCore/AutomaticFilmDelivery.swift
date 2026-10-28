@@ -126,7 +126,7 @@ public enum AutomaticFilmDelivery {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let brief = (try? encoder.encode(plan.directorBrief)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        return EditorialIdentity.hash("request-v1|\(plan.prompt)|\(brief)|\(plan.explicitMusicTrackID?.uuidString ?? "")")
+        return EditorialIdentity.hash("request-v2-speech-intent|\(plan.preset.rawValue)|\(plan.prompt)|\(brief)|\(plan.explicitMusicTrackID?.uuidString ?? "")")
     }
 
     static func verifiedReport(for timeline: Timeline, plan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], additionalWarnings: [String] = []) -> FilmDeliveryReport {
@@ -203,7 +203,7 @@ public enum AutomaticFilmDelivery {
         // quality report. Finishing or duration recovery must not cut bounds
         // which the existing moment policy protects during assembly. Missing
         // semantic bounds do not become invented completion evidence.
-        let units = Dictionary(uniqueKeysWithValues: EditorialAnalysisContext(analyses: analyses).units.map { ($0.id, $0) })
+        let units = Dictionary(uniqueKeysWithValues: EditorialAnalysisContext(analyses: analyses).respectingSpeechIntent(plan).units.map { ($0.id, $0) })
         let protectedMoments = timeline.items.filter { OriginalMediaType.isVideo($0, assets: assets) }.compactMap { item -> (TimelineItem, EditorialSourceRange)? in
             guard let id = item.candidateID, let unit = units[id],
                   let range = EditorialMomentPolicy.protectedRange(unit) else { return nil }

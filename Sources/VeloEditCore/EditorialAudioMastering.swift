@@ -171,8 +171,9 @@ public enum EditorialAudioMastering {
             // directly decodes a multi-track AVComposition. A video project
             // therefore gets a real encoded MP4 measurement pass; audio-only
             // callers use the cheaper M4A path.
-            let directory = cacheURL?.appendingPathComponent("MasteringAudio")
-                ?? FileManager.default.temporaryDirectory.appendingPathComponent("VeloEdit-MasteringAudio")
+            let workspace = TemporaryMediaWorkspace()
+            defer { withExtendedLifetime(workspace) {} }
+            let directory = try workspace.file("measurement").deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let hasVideo = !composition.tracks(withMediaType: .video).isEmpty
             let audioURL = directory.appendingPathComponent(EditorialIdentity.hash("mix-v4|" + signature) + (hasVideo ? ".mp4" : ".m4a"))

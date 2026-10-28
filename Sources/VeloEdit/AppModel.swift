@@ -263,6 +263,7 @@ final class AppModel: ObservableObject {
     @Published var storageIsLoading = false
     @Published var storageModelsIsLoading = false
     @Published var storageAvailableCapacity: Int64?
+    @Published var storageTemporaryMediaBytes: Int64 = 0
     @Published var storageIsCleaning = false
     private var storageTask: Task<Void, Never>?
     private var manualProjectAfterCreation = false
@@ -377,6 +378,7 @@ final class AppModel: ObservableObject {
     @Published var activityTimeRemaining = ""
     @Published private(set) var activityUnmeasuredStartedAt: Date?
     @Published private(set) var activityStageProgress: Double?
+    @Published private(set) var filmBuildActivity: FilmBuildActivity?
     @Published private(set) var recoverableFilmBuild: FilmBuildRecovery?
     @Published var isWorking = false
     @Published private(set) var queuedTimelineAIEditCount = 0
@@ -819,7 +821,7 @@ final class AppModel: ObservableObject {
     private func analysis(_ result: AnalysisResult, satisfies profile: AIAnalysisProfile) -> Bool {
         result.satisfies(profile)
             && result.directorCandidates.contains { !$0.excluded && $0.sourceDuration > 0.05 }
-            && ((result.completedDepth ?? .quick) > profile.targetDepth || result.analysisProfileKey == profile.cacheKey)
+            && result.analysisProfileKey == profile.cacheKey
     }
 
     init(defaults: UserDefaults = .standard, startBackgroundServices: Bool = true,
@@ -1173,7 +1175,9 @@ final class AppModel: ObservableObject {
                 selectedMusicTrackID = musicTracks.first { $0.id == pendingMusicID }?.id
                 rememberProject(url)
                 let preferences = loadedProject.preferences
-                aiPowerMode = preferences.effectiveAIPowerMode
+                aiPowerMode = loadedProject.autonomousJob?.state.resumesAutomatically == true
+                    ? (loadedProject.autonomousJob?.processProfile?.mode ?? preferences.effectiveAIPowerMode)
+                    : preferences.effectiveAIPowerMode
                 advancedAISettings = preferences.effectiveAdvancedAISettings
                 errorMessage = nil
                 status = "Проект открыт"
@@ -1557,7 +1561,7 @@ final class AppModel: ObservableObject {
     }
 
     func setAIPowerMode(_ value: AIPowerMode) {
-        guard aiPowerMode != value else { return }
+        guard aiPowerMode != value, !isCreatingFilm else { return }
         aiPowerMode = value
         persistAISettings()
         if timeline != nil { markFilmNeedsRebuild("Мощность AI изменена — фильм нужно обновить") }
@@ -1589,12 +1593,13 @@ final class AppModel: ObservableObject {
 
     private func prepareAutonomousAI() async throws {
         let profile = aiProfile
+        try FilmProcessProfile(analysis: profile).validateDevice()
         let manager = LocalAIModelManager.shared
         let availability = await manager.availability(model: profile.ollamaModelID)
         if !availability.installed, !UserDefaults.standard.bool(forKey: "VeloEdit.ModelDownloadConsent.\(profile.ollamaModelID)") {
             let alert = NSAlert()
             alert.messageText = "Подготовить локальный анализ"
-            alert.informativeText = "Для анализа материалов нужно один раз загрузить модель (\(profile.estimatedDownloadSize)). Материалы обрабатываются на этом Mac."
+            alert.informativeText = "Для всего процесса в режиме «\(profile.mode.title)» нужна \(profile.modelID) (\(profile.estimatedDownloadSize)). Материалы обрабатываются на этом Mac."
             alert.addButton(withTitle: "Загрузить и создать фильм")
             alert.addButton(withTitle: "Отмена")
             guard alert.runModal() == .alertFirstButtonReturn else { throw CancellationError() }
@@ -2093,7 +2098,7 @@ final class AppModel: ObservableObject {
 
     func refreshDirectorRuntimeStatus() async {
         directorRuntimeStatus = "Проверяю локальную нейросеть…"
-        directorRuntimeStatus = await directorAgent.runtimeStatus()
+        directorRuntimeStatus = await directorAgent.runtimeStatus(mode: aiPowerMode)
     }
 
     /// Suggestions only edit the draft; sending remains an explicit user action.
@@ -2246,7 +2251,10 @@ final class AppModel: ObservableObject {
                 if let pendingExchange {
                     self.directorMessages.removeAll { $0.id == pendingExchange.replyID && $0.text.isEmpty }
                 }
-                if error is CancellationError {
+                if error is LocalAIInferenceFailure {
+                    self.directorStatus = "Восстанавливаю модель · продолжу автоматически"
+                    self.appendDirectorNote("Модель перестала отвечать. Сохранил готовые проверки и продолжу сборку автоматически после восстановления.")
+                } else if error is CancellationError {
                     self.directorStatus = "Создание фильма отменено · можно повторить"
                     self.appendDirectorNote("Остановил создание фильма. Ваше описание сохранено — можно изменить его и запустить монтаж снова.")
                 } else {
@@ -2271,8 +2279,11 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled, let self, self.pipeline === pipeline else { return }
                 guard await pipeline.store.manifest.autonomousJob?.state == .waitingForExternalResource else { return }
-                guard await pipeline.externalDependenciesAvailable() else { continue }
-                guard (try? await pipeline.store.activateAfterExternalWait()) == true else { return }
+                guard !self.isWorking else { continue }
+                let available = await pipeline.externalDependenciesAvailable()
+                self.project = await pipeline.store.manifest
+                guard available, !self.isWorking else { continue }
+                guard (try? await pipeline.store.activateAfterExternalWait()) == true else { continue }
                 self.project = await pipeline.store.manifest
                 self.recoverableFilmBuild = await pipeline.store.recoverableFilmBuild()
                 guard !self.isWorking else { continue }
@@ -2888,7 +2899,8 @@ final class AppModel: ObservableObject {
         storageIsLoading = !pending.isEmpty
         storageTask = Task.detached(priority: .utility) { [weak self] in
             let capacity = StorageMaintenance.availableCapacity(near: FileManager.default.homeDirectoryForCurrentUser)
-            await self?.updateStorageCapacity(capacity)
+            let temporaryBytes = TemporaryMediaMaintenance.usedBytes
+            await self?.updateStorageCapacity(capacity, temporaryBytes: temporaryBytes)
             for url in pending {
                 guard !Task.isCancelled else { return }
                 await self?.applyStorageAvailability(StorageMaintenance.overview(of: url))
@@ -2903,9 +2915,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func updateStorageCapacity(_ capacity: Int64?) {
+    private func updateStorageCapacity(_ capacity: Int64?, temporaryBytes: Int64) {
         guard !Task.isCancelled else { return }
         storageAvailableCapacity = capacity
+        storageTemporaryMediaBytes = temporaryBytes
     }
 
     private func applyStorageUsage(_ usage: ProjectStorageUsage) {
@@ -4810,7 +4823,8 @@ final class AppModel: ObservableObject {
             var context = EditorCommandParser().parseComplete(clean, hasSelection: selectedItemID != nil) != nil
                 ? DirectorContext(assetCount: 0, videoCount: 0, photoCount: 0, analyzedCount: 0, candidateCount: 0,
                     currentTimelineItemCount: previousTimeline?.items.count ?? 0, targetDuration: edit.targetDuration ?? 0,
-                    preset: edit.preset, currentOperation: "Точная правка", selectedItemSummary: selectedItemID?.uuidString)
+                    preset: edit.preset, currentOperation: "Точная правка", selectedItemSummary: selectedItemID?.uuidString,
+                    aiPowerMode: self.aiPowerMode)
                 : self.directorContext(selection: (selectedItemID, edit.playheadTime))
             if !explicitlyUsesSelection {
                 context.selectedItemSummary = nil
@@ -6015,7 +6029,9 @@ final class AppModel: ObservableObject {
         selectedTransitionTimelineItemIDs.formIntersection(Set(timeline?.effectiveTransitionItems.map(\.id) ?? []))
         if timeline?.music == nil { selectedSoundtrack = false }
         if let preferences = project?.preferences {
-            aiPowerMode = preferences.effectiveAIPowerMode
+            aiPowerMode = project?.autonomousJob?.state.resumesAutomatically == true
+                ? (project?.autonomousJob?.processProfile?.mode ?? preferences.effectiveAIPowerMode)
+                : preferences.effectiveAIPowerMode
             advancedAISettings = preferences.effectiveAdvancedAISettings
         }
         if previousMode != aiPowerMode || previousAdvancedSettings != advancedAISettings {
@@ -7397,7 +7413,8 @@ final class AppModel: ObservableObject {
                             currentMusicTrackTitle: snapshot?.timelines.last?.music?.trackTitle,
                             targetDuration: capturedDuration, preset: capturedPreset, currentOperation: "Совет",
                             selectedItemSummary: moment?.targetID, playheadTime: playhead, moment: moment,
-                            musicVolume: snapshot?.timelines.last?.music?.volume)
+                            musicVolume: snapshot?.timelines.last?.music?.volume,
+                            aiPowerMode: snapshot?.preferences.effectiveAIPowerMode ?? .fast)
                         if self.directorGeneration == generation, self.project?.id == projectID,
                            self.directorContextRevision == revision {
                             self.directorAdviceContinuation = AdviceContinuation(prompt: continuation?.prompt ?? text,
@@ -7521,7 +7538,9 @@ final class AppModel: ObservableObject {
             autonomousDurationConfidence: currentTimeline?.directorRun?.autonomousDecision?.duration.confidence,
             autonomousDecisionReasons: Array(currentTimeline?.directorRun?.decisionReasons.prefix(8) ?? []),
             contentHints: Array(contentHints),
-            audioHints: audioHints
+            audioHints: audioHints,
+            aiPowerMode: project?.autonomousJob?.state.resumesAutomatically == true
+                ? (project?.autonomousJob?.processProfile?.mode ?? aiPowerMode) : aiPowerMode
         )
     }
 
@@ -7618,6 +7637,7 @@ final class AppModel: ObservableObject {
         }
         let detail = progressLabel.isEmpty ? item.currentName : "\(item.currentName) · \(progressLabel)"
         status = phase.map { "\($0): \(detail)" } ?? detail
+        filmBuildActivity?.observe(FilmBuildProgress(.analysis, detail: status), now: ProcessInfo.processInfo.systemUptime)
     }
 
     private func setActivityETA(_ seconds: TimeInterval) {
@@ -7685,6 +7705,7 @@ final class AppModel: ObservableObject {
         activityProgressLabel = update.countLabel
         activityStageProgress = update.fraction
         status = update.detail ?? update.stage.title
+        filmBuildActivity?.observe(update, now: ProcessInfo.processInfo.systemUptime)
         filmBuildTimeEstimate?.observe(update, now: ProcessInfo.processInfo.systemUptime)
         refreshFilmBuildETA()
         let now = ProcessInfo.processInfo.systemUptime
@@ -7715,6 +7736,7 @@ final class AppModel: ObservableObject {
         clearActivityETA()
         isWorking = true
         activityStartedUptime = ProcessInfo.processInfo.systemUptime
+        filmBuildActivity = isCreatingFilm ? FilmBuildActivity(now: ProcessInfo.processInfo.systemUptime) : nil
         activityPresentation = presentation
         isActivityPanelVisible = presentation != .silentEditor
         isActivityComplete = false
@@ -7844,6 +7866,7 @@ final class AppModel: ObservableObject {
             isAnalyzing = false
             isCreatingFilm = false
             activityStartedUptime = nil
+            filmBuildActivity = nil
             activeTask = nil
             if let pipeline, (await pipeline.store).packageIsAvailable,
                await pipeline.store.manifest.autonomousJob?.state == .waitingForExternalResource {

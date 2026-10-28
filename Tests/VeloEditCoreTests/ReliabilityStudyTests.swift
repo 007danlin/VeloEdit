@@ -128,16 +128,21 @@ func inspectSavedExportTitleVisibility() async throws {
     let path = URL(fileURLWithPath: try #require(env["VELOEDIT_RELIABILITY_TITLE_INPUT"]))
     let root = URL(fileURLWithPath: try #require(env["VELOEDIT_RELIABILITY_TITLE_OUTPUT"]))
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    struct Input: Decodable { var timeline: Timeline; var exportURL: URL }
+    struct Input: Decodable { var timeline: Timeline; var exportURL: URL; var expectedRenderSignature: String? }
     let input = try JSONDecoder.veloEdit.decode(Input.self, from: Data(contentsOf: path))
+    if let signature = input.expectedRenderSignature {
+        try #require(EditorialRenderSignature.signature(input.timeline) == signature)
+    }
     var results: [TitleReadabilityEvidence] = []
     for title in input.timeline.effectiveTitleItems where title.enabled {
         let g = AVAssetImageGenerator(asset: AVURLAsset(url: input.exportURL))
         g.maximumSize = TitleReadabilityInspector.maximumSize; g.appliesPreferredTrackTransform = true
         g.requestedTimeToleranceBefore = .zero; g.requestedTimeToleranceAfter = .zero
         defer { g.cancelAllCGImageGeneration() }
-        for t in TitleReadabilityInspector.times(title, frameRate: input.timeline.frameRate) {
-            let time = VideoFrameTiming.sampleTime(for: t, frameRate: input.timeline.frameRate, duration: input.timeline.duration)
+        for t in TitleReadabilityInspector.times(title, timeline: input.timeline) {
+            let playbackTime = TimelineTiming.playbackTime(forTimelineTime: t, timeline: input.timeline)
+            let duration = TimelineTiming.playbackTime(forTimelineTime: input.timeline.duration, timeline: input.timeline)
+            let time = VideoFrameTiming.sampleTime(for: playbackTime, frameRate: input.timeline.frameRate, duration: duration)
             let frame = try await g.image(at: time)
             let row = TitleReadabilityInspector.inspect(image: frame.image, title: title, timeline: input.timeline,
                 time: t, actualPTS: frame.actualTime.seconds, source: "export")

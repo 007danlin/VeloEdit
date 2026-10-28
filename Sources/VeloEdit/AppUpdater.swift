@@ -5,11 +5,16 @@ import Sparkle
 /// Sparkle owns downloading, signature validation, installation and relaunch.
 /// Its normal quit request goes through VeloEditAppDelegate's autosave/cancel flow.
 @MainActor
-final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
+final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconcurrency SPUStandardUserDriverDelegate {
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var status = "Проверка, загрузка и установка обновлений — внутри VeloEdit"
     @Published private(set) var automaticallyChecksForUpdates = false
     @Published private(set) var lastCheckDate: Date?
+    @Published private(set) var availableVersion: String?
+    @Published private(set) var updateWasSeen = false
+    @Published private(set) var installationRequested = false
+    var showsUpdateDot: Bool { availableVersion != nil && !updateWasSeen && !installationRequested }
+    var highlightsUpdate: Bool { availableVersion != nil && !installationRequested }
     private var sparkleUpdater: SPUUpdater?
     private weak var model: AppModel?
     private var isCheckingForUpdates = false
@@ -19,7 +24,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         guard sparkleUpdater == nil,
               Bundle.main.bundleURL.pathExtension == "app" else { return }
         self.model = model
-        let driver = AppUpdateUserDriver(hostBundle: .main, delegate: nil)
+        let driver = AppUpdateUserDriver(hostBundle: .main, delegate: self)
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: driver, delegate: self)
         sparkleUpdater = updater
         updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheckForUpdates)
@@ -36,6 +41,43 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         sparkleUpdater?.automaticallyChecksForUpdates = enabled
     }
 
+    func markUpdateSeen() { updateWasSeen = true }
+
+    func installAvailableUpdate() {
+        guard canCheckForUpdates else { return }
+        markInstallationRequested()
+        checkForUpdates()
+    }
+
+    func markInstallationRequested() {
+        updateWasSeen = true
+        installationRequested = true
+    }
+
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem,
+                                                             andInImmediateFocus immediateFocus: Bool) -> Bool { false }
+
+    func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool,
+                                                   forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
+        announceUpdate(version: update.displayVersionString)
+    }
+
+    func standardUserDriverWillFinishUpdateSession() {
+        availableVersion = nil
+        installationRequested = false
+    }
+
+    func announceUpdate(version: String) {
+        if availableVersion != version {
+            updateWasSeen = false
+            installationRequested = false
+        }
+        availableVersion = version
+        status = "Доступна версия \(version). После установки VeloEdit сохранит и снова откроет ваш проект."
+    }
+
     func checkForUpdates() {
         guard canCheckForUpdates, let sparkleUpdater else { return }
         // While downloading, this action brings Sparkle's existing window forward.
@@ -47,19 +89,9 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         sparkleUpdater.checkForUpdates()
     }
 
-    func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
-        // Avoid presenting an automatic update in the middle of an export or model install.
-        // Manual checks remain available; quitting still requires a successful autosave.
-        if updateCheck != .updates, let model,
-           model.hasActiveWork || model.storageIsCleaning || model.downloadingAIPowerMode != nil {
-            throw NSError(domain: "app.veloedit.updates", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "Проверка отложена до завершения текущей работы."])
-        }
-    }
-
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         isCheckingForUpdates = false
-        status = "Доступна версия \(item.displayVersionString). После установки VeloEdit сохранит и снова откроет ваш проект."
+        announceUpdate(version: item.displayVersionString)
     }
 
     func updater(_ updater: SPUUpdater, shouldProceedWithUpdate item: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
@@ -71,6 +103,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
+        markInstallationRequested()
         status = "Загружаем версию \(item.displayVersionString)… Прогресс — в окне обновления."
     }
 
@@ -80,6 +113,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     func userDidCancelDownload(_ updater: SPUUpdater) {
         isCheckingForUpdates = false
+        installationRequested = false
         status = "Загрузка обновления отменена"
     }
 
@@ -95,11 +129,14 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
         isCheckingForUpdates = false
+        availableVersion = nil
+        installationRequested = false
         status = "Новых совместимых обновлений пока нет"
     }
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         isCheckingForUpdates = false
+        installationRequested = false
         if isRestartingForUpdate { model?.clearUpdateRelaunchProject() }
         isRestartingForUpdate = false
         if (error as NSError).domain == "app.veloedit.updates", (error as NSError).code == 1 {

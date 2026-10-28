@@ -79,6 +79,63 @@ struct FilmSpeedAndTitlesTests {
         #expect(!TitleReadabilityInspector.coverage(timeline: edited, evidence: evidence, source: "preview").complete)
     }
 
+    @Test func closingTitleKeepsThreeReadableProbesAndTheIndependentBlackEndProbe() throws {
+        var (timeline, title) = fixture()
+        timeline.items[0].sourceDuration = 24
+        timeline.items[0].timelineDuration = 24
+        timeline.frameRate = 60
+        timeline.endingFadeDuration = 3
+        title.startTime = 21.4; title.duration = 2.6
+        timeline.titleItems = [title]
+        let fade = try #require(FilmEndingFade(duration: 3, movieDuration: 24, frameRate: 60))
+        let times = TitleReadabilityInspector.times(title, timeline: timeline)
+        #expect(times.count == 3)
+        #expect(times.first! > title.startTime && times.last! < 22.5)
+        #expect(times.allSatisfy { fade.opacity(at: $0) * title.style.effectiveOpacity >= 0.5 })
+        let schedule = EditorialProbeSchedule.times(timeline: timeline)
+        #expect(schedule.contains { abs($0 - (24 - 1.0 / 60)) < 1.0 / 600 })
+        #expect(TitleReadabilityInspector.titles(at: 24 - 1.0 / 60, timeline: timeline).isEmpty)
+        #expect(times.allSatisfy { time in schedule.contains { abs($0 - time) < 1.0 / 600 } })
+        var translucent = title; translucent.style.opacity = 0.7
+        timeline.titleItems = [translucent]
+        let translucentTimes = TitleReadabilityInspector.times(translucent, timeline: timeline)
+        #expect(translucentTimes.count == 3)
+        #expect(translucentTimes.last! < times.last!)
+        #expect(translucentTimes.allSatisfy { fade.opacity(at: $0) * 0.7 >= 0.5 })
+        timeline.endingFadeDuration = 0
+        #expect(TitleReadabilityInspector.times(title, timeline: timeline) ==
+            TitleReadabilityInspector.times(title, frameRate: timeline.frameRate))
+        timeline.endingFadeDuration = 3
+        var sliver = title; sliver.startTime = 22.4498; sliver.duration = 0.5
+        timeline.titleItems = [sliver]
+        let sliverTimes = TitleReadabilityInspector.times(sliver, timeline: timeline)
+        #expect(sliverTimes.count == 3)
+        #expect(sliverTimes == TitleReadabilityInspector.times(sliver, frameRate: 60))
+    }
+
+    @Test func titleEntirelyInsideDarkTailCannotPassWithAnEmptyOrPreviewOnlyCertificate() throws {
+        var (timeline, title) = fixture()
+        timeline.items[0].sourceDuration = 24
+        timeline.items[0].timelineDuration = 24
+        timeline.endingFadeDuration = 3
+        title.startTime = 23.2; title.duration = 0.7
+        timeline.titleItems = [title]
+        #expect(TitleReadabilityInspector.holdRange(title, timeline: timeline) == nil)
+        let times = TitleReadabilityInspector.times(title, timeline: timeline)
+        #expect(times.count == 3)
+        #expect(!TitleReadabilityInspector.coverage(timeline: timeline, evidence: [], source: "mp4").complete)
+        // Even supplying otherwise readable pixels cannot certify a title
+        // whose specified composed hold occurs only after the fade cutoff.
+        let pixels = try image(title: fixture().1, size: CGSize(width: 1920, height: 1080))
+        let evidence = times.map {
+            TitleReadabilityInspector.inspect(image: pixels, title: title, timeline: timeline,
+                time: $0, actualPTS: $0, source: "mp4")
+        }
+        #expect(evidence.allSatisfy { !$0.passed && $0.failure == "outside-readable-composited-hold" })
+        #expect(TitleReadabilityInspector.coverage(timeline: timeline, evidence: evidence, source: "mp4").complete)
+        #expect(!TitleReadabilityInspector.coverage(timeline: timeline, evidence: evidence, source: "mp4").passed)
+    }
+
     @Test func previewCacheReusesAudioIndependentPixelsButInvalidatesTitlesAndCorruption() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -126,6 +183,31 @@ struct FilmSpeedAndTitlesTests {
         try Data([3,2,1]).write(to: file, options: .atomic)
         try FileManager.default.setAttributes([.modificationDate: receipt.fileModified!], ofItemAtPath: file.path)
         #expect(!receipt.artifactIsCurrent)
+    }
+
+    @Test func playerMetadataChangeRechecksExactBytesWithoutLosingExportProof() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data([1, 2, 3]).write(to: file)
+        let info = try FileManager.default.attributesOfItem(atPath: file.path)
+        var receipt = EditorialExportVerification(renderSignature: "fixture", probes: [], durationDifference: 0,
+            aspectRatioMatches: true, provenance: "explicit receipt fixture")
+        receipt.outputURL = file; receipt.fileSize = 3
+        receipt.fileModified = info[.modificationDate] as? Date
+        receipt.fileModifiedTime = receipt.fileModified?.timeIntervalSince1970
+        receipt.artifactFileIdentity = FrameCacheKey.sourceIdentity(url: file, contentHash: "export")
+        receipt.artifactSHA256 = MusicStructureCache.contentIdentity(file)
+        // Like QuickTime's last-used attribute, chmod changes ctime, not bytes.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        #expect(receipt.artifactFileIdentity != FrameCacheKey.sourceIdentity(url: file, contentHash: "export"))
+        #expect(receipt.artifactIsCurrent)
+        #expect(receipt.artifactIsCurrent) // cached confirmation, same exact identity
+        var legacy = receipt; legacy.artifactSHA256 = nil
+        #expect(!legacy.artifactIsCurrent)
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.write(contentsOf: Data([3, 2, 1])); try handle.close()
+        try FileManager.default.setAttributes([.modificationDate: receipt.fileModified!], ofItemAtPath: file.path)
+        #expect(!receipt.artifactIsCurrent) // same inode/size/mtime, different bytes
     }
 
     @Test func telemetrySetInsertionOrderCannotChangeRenderSignature() {

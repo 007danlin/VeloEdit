@@ -24,8 +24,9 @@ final class VeloCompositorLayer {
     let transform: CGAffineTransform
     let telemetry: TelemetrySummary?
     let stabilizationReference: CGImage?
+    let stillSource: StillCompositionSource?
 
-    init(trackID: CMPersistentTrackID, item: TimelineItem, start: CMTime, duration: CMTime, naturalSize: CGSize, transform: CGAffineTransform, telemetry: TelemetrySummary? = nil, stabilizationReference: CGImage? = nil) {
+    init(trackID: CMPersistentTrackID, item: TimelineItem, start: CMTime, duration: CMTime, naturalSize: CGSize, transform: CGAffineTransform, telemetry: TelemetrySummary? = nil, stabilizationReference: CGImage? = nil, stillSource: StillCompositionSource? = nil) {
         self.trackID = trackID
         self.item = item
         self.start = start
@@ -34,6 +35,7 @@ final class VeloCompositorLayer {
         self.transform = transform
         self.telemetry = telemetry
         self.stabilizationReference = stabilizationReference
+        self.stillSource = stillSource
     }
 }
 
@@ -275,6 +277,7 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
 
     private let context = CIContext(options: [.cacheIntermediates: false])
     private let titleBackgroundRenderer = AdaptiveTitleBackgroundRenderer()
+    private let stillImages = StillCompositionImageCache()
     private let lock = NSLock()
     private var renderContext: AVVideoCompositionRenderContext?
     private var cancellationGeneration: UInt64 = 0
@@ -306,7 +309,19 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
             // then incoming — the order expected by the shared renderer.
             for layer in instruction.layers.reversed() {
                 guard let buffer = request.sourceFrame(byTrackID: layer.trackID) else { continue }
-                var image = CIImage(cvPixelBuffer: buffer, options: [.toneMapHDRtoSDR: instruction.colorProfile.dynamicRange == .sdr])
+                var image: CIImage
+                if let source = layer.stillSource {
+                    do {
+                        image = try stillImages.frame(for: source,
+                            progress: Self.progress(time: request.compositionTime, start: layer.start, duration: layer.duration), context: context)
+                        image = StillCompositionSource.videoColorMatched(image)
+                    } catch {
+                        request.finish(with: error)
+                        return
+                    }
+                } else {
+                    image = CIImage(cvPixelBuffer: buffer, options: [.toneMapHDRtoSDR: instruction.colorProfile.dynamicRange == .sdr])
+                }
                 // AVKit's native compositor accounts for non-square pixels;
                 // Core Image receives the encoded raster instead (for example
                 // 720×576 for a 1024×576 anamorphic movie). Placement transforms
@@ -318,7 +333,7 @@ public class VeloVideoCompositor: NSObject, AVVideoCompositing, @unchecked Senda
                     y: layer.naturalSize.height / image.extent.height
                 )
                 image = AdjustedClipGenerator.apply(layer.item.effectiveVideoAdjustments, to: image)
-                image = stabilizedImage(image, buffer: buffer, layer: layer)
+                if layer.stillSource == nil { image = stabilizedImage(image, buffer: buffer, layer: layer) }
                 image = image.transformed(by: sourceToNatural)
                 let clipTrack = layer.item.overlay == nil ? 0 : 1
                 let standaloneEffects = instruction.effects.active(at: timelineTime, for: layer.item.id, clipTrack: clipTrack)

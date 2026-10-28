@@ -29,7 +29,7 @@ enum FilmDurationRecovery {
             let used = original.items.filter { $0.assetID == asset.id }
             let forbidden = candidates.filter { $0.assetID == asset.id && ($0.excluded || !plan.constraints.excludeTags.isDisjoint(with: $0.tags)) }
             let measured = candidates.filter { $0.assetID == asset.id && !$0.excluded && !rejected.contains($0.id) && plan.constraints.excludeTags.isDisjoint(with: $0.tags) }
-                .map { EditorialUnit(candidate: $0) }.filter { $0.evidence.confidence >= 0.55 && $0.quality >= 0.55 && !$0.evidence.hasHardOcclusion }
+                .map { EditorialUnit(candidate: $0, preserveSpeech: SpeechEditingPolicy.requiresCompletePhrases(plan: plan)) }.filter { $0.evidence.confidence >= 0.55 && $0.quality >= 0.55 && !$0.evidence.hasHardOcclusion }
             // Requested runtime is not evidence that unselected raw footage is
             // useful. Only independently measured ranges can extend the film.
             for unit in measured {

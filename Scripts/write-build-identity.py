@@ -21,8 +21,10 @@ for path in sorted(paths):
     with path.open("rb") as stream:
         digest.update(hashlib.file_digest(stream, "sha256").digest())
 now = datetime.datetime.now(datetime.timezone.utc)
+runtime = json.loads((app / "Contents/Resources/Ollama/Runtime.json").read_text())
 identity = {"builtAt": now.isoformat(), "sourceSHA256": digest.hexdigest(),
-            "build": now.strftime("%Y.%j.%H%M%S"), "runtime": "Ollama 0.32.14"}
+            "build": now.strftime("%Y.%j.%H%M%S"), "runtime": f"Ollama {runtime['version']}"}
+identity["runtimeArchiveSHA256"] = runtime["archiveSHA256"]
 identity["architectures"] = subprocess.check_output(["lipo", "-archs", str(app / "Contents/MacOS/VeloEdit")], text=True).split()
 director = (source / "Sources/VeloEdit/LocalDirectorAgent.swift").read_text()
 model = re.search(r'static let ollamaModel = "([^"]+)"', director)

@@ -69,6 +69,74 @@ enum StillImageRenderGeometry {
         return (scale, (0.5 - eased) * min(extraX * 0.6, maximumTravel), 0)
     }
 
+    static func frame(image: CIImage, size: CGSize, progress: CGFloat, duration: Double,
+                      motion: ClipEffect?, subjectReframe: SubjectReframePlan?, cropStyle: CropStyle,
+                      backgroundAnimationStyle: BackgroundAnimationStyle?, intensity: CGFloat) -> CIImage {
+        let bounds = CGRect(origin: .zero, size: size)
+        let width = size.width, height = size.height
+        var motionScale: CGFloat = 1
+        var horizontalTravel: CGFloat = 0
+        var verticalTravel: CGFloat = 0
+        if backgroundAnimationStyle != nil {
+            motionScale = 1 + (0.045 + 0.025 * intensity) * progress
+        } else {
+            let move = StillImageRenderGeometry.motion(motion, source: image.extent.size, target: bounds.size,
+                progress: progress, duration: duration, subjectReframe: subjectReframe)
+            motionScale = move.scale; horizontalTravel = move.x; verticalTravel = move.y
+        }
+
+        let preserveFullFrame = cropStyle == .fit && subjectReframe == nil
+        let placement = StillImageRenderGeometry.placement(
+            sourceExtent: image.extent,
+            targetSize: bounds.size,
+            motionScale: preserveFullFrame ? 1 : motionScale,
+            horizontalTravel: preserveFullFrame ? 0 : horizontalTravel,
+            verticalTravel: preserveFullFrame ? 0 : verticalTravel,
+            subjectReframe: subjectReframe,
+            progress: progress,
+            fill: !preserveFullFrame
+        )
+        let baseImage = image.transformed(
+            by: CGAffineTransform(scaleX: placement.scale, y: placement.scale)
+                .translatedBy(x: placement.x / placement.scale, y: placement.y / placement.scale)
+        )
+        let finalImage: CIImage
+        if preserveFullFrame {
+            // Fit keeps the foreground fixed. Moving only its blurred
+            // surround makes the sharp seam shimmer, especially at entry.
+            // Keep both layers in the same stationary coordinate system.
+            let backgroundPlacement = StillImageRenderGeometry.placement(
+                sourceExtent: image.extent,
+                targetSize: bounds.size,
+                motionScale: 1,
+                horizontalTravel: 0,
+                verticalTravel: 0,
+                subjectReframe: nil,
+                progress: progress,
+                fill: true
+            )
+            let blurred = image.transformed(
+                by: CGAffineTransform(scaleX: backgroundPlacement.scale, y: backgroundPlacement.scale)
+                    .translatedBy(
+                        x: backgroundPlacement.x / backgroundPlacement.scale,
+                        y: backgroundPlacement.y / backgroundPlacement.scale
+                    )
+            )
+            .clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [
+                kCIInputRadiusKey: min(36, max(12, CGFloat(min(width, height)) * 0.016))
+            ])
+            .cropped(to: bounds)
+            let background = SafeFitBackgroundRenderer.shade(blurred)
+            finalImage = baseImage.composited(over: background).cropped(to: bounds)
+        } else {
+            // Every animated background uses the same calm continuous
+            // push-in; no unrelated particles or wobble are layered on.
+            finalImage = baseImage.cropped(to: bounds)
+        }
+        return finalImage
+    }
+
     static func orientedImage(at url: URL) -> CIImage? {
         guard let loaded = CIImage(
             contentsOf: url,
@@ -158,6 +226,8 @@ public actor StillImageVideoGenerator {
         }
         let intensity = CGFloat(max(0, min(1, animationIntensity)))
         try? FileManager.default.removeItem(at: destination)
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: destination) } }
         let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
         writer.movieTimeScale = TimelineTiming.compositionTimescale
         let compression: [String: Any]
@@ -220,75 +290,9 @@ public actor StillImageVideoGenerator {
             }
             let progress = frames <= 1 ? 0 : CGFloat(frame) / CGFloat(frames - 1)
 
-            var motionScale: CGFloat = 1
-            var horizontalTravel: CGFloat = 0
-            var verticalTravel: CGFloat = 0
-            if let style = backgroundAnimationStyle {
-                let transform = animatedBaseTransform(
-                    style: style,
-                    progress: progress,
-                    width: CGFloat(width),
-                    height: CGFloat(height),
-                    intensity: intensity
-                )
-                motionScale = transform.scale
-                horizontalTravel = transform.translation.width
-                verticalTravel = transform.translation.height
-            } else {
-                let move = StillImageRenderGeometry.motion(motion, source: image.extent.size, target: bounds.size,
-                    progress: progress, duration: duration, subjectReframe: subjectReframe)
-                motionScale = move.scale; horizontalTravel = move.x; verticalTravel = move.y
-            }
-
-            let preserveFullFrame = cropStyle == .fit && subjectReframe == nil
-            let placement = StillImageRenderGeometry.placement(
-                sourceExtent: image.extent,
-                targetSize: bounds.size,
-                motionScale: preserveFullFrame ? 1 : motionScale,
-                horizontalTravel: preserveFullFrame ? 0 : horizontalTravel,
-                verticalTravel: preserveFullFrame ? 0 : verticalTravel,
-                subjectReframe: subjectReframe,
-                progress: progress,
-                fill: !preserveFullFrame
-            )
-            let baseImage = image.transformed(
-                by: CGAffineTransform(scaleX: placement.scale, y: placement.scale)
-                    .translatedBy(x: placement.x / placement.scale, y: placement.y / placement.scale)
-            )
-            let finalImage: CIImage
-            if preserveFullFrame {
-                // Fit keeps the foreground fixed. Moving only its blurred
-                // surround makes the sharp seam shimmer, especially at entry.
-                // Keep both layers in the same stationary coordinate system.
-                let backgroundPlacement = StillImageRenderGeometry.placement(
-                    sourceExtent: image.extent,
-                    targetSize: bounds.size,
-                    motionScale: 1,
-                    horizontalTravel: 0,
-                    verticalTravel: 0,
-                    subjectReframe: nil,
-                    progress: progress,
-                    fill: true
-                )
-                let blurred = image.transformed(
-                    by: CGAffineTransform(scaleX: backgroundPlacement.scale, y: backgroundPlacement.scale)
-                        .translatedBy(
-                            x: backgroundPlacement.x / backgroundPlacement.scale,
-                            y: backgroundPlacement.y / backgroundPlacement.scale
-                        )
-                )
-                .clampedToExtent()
-                .applyingFilter("CIGaussianBlur", parameters: [
-                    kCIInputRadiusKey: min(36, max(12, CGFloat(min(width, height)) * 0.016))
-                ])
-                .cropped(to: bounds)
-                let background = SafeFitBackgroundRenderer.shade(blurred)
-                finalImage = baseImage.composited(over: background).cropped(to: bounds)
-            } else {
-                // Every animated background uses the same calm continuous
-                // push-in; no unrelated particles or wobble are layered on.
-                finalImage = baseImage.cropped(to: bounds)
-            }
+            let finalImage = StillImageRenderGeometry.frame(image: image, size: bounds.size,
+                progress: progress, duration: duration, motion: motion, subjectReframe: subjectReframe,
+                cropStyle: cropStyle, backgroundAnimationStyle: backgroundAnimationStyle, intensity: intensity)
 
             context.render(finalImage, to: buffer, bounds: bounds, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
             // This buffer stays immutable while the encoder retains it. A still
@@ -305,6 +309,8 @@ public actor StillImageVideoGenerator {
             let error = writer.error as NSError?
             throw DerivedMediaError.exportFailed("\(error?.domain ?? "AVAssetWriter") \(error?.code ?? Int(writer.status.rawValue)) \(error?.userInfo ?? [:])")
         }
+        try Task.checkCancellation()
+        completed = true
         return destination
     }
 

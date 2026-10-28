@@ -93,6 +93,21 @@ struct AutonomousOperationTests {
         _ = try ProjectOperationLease(package: f.package)
     }
 
+    @Test func selectedFilmRepairBudgetRemainsBoundedAndDurable() async throws {
+        let f = Fixture(); defer { f.remove() }
+        let store = try f.store()
+        _ = try await store.beginAutonomousJob(kind: .film)
+        #expect(try await store.claimCompositionRepair(signature: "composition-0"))
+        #expect(try await store.claimCompositionRepair(signature: "composition-0") == false)
+        for index in 1..<6 {
+            #expect(try await store.claimCompositionRepair(signature: "composition-\(index)"))
+        }
+        #expect(try await store.claimCompositionRepair(signature: "composition-6") == false)
+        let reopened = try ProjectStore(open: f.package, recoveryDirectory: f.recovery)
+        #expect(await reopened.manifest.autonomousJob?.compositionRepairSignatures?.count == 6)
+        #expect(try await reopened.claimCompositionRepair(signature: "composition-7") == false)
+    }
+
     @Test func exactApproximateRangeAndAutomaticDurationContracts() {
         #expect(FilmDurationRequirement.parse(prompt: "пять минут").target == 300)
         let exact = FilmDurationRequirement.parse(prompt: "5 минут")

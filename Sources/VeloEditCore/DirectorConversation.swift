@@ -37,6 +37,7 @@ public struct DirectorRequestIntentInterpreter: Sendable {
 /// Compact, media-safe context sent to the language director. Original media,
 /// frames and file paths never leave the editing pipeline.
 public struct DirectorContext: Equatable, Sendable {
+    public var aiPowerMode: AIPowerMode
     public var assetCount: Int
     public var videoCount: Int
     public var photoCount: Int
@@ -84,8 +85,10 @@ public struct DirectorContext: Equatable, Sendable {
         contentHints: [String] = [],
         audioHints: [String] = [],
         moment: DirectorMomentContext? = nil,
-        musicVolume: Double? = nil
+        musicVolume: Double? = nil,
+        aiPowerMode: AIPowerMode = .fast
     ) {
+        self.aiPowerMode = aiPowerMode
         self.assetCount = assetCount
         self.videoCount = videoCount
         self.photoCount = photoCount

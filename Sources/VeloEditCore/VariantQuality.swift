@@ -305,11 +305,11 @@ public struct MomentTrimRange: Hashable, Sendable {
 public struct MomentPhaseTrimmer: Sendable {
     public init() {}
 
-    public func range(for candidate: Candidate, desiredDuration: Double) -> MomentTrimRange {
+    public func range(for candidate: Candidate, desiredDuration: Double, preserveSpeech: Bool = true) -> MomentTrimRange {
         let candidateStart = candidate.sourceStart
         let candidateEnd = candidate.sourceStart + candidate.sourceDuration
         let desired = min(candidate.sourceDuration, max(0.05, desiredDuration))
-        if let speech = candidate.insights?.speech, speech.confidence >= 0.48 {
+        if preserveSpeech, let speech = candidate.insights?.speech, speech.confidence >= 0.48 {
             let phraseStart = max(candidateStart, speech.phraseStart)
             let phraseEnd = min(candidateEnd, speech.phraseEnd)
             let phraseDuration = phraseEnd - phraseStart
@@ -349,7 +349,7 @@ public struct MomentPhaseTrimmer: Sendable {
         }
         var start = max(candidateStart, peak - lead)
         var duration = min(desired, candidateEnd - start)
-        if let speech = candidate.insights?.speech, speech.confidence >= 0.48 {
+        if preserveSpeech, let speech = candidate.insights?.speech, speech.confidence >= 0.48 {
             let phraseStart = max(candidateStart, speech.phraseStart)
             let phraseEnd = min(candidateEnd, speech.phraseEnd)
             if phraseEnd - phraseStart <= desired {

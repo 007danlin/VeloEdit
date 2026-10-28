@@ -20,8 +20,9 @@ public actor TitleCardVideoGenerator {
     ) async throws -> URL {
         let encodedWidth = max(2, width / 2 * 2)
         let encodedHeight = max(2, height / 2 * 2)
-        let imageURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("veloedit-title-\(UUID().uuidString).png")
+        let workspace = TemporaryMediaWorkspace()
+        defer { withExtendedLifetime(workspace) {} }
+        let imageURL = try workspace.file("title.png")
         defer { try? FileManager.default.removeItem(at: imageURL) }
         try Self.draw(text: text, style: style, width: encodedWidth, height: encodedHeight, destination: imageURL)
         return try await StillImageVideoGenerator().generate(
@@ -41,6 +42,15 @@ public actor TitleCardVideoGenerator {
     }
 
     private static func draw(text: String, style: TitleStyle, width: Int, height: Int, destination: URL) throws {
+        let image = try image(text: text, style: style, width: width, height: height)
+        guard let destinationRef = CGImageDestinationCreateWithURL(destination as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw DerivedMediaError.cannotCreateDestination
+        }
+        CGImageDestinationAddImage(destinationRef, image, nil)
+        guard CGImageDestinationFinalize(destinationRef) else { throw DerivedMediaError.cannotCreateDestination }
+    }
+
+    nonisolated static func image(text: String, style: TitleStyle, width: Int, height: Int) throws -> CGImage {
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
             data: nil,
@@ -124,15 +134,13 @@ public actor TitleCardVideoGenerator {
         let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: string.length), path, nil)
         CTFrameDraw(frame, context)
 
-        guard let image = context.makeImage(),
-              let destinationRef = CGImageDestinationCreateWithURL(destination as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+        guard let image = context.makeImage() else {
             throw DerivedMediaError.cannotCreateDestination
         }
-        CGImageDestinationAddImage(destinationRef, image, nil)
-        guard CGImageDestinationFinalize(destinationRef) else { throw DerivedMediaError.cannotCreateDestination }
+        return image
     }
 
-    private static func color(_ hex: String, fallback: CGColor) -> CGColor {
+    nonisolated private static func color(_ hex: String, fallback: CGColor) -> CGColor {
         let value = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         guard value.count == 6, let number = Int(value, radix: 16) else { return fallback }
         return CGColor(

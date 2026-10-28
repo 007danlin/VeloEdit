@@ -23,7 +23,7 @@ def main():
         for arch in ("arm64", "x86_64"):
             info = json.loads(run(arch, app / "Contents/MacOS/VeloEdit", "--self-check").stdout)
             assert info["architecture"] == arch, info
-            assert info["directorModel"] == "qwen3:4b-instruct", info
+            assert info["directorModel"] == "qwen3-vl:2b-instruct", info
             speech = json.loads(run(arch, app / "Contents/MacOS/VeloEditSpeechWorker", "--self-check").stdout)
             assert speech["architecture"] == arch, speech
             if arch == "x86_64":

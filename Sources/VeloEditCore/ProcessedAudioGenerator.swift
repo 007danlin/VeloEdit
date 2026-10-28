@@ -43,9 +43,9 @@ public actor ProcessedAudioGenerator {
             }
             return cached
         }
-        let trimmed = FileManager.default.temporaryDirectory
-            .appendingPathComponent("veloedit-audio-source-\(UUID().uuidString)")
-            .appendingPathExtension("caf")
+        let workspace = TemporaryMediaWorkspace()
+        defer { withExtendedLifetime(workspace) {} }
+        let trimmed = try workspace.file("audio-source.caf")
         let denoised = trimmed.deletingPathExtension().appendingPathExtension("denoised.caf")
         defer {
             try? FileManager.default.removeItem(at: trimmed)

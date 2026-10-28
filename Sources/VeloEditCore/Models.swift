@@ -151,6 +151,62 @@ public struct MediaAsset: Codable, Identifiable, Hashable, Sendable {
         self.missing = missing
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, originalURL, conversionSourceURL, importSourceURL, bookmarkData, displayName, kind
+        case byteSize, contentHash, fullContentHash, metadata, importedAt, importedAtReferenceTime
+        case favorite, excluded, missing
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        originalURL = try values.decode(URL.self, forKey: .originalURL)
+        conversionSourceURL = try values.decodeIfPresent(URL.self, forKey: .conversionSourceURL)
+        importSourceURL = try values.decodeIfPresent(URL.self, forKey: .importSourceURL)
+        bookmarkData = try values.decodeIfPresent(Data.self, forKey: .bookmarkData)
+        displayName = try values.decode(String.self, forKey: .displayName)
+        kind = try values.decode(MediaKind.self, forKey: .kind)
+        byteSize = try values.decode(Int64.self, forKey: .byteSize)
+        contentHash = try values.decode(String.self, forKey: .contentHash)
+        fullContentHash = try values.decodeIfPresent(String.self, forKey: .fullContentHash)
+        metadata = try values.decode(MediaMetadata.self, forKey: .metadata)
+        importedAt = try values.decode(Date.self, forKey: .importedAt)
+        if let precise = try values.decodeIfPresent(Double.self, forKey: .importedAtReferenceTime) {
+            guard precise.isFinite else {
+                throw DecodingError.dataCorruptedError(forKey: .importedAtReferenceTime, in: values,
+                    debugDescription: "Import clock must be finite")
+            }
+            importedAt = Date(timeIntervalSinceReferenceDate: precise)
+        }
+        favorite = try values.decode(Bool.self, forKey: .favorite)
+        excluded = try values.decode(Bool.self, forKey: .excluded)
+        missing = try values.decode(Bool.self, forKey: .missing)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(originalURL, forKey: .originalURL)
+        try values.encodeIfPresent(conversionSourceURL, forKey: .conversionSourceURL)
+        try values.encodeIfPresent(importSourceURL, forKey: .importSourceURL)
+        try values.encodeIfPresent(bookmarkData, forKey: .bookmarkData)
+        try values.encode(displayName, forKey: .displayName)
+        try values.encode(kind, forKey: .kind)
+        try values.encode(byteSize, forKey: .byteSize)
+        try values.encode(contentHash, forKey: .contentHash)
+        try values.encodeIfPresent(fullContentHash, forKey: .fullContentHash)
+        try values.encode(metadata, forKey: .metadata)
+        try values.encode(importedAt, forKey: .importedAt)
+        // Keep the legacy date for older versions. Project ISO8601 dates lose
+        // fractional seconds, but import ordering uses them when capture dates
+        // are unknown. Preserve the Date's exact value so reopening a project
+        // cannot reorder shots and invalidate titles or completed MP4 checks.
+        try values.encode(importedAt.timeIntervalSinceReferenceDate, forKey: .importedAtReferenceTime)
+        try values.encode(favorite, forKey: .favorite)
+        try values.encode(excluded, forKey: .excluded)
+        try values.encode(missing, forKey: .missing)
+    }
+
     /// Display-oriented dimensions used by framing and rendering decisions.
     /// Video metadata is normalized by `MediaImporter` with the preferred
     /// transform already applied. Photo metadata keeps the raw pixel size and
@@ -329,6 +385,9 @@ public struct CandidateInsights: Codable, Hashable, Sendable {
     public var visualEmbedding: VisualEmbedding?
     public var semanticEventID: String?
     public var bestTakeScore: Double?
+    /// Provenance for a derived editorial score, separate from measured
+    /// sharpness/exposure. Missing on legacy candidates.
+    public var bestTakeScoreRule: String? = nil
     public var subjectTracking: SubjectTrackingSummary?
     public var speech: SpeechEditingEvidence?
     public var audioEvents: [AudioEventObservation]?
