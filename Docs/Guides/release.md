@@ -145,8 +145,9 @@ Ed25519-подпись DMG. После согласия на установку 
 4. Прикрепите **DMG и appcast.xml из полученной папки** к одному GitHub Release
    с тем же тегом. Опубликуйте его как latest. Имя с `beta` допустимо, но checkbox
    GitHub «Set as a pre-release» исключит его из `/releases/latest` и канала обновлений.
-5. Сайт Cloudflare Pages получает текущий релиз через GitHub API и серверный
-   `/release.json`; appcast приложения указывает прямо на GitHub. Обновите также
+5. Сайт GitHub Pages получает текущий релиз через GitHub API. Workflow Pages
+   обновляет резервный `/release.json` и подписанный appcast при публикации.
+   Appcast приложения указывает прямо на GitHub. Обновите также
    статический `website/release.json` и проверьте сайт и feed после публикации
    (подробнее — `website/README.md`).
 

@@ -1,27 +1,28 @@
 # Публикация veloedit.ru
 
-Лендинг публикуется Cloudflare Pages из репозитория `007danlin/VeloEdit`.
-Проект: `veloedit`, production branch: `main`, framework: None,
-build command: `exit 0`, output directory: `website`, root directory: корень репозитория.
-Push в main автоматически запускает публикацию. Автоматические preview-публикации
-других веток отключены в Cloudflare → Settings → Branch control; при необходимости
-их можно включить для конкретной доверенной ветки. Сайт обслуживает Cloudflare Pages.
+Основной сайт обслуживает GitHub Pages из репозитория `007danlin/VeloEdit`.
+Workflow `.github/workflows/pages.yml` публикует папку `website` при изменениях
+в `main`, публикации/редактировании релиза и ручном запуске. GitHub Pages использует
+режим GitHub Actions и custom domain `veloedit.ru`; HTTPS должен быть включён.
 
-Домены `veloedit.ru` и `www.veloedit.ru` подключаются через Custom domains проекта,
-затем соответствующие CNAME указывают на `veloedit.pages.dev`. Записи GitHub A и
-TXT `_github-pages-challenge-007danlin` больше не нужны. Почтовые записи сохраняются.
-Перенаправление `www` на основной HTTPS-домен настраивается в Cloudflare Rules.
+DNS остаётся в Cloudflare. Записи `veloedit.ru` и `www.veloedit.ru` ведут на
+`007danlin.github.io` в режиме DNS Only (для корня Cloudflare выполняет CNAME
+flattening). Почтовые записи не меняются. GitHub Pages перенаправляет `www` на
+основной домен. Трафик сайта не проходит через прокси Cloudflare.
 
-Кнопка скачивания запрашивает последний опубликованный DMG через GitHub API.
-Резервный `/release.json` обслуживает Cloudflare Function из `functions/release.json.js`:
-он получает текущий релиз на сервере с кэшем до пяти минут. При недоступности GitHub
-остаётся статический `website/release.json` — его следует обновлять при изменении сайта.
-Бинарные файлы остаются в GitHub Releases. `/updates/appcast.xml` перенаправляет на
-подписанный appcast последнего релиза. Само приложение использует GitHub напрямую.
+Кнопка скачивания сначала использует GitHub API, затем локальный `release.json`.
+Workflow обновляет этот снимок и копирует подписанный `appcast.xml` из последнего
+GitHub Release при каждом развёртывании. Cloudflare Functions на GitHub Pages не
+исполняются. Само приложение продолжает получать обновления напрямую из GitHub.
 
-Локальный просмотр: `python3 -m http.server 8765 --directory website` (без Functions).
+Резервная копия остаётся в Cloudflare Pages: проект `veloedit`, ветка `main`,
+команда `exit 0`, каталог `website`, адрес `veloedit.pages.dev`. Для отката вернуть
+DNS-записи на `veloedit.pages.dev` и проверить custom domains/HTTPS в Cloudflare.
+
+Локальный просмотр: `python3 -m http.server 8765 --directory website`.
 Проверка выбора DMG: `node --test Tests/Website/release.test.mjs`.
-Подготовка обновлений приложения: [руководство по выпуску](../Docs/Guides/release.md).
+После публикации проверить главную, `/support/`, скачивание DMG и
+`/updates/appcast.xml`.
 
 ## Поддержка проекта
 
@@ -66,7 +67,11 @@ README (итоговое поведение GitHub контролирует са
 Защиту самой платёжной страницы может обеспечить только банк.
 См. [Google: атрибуты исходящих ссылок](https://developers.google.com/search/docs/crawling-indexing/qualify-outbound-links).
 
-## Защитные заголовки
+## Защитные заголовки резервной копии Cloudflare
+
+GitHub Pages не применяет файл `_headers`. Перечисленные ниже заголовки относятся
+к резервной копии Cloudflare; для основного сайта действуют заголовки GitHub Pages.
+
 
 `website/_headers` задаёт CSP для статических страниц: скрипты и стили только с
 нашего сайта, запросы данных — с сайта и `api.github.com`. Запрещены плагины,
