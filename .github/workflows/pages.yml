@@ -33,9 +33,14 @@ jobs:
           curl --fail --location --retry 3 --max-time 60 https://github.com/007danlin/VeloEdit/releases/latest/download/appcast.xml -o _site/updates/appcast.xml
           node --input-type=module -e "import {readFileSync} from 'node:fs'; import {selectRelease} from './website/release.mjs'; if (!selectRelease(JSON.parse(readFileSync('_site/release.json')))) throw new Error('No valid release');"
           python3 -c "import xml.etree.ElementTree as E; r=E.parse('_site/updates/appcast.xml').getroot(); assert r.find('channel/item/enclosure') is not None"
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+      - name: Package Pages artifact
+        run: tar --dereference --hard-dereference -cvf "$RUNNER_TEMP/artifact.tar" -C _site .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          path: _site
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
   deploy:
     needs: build
     runs-on: ubuntu-latest
