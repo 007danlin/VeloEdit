@@ -3805,7 +3805,7 @@ public actor VeloEditPipeline {
         draft.plan = alternative.plan
         draft.verifiedSourceContent = source
         draft.phase = .finishing
-        state.reason = "Подбираю замену неподтверждённым фрагментам · вариант \(search.attempts + 1). Проверенные моменты сохранены"
+        state.reason = "Подбираю замену неподтверждённым фрагментам · вариант \(search.attempts + 1). Проверяю изменённые участки"
         draft.contentRepairState = state
         PerformanceTrace.current?.event("assembly.source-alternative", values: [
             "attempt": Double(search.attempts), "excludedCandidates": Double(search.excluded.count)])

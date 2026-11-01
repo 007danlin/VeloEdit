@@ -306,6 +306,7 @@ public actor ProjectStore {
                 verified.filmDeliveryReport?.requirements?.append(.init(sourcePhrase: message, rule: "intent", verificationMethod: "IntentLedgerEngine", passed: false, evidence: message))
             }
         }
+        AutomaticFilmDelivery.refreshRequiredEvidence(in: &verified)
         return verified
     }
 

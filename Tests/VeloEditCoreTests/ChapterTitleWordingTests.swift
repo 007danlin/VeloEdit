@@ -3,6 +3,101 @@ import Testing
 @testable import VeloEditCore
 
 struct ChapterTitleWordingTests {
+    @Test func qualityGroundingSeparatesLiteralMeaningButKeepsAllEvidenceAndExactCache() async throws {
+        actor Transport {
+            var requests: [Data] = []
+            func send(_ request: URLRequest) throws -> (Data, URLResponse) {
+                requests.append(request.httpBody!)
+                let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+                #expect(body["model"] as? String == "qwen3-vl:8b-instruct")
+                let messages = body["messages"] as! [[String: Any]]
+                let literal = (messages[0]["content"] as! String).contains("Разбери только буквальный смысл")
+                let payload = messages[1]["content"] as! String
+                if literal {
+                    #expect(!payload.contains("Two people"))
+                    #expect(!payload.contains("facts"))
+                } else {
+                    #expect(payload.contains("Two people are seated with tablets."))
+                    #expect(payload.contains("LAST FRAME: both tablets remain visible."))
+                    #expect(payload.contains("claimIndex"))
+                }
+                let answer = literal
+                    ? #"{"claims":[{"text":"люди","kind":"people"},{"text":"планшеты","kind":"other"}]}"#
+                    : #"{"grounding":[{"claimIndex":1,"evidenceIDs":["e0"]},{"claimIndex":0,"evidenceIDs":["e0"]}]}"#
+                let data = try JSONSerialization.data(withJSONObject: ["model": body["model"]!, "done": true,
+                    "done_reason": "stop", "message": ["content": answer]])
+                return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transport = Transport()
+        var model = LocalChapterTitleModel(model: "qwen3-vl:8b-instruct", digest: "weights-8b", mode: .quality, responseCacheURL: root)
+        model.answerTransport = { try await transport.send($0) }
+        var facts = input()
+        facts.evidence[0].observation += " LAST FRAME: both tablets remain visible."
+        let proposal = try #require(try await model.groundTitleCandidate("Люди с планшетами", input: facts))
+        #expect(proposal.text == "Люди с планшетами")
+        #expect(proposal.claims.map(\.text) == ["люди", "планшеты"])
+        #expect(proposal.claims.allSatisfy { $0.evidenceIDs == ["e0"] })
+        #expect(SmartChapterTitleEngine.validate(proposal, input: facts).accepted)
+        #expect(model.candidateGroundingCallCount == 2)
+        #expect(await transport.requests.count == 2)
+        _ = try await model.groundTitleCandidate("Люди с планшетами", input: facts)
+        #expect(await transport.requests.count == 2)
+        facts.responseCacheIdentity = "changed-exact-source-interval"
+        _ = try await model.groundTitleCandidate("Люди с планшетами", input: facts)
+        #expect(await transport.requests.count == 4)
+    }
+
+    @Test(arguments: [#"[{"claimIndex":0,"evidenceIDs":["e0"]}]"#,
+                      #"[{"claimIndex":0,"evidenceIDs":["e0"]},{"claimIndex":0,"evidenceIDs":["e0"]}]"#])
+    func qualityGroundingCannotDropOrDuplicateAClaim(_ rows: String) async throws {
+        var model = LocalChapterTitleModel(model: "qwen3-vl:8b-instruct", mode: .quality)
+        model.answerTransport = { request in
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            let messages = body["messages"] as! [[String: Any]]
+            let literal = (messages[0]["content"] as! String).contains("Разбери только буквальный смысл")
+            let answer = literal ? #"{"claims":[{"text":"люди","kind":"people"},{"text":"планшеты","kind":"other"}]}"# : "{\"grounding\":\(rows)}"
+            let data = try JSONSerialization.data(withJSONObject: ["model": body["model"]!, "done": true,
+                "done_reason": "stop", "message": ["content": answer]])
+            return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        await #expect(throws: ChapterTitleFailure.self) {
+            try await model.groundTitleCandidate("Люди с планшетами", input: input())
+        }
+    }
+
+    @Test func candidateGroundingUsesSelectedWeightsMeaningFirstAndExactProvenance() async throws {
+        actor Transport {
+            var requests: [Data] = []
+            func send(_ request: URLRequest) throws -> (Data, URLResponse) {
+                requests.append(request.httpBody!)
+                let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+                #expect(body["model"] as? String == "qwen3-vl:2b-instruct")
+                let content = #"{"claims":[{"text":"Люди с планшетами","kind":"people","evidenceIDs":["e0"]}]}"#
+                let data = try JSONSerialization.data(withJSONObject: ["model": body["model"]!, "done": true,
+                    "done_reason": "stop", "message": ["content": content]])
+                return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transport = Transport()
+        var model = LocalChapterTitleModel(model: "qwen3-vl:2b-instruct", digest: "weights-a", mode: .fast, responseCacheURL: root)
+        model.answerTransport = { try await transport.send($0) }
+        let proposal = try #require(try await model.groundTitleCandidate("Люди с планшетами", input: input()))
+        #expect(proposal.text == "Люди с планшетами" && proposal.claims[0].kind == "people")
+        #expect(proposal.claims[0].evidenceIDs == ["e0"])
+        let sent = String(decoding: await transport.requests[0], as: UTF8.self)
+        #expect(sent.contains(#""properties":{"text":{"#))
+        _ = try await model.groundTitleCandidate("Люди с планшетами", input: input())
+        #expect(await transport.requests.count == 1)
+        var changed = input(); changed.responseCacheIdentity = "different-interval-or-observations"
+        _ = try await model.groundTitleCandidate("Люди с планшетами", input: changed)
+        #expect(await transport.requests.count == 2)
+    }
+
     private func input() -> ChapterTitleInput {
         .init(partID: UUID(), ordinal: 1, duration: 5, language: "ru", maxCharacters: 48,
             evidence: [.init(id: "e0", assetID: UUID(), itemID: UUID(), sourceStart: 0, sourceEnd: 5,

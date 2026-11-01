@@ -76,16 +76,16 @@ public enum AutomaticFilmDelivery {
         if export.durationDifference > 1 / max(1, timeline.frameRate) + 0.001 {
             failures.append("длительность MP4 не совпадает с монтажом")
         }
-        // A quiet artistic mix is not an invalid audio file. Keep the full
-        // loudness finding as a recommendation; missing measurements/clipping
-        // are technical failures.
+        // Explicit attenuation is handled by the existing loudness policy.
+        // An unrequested quiet mix must not demote a mandatory failed check
+        // to a recommendation or make an incomplete film look verified.
         if review.evidenceDomains?.contains(where: { [.integratedLoudness, .truePeak].contains($0.domain) && $0.required }) == true {
             if export.encodedAudio?.measuredFrames ?? 0 <= 0 { failures.append("не проверена звуковая дорожка MP4") }
             if let peak = export.encodedAudio?.outputTruePeakDBTP {
                 if !peak.isFinite || peak > 0 { failures.append("перегрузка звука в MP4") }
             } else { failures.append("нет измерения звуковых пиков MP4") }
         }
-        let required: Set<EditorialEvidenceDomain> = [.renderDecode, .sourceAudioPolicy]
+        let required: Set<EditorialEvidenceDomain> = [.renderDecode, .sourceAudioPolicy, .integratedLoudness, .truePeak]
         for evidence in review.evidenceDomains ?? [] where required.contains(evidence.domain) && evidence.required && !evidence.isSufficient {
             failures.append(evidence.reason)
         }
@@ -126,7 +126,7 @@ public enum AutomaticFilmDelivery {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let brief = (try? encoder.encode(plan.directorBrief)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        return EditorialIdentity.hash("request-v2-speech-intent|\(plan.preset.rawValue)|\(plan.prompt)|\(brief)|\(plan.explicitMusicTrackID?.uuidString ?? "")")
+        return EditorialIdentity.hash("request-v4-title-language-no-placeholders|\(plan.preset.rawValue)|\(plan.prompt)|\(brief)|\(plan.explicitMusicTrackID?.uuidString ?? "")")
     }
 
     static func verifiedReport(for timeline: Timeline, plan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult], additionalWarnings: [String] = []) -> FilmDeliveryReport {
@@ -186,6 +186,29 @@ public enum AutomaticFilmDelivery {
             check("titleVisibility", "Current per-title OCR in preview and independently decoded MP4", titlesPassed,
                   titlesPassed ? "Каждый титр проверен в предпросмотре и MP4" : "Читаемость всех обязательных точек титров не подтверждена")
         }
+        // New automatic title decisions have two independent gates. A fallback
+        // or a positive content verdict alone is not a successful language check.
+        // Legacy automatic titles need the new language proof too; changing a
+        // report version alone must not certify an older unchecked title.
+        let automatic = timeline.effectiveTitleItems.filter {
+            $0.enabled && $0.kind == .chapter && AutomatedTitlePolicy.isGenerated($0)
+        }
+        if !automatic.isEmpty {
+            let decisions = timeline.chapterTitleDecisions ?? []
+            let passed = automatic.allSatisfy { title in
+                decisions.contains { decision in
+                    guard decision.partID == title.filmPartID && decision.text == title.text else { return false }
+                    if decision.source == .user || decision.source == .reference { return true }
+                    return (decision.source == .model || decision.source == .retained)
+                        && !SmartTitleEngine.isPlaceholderTitle(title.text)
+                        && decision.verifications.contains(where: \.accepted)
+                        && decision.languageReceipts?.contains(where: { $0.approves(title.text, modelID: decision.modelID) }) == true
+                }
+            }
+            check("chapterTitleMeaningAndLanguage", "Separate final-chapter grounding and independent Russian language review", passed,
+                  passed ? "Смысл и естественность автоматических титров проверены отдельно"
+                    : "Не все автоматические титры прошли отдельные проверки смысла и русского языка")
+        }
         let commands = EditorCommandParser().parse(plan.prompt, preset: plan.preset)
         let titleReset = commands.lastIndex { if case .removeTitles = $0 { return true }; return false }
         for command in commands.dropFirst(titleReset.map { $0 + 1 } ?? 0) {
@@ -240,9 +263,44 @@ public enum AutomaticFilmDelivery {
                 content.passes(timeline: timeline, assets: assets),
                 "Проверка содержания: исходных участков \(content.source.count), итоговых \(content.rendered.count); неопределённых/непригодных \((content.source + content.rendered).filter { $0.status != .usable || $0.confidence < 0.75 }.count)")
         }
+        let evidence = requiredEvidenceSummary(timeline)
+        check("requiredEvidence", "Current complete evidence ledger; all mandatory domains remain sufficient",
+              evidence.passed, evidence.reason)
         report.requirements = checks
         report.warnings += checks.filter { !$0.passed }.map(\.evidence).filter { !report.warnings.contains($0) }
         return report
+    }
+
+    private static func requiredEvidenceSummary(_ timeline: Timeline) -> (passed: Bool, reason: String) {
+        let review = timeline.editorialReview
+        let domains = review?.evidenceDomains ?? []
+        let complete = review?.evidenceVersion == EditorialEvidenceVerifier.version
+            && review?.editorialSignature == EditorialRenderSignature.signature(timeline)
+            && domains.count == EditorialEvidenceDomain.allCases.count
+            && Set(domains.map(\.domain)) == Set(EditorialEvidenceDomain.allCases)
+        return (complete && domains.filter(\.required).allSatisfy(\.isSufficient),
+                complete ? domains.filter { $0.required && !$0.isSufficient }.map(\.reason).joined(separator: "; ")
+                         : "Обязательные проверки готового фильма не завершены")
+    }
+
+    /// Intent fulfillment is committed atomically after the draft report exists.
+    /// Refresh its derived summary from the final ledger, without rerunning any
+    /// observations or clearing independent failures (including rejected intents).
+    static func refreshRequiredEvidence(in timeline: inout Timeline) {
+        guard var report = timeline.filmDeliveryReport,
+              let index = report.requirements?.firstIndex(where: { $0.rule == "requiredEvidence" }) else { return }
+        let oldReason = report.requirements?[index].evidence ?? ""
+        let evidence = requiredEvidenceSummary(timeline)
+        report.requirements?[index].passed = evidence.passed
+        report.requirements?[index].evidence = evidence.reason
+        if oldReason != evidence.reason,
+           report.requirements?.contains(where: { !$0.passed && $0.evidence == oldReason }) != true {
+            report.warnings.removeAll { $0 == oldReason }
+        }
+        if !evidence.passed, !evidence.reason.isEmpty, !report.warnings.contains(evidence.reason) {
+            report.warnings.append(evidence.reason)
+        }
+        timeline.filmDeliveryReport = report
     }
 
     private static func warning(for kind: EditorialFindingKind) -> String {

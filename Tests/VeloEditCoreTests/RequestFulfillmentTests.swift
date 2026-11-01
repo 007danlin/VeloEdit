@@ -4,6 +4,58 @@ import Testing
 @testable import VeloEditCore
 
 struct RequestFulfillmentTests {
+    @Test(arguments: [false, true])
+    func atomicIntentCommitRefreshesEvidenceSummaryWithoutClearingOtherFailures(_ failedAudio: Bool) throws {
+        var (timeline, plan, analyses, assets) = fixture()
+        timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses)
+        let signature = EditorialRenderSignature.signature(timeline)
+        timeline.editorialReview?.editorialSignature = signature
+        timeline.editorialReview?.evidenceVersion = EditorialEvidenceVerifier.version
+        timeline.editorialReview?.evidenceDomains = EditorialEvidenceDomain.allCases.map { domain in
+            let state: EditorialEvidenceState = domain == .pendingIntentSatisfaction ? .unknown
+                : domain == .integratedLoudness && failedAudio ? .failed : .passed
+            return .init(domain: domain, status: state, required: true, confidence: 1, coverage: 1,
+                itemIDs: [], probeTimes: [], provenance: ["Explicit ledger fixture"],
+                reason: domain == .pendingIntentSatisfaction ? "Intent not yet committed" : "Audio fixture")
+        }
+        timeline.filmDeliveryReport = AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan,
+            assets: assets, analyses: analyses)
+        #expect(timeline.filmDeliveryReport?.requirements?.first { $0.rule == "requiredEvidence" }?.passed == false)
+        var project = ProjectManifest(name: "Atomic evidence summary")
+        project.assets = assets
+        let entry = IntentLedgerEntry(id: UUID(), projectRevision: 0, normalizedIntent: .createFilm,
+            source: .prompt, status: .running, evidence: [])
+        project.intentLedger = .init(entries: [entry])
+        let committed = try ProjectStore.verifyAndFulfillEditorialGeneration(in: &project,
+            ids: [entry.id], timeline: timeline, analyses: analyses)
+        #expect(project.intentLedger?.entries.first?.status == .fulfilled)
+        #expect(committed.editorialReview?.evidenceDomains?.first { $0.domain == .pendingIntentSatisfaction }?.isSufficient == true)
+        #expect(committed.filmDeliveryReport?.requirements?.first { $0.rule == "requiredEvidence" }?.passed == !failedAudio)
+        #expect(committed.filmDeliveryReport?.warnings.contains { $0.contains("Intent not yet committed") } == false)
+        #expect(committed.selectedContentReview == timeline.selectedContentReview)
+        #expect(committed.editorialReview?.exportVerification == timeline.editorialReview?.exportVerification)
+    }
+
+    @Test(arguments: [EditorialEvidenceState.failed, .unknown, .passed])
+    func requiredAudioEvidenceCannotDisappearFromDeliveryStatus(_ state: EditorialEvidenceState) {
+        var (timeline, plan, analyses, assets) = fixture()
+        timeline.editorialReview = EditorialQualityGate().review(timeline: timeline, plan: plan, analyses: analyses)
+        let signature = EditorialRenderSignature.signature(timeline)
+        timeline.editorialReview?.editorialSignature = signature
+        timeline.editorialReview?.evidenceVersion = EditorialEvidenceVerifier.version
+        timeline.editorialReview?.evidenceDomains = EditorialEvidenceDomain.allCases.map { domain in
+            .init(domain: domain, status: domain == .integratedLoudness ? state : .passed,
+                required: true, confidence: 1, coverage: 1, itemIDs: [], probeTimes: [],
+                provenance: ["Explicit evidence-ledger fixture"], reason: "Measured audio: -29.93 LUFS")
+        }
+        let report = AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan, assets: assets, analyses: analyses)
+        #expect(report.requirements?.first { $0.rule == "requiredEvidence" }?.passed == (state == .passed))
+        if state != .passed { #expect(report.status == .savedWithUnmetRequirements) }
+        timeline.editorialReview?.evidenceDomains = nil
+        let missing = AutomaticFilmDelivery.verifiedReport(for: timeline, plan: plan, assets: assets, analyses: analyses)
+        #expect(missing.requirements?.first { $0.rule == "requiredEvidence" }?.passed == false)
+    }
+
     @Test(arguments: ["2 минуты", "ровно 2 минуты", "2:00", "120 секунд", "две минуты", "1 минута 60 секунд"])
     func durationSpellings(_ prompt: String) {
         let result = FilmDurationRequirement.parse(prompt: prompt)

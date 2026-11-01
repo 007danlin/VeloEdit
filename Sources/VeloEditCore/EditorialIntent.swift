@@ -111,6 +111,12 @@ public enum IntentLedgerEngine {
             if FilmDurationRequirement.parse(prompt: text).mode != .automatic { continue }
             if !EditorCommandParser().parse(text, preset: .story).isEmpty { continue }
             if ["динамично", "красиво", "кинематографично", "киношно"].contains(trimmed) { continue }
+            // A generic request to select good visual moments is the existing
+            // generation intent, not an unknown extra editing operation. The
+            // full prompt still reaches planning and all delivery checks stay.
+            // Concrete subjects, exclusions, numbers and ordering are not
+            // swallowed by this deliberately narrow grammar.
+            if isGeneralVisualSelectionRequest(trimmed) { continue }
             if EditorialIntentEnforcer.titleRequest(text) != nil {
                 // Already resolved against the latest prompt above, including
                 // a later request to remove titles.
@@ -123,6 +129,17 @@ public enum IntentLedgerEngine {
         }
         if !newAssetIDs.isEmpty { intents.append(.evaluateNewAssets(newAssetIDs)) }
         return Array(Set(intents)).sorted { String(describing: $0) < String(describing: $1) }
+    }
+
+    static func isGeneralVisualSelectionRequest(_ text: String) -> Bool {
+        guard text.rangeOfCharacter(from: .decimalDigits) == nil else { return false }
+        let words = Set(text.lowercased().components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty })
+        let verbs: Set<String> = ["выбери", "выбирай", "отбери", "подбери", "используй", "покажи"]
+        let quality: Set<String> = ["красивые", "лучшие", "интересные", "удачные", "понятные"]
+        let media: Set<String> = ["кадры", "моменты", "фрагменты", "планы", "сцены"]
+        let allowed = verbs.union(quality).union(media).union(["самые", "визуальные", "визуально", "и", "пожалуйста"])
+        return !words.isDisjoint(with: verbs) && !words.isDisjoint(with: quality)
+            && !words.isDisjoint(with: media) && words.isSubset(of: allowed)
     }
 
     public static func validate(_ intent: DirectorIntent, timeline: Timeline, previous: Timeline?, analyses: [AnalysisResult], assets: [MediaAsset]) -> (IntentStatus, [IntentSatisfactionEvidence], String?) {

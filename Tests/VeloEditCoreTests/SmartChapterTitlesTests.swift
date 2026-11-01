@@ -2,7 +2,16 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
-private actor IncompleteCitationTitleModel: ChapterTitleModel {
+// Structural fixtures explicitly inject a language verdict. They do not
+// establish the quality of real model output; live corpus checks do that.
+private protocol TitleModelFixture: ChapterTitleModel {}
+private extension TitleModelFixture {
+    func reviewLanguage(_ title: String, maxCharacters: Int) async throws -> ChapterTitleLanguageAssessment {
+        .init(issue: .none, reason: "Injected language success for structural test", verdict: .natural)
+    }
+}
+
+private actor IncompleteCitationTitleModel: TitleModelFixture {
     nonisolated let identity = "incomplete-citation-fixture"
     var attempts = 0
     var receivedFeedback = false
@@ -20,7 +29,7 @@ private actor IncompleteCitationTitleModel: ChapterTitleModel {
     }
 }
 
-private actor TitleModelProbe: ChapterTitleModel {
+private actor TitleModelProbe: TitleModelFixture {
     nonisolated let identity: String
     var calls = 0
     var receivedCacheIdentities: [String?] = []
@@ -49,7 +58,105 @@ private actor TitleModelProbe: ChapterTitleModel {
 
 @Suite(.serialized)
 struct SmartChapterTitlesTests {
-    private actor LanguageRepairModel: ChapterTitleModel {
+    private actor DraftTitleModel: TitleModelFixture {
+        nonisolated let identity = "same-selected-model@weights"
+        nonisolated let canGroundTitleCandidates = true
+        let scenario: String
+        var generated = 0
+        var grounded = 0
+        var checked: [String] = []
+        init(_ scenario: String = "accepted") { self.scenario = scenario }
+        func groundTitleCandidate(_ title: String, input: ChapterTitleInput) async throws -> ChapterTitleProposal? {
+            grounded += 1
+            if scenario == "malformed" { throw URLError(.cannotParseResponse) }
+            if scenario == "cancelled" { throw CancellationError() }
+            return .init(text: scenario == "changed" ? "На Марсе" : title,
+                claims: [.init(text: title, kind: "activity",
+                    evidenceIDs: scenario == "uncovered" ? [input.evidence[0].id] : input.evidence.map(\.id))])
+        }
+        func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal {
+            generated += 1
+            return .init(theme: "Сплав", setting: "Река", secondaryActivities: [], contradictions: [], unknowns: [],
+                titles: [.init(text: "Сплав по реке", claims: [.init(text: "Сплав по реке", kind: "activity", evidenceIDs: input.evidence.map(\.id))])])
+        }
+        func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification {
+            checked.append(proposal.text)
+            let accepted = !(scenario == "rejected" && proposal.text == "Сплав")
+            return .init(accepted: accepted, reasons: [accepted ? "Observed rowing throughout the selected chapter" : "Unconfirmed draft"],
+                unsupportedClaims: accepted ? [] : [proposal.text], evidenceIDs: input.evidence.map(\.id), coversWholePart: accepted)
+        }
+    }
+
+    @Test func existingAutomaticNameIsOnlyACandidateAndStillNeedsIndependentVerification() async throws {
+        var (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        timeline.titleItems = [.init(kind: .chapter, text: "Сплав", startTime: 0, duration: 4, explanation: ["Editorial chapter"])]
+        let model = DraftTitleModel()
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: assets,
+            analyses: analyses, mode: .fast, model: model)
+        #expect(await model.grounded == 1)
+        #expect(await model.generated == 0)
+        #expect(await model.checked == ["Сплав"])
+        #expect(result.chapterTitleDecisions?.first?.text == "Сплав")
+        #expect(result.chapterTitleDecisions?.first?.source == .model)
+        #expect(result.chapterTitleDecisions?.first?.modelCalls == 3)
+        #expect(result.items == timeline.items)
+    }
+
+    @Test func alreadySuitableExistingTitleIsRetainedAfterEvidenceRefresh() async throws {
+        var (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        timeline.titleItems = [.init(kind: .chapter, text: "На реке", startTime: 0, duration: 4,
+                                    explanation: ["Editorial chapter"])]
+        let model = DraftTitleModel()
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan,
+            assets: assets, analyses: analyses, mode: .fast, model: model,
+            sourceAssessments: exactReviews(timeline, assets: assets))
+        #expect(await model.checked == ["На реке"])
+        #expect(result.chapterTitleDecisions?.first?.text == "На реке")
+        #expect(result.chapterTitleDecisions?.first?.modelCalls == 3)
+        #expect(result.items == timeline.items)
+    }
+
+    @Test func existingCandidateCannotBypassEvidenceCoverage() async throws {
+        var (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        timeline.titleItems = [.init(kind: .chapter, text: "На реке", startTime: 0, duration: 4,
+                                    explanation: ["Editorial chapter"])]
+        let model = DraftTitleModel("uncovered")
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan,
+            assets: assets, analyses: analyses, mode: .fast, model: model,
+            sourceAssessments: exactReviews(timeline, assets: assets))
+        #expect(await model.grounded == 1)
+        #expect(await model.generated == 1)
+        #expect(result.chapterTitleDecisions?.first?.verifications.first?.accepted == false)
+        #expect(result.chapterTitleDecisions?.first?.text == "Сплав по реке")
+    }
+
+    @Test(arguments: ["uncovered", "changed", "rejected", "malformed"])
+    func invalidDraftMustUseTheExistingGenerationAndVerificationPath(_ scenario: String) async throws {
+        var (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        timeline.titleItems = [.init(kind: .chapter, text: "Сплав", startTime: 0, duration: 4, explanation: ["Editorial chapter"])]
+        let model = DraftTitleModel(scenario)
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: assets,
+            analyses: analyses, mode: .fast, model: model)
+        #expect(await model.grounded == 1)
+        #expect(await model.generated == 1)
+        #expect(await model.checked == (scenario == "rejected" ? ["Сплав", "Сплав по реке"] : ["Сплав по реке"]))
+        #expect(result.chapterTitleDecisions?.first?.text == "Сплав по реке")
+        #expect(result.chapterTitleDecisions?.first?.verifications.first?.accepted == false)
+        #expect(result.items == timeline.items)
+    }
+
+    @Test func cancelledCandidateEvaluationCannotFallThroughToAnAcceptedTitle() async throws {
+        var (timeline, plan, assets, analyses) = fixture(partCount: 1)
+        timeline.titleItems = [.init(kind: .chapter, text: "Сплав", startTime: 0, duration: 4, explanation: ["Editorial chapter"])]
+        let model = DraftTitleModel("cancelled")
+        await #expect(throws: CancellationError.self) {
+            try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: assets,
+                analyses: analyses, mode: .fast, model: model)
+        }
+        #expect(await model.generated == 0)
+    }
+
+    private actor LanguageRepairModel: TitleModelFixture {
         nonisolated let identity = "language-repair-fixture"
         var generated = 0
         var checked = 0
@@ -64,9 +171,14 @@ struct SmartChapterTitlesTests {
         }
         func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification {
             checked += 1
-            return .init(accepted: checked > 1,
-                reasons: [checked == 1 ? "synthetic grammar defect: inconsistent word forms" : "Grounded, grammatical chapter title"],
+            return .init(accepted: true,
+                reasons: ["Grounded chapter title"],
                 unsupportedClaims: [], evidenceIDs: proposal.claims.flatMap(\.evidenceIDs), coversWholePart: true)
+        }
+        func reviewLanguage(_ title: String, maxCharacters: Int) async throws -> ChapterTitleLanguageAssessment {
+            title == "Лодка плывутся"
+                ? .init(issue: .grammar, reason: "synthetic grammar defect: inconsistent word forms", verdict: .revise)
+                : .init(issue: .none, reason: "Ordinary Russian title", verdict: .natural)
         }
     }
 
@@ -76,17 +188,18 @@ struct SmartChapterTitlesTests {
         let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan,
             assets: assets, analyses: analyses, mode: .fast, model: model)
         #expect(await model.generated == 2)
-        #expect(await model.checked == 2)
+        #expect(await model.checked == 1)
         #expect(await model.receivedSpecificFeedback)
         let decision = try #require(result.chapterTitleDecisions?.first)
         #expect(decision.text == "Сплав по реке")
-        #expect(decision.verifications.map(\.accepted) == [false, true])
+        #expect(decision.verifications.map(\.accepted) == [true])
+        #expect(decision.languageReceipts?.map { $0.assessment.accepted } == [false, true])
         #expect(decision.modelID == model.identity)
         #expect(result.items == timeline.items)
     }
 
     @Test func editedWordingMustPassIndependentVerificationAndCannotReuseTheOriginalVerdict() async throws {
-        actor EditedModel: ChapterTitleModel {
+        actor EditedModel: TitleModelFixture {
             nonisolated let identity = "same-selected-model"
             nonisolated let requiresWordingEdit = true
             var checked: [String] = []
@@ -110,7 +223,7 @@ struct SmartChapterTitlesTests {
         #expect(await model.checked == ["На Марсе", "На Марсе", "На Марсе"])
         let decision = try #require(result.chapterTitleDecisions?.first)
         #expect(decision.source == .fallback && decision.text != "На Марсе")
-        #expect(decision.modelCalls == 9)
+        #expect(decision.modelCalls == 10)
         #expect(decision.verifications.allSatisfy { !$0.accepted })
         #expect(result.items == timeline.items)
     }
@@ -191,7 +304,7 @@ struct SmartChapterTitlesTests {
         #expect(await model.attempts == 2)
         #expect(await model.receivedFeedback)
         #expect(result.chapterTitleDecisions?.first?.source == .model)
-        #expect(result.chapterTitleDecisions?.first?.modelCalls == 3)
+        #expect(result.chapterTitleDecisions?.first?.modelCalls == 4)
         #expect(result.items == timeline.items)
     }
 
@@ -585,7 +698,7 @@ extension SmartChapterTitlesTests {
             try JSONEncoder.veloEdit.encode(named.chapterTitleDecisions).write(to: URL(fileURLWithPath: output), options: .atomic)
         }
         #expect(named.chapterTitleDecisions?.first?.source == .model)
-        #expect(named.chapterTitleDecisions?.first?.modelCalls == 3)
+        #expect(named.chapterTitleDecisions?.first?.modelCalls == 4)
     }
 }
 
@@ -617,7 +730,7 @@ extension SmartChapterTitlesTests {
 
 extension SmartChapterTitlesTests {
     @Test func stalledTitleModelWaitsInsteadOfFallingBackToUnverifiedText() async throws {
-        struct StalledModel: ChapterTitleModel {
+        struct StalledModel: TitleModelFixture {
             let identity = "unchanged-title-model"
             func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal {
                 throw LocalAIInferenceFailure(model: identity, reason: "No response")

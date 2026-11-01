@@ -525,6 +525,22 @@ struct VLMSceneInput: Sendable {
 
 actor OllamaVisionRuntime {
     private let baseURL = LocalAIRuntimeConfiguration.baseURL
+    private let inferenceClient: LocalAIInferenceClient
+    private let installedModelDigest: @Sendable (String) async -> String?
+
+    init(inferenceClient: LocalAIInferenceClient = .shared,
+         installedModelDigest: @escaping @Sendable (String) async -> String? = {
+             await LocalAIModelManager.shared.installedModelDigest(model: $0)
+         }) {
+        self.inferenceClient = inferenceClient
+        self.installedModelDigest = installedModelDigest
+    }
+
+    static func requestData(_ body: [String: Any], sceneObservationFirst: Bool) throws -> Data {
+        try LocalAIRequestEncoding.data(body, responseArrayItemFieldOrders: sceneObservationFirst
+            ? ["scenes": ["index", "scene", "action", "interest", "quality", "reason", "stability", "storyValue", "tags"]]
+            : [:])
+    }
 
     static func responseSchema(indices: [Int]) -> [String: Any] {
         var fields: [String: Any] = [
@@ -591,7 +607,7 @@ actor OllamaVisionRuntime {
         await LocalAIModelManager.shared.availability(model: model).installed
     }
 
-    fileprivate func analyzeBatch(
+    func analyzeBatch(
         scenes: [VLMSceneInput],
         model: String,
         thinking: Bool,
@@ -599,11 +615,12 @@ actor OllamaVisionRuntime {
         cache: DeepAnalysisCache? = nil,
         cacheContext: String? = nil,
         metrics: AnalysisMetricsRecorder? = nil,
-        shareIdenticalImages: Bool = false
+        shareIdenticalImages: Bool = false,
+        sceneObservationFirst: Bool = false
     ) async throws -> [Int: DeepFrameJudgement] {
         do {
             return try await LocalAIModelManager.recoveringRequest(retryTimeouts: false) {
-                try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics, shareIdenticalImages: shareIdenticalImages)
+                try await requestBatch(scenes: scenes, model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics, shareIdenticalImages: shareIdenticalImages, sceneObservationFirst: sceneObservationFirst)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -617,7 +634,7 @@ actor OllamaVisionRuntime {
             for scene in scenes {
                 try Task.checkCancellation()
                 do {
-                    let answer = try await requestBatch(scenes: [scene], model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics, shareIdenticalImages: shareIdenticalImages)
+                    let answer = try await requestBatch(scenes: [scene], model: model, thinking: thinking, timeout: timeout, cache: cache, cacheContext: cacheContext, metrics: metrics, shareIdenticalImages: shareIdenticalImages, sceneObservationFirst: sceneObservationFirst)
                     recovered.merge(answer) { _, new in new }
                 } catch is CancellationError {
                     throw CancellationError()
@@ -648,7 +665,8 @@ actor OllamaVisionRuntime {
 
     private func requestBatch(
         scenes: [VLMSceneInput], model: String, thinking: Bool, timeout: TimeInterval,
-        cache: DeepAnalysisCache?, cacheContext: String?, metrics: AnalysisMetricsRecorder?, shareIdenticalImages: Bool
+        cache: DeepAnalysisCache?, cacheContext: String?, metrics: AnalysisMetricsRecorder?, shareIdenticalImages: Bool,
+        sceneObservationFirst: Bool
     ) async throws -> [Int: DeepFrameJudgement] {
         var resourcePacer = ResourceWorkPacer()
         try await resourcePacer.checkpoint()
@@ -694,11 +712,11 @@ actor OllamaVisionRuntime {
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        request.httpBody = try Self.requestData(payload, sceneObservationFirst: sceneObservationFirst)
         let preparedRequest = request
         var repairRequest = request
-        repairRequest.httpBody = try JSONSerialization.data(
-            withJSONObject: LocalModelResponseValidation.repairBody(payload, additionalInstruction: "DESCRIPTION REPAIR: scene and reason must each be a self-contained ordinary sentence about the supplied images. A number, scene index, placeholder, quoted JSON or reference to another scene is not an observation. Describe visible uncertainty literally instead of inventing an action."), options: [.sortedKeys])
+        repairRequest.httpBody = try Self.requestData(
+            LocalModelResponseValidation.repairBody(payload, additionalInstruction: "DESCRIPTION REPAIR: scene and reason must each be a self-contained ordinary sentence about the supplied images. A number, scene index, placeholder, quoted JSON or reference to another scene is not an observation. Describe visible uncertainty literally instead of inventing an action."), sceneObservationFirst: sceneObservationFirst)
         let preparedRequests = [request, repairRequest]
         let indices = scenes.map(\.index)
         let trace = PerformanceTrace.current
@@ -713,10 +731,10 @@ actor OllamaVisionRuntime {
             var diagnosticReply: Data?
             do {
                 let observer = FilmBuildReporting.handler
-                let (data, response) = try await LocalAIInferenceClient.shared.response(for: preparedRequest, progress: { update in
+                let (data, response) = try await self.inferenceClient.response(for: preparedRequest, progress: { update in
                     var update = update; update.stage = .analysis
                     await observer?(update)
-                })
+                }, preservingRequestBody: true)
                 diagnosticReply = data
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                     throw NSError(domain: "OllamaHTTP", code: (response as? HTTPURLResponse)?.statusCode ?? 0)
@@ -759,7 +777,7 @@ actor OllamaVisionRuntime {
           }
           throw URLError(.cannotParseResponse)
         }
-        let currentDigest = await LocalAIModelManager.shared.installedModelDigest(model: model)
+        let currentDigest = await installedModelDigest(model)
         try FilmProcessContext.current?.validate(model: model, digest: currentDigest)
         if let cache, let cacheContext, let digest = currentDigest {
             let windows = scenes.map { scene in
@@ -1105,7 +1123,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                         cache: deepCache,
                         cacheContext: profile.cacheKey + "|" + FrameCacheKey.sourceIdentity(url: asset.originalURL, contentHash: asset.contentHash),
                         metrics: metrics,
-                        shareIdenticalImages: shareIdenticalImages
+                        shareIdenticalImages: shareIdenticalImages,
+                        sceneObservationFirst: profile.sceneObservationFirst == true
                     )
                     for index in indices {
                         guard let judgement = judgements[index] else {
@@ -1142,7 +1161,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                         let judgements = try await runtime.analyzeBatch(
                             scenes: inputs, model: profile.ollamaModelID, thinking: profile.thinkingEnabled,
                             timeout: profile.vlmPrefillTimeout(imageCount: inputs[0].frames.count),
-                            cache: deepCache, cacheContext: recheckContext, metrics: metrics)
+                            cache: deepCache, cacheContext: recheckContext, metrics: metrics,
+                            sceneObservationFirst: profile.sceneObservationFirst == true)
                         if let judgement = judgements[index] {
                             apply(judgement, to: &candidates[index])
                             execution.evaluatedRechecks += 1

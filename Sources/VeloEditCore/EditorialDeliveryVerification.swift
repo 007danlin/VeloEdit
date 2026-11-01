@@ -102,6 +102,14 @@ public enum EditorialDeliveryVerifier {
         if let receipt, receipt.size > 0, receipt == (try? CompletedExport.read(output, signature: key)) {
             PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "hit", "signature": key])
             await FilmBuildReporting.report(FilmBuildProgress(.controlExport, detail: "Контрольное видео сохранено — продолжаю проверку"))
+            // A legacy completed export may contain the old +12 dB ceiling.
+            // Correct only its audio, retaining the encoded video and all
+            // independent source/preview observations. Verify the actual MP4 below.
+            if try await EncodedAudioNormalizer.repairIfNeeded(at: output,
+                duration: AutomaticFilmDurationPolicy.renderedDuration(of: timeline),
+                allowsQuietMix: SourceAudioMixPolicy.preservesAttenuation(in: timeline)) {
+                try JSONEncoder().encode(CompletedExport.read(output, signature: key)).write(to: receiptURL, options: .atomic)
+            }
         } else {
             PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "miss", "reason": receipt == nil ? "missing-or-incompatible-receipt" : "artifact-changed", "signature": key])
             _ = try await PerformanceTrace.measure(name: "control.export", fields: ["signature": key, "contract": "final1080p"]) {

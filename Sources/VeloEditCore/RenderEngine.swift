@@ -137,17 +137,32 @@ public actor RenderEngine {
                                          currentName: "Кодирую фильм: \(settings.summary)"))
             }
             let firstPassAsset = AVURLAsset(url: staged)
-            if let measured = try await EditorialDeliveryVerifier.measureEncodedAudio(asset: firstPassAsset),
-               let mastered = EditorialAudioMastering.adjustedMix(composition: firstPassAsset, mix: nil,
-                                                                  duration: playback.duration, measured: measured,
-                                                                  maximumGainDB: maximumAudioGainDB) {
-                let firstPass = destination.deletingLastPathComponent()
-                    .appendingPathComponent(".veloedit-first-pass-\(UUID().uuidString).mp4")
-                try FileManager.default.moveItem(at: staged, to: firstPass)
-                defer { try? FileManager.default.removeItem(at: firstPass) }
-                // Audio mastering stream-copies the already encoded video.
-                try await SoftwareCompositionExporter.remaster(source: firstPass, gainDB: mastered.1.appliedGainDB,
-                                                                duration: playback.duration, destination: staged)
+            if let measured = try await EditorialDeliveryVerifier.measureEncodedAudio(asset: firstPassAsset) {
+                let mastered = EditorialAudioMastering.adjustedMix(composition: firstPassAsset, mix: nil,
+                    duration: playback.duration, measured: measured, maximumGainDB: maximumAudioGainDB)
+                let allowsQuietMix = maximumAudioGainDB == 0
+                let needsNormalization = EncodedAudioNormalizer.needsRepair(mastered?.1 ?? measured, allowsQuietMix: allowsQuietMix)
+                if mastered != nil || needsNormalization {
+                    let firstPass = destination.deletingLastPathComponent()
+                        .appendingPathComponent(".veloedit-first-pass-\(UUID().uuidString).mp4")
+                    try FileManager.default.moveItem(at: staged, to: firstPass)
+                    defer { try? FileManager.default.removeItem(at: firstPass) }
+                    // Audio mastering stream-copies the already encoded video.
+                    if needsNormalization {
+                        progress?(ImportProgress(completed: 90, total: 100, currentName: "Выравниваю громкость готовой звуковой дорожки"))
+                        _ = try await PerformanceTrace.measure(name: "delivery.audio-normalization") {
+                            try await EncodedAudioNormalizer.normalize(source: firstPass, destination: staged,
+                                duration: playback.duration, measured: measured, allowsQuietMix: allowsQuietMix)
+                        }
+                    } else if let mastered {
+                        try await SoftwareCompositionExporter.remaster(source: firstPass, gainDB: mastered.1.appliedGainDB,
+                                                                      duration: playback.duration, destination: staged)
+                        // AAC can change true peaks. Repair an actual violation;
+                        // never substitute the predicted gain for final evidence.
+                        _ = try await EncodedAudioNormalizer.repairIfNeeded(at: staged, duration: playback.duration,
+                                                                          allowsQuietMix: allowsQuietMix)
+                    }
+                }
             }
             progress?(ImportProgress(completed: 95, total: 100, currentName: "Проверяю параметры записанного MP4"))
             let expectsAudio = !(try await playback.composition.loadTracks(withMediaType: .audio)).isEmpty

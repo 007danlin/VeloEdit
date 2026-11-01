@@ -61,6 +61,37 @@ import Testing
     #expect(try #require(limited.1.outputTruePeakDBTP) <= -1.19)
 }
 
+@Test func encodedAudioRepairCatchesMeasuredColdFilmRegressionWithoutAmplifyingRequestedQuietMix() throws {
+    let recordedFirstPass = EditorialAudioMasteringReport(integratedLUFS: -41.875975656,
+        truePeakDBTP: -17.809477142, appliedGainDB: 0, outputLUFS: -41.875975656,
+        outputTruePeakDBTP: -17.809477142, peakLimited: false, measuredFrames: 480_000)
+    let predicted = try #require(EditorialAudioMastering.adjustedMix(composition: AVMutableComposition(),
+        mix: nil, duration: 10, measured: recordedFirstPass))
+    #expect(predicted.1.appliedGainDB == 12)
+    #expect(EncodedAudioNormalizer.needsRepair(predicted.1, allowsQuietMix: false))
+    #expect(!EncodedAudioNormalizer.needsRepair(recordedFirstPass, allowsQuietMix: true))
+    var actual = recordedFirstPass
+    actual.outputLUFS = -17.0423498807
+    actual.outputTruePeakDBTP = -1.4609305308
+    #expect(!EncodedAudioNormalizer.needsRepair(actual, allowsQuietMix: false))
+    actual.outputTruePeakDBTP = -0.8
+    #expect(EncodedAudioNormalizer.needsRepair(actual, allowsQuietMix: false))
+    #expect(EncodedAudioNormalizer.needsRepair(actual, allowsQuietMix: true))
+}
+
+@Test func encodedPeakCorrectionUsesActualAACAndNeverAmplifies() {
+    var measured = EditorialAudioMasteringReport(integratedLUFS: -16.0457678454,
+        truePeakDBTP: -0.2752176414, appliedGainDB: 0, outputLUFS: -16.0457678454,
+        outputTruePeakDBTP: -0.2752176414, peakLimited: true, measuredFrames: 576_512)
+    let gain = EncodedAudioNormalizer.peakCorrectionGain(measured, allowsQuietMix: false)
+    #expect(abs((gain ?? 0) - (-1.2247823586)) < 0.00001)
+    #expect(EncodedAudioNormalizer.needsRepair(measured, allowsQuietMix: false))
+    measured.outputTruePeakDBTP = -1.5
+    #expect(EncodedAudioNormalizer.peakCorrectionGain(measured, allowsQuietMix: false) == nil)
+    measured.outputTruePeakDBTP = .nan
+    #expect(EncodedAudioNormalizer.peakCorrectionGain(measured, allowsQuietMix: false) == nil)
+}
+
 @Test func editorialMasteringChangesTheActualCompositionMix() async throws {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("editorial-audio-\(UUID()).caf")
     defer { try? FileManager.default.removeItem(at: url) }

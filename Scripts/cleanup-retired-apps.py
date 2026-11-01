@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Remove old build bundles only after all processes release their files."""
 import argparse
+import ctypes
+import errno
 from pathlib import Path
 import re
 import shutil
@@ -31,7 +33,7 @@ def remove_if_unused(app: Path) -> bool:
     # running. An incomplete process scan is not evidence that deletion is safe.
     try:
         processes = subprocess.run(
-            ["/bin/ps", "-axww", "-o", "comm="], capture_output=True, text=True, timeout=30,
+            ["/bin/ps", "-axww", "-o", "pid=,comm="], capture_output=True, text=True, timeout=30,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -39,8 +41,39 @@ def remove_if_unused(app: Path) -> bool:
         return False
     prefixes = (str(app.resolve()) + "/", str(app.resolve().with_name("VeloEdit.app")) + "/")
     # macOS ps can spell /private/var as /var; compare canonical paths.
-    if any(str(Path(line.strip()).resolve()).startswith(prefixes)
-           for line in processes.stdout.splitlines() if line.strip()):
+    entries = [line.strip().split(maxsplit=1) for line in processes.stdout.splitlines() if line.strip()]
+    if any(str(Path(entry[-1]).resolve()).startswith(prefixes) for entry in entries):
+        return False
+    if any(len(entry) != 2 or not entry[0].isdigit() for entry in entries):
+        return False
+    # Immediately after exec, ps may still return only the process basename,
+    # while lsof has not observed its text mapping yet. The kernel executable
+    # identity is already available then; consult it before deleting any code.
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+        libproc.proc_pidpath.restype = ctypes.c_int
+        executable_names = {"VeloEdit"}
+        executable_names.update(path.name for path in app.rglob("*")
+                                if path.is_file() and path.stat().st_mode & 0o111)
+        for entry in entries:
+            # Absolute paths have already been checked. Only unresolved names
+            # of this bundle's executables need the additional kernel lookup;
+            # an unrelated application's deleted executable is not our bundle.
+            if entry[1].startswith("/") or Path(entry[1]).name not in executable_names:
+                continue
+            pid = int(entry[0])
+            if pid == 0:
+                continue  # kernel_task cannot execute a bundle from this directory.
+            buffer = ctypes.create_string_buffer(4096)
+            ctypes.set_errno(0)
+            if libproc.proc_pidpath(pid, buffer, len(buffer)) <= 0:
+                if ctypes.get_errno() == errno.ESRCH:
+                    continue  # Process exited after the snapshot.
+                return False
+            if str(Path(buffer.value.decode()).resolve()).startswith(prefixes):
+                return False
+    except (OSError, ValueError, UnicodeError):
         return False
     shutil.rmtree(app)
     return True

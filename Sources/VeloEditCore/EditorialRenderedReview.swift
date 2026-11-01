@@ -244,6 +244,10 @@ public actor RenderedProbeCache {
             // Refresh their technical proof while retaining preview pixels,
             // the completed MP4 and independent content-review receipts.
             guard export.expectsAudio != nil else { miss("missing-source-audio-evidence"); return nil }
+            if let audio = export.encodedAudio, EncodedAudioNormalizer.needsRepair(audio,
+                allowsQuietMix: SourceAudioMixPolicy.preservesAttenuation(in: timeline)) {
+                miss("audio-policy-repair-needed"); return nil
+            }
             guard export.videoDuration != nil, export.artifactIsCurrent,
                   export.outputURL.map({ url in export.artifactSHA256 == MusicStructureCache.contentIdentity(url) }) == true else { miss("artifact-changed-or-corrupt"); return nil }
             export.fileModifiedTime = export.fileModifiedTime ?? export.fileModified?.timeIntervalSince1970

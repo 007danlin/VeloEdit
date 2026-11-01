@@ -60,6 +60,26 @@ class RetiredAppTests(unittest.TestCase):
                 scan.assert_not_called()
             self.assertTrue(app.is_dir())
 
+    def test_kernel_identity_protects_new_process_when_ps_only_has_basename(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            app = Path(scratch).resolve() / ".VeloEdit.app.previous-123"
+            app.mkdir()
+            executable = str(app.with_name("VeloEdit.app") / "Contents/MacOS/VeloEdit")
+
+            def identity(pid, buffer, size):
+                self.assertEqual(pid, 123)
+                value = executable.encode() + b"\0"
+                ctypes.memmove(buffer, value, len(value))
+                return len(value) - 1
+
+            results = [subprocess.CompletedProcess([], 1, "", ""),
+                       subprocess.CompletedProcess([], 0, "123 VeloEdit\n", "")]
+            with patch.object(retired_apps.subprocess, "run", side_effect=results), \
+                    patch.object(retired_apps.ctypes, "CDLL") as library:
+                library.return_value.proc_pidpath.side_effect = identity
+                self.assertFalse(retired_apps.remove_if_unused(app))
+            self.assertTrue(app.is_dir())
+
     @unittest.skipUnless(sys.platform == "darwin", "macOS process identity regression")
     def test_running_executable_survives_publish_until_process_exits(self):
         libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
@@ -73,10 +93,13 @@ class RetiredAppTests(unittest.TestCase):
             binary = app / "Contents/MacOS/VeloEdit"
             binary.parent.mkdir(parents=True)
             subprocess.run(["/usr/bin/clang", "-x", "c", "-", "-o", str(binary)],
-                           input="#include <unistd.h>\nint main(void) { sleep(30); return 0; }\n",
+                           input="#include <unistd.h>\nint main(void) { write(1, \"R\", 1); sleep(30); return 0; }\n",
                            text=True, check=True, capture_output=True)
-            process = subprocess.Popen([str(binary)])
+            process = subprocess.Popen([str(binary)], stdout=subprocess.PIPE)
             try:
+                # Wait for actual execution, not just a transient exec identity.
+                # The pre-mapping race is covered separately with kernel identity.
+                self.assertEqual(process.stdout.read(1), b"R")
                 for _ in range(100):
                     if executable_path(process.pid) == str(binary):
                         break
@@ -90,6 +113,7 @@ class RetiredAppTests(unittest.TestCase):
             finally:
                 process.terminate()
                 process.wait()
+                process.stdout.close()
             self.assertTrue(retired_apps.remove_if_unused(retired))
             self.assertFalse(retired.exists())
 

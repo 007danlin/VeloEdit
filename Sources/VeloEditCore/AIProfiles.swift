@@ -118,11 +118,18 @@ public struct AIAnalysisProfile: Codable, Hashable, Sendable {
     public let mediaConcurrency: Int
     public let aiConcurrency: Int
     public let thinkingEnabled: Bool
+    // Preserve the exact order of already frozen jobs. The scene-first trial
+    // increased selection/repair work in its full cold film; new jobs retain
+    // the established order until a complete-process benefit is demonstrated.
+    public let sceneObservationFirst: Bool?
 
     public var modelID: String { ollamaModelID }
     public static let cacheVersion = "pipeline-v15-concise-scene-observations"
     public var cacheKey: String {
         [Self.cacheVersion, mode.rawValue, "ollama", modelID].joined(separator: ":")
+            // v1 prepared ordered bytes but the transport sorted them again.
+            // Those experimental replies cannot certify the actual new order.
+            + (sceneObservationFirst == true ? ":scene-observation-first-v2-wire" : "")
     }
 
     /// Modes differ by work performed, not only by frame density.
@@ -233,13 +240,13 @@ public struct AIAnalysisProfile: Codable, Hashable, Sendable {
         let base: AIAnalysisProfile
         switch mode {
         case .fast:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:2b-instruct", mlxModelID: "mlx-community/Qwen3-VL-2B-Instruct-4bit", quantization: .q4, proxyLongEdge: 720, coarseInterval: 12, denseInterval: 2, maximumCoarseFrames: 40, maximumDeepCandidates: 4, framesPerCandidate: 3, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:2b-instruct", mlxModelID: "mlx-community/Qwen3-VL-2B-Instruct-4bit", quantization: .q4, proxyLongEdge: 720, coarseInterval: 12, denseInterval: 2, maximumCoarseFrames: 40, maximumDeepCandidates: 4, framesPerCandidate: 3, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         case .balanced:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:4b-instruct", mlxModelID: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit", quantization: .q4, proxyLongEdge: 960, coarseInterval: 7, denseInterval: 1, maximumCoarseFrames: 70, maximumDeepCandidates: 8, framesPerCandidate: 5, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:4b-instruct", mlxModelID: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit", quantization: .q4, proxyLongEdge: 960, coarseInterval: 7, denseInterval: 1, maximumCoarseFrames: 70, maximumDeepCandidates: 8, framesPerCandidate: 5, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         case .quality:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:8b-instruct", mlxModelID: "mlx-community/Qwen3-VL-8B-Instruct-4bit", quantization: .q4, proxyLongEdge: 1080, coarseInterval: 4, denseInterval: 0.67, maximumCoarseFrames: 110, maximumDeepCandidates: 12, framesPerCandidate: 8, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:8b-instruct", mlxModelID: "mlx-community/Qwen3-VL-8B-Instruct-4bit", quantization: .q4, proxyLongEdge: 1080, coarseInterval: 4, denseInterval: 0.67, maximumCoarseFrames: 110, maximumDeepCandidates: 12, framesPerCandidate: 8, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         case .maximum:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:30b-a3b-instruct", mlxModelID: "", quantization: .q4, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:30b-a3b-instruct", mlxModelID: "", quantization: .q4, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         }
 
         var result = base
@@ -259,7 +266,8 @@ public struct AIAnalysisProfile: Codable, Hashable, Sendable {
                 framesPerCandidate: base.framesPerCandidate,
                 mediaConcurrency: base.mediaConcurrency,
                 aiConcurrency: base.aiConcurrency,
-                thinkingEnabled: base.thinkingEnabled
+                thinkingEnabled: base.thinkingEnabled,
+                sceneObservationFirst: base.sceneObservationFirst
             )
         }
 
@@ -272,7 +280,8 @@ public struct AIAnalysisProfile: Codable, Hashable, Sendable {
                 maximumCoarseFrames: result.maximumCoarseFrames,
                 maximumDeepCandidates: result.maximumDeepCandidates,
                 framesPerCandidate: result.framesPerCandidate,
-                mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: result.thinkingEnabled
+                mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: result.thinkingEnabled,
+                sceneObservationFirst: result.sceneObservationFirst
             )
         }
         return result

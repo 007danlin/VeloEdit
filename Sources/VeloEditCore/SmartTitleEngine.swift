@@ -244,7 +244,7 @@ public struct SmartTitleEngine: Sendable {
         let words = Set(normalizePhrase(value).split { !$0.isLetter && !$0.isNumber }.map(String.init))
         let descriptive = words.filter { !$0.allSatisfy(\.isNumber) }
         if descriptive.isEmpty { return !allowsNumericText || words.isEmpty }
-        let generic: Set<String> = ["съемка", "съёмка", "видео", "фильм", "глава", "scene", "shot", "chapter", "untitled"]
+        let generic: Set<String> = ["съемка", "съёмка", "видео", "фильм", "глава", "часть", "scene", "shot", "chapter", "part", "untitled"]
         return descriptive.isSubset(of: generic)
     }
 

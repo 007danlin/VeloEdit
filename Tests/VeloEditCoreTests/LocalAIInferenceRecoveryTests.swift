@@ -115,6 +115,10 @@ private final class InferenceStubProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
+// These transport fixtures intentionally use subsecond real-clock deadlines.
+// Running them together queues their URLSession callbacks behind each other
+// and tests scheduler contention instead of the individual watchdog contract.
+@Suite(.serialized)
 struct LocalAIInferenceRecoveryTests {
     private var limits: LocalAIInferenceLimits { .init(firstToken: 0.13, tokenIdle: 0.11, total: 1, polling: 0.01) }
     private func fixture(_ mode: InferenceStubState.Mode) throws -> (URLRequest, URLSessionConfiguration, InferenceStubState) {
@@ -173,13 +177,19 @@ struct LocalAIInferenceRecoveryTests {
         let writer = Task {
             let file = try FileHandle(forWritingTo: url)
             defer { try? file.close() }
-            for i in 1...30 {
+            // Keep backend witnesses arriving beyond either total budget.
+            // A broken idle watchdog must therefore hit the total budget,
+            // rather than pass only because this writer happened to stop.
+            for i in 1...100 {
                 try await Task.sleep(for: .milliseconds(25))
                 try file.write(contentsOf: Data("slot print_timing: id 0 | task 0 | prompt processing, n_tokens = \(i * 100), progress = 0.5\n".utf8))
             }
         }
         defer { writer.cancel() }
-        let bounded = LocalAIInferenceLimits(firstToken: 0.13, tokenIdle: 0.11, total: 0.23, polling: 0.01)
+        // Distinguish the two deadlines even when other suites delay polling.
+        // The generated-token case must still throw noProgress, never totalBudget.
+        let bounded = LocalAIInferenceLimits(firstToken: 0.13, tokenIdle: 0.11,
+            total: generationStarted ? 1.5 : 0.23, polling: 0.01)
         await #expect(throws: generationStarted ? LocalAITransportFailure.noProgress : .totalBudget) {
             _ = try await LocalAIStreamingRequest(request: request, limits: bounded,
                 configuration: config, backendProgress: witness).run()

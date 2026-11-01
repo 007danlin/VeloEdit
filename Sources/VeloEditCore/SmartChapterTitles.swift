@@ -75,6 +75,9 @@ public struct ChapterTitleDecision: Codable, Hashable, Sendable {
     public var fallbackReason: String?
     public var modelCalls: Int
     public var elapsedSeconds: Double
+    /// Older projects have no independent language receipt. They must be
+    /// checked before an automatic title can be reused as language-approved.
+    public var languageReceipts: [ChapterTitleLanguageReceipt]? = nil
 }
 
 public struct ChapterTitleInput: Codable, Hashable, Sendable {
@@ -96,6 +99,12 @@ public struct ChapterTitleInput: Codable, Hashable, Sendable {
 public protocol ChapterTitleModel: Sendable {
     var identity: String { get }
     var requiresWordingEdit: Bool { get }
+    var canGroundTitleCandidates: Bool { get }
+    /// Logical request stages; transport retries and cache hits are recorded
+    /// separately by the inference trace.
+    var candidateGroundingCallCount: Int { get }
+    func reviewLanguage(_ title: String, maxCharacters: Int) async throws -> ChapterTitleLanguageAssessment
+    func groundTitleCandidate(_ title: String, input: ChapterTitleInput) async throws -> ChapterTitleProposal?
     func generate(_ input: ChapterTitleInput) async throws -> ChapterThemeProposal
     func editWording(_ theme: ChapterThemeProposal, input: ChapterTitleInput) async throws -> ChapterThemeProposal
     func verify(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) async throws -> ChapterTitleVerification
@@ -103,11 +112,20 @@ public protocol ChapterTitleModel: Sendable {
 
 public extension ChapterTitleModel {
     var requiresWordingEdit: Bool { false }
+    var canGroundTitleCandidates: Bool { false }
+    var candidateGroundingCallCount: Int { 1 }
+    func reviewLanguage(_ title: String, maxCharacters: Int) async throws -> ChapterTitleLanguageAssessment {
+        .init(issue: .unclear, reason: "Independent language review is unavailable", verdict: .uncertain)
+    }
+    func groundTitleCandidate(_ title: String, input: ChapterTitleInput) async throws -> ChapterTitleProposal? { nil }
     func editWording(_ theme: ChapterThemeProposal, input: ChapterTitleInput) async throws -> ChapterThemeProposal { theme }
 }
 
 public struct SmartChapterTitleEngine: Sendable {
-    public static let rulesVersion = 9
+    public static let rulesVersion = 14
+    // The evidence/coverage rules are unchanged. Adding a separate language
+    // gate does not invalidate a completed meaning check of identical words.
+    private static let semanticSignatureVersion = 12
     public init() {}
 
     static func hasAutomaticTitles(_ timeline: Timeline) -> Bool {
@@ -196,7 +214,7 @@ public struct SmartChapterTitleEngine: Sendable {
                         && abs($0.sourceDuration - item.sourceDuration) < 0.000_001
                 }).map { "\($0.model)|\($0.cacheKey)" }
             }
-            let signature = try Self.signature(Signature(version: Self.rulesVersion, model: model.identity, mode: mode.rawValue, input: relative,
+            let signature = try Self.signature(Signature(version: Self.semanticSignatureVersion, model: model.identity, mode: mode.rawValue, input: relative,
                 sources: sourceKeys, observations: Self.relative(allEvidence, start: first.timelineStart),
                 restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt],
                 reviewRules: SelectedContentReviewer.version, reviewReceipts: receipts))
@@ -216,11 +234,12 @@ public struct SmartChapterTitleEngine: Sendable {
                 }
             }
             canonical.evidence = canonicalEvidence(canonical.evidence)
-            input.responseCacheIdentity = try Self.signature(Signature(version: Self.rulesVersion,
+            input.responseCacheIdentity = try Self.signature(Signature(version: Self.semanticSignatureVersion,
                 model: model.identity, mode: mode.rawValue, input: canonical, sources: sourceKeys,
                 observations: canonicalEvidence(Self.relative(allEvidence, start: first.timelineStart)),
                 restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt],
                 reviewRules: SelectedContentReviewer.version, reviewReceipts: receipts))
+            var carriedLanguageReceipts = source.chapterTitleDecisions?.first(where: { $0.partID == part.id })?.languageReceipts
             if !force, var cached = source.chapterTitleDecisions?.first(where: { $0.partID == part.id && $0.inputSignature == signature }) {
                 cached.evidence = evidence + cached.evidence.filter { $0.origin == .metadata }.map { old in
                     var value = old; value.timelineStart = first.timelineStart; value.timelineEnd = end; return value
@@ -228,19 +247,77 @@ public struct SmartChapterTitleEngine: Sendable {
                 cached.coverage = coverage
                 // Cached generic numbering follows ordering, never invents days.
                 if cached.source == .fallback, cached.text.hasPrefix("Часть ") { cached.text = "Часть \(index + 1)" }
-                decisions.append(cached)
-                continue
+                if cached.source == .user || cached.source == .reference {
+                    decisions.append(cached)
+                    continue
+                }
+                if (cached.source == .model || cached.source == .retained),
+                   Self.validate(.init(text: cached.text, claims: cached.claims), input: input).accepted,
+                   cached.verifications.contains(where: { Self.checkedVerification($0, input: input).accepted }),
+                   try await Self.approveLanguage(cached.text, input: input, model: model, decision: &cached) {
+                    cached.rulesVersion = Self.rulesVersion
+                    decisions.append(cached)
+                    continue
+                }
+                carriedLanguageReceipts = cached.languageReceipts
             }
             let started = ProcessInfo.processInfo.systemUptime
             var decision = ChapterTitleDecision(partID: part.id, text: manual?.text ?? approved ?? date ?? "Часть \(index + 1)",
                 source: manual != nil ? .user : approved != nil ? .reference : .fallback,
                 inputSignature: signature, rulesVersion: Self.rulesVersion, modelID: model.identity, theme: nil, claims: [],
                 evidence: evidence, coverage: coverage, verifications: [], fallbackReason: nil, modelCalls: 0, elapsedSeconds: 0)
+            // A language receipt is tied to the exact words, rules and weights,
+            // not to the scene. Meaning must still be checked after any cut change.
+            decision.languageReceipts = carriedLanguageReceipts
             if manual == nil && approved == nil {
                 do {
                     guard !visual.isEmpty else { throw ChapterTitleFailure.insufficientEvidence }
+                    // Preserve an existing good title, but never use its prior
+                    // approval as evidence for a chapter whose contents changed.
+                    if model.canGroundTitleCandidates {
+                      for candidate in [existing?.text].compactMap({ $0 }) where !SmartTitleEngine.isPlaceholderTitle(candidate) {
+                      do {
+                        decision.modelCalls += model.candidateGroundingCallCount
+                        if let proposal = try await model.groundTitleCandidate(candidate, input: input) {
+                            var review = Self.validate(proposal, input: input)
+                            if proposal.text != candidate {
+                                review.accepted = false
+                                review.reasons.append("Candidate grounding changed the proposed wording")
+                            }
+                            if review.accepted {
+                                guard try await Self.approveLanguage(proposal.text, input: input, model: model, decision: &decision) else { continue }
+                                decision.modelCalls += 1
+                                review = Self.checkedVerification(try await model.verify(proposal, input: input), input: input)
+                            }
+                            try Task.checkCancellation()
+                            decision.verifications.append(review)
+                            if review.accepted {
+                                decision.text = proposal.text
+                                decision.source = .model
+                                decision.claims = proposal.claims
+                                break
+                            }
+                        }
+                      } catch is CancellationError { throw CancellationError() }
+                      catch {
+                        if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
+                        // A malformed optional proposal must not prevent the
+                        // existing generator from producing a valid title.
+                        decision.verifications.append(.init(accepted: false,
+                            reasons: ["Existing candidate grounding could not be completed"],
+                            unsupportedClaims: [], evidenceIDs: [], coversWholePart: false))
+                      }
+                      }
+                    }
                     var generationInput = input
+                    let priorFailures = decision.verifications.suffix(2).flatMap(\.reasons)
+                        + (decision.languageReceipts ?? []).filter { !$0.assessment.accepted }.suffix(2)
+                            .map { "\($0.text): \($0.assessment.reason)" }
+                    if !priorFailures.isEmpty {
+                        generationInput.limitations.append("The previous title did not pass: " + priorFailures.joined(separator: "; ") + ". Propose different ordinary wording grounded in the final selected observations.")
+                    }
                     for attempt in 0..<3 {
+                      if decision.source == .model { break }
                       do {
                         decision.modelCalls += 1
                         var theme = try await model.generate(generationInput)
@@ -253,16 +330,11 @@ public struct SmartChapterTitleEngine: Sendable {
                         for proposal in theme.titles.prefix(2) {
                         var review = Self.validate(proposal, input: input)
                         if review.accepted {
+                            guard try await Self.approveLanguage(proposal.text, input: input, model: model, decision: &decision) else { continue }
                             decision.modelCalls += 1
                             let semantic = try await model.verify(proposal, input: input)
                             try Task.checkCancellation()
-                            let known = Set(input.evidence.map(\.id))
-                            review = semantic
-                            if semantic.reasons.isEmpty || semantic.evidenceIDs.isEmpty || !Set(semantic.evidenceIDs).isSubset(of: known)
-                                || !semantic.unsupportedClaims.isEmpty || !semantic.coversWholePart {
-                                review.accepted = false
-                                review.reasons.append("Verifier did not establish grounded coverage of the whole part")
-                            }
+                            review = Self.checkedVerification(semantic, input: input)
                         }
                         decision.verifications.append(review)
                         if review.accepted {
@@ -273,7 +345,10 @@ public struct SmartChapterTitleEngine: Sendable {
                         }
                         }
                         if decision.source == .model { break }
-                        generationInput.limitations.append("Previous proposals failed verification: " + decision.verifications.suffix(2).flatMap(\.reasons).joined(separator: "; ") + ". Propose a supported whole-part activity or setting and cite the relevant observations across the part; do not merely repeat the same title and one evidence ID.")
+                        let languageFailures = (decision.languageReceipts ?? []).filter { !$0.assessment.accepted }.suffix(2)
+                            .map { "\($0.text): \($0.assessment.reason)" }
+                        let reasons = decision.verifications.suffix(2).flatMap(\.reasons) + languageFailures
+                        generationInput.limitations.append("Previous proposals failed verification: " + reasons.joined(separator: "; ") + ". Propose a supported whole-part activity or setting in ordinary Russian; do not repeat the rejected wording. All selected observations remain below.")
                       } catch is CancellationError { throw CancellationError() }
                       catch {
                         if error is LocalAIInferenceFailure || error is FilmProcessProfileError { throw error }
@@ -293,9 +368,14 @@ public struct SmartChapterTitleEngine: Sendable {
                     if let existing, let verified = source.chapterTitleDecisions?.first(where: {
                         $0.partID == part.id && $0.inputSignature == signature && $0.source == .model
                             && $0.text == existing.text && $0.verifications.contains(where: \.accepted)
+                            && $0.languageReceipts?.contains(where: { $0.approves(existing.text, modelID: model.identity) }) == true
                     }), !verified.text.isEmpty {
                         decision.text = existing.text
                         decision.source = .retained
+                        decision.claims = verified.claims
+                        decision.verifications = verified.verifications
+                        decision.languageReceipts = verified.languageReceipts
+                        decision.theme = verified.theme
                     }
                 }
             }
@@ -321,6 +401,32 @@ public struct SmartChapterTitleEngine: Sendable {
             result.filmDeliveryReport = nil
         }
         return result
+    }
+
+    private static func approveLanguage(_ title: String, input: ChapterTitleInput, model: any ChapterTitleModel,
+                                        decision: inout ChapterTitleDecision) async throws -> Bool {
+        if let receipt = decision.languageReceipts?.last(where: {
+            $0.text == title && $0.modelID == model.identity && $0.rulesVersion == ChapterTitleLanguagePolicy.version
+        }) { return receipt.assessment.accepted }
+        decision.modelCalls += 1
+        let assessment = try await model.reviewLanguage(title, maxCharacters: input.maxCharacters)
+        try Task.checkCancellation()
+        let receipt = ChapterTitleLanguageReceipt(text: title, modelID: model.identity,
+            rulesVersion: ChapterTitleLanguagePolicy.version, assessment: assessment)
+        if decision.languageReceipts == nil { decision.languageReceipts = [] }
+        decision.languageReceipts?.append(receipt)
+        return assessment.accepted
+    }
+
+    private static func checkedVerification(_ semantic: ChapterTitleVerification, input: ChapterTitleInput) -> ChapterTitleVerification {
+        let known = Set(input.evidence.map(\.id))
+        var review = semantic
+        if semantic.reasons.isEmpty || semantic.evidenceIDs.isEmpty || !Set(semantic.evidenceIDs).isSubset(of: known)
+            || !semantic.unsupportedClaims.isEmpty || !semantic.coversWholePart {
+            review.accepted = false
+            review.reasons.append("Verifier did not establish grounded coverage of the whole part")
+        }
+        return review
     }
 
     static func validate(_ proposal: ChapterTitleProposal, input: ChapterTitleInput) -> ChapterTitleVerification {
