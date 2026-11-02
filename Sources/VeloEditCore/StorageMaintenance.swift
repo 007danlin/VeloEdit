@@ -14,9 +14,9 @@ public enum ProjectCacheCategory: String, CaseIterable, Identifiable, Sendable {
     var directories: [String] {
         switch self {
         case .proxies: return ["Proxies"]
-        case .previews: return ["Preview", "Frames", "EditorialControlExports", "EditorialRejected"]
+        case .previews: return ["Preview", "Frames", "EditorialControlExports", "EditorialRejected", "SelectedContentFrames", "ExpressiveFrames", "EditorialPreviewFrames-4096"]
         case .thumbnails: return ["Thumbnails", "TimelineThumbnails"]
-        case .analysis: return ["Analysis", "EditorialEvidence", "EditorialFrames", "EditorialProbes"]
+        case .analysis: return ["Analysis", "EditorialEvidence", "EditorialFrames", "EditorialProbes", "SelectedContentReview", "SelectedContentResponses", "ExpressiveResponses"]
         }
     }
 }
@@ -68,6 +68,12 @@ public enum StorageMaintenance {
         return files
     }
 
+    private static func previewFrameDirectories(in cache: URL) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: cache.path)) ?? []).filter {
+            $0.hasPrefix("EditorialPreviewFrames-") && Int($0.dropFirst("EditorialPreviewFrames-".count)) != nil
+        }
+    }
+
     public static func byteCount(at directory: URL) -> Int64 {
         files(in: directory).reduce(0) { $0 + size(of: $1) }
     }
@@ -86,7 +92,7 @@ public enum StorageMaintenance {
         let root = package.resolvingSymlinksInPath().standardizedFileURL
         let rootPrefix = root.path + "/"
         let categories = ProjectCacheCategory.allCases.flatMap { category in
-            category.directories.map { ("Cache/" + $0 + "/", category) }
+            (category.directories + (category == .previews ? previewFrameDirectories(in: root.appendingPathComponent("Cache")) : [])).map { ("Cache/" + $0 + "/", category) }
         }
         var sizes: [ProjectCacheCategory: Int64] = [:]
         var total: Int64 = 0
@@ -147,6 +153,52 @@ public enum StorageMaintenance {
         return protected
     }
 
+    /// Divide an 8 GiB library allowance; adding projects must not multiply it.
+    public static func automaticBudget(projectCount: Int) -> Int64 {
+        min(2 * 1_024 * 1_024 * 1_024, 8 * 1_024 * 1_024 * 1_024 / Int64(max(1, projectCount)))
+    }
+
+    /// Only old, unreferenced AI observations and control renders are automatic.
+    /// Proxies, playback media, originals, models and exports remain untouched.
+    /// Recent files get a day of grace; protected/active work can exceed the budget.
+    @discardableResult
+    public static func trimInactiveCache(package: URL, protectingProjects: [URL] = [],
+                                         maximumBytes: Int64 = 2 * 1_024 * 1_024 * 1_024,
+                                         now: Date = Date()) throws -> Int64 {
+        let lease = try ProjectOperationLease(package: package)
+        defer { withExtendedLifetime(lease) {} }
+        return try ProjectStore.withManifestLock(for: package.appendingPathComponent("project.json")) {
+            var protected = try protectedFiles(in: package)
+            for other in protectingProjects where !sameProject(other, package) {
+                protected.formUnion(try protectedFiles(in: other, allowingMissingManifest: true))
+            }
+            let cache = package.resolvingSymlinksInPath().appendingPathComponent("Cache").standardizedFileURL
+            guard cache.resolvingSymlinksInPath() == cache else { throw CocoaError(.fileWriteNoPermission) }
+            let names = ["Frames", "SelectedContentFrames", "ExpressiveFrames", "EditorialFrames",
+                         "EditorialEvidence", "EditorialProbes", "EditorialPreviewFrames-4096",
+                         "SelectedContentReview", "SelectedContentResponses", "ExpressiveResponses",
+                         "EditorialControlExports", "EditorialRejected"] + previewFrameDirectories(in: cache)
+            let records = Set(names).flatMap { files(in: cache.appendingPathComponent($0)) }.compactMap { file -> (URL, Int64, Date)? in
+                let resolved = file.resolvingSymlinksInPath().standardizedFileURL
+                guard resolved.path.hasPrefix(cache.path + "/"), !protected.contains(resolved),
+                      let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+                      let date = values.contentModificationDate else { return nil }
+                return (file, Int64(values.fileSize ?? 0), date)
+            }.sorted { $0.2 < $1.2 }
+            var total = records.reduce(Int64(0)) { $0 + $1.1 }
+            var count = records.count
+            var freed: Int64 = 0
+            for (file, bytes, date) in records {
+                try Task.checkCancellation()
+                guard now.timeIntervalSince(date) > 86_400,
+                      total > maximumBytes || count > 20_000 || now.timeIntervalSince(date) > 30 * 86_400 else { continue }
+                try FileManager.default.removeItem(at: file)
+                total -= bytes; count -= 1; freed += bytes
+            }
+            return freed
+        }
+    }
+
     /// Moving one package must not orphan a source used by another known project.
     public static func projectsDepending(on packages: [URL], among others: [URL]) throws -> [URL] {
         let roots = packages.map { $0.resolvingSymlinksInPath().standardizedFileURL.path + "/" }
@@ -187,7 +239,9 @@ public enum StorageMaintenance {
             let cache = package.resolvingSymlinksInPath().appendingPathComponent("Cache").standardizedFileURL
             guard cache.resolvingSymlinksInPath() == cache else { throw CocoaError(.fileWriteNoPermission) }
             var freed: Int64 = 0
-            for directory in ProjectCacheCategory.allCases.filter({ categories.contains($0) }).flatMap(\.directories) {
+            let names = ProjectCacheCategory.allCases.filter({ categories.contains($0) }).flatMap(\.directories)
+                + (categories.contains(.previews) ? previewFrameDirectories(in: cache) : [])
+            for directory in Set(names) {
                 for file in files(in: cache.appendingPathComponent(directory)) {
                     try Task.checkCancellation()
                     let resolved = file.resolvingSymlinksInPath().standardizedFileURL

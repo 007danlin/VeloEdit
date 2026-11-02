@@ -80,7 +80,7 @@ public actor FrameCache {
     private var admissionWaiters: [CheckedContinuation<Void, Never>] = []
     private var inFlight: [String: (id: UUID, task: Task<VisualFrameSample, Error>)] = [:]
 
-    public init(rootURL: URL, maximumMemoryEntries: Int = 384, maximumMemoryBytes: Int = 96 * 1_024 * 1_024, maximumDiskBytes: Int64? = nil) {
+    public init(rootURL: URL, maximumMemoryEntries: Int = 384, maximumMemoryBytes: Int = 96 * 1_024 * 1_024, maximumDiskBytes: Int64? = 256 * 1_024 * 1_024) {
         self.rootURL = rootURL
         self.maximumMemoryEntries = max(1, maximumMemoryEntries)
         self.maximumMemoryBytes = max(0, maximumMemoryBytes)
@@ -198,8 +198,9 @@ public actor FrameCache {
                 return (url, Int64(values.fileSize ?? 0), values.contentModificationDate ?? .distantPast)
             }.sorted { $0.date < $1.date }
         var total = records.reduce(Int64(0)) { $0 + $1.size }
-        for record in records where total > max(0, limit) {
-            if (try? FileManager.default.removeItem(at: record.url)) != nil { total -= record.size }
+        var count = records.count
+        for record in records where total > max(0, limit) || count > 4096 || record.date < Date().addingTimeInterval(-30 * 86_400) {
+            if (try? FileManager.default.removeItem(at: record.url)) != nil { total -= record.size; count -= 1 }
         }
     }
 

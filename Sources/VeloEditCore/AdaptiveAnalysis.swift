@@ -897,8 +897,8 @@ public struct AdaptiveLocalAnalyzer: Sendable {
             let samplingLabel = usedProxy ? "Разреженная выборка кадров из proxy" : "Быстрая выборка без полного proxy"
             progress?(samplingLabel, 0.05)
             detailedProgress?(AnalysisStageUpdate(stage: .adaptiveSampling, label: samplingLabel, fraction: 0.05))
-            let cacheRoot = FileManager.default.temporaryDirectory
-                .appendingPathComponent("VeloEdit-FrameCache-v2", isDirectory: true)
+            let cacheRoot = CachePaths.sharedFrames
+                .appendingPathComponent("Video-v2", isDirectory: true)
             let effectiveFrameCache = frameCache ?? FrameCache(rootURL: cacheRoot, maximumDiskBytes: 256 * 1_024 * 1_024)
             let previousCenters = previous?.candidates.map { $0.sourceStart + $0.sourceDuration / 2 } ?? []
             sampling = try await AdaptiveFrameSampler().sample(

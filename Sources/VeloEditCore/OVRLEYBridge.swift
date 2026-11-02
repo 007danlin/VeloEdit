@@ -70,10 +70,9 @@ public struct OVRLEYBridge: Sendable {
         }
         // One-shot fallback preserves rendering if the long-lived helper was
         // interrupted by App Nap, signing or a development rebuild.
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("veloedit-ovrley-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let workspace = TemporaryMediaWorkspace()
+        let directory = try workspace.file("frame.png").deletingLastPathComponent()
+        defer { withExtendedLifetime(workspace) {} }
         let payloadURL = directory.appendingPathComponent("activity.json")
         let configURL = directory.appendingPathComponent("config.json")
         let outputURL = directory.appendingPathComponent("frame.png")
@@ -249,10 +248,9 @@ private final class OVRLEYRenderServer: @unchecked Sendable {
 
     private func renderLocked(sessionID: String, payload: Data, config: Data, second: Double) throws -> Data {
         guard let input, let output else { throw OVRLEYBridgeError.unavailable }
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("veloedit-ovrley-server-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let workspace = TemporaryMediaWorkspace()
+        let directory = try workspace.file("frame.png").deletingLastPathComponent()
+        defer { withExtendedLifetime(workspace) {} }
         let outputURL = directory.appendingPathComponent("frame.png")
         var request: [String: Any] = [
             "session_id": sessionID,

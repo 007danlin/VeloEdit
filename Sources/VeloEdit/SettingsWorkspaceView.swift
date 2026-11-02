@@ -186,7 +186,7 @@ private struct StorageSettingsView: View {
                 HStack(spacing: 30) { statistics }
                 VStack(alignment: .leading, spacing: 14) { statistics }
             }
-            Text("Можно очистить отдельные категории, весь доступный кэш или удалить выбранные проекты. Сначала вы увидите состав удаления.")
+            Text("Старые данные ИИ закрытых проектов очищаются автоматически: общий бюджет 8 ГиБ, до 2 ГиБ на проект. Свежие и используемые файлы сохраняются. Здесь можно очистить кэш вручную; сначала вы увидите состав удаления.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if model.storageIsLoading {
                 Text("Размеры обновляются в фоне. Можно продолжать выбирать проекты; итоговый размер ещё уточняется.")

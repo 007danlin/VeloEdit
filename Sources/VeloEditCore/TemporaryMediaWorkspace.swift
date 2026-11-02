@@ -61,7 +61,7 @@ public enum TemporaryMediaMaintenance {
             }
         let frameCaches = ["VeloEdit-PhotoSource-v1", "VeloEdit-FrameCache", "VeloEdit-FrameCache-v2", "VeloEdit-MasteringAudio"]
             .reduce(Int64(0)) { $0 + bytes(in: temp.appendingPathComponent($1)) }
-        return bytes(in: directory) + legacy + frameCaches
+        return bytes(in: directory) + legacy + frameCaches + bytes(in: CachePaths.sharedFrames)
     }
 
     /// New work is protected by file locks. Legacy versions had no ownership
@@ -71,6 +71,7 @@ public enum TemporaryMediaMaintenance {
         removeAbandonedWork(in: directory)
         guard !anotherVeloEditProcessIsRunning() else { return }
         removeLegacyFiles(in: FileManager.default.temporaryDirectory)
+        removeLegacyFrameCaches(in: FileManager.default.temporaryDirectory)
     }
 
     @discardableResult
@@ -101,6 +102,28 @@ public enum TemporaryMediaMaintenance {
                   values.isRegularFile == true, values.isSymbolicLink != true,
                   now.timeIntervalSince(values.contentModificationDate ?? now) > 86_400 else { continue }
             if (try? FileManager.default.removeItem(at: url)) != nil { freed += Int64(values.fileSize ?? 0) }
+        }
+        return freed
+    }
+
+    /// Old versions wrote fallback observations to tmp without an owner.
+    /// Only their exact record names are disposable; never remove the tree.
+    @discardableResult
+    static func removeLegacyFrameCaches(in root: URL, now: Date = Date()) -> Int64 {
+        var freed: Int64 = 0
+        for name in ["VeloEdit-PhotoSource-v1", "VeloEdit-FrameCache", "VeloEdit-FrameCache-v2"] {
+            let directory = root.appendingPathComponent(name)
+            guard directory.resolvingSymlinksInPath() == directory.standardizedFileURL else { continue }
+            for file in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] {
+                let name = file.lastPathComponent
+                let suffix = name.hasSuffix(".frame-v2.bin") ? ".frame-v2.bin" : ".json"
+                let digest = String(name.dropLast(suffix.count))
+                guard name.hasSuffix(suffix), digest.count == 64, digest.allSatisfy({ $0.isHexDigit }),
+                      let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey, .fileSizeKey]),
+                      values.isRegularFile == true, values.isSymbolicLink != true,
+                      now.timeIntervalSince(values.contentModificationDate ?? now) > 30 * 86_400 else { continue }
+                if (try? FileManager.default.removeItem(at: file)) != nil { freed += Int64(values.fileSize ?? 0) }
+            }
         }
         return freed
     }

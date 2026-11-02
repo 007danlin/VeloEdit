@@ -852,6 +852,26 @@ final class AppModel: ObservableObject {
                 await self.checkProjectAvailability()
             }
         }
+        // Skip the open project: playback can retain URLs without a job lease.
+        Task { [weak self] in
+            while !Task.isCancelled {
+                if let self {
+                    let projects = self.knownProjectURLs
+                    let current = self.projectURL
+                    let budget = StorageMaintenance.automaticBudget(projectCount: projects.count)
+                    if !self.hasActiveWork && !self.storageIsCleaning {
+                        await Task.detached(priority: .background) {
+                            for url in projects where current.map({ !StorageMaintenance.sameProject($0, url) }) ?? true {
+                                _ = try? StorageMaintenance.trimInactiveCache(package: url,
+                                    protectingProjects: projects, maximumBytes: budget)
+                            }
+                        }.value
+                    }
+                } else { return }
+                // Do not retain the entire editor while waiting for the next pass.
+                do { try await Task.sleep(for: .seconds(3600)) } catch { return }
+            }
+        }
         refreshUsageStatistics()
         Task(priority: .utility) { await refreshDirectorRuntimeStatus() }
         Task(priority: .utility) { await refreshLocalVisionModelStatus(startService: false) }

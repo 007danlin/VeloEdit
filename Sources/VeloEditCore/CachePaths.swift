@@ -2,6 +2,12 @@ import Foundation
 import CryptoKit
 
 public struct CachePaths: Sendable {
+    /// Regenerable shared observations belong in Caches, not an unowned tmp tree.
+    static var sharedFrames: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("VeloEdit/SharedFrames", isDirectory: true)
+    }
+
     public let root: URL
     public init(root: URL) { self.root = root }
 
