@@ -8,8 +8,11 @@ struct FilmContentDeliveryGateTests {
     /// Only the content-review ordering is synthetic. Playback opens real media.
     private actor ExportProbe: EditorialRenderedProbing {
         var calls = 0
+        var fails = false
+        func failExport() { fails = true }
         func frames(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], cacheURL: URL) async throws -> [PerceptualRenderedFrameEvidence] {
             calls += 1
+            if fails { throw URLError(.cannotDecodeContentData) }
             var frames = try await FixtureEditorialProber().frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
             let url = assets[0].originalURL
             let info = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -92,6 +95,7 @@ struct FilmContentDeliveryGateTests {
 
     private func pipeline(store: ProjectStore, prober: ExportProbe = ExportProbe(), reviewer: Reviewer = Reviewer()) -> VeloEditPipeline {
         VeloEditPipeline(store: store, renderedProber: prober, contentReviewer: reviewer,
+            contentReviewEnabled: true,
             modelDigestProvider: { _ in Self.fixtureDigest })
     }
 
@@ -102,6 +106,41 @@ struct FilmContentDeliveryGateTests {
         }
         Issue.record("Review did not reach \(phase)")
         throw URLError(.timedOut)
+    }
+
+    @Test(arguments: [false, true])
+    func hybridDefaultSavesWithoutCallingContentReviewer(resumingSettledCut: Bool) async throws {
+        let (store, original) = try await fixture()
+        let root = await store.packageURL
+        defer { try? FileManager.default.removeItem(at: root) }
+        var draft = original
+        if !resumingSettledCut { draft.phase = .verifying }
+        try await store.checkpointFilmBuild(draft, ifRevision: await store.snapshot().revision)
+        let reviewer = Reviewer(fails: true), prober = ExportProbe()
+        // Omit the option deliberately: this is the application default.
+        let pipeline = VeloEditPipeline(store: store, renderedProber: prober, contentReviewer: reviewer,
+            modelDigestProvider: { _ in Self.fixtureDigest })
+        let finished = try await pipeline.resumeFilmBuild()
+        #expect(await reviewer.phases.isEmpty)
+        #expect(await prober.calls == 1)
+        #expect(finished.selectedContentReview == nil)
+        #expect(finished.editorialReview?.evidenceDomains?.contains { $0.domain == .renderDecode && $0.isSufficient } == true)
+        #expect(finished.filmDeliveryReport?.warnings.contains { $0.contains("Дополнительная проверка содержания") } == true)
+        #expect(await store.manifest.timelines.count == 1)
+    }
+
+    @Test func hybridStillRejectsFailedTechnicalExport() async throws {
+        let (store, _) = try await fixture()
+        let root = await store.packageURL
+        defer { try? FileManager.default.removeItem(at: root) }
+        let reviewer = Reviewer(fails: true), prober = ExportProbe()
+        await prober.failExport()
+        let pipeline = VeloEditPipeline(store: store, renderedProber: prober, contentReviewer: reviewer,
+            modelDigestProvider: { _ in Self.fixtureDigest })
+        await #expect(throws: AutonomousOperationError.self) { _ = try await pipeline.resumeFilmBuild() }
+        #expect(await reviewer.phases.isEmpty)
+        #expect(await store.manifest.timelines.isEmpty)
+        #expect(await store.recoverableFilmBuild()?.draft != nil)
     }
 
     @Test(arguments: ["source", "mp4"])
@@ -259,6 +298,7 @@ struct FilmContentDeliveryGateTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let reviewer = Reviewer(), prober = ExportProbe()
         let unavailable = VeloEditPipeline(store: store, renderedProber: prober, contentReviewer: reviewer,
+            contentReviewEnabled: true,
             modelDigestProvider: { _ in missing })
         await #expect(throws: LocalAIInferenceFailure.self) { _ = try await unavailable.resumeFilmBuild() }
         #expect(await reviewer.phases.isEmpty)

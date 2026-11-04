@@ -14,6 +14,7 @@ private func recoveryTestPipeline(store: ProjectStore,
     contentReviewer: (any SelectedContentReviewing)? = nil,
     analysisModelPreparer: (@Sendable (String) async throws -> Void)? = nil) -> VeloEditPipeline {
     VeloEditPipeline(store: store, renderedProber: renderedProber, contentReviewer: contentReviewer,
+        contentReviewEnabled: contentReviewer != nil,
         analysisModelPreparer: analysisModelPreparer, modelDigestProvider: { _ in "recovery-fixture-weights" })
 }
 

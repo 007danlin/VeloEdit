@@ -33,6 +33,7 @@ public actor VeloEditPipeline {
     public let store: ProjectStore
     private let renderedProber: any EditorialRenderedProbing
     private let suppliedContentReviewer: (any SelectedContentReviewing)?
+    private let contentReviewEnabled: Bool
     private let speechRecognizer: (any LocalSpeechRecognizing)?
     private let importer: MediaImporter
     let shouldCopyImportedMedia: @Sendable (URL) -> Bool
@@ -58,6 +59,7 @@ public actor VeloEditPipeline {
         renderedProber: any EditorialRenderedProbing = LocalEditorialRenderedProber(),
         analyzer: (any VisionModelProtocol)? = nil,
         contentReviewer: (any SelectedContentReviewing)? = nil,
+        contentReviewEnabled: Bool = false,
         musicLibrary: LocalMusicLibrary? = nil,
         musicSystem: MusicLibrary? = nil,
         freeToUseProvider: FreeToUseMusicProvider? = nil,
@@ -75,6 +77,9 @@ public actor VeloEditPipeline {
         self.speechRecognizer = speechRecognizer
         self.renderedProber = renderedProber
         self.suppliedContentReviewer = contentReviewer
+        // The production hybrid keeps primary analysis and technical export checks.
+        // The slower selected-content review remains available to explicit callers.
+        self.contentReviewEnabled = contentReviewEnabled
         self.analyzer = analyzer
         self.analysisModelPreparer = analysisModelPreparer
         self.modelDigestProvider = modelDigestProvider
@@ -3387,7 +3392,7 @@ public actor VeloEditPipeline {
         try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
         var timeline = draft.timeline
         timeline.filmDeliveryReport = nil
-        var deliveryWarnings: [String] = []
+        var deliveryWarnings: [String] = contentReviewEnabled ? [] : ["Дополнительная проверка содержания выбранных фрагментов не выполнялась. Просмотрите фильм перед экспортом."]
         let requestedRuntime = FilmDurationRequirement.parse(prompt: plan.prompt,
             explicitSeconds: draft.directorBrief?.explicitRequestedDuration ?? current.filmBuildRecovery?.request.targetDuration,
             mode: draft.directorBrief?.durationMode)
@@ -3443,7 +3448,7 @@ public actor VeloEditPipeline {
                     "signature": EditorialRenderSignature.signature(timeline)], values: [
                     "newExclusions": Double(settled.excludedCandidates.subtracting(excluded).count)])
             }
-            if renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil {
+            if contentReviewEnabled && (renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil) {
                 // Inspect source ranges before finishing. Exact completed receipts
                 // are reused later; missing observations must run before delivery.
                 draft.verifiedSourceContent = try await contentReviewer.review(timeline: timeline, assets: current.assets,
@@ -3471,7 +3476,7 @@ public actor VeloEditPipeline {
             draft.phase = .verifying
             try Task.checkCancellation()
             try await store.checkpointFilmBuild(draft, ifRevision: snapshot.revision)
-        } else if renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil {
+        } else if contentReviewEnabled && (renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil) {
             // A matching mode profile does not establish that review rules,
             // image inputs or model weights still match saved observations.
             // Let the reviewer's exact receipts decide reuse before titles
@@ -3553,7 +3558,7 @@ public actor VeloEditPipeline {
         // source review. Resolve those exact inputs before titles or encoding;
         // otherwise good headings fall back to empty evidence and invalid
         // replacements cost an entire unnecessary control export.
-        if renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil {
+        if contentReviewEnabled && (renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil) {
             let earlier = draft.verifiedSourceContent ?? []
             let refreshed = try await SelectedSourceEvidenceRefresh.reviewIfChanged(timeline: timeline,
                 assets: current.assets, observations: earlier, reviewer: contentReviewer, progress: progress,
@@ -3649,7 +3654,7 @@ public actor VeloEditPipeline {
             throw AutonomousOperationError.verificationFailed("Не удалось проверить сохранённый монтаж. Черновик сохранён без замены событий, музыки и титров.")
         }
         var repairState = draft.contentRepairState ?? FilmContentRepairState()
-        let requiresContentReview = (renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil)
+        let requiresContentReview = contentReviewEnabled && (renderedProber is LocalEditorialRenderedProber || suppliedContentReviewer != nil)
             && timeline.items.contains { OriginalMediaType.isVideo($0, assets: current.assets) }
         if requiresContentReview {
             let originals = try await contentReviewer.review(timeline: timeline, assets: current.assets,
