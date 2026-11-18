@@ -20,6 +20,14 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconc
     private var isCheckingForUpdates = false
     private(set) var isRestartingForUpdate = false
 
+    private let defaults: UserDefaults
+    private let seenVersionKey = "updates.lastSeenVersion"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        super.init()
+    }
+
     func start(model: AppModel) {
         guard sparkleUpdater == nil,
               Bundle.main.bundleURL.pathExtension == "app" else { return }
@@ -41,7 +49,11 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconc
         sparkleUpdater?.automaticallyChecksForUpdates = enabled
     }
 
-    func markUpdateSeen() { updateWasSeen = true }
+    func markUpdateSeen() {
+        guard let availableVersion else { return }
+        defaults.set(availableVersion, forKey: seenVersionKey)
+        updateWasSeen = true
+    }
 
     func installAvailableUpdate() {
         guard canCheckForUpdates else { return }
@@ -50,7 +62,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconc
     }
 
     func markInstallationRequested() {
-        updateWasSeen = true
+        markUpdateSeen()
         installationRequested = true
     }
 
@@ -71,7 +83,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconc
 
     func announceUpdate(version: String) {
         if availableVersion != version {
-            updateWasSeen = false
+            updateWasSeen = defaults.string(forKey: seenVersionKey) == version
             installationRequested = false
         }
         availableVersion = version

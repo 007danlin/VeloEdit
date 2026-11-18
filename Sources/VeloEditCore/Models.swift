@@ -2770,6 +2770,7 @@ public struct ProjectManifest: Codable, Identifiable, Sendable {
 }
 
 public struct ProjectWorkspaceState: Codable, Hashable, Sendable {
+    public var hasUnreadDirectorReply: Bool? = nil
     public var pendingNewMaterialCount: Int? = nil
     public var prompt: String
     public var preset: FilmPreset

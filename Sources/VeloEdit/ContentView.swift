@@ -170,7 +170,6 @@ struct ContentView: View {
             WindowHeaderButton(systemImage: "gearshape", label: "Настройки") {
                 if updater.availableVersion != nil {
                     model.settingsTab = .general
-                    updater.markUpdateSeen()
                 }
                 model.openSection(.settings)
             }
@@ -232,6 +231,14 @@ struct ContentView: View {
         .padding(.vertical, 7)
     }
 
+    private func sidebarDot(_ label: String) -> some View {
+        Circle()
+            .fill(.blue)
+            .frame(width: 8, height: 8)
+            .accessibilityLabel(Text(label))
+            .help(label)
+    }
+
     private var navigationSidebar: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
@@ -282,13 +289,21 @@ struct ContentView: View {
                 ForEach(WorkspaceSection.allCases) { section in
                     Button {
                         model.openSection(section)
+                        if section == .settings, updater.showsUpdateDot {
+                            model.settingsTab = .general
+                        }
                     } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        HStack(spacing: 10) {
                             Image(systemName: section.icon)
                                 .frame(width: 20)
                             Text(section.title)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
+                            if section == .director && model.hasUnreadDirectorReply {
+                                sidebarDot("Новый ответ режиссёра")
+                            } else if section == .settings && updater.showsUpdateDot {
+                                sidebarDot("Доступно обновление VeloEdit")
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)

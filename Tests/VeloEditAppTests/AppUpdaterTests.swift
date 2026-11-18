@@ -8,7 +8,10 @@ import AppKit
 @MainActor
 struct AppUpdaterTests {
     @Test func backgroundNoticeSurvivesOpeningSettingsUntilInstallOrDismissal() {
-        let updater = AppUpdater()
+        let suite = "AppUpdaterTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let updater = AppUpdater(defaults: defaults)
         updater.announceUpdate(version: "2.0")
         #expect(updater.showsUpdateDot && updater.highlightsUpdate)
         updater.markUpdateSeen()
@@ -19,6 +22,9 @@ struct AppUpdaterTests {
         #expect(!updater.highlightsUpdate && !updater.showsUpdateDot)
         updater.standardUserDriverWillFinishUpdateSession()
         #expect(!updater.highlightsUpdate && updater.availableVersion == nil)
+        let relaunched = AppUpdater(defaults: defaults)
+        relaunched.announceUpdate(version: "2.0")
+        #expect(!relaunched.showsUpdateDot && relaunched.highlightsUpdate)
         updater.announceUpdate(version: "2.1")
         #expect(updater.showsUpdateDot && updater.highlightsUpdate)
         #expect(updater.supportsGentleScheduledUpdateReminders)
@@ -30,7 +36,10 @@ struct AppUpdaterTests {
         let directory = URL(fileURLWithPath: path)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         _ = NSApplication.shared
-        let updater = AppUpdater()
+        let suite = "AppUpdaterTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let updater = AppUpdater(defaults: defaults)
         updater.announceUpdate(version: "2.0")
         for installing in [false, true] {
             if installing { updater.markInstallationRequested() }

@@ -227,6 +227,8 @@ struct TimelineDirectorIntegrationTests {
         let visible = try #require(model.timeline)
         let persistedVisible = try JSONDecoder.veloEdit.decode(Timeline.self, from: JSONEncoder.veloEdit.encode(visible))
         #expect(saved.timelines.last == persistedVisible)
+        #expect(model.hasUnreadDirectorReply)
+        #expect(saved.workspaceState?.hasUnreadDirectorReply == true)
         #expect(saved.workspaceState?.directorMessages?.filter { $0.role == .user && $0.text == request }.count == 1)
         #expect(saved.workspaceState?.directorMessages?.last?.response?.saved == true)
         #expect(saved.workspaceState?.directorMessages?.last?.response?.previewReady == true)
@@ -238,8 +240,15 @@ struct TimelineDirectorIntegrationTests {
         let model = fixture.model
         let originalMusic = model.timeline?.music
         let request = "Переименуй титр на «Здесь» и добавь крутые эффекты; музыку повеселее"
+        model.section = .timeline
         model.submitTimelineAIEdit(request, range: 1...2)
+        #expect(!model.hasUnreadDirectorReply)
         try await wait { !model.isWorking }
+        #expect(model.hasUnreadDirectorReply)
+        model.openSection(.director)
+        #expect(!model.hasUnreadDirectorReply)
+        model.section = .timeline
+        #expect(!model.hasUnreadDirectorReply)
         #expect(fixture.requests.values.map(\.0) == [request])
         #expect(fixture.requests.values.first?.1.selectedItemSummary?.contains("Только выделенный диапазон") == true)
         let timeline = try #require(model.timeline)
@@ -265,7 +274,16 @@ struct TimelineDirectorIntegrationTests {
         #expect(outsideSound.frequency > 200 && outsideSound.frequency < 240)
         #expect(await model.flushAutosave())
         let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.workspaceState?.hasUnreadDirectorReply != true)
         #expect(await reopened.manifest.workspaceState?.directorMessages?.last?.text == model.directorMessages.last?.text)
+        model.submitTimelineAIEdit("Какая громкость музыки?")
+        try await wait { !model.isDirectorResponding }
+        #expect(model.hasUnreadDirectorReply)
+        model.openSection(.director)
+        model.submitTimelineAIEdit("Какая громкость музыки?")
+        try await wait { !model.isDirectorResponding }
+        model.section = .timeline
+        #expect(!model.hasUnreadDirectorReply)
     }
 
     @Test func semanticBrushUsesModelCommandsAndCancelledQueueStaysInHistory() async throws {

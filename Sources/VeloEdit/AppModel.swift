@@ -333,6 +333,10 @@ final class AppModel: ObservableObject {
     @Published var settingsTab: WorkspaceSettingsTab = .general
     @Published var section: WorkspaceSection = .home {
         didSet {
+            if section == .director, openingProjectURL == nil, hasUnreadDirectorReply {
+                hasUnreadDirectorReply = false
+                scheduleWorkspaceAutosave()
+            }
             if onboarding.isPresented && section != oldValue { onboarding.interrupt() }
             if section != .timeline && !onboarding.isNavigating { closeTimelineInspector() }
             // Some inspector and playback actions navigate directly. Do not
@@ -347,6 +351,7 @@ final class AppModel: ObservableObject {
     @Published var prompt = AppModel.defaultDirectorBrief { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorInput = "" { didSet { scheduleWorkspaceAutosave() } }
     @Published private(set) var directorInputFocusRequest = UUID()
+    @Published private(set) var hasUnreadDirectorReply = false
     @Published var directorMessages = DirectorMessage.initial { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorStatus = "Готов выслушать ваш замысел"
     @Published var directorRuntimeStatus = LocalDirectorAgent.currentRuntimeLabel()
@@ -2382,7 +2387,7 @@ final class AppModel: ObservableObject {
             directorMessages.append(DirectorMessage(role: .user, text: text))
             var answer = DirectorMessage(role: .assistant, text: message)
             answer.response = .init(state: .proposed, projectID: project.id, advisory: true)
-            directorMessages.append(answer)
+            appendDirectorReply(answer)
             directorAgent.restoreConversation(directorMessages)
         }
         if let (instruction, scope) = DirectorEditScope.splitInterval(from: text),
@@ -6343,6 +6348,7 @@ final class AppModel: ObservableObject {
         aiModelAvailability = [:]
         downloadingAIPowerMode = nil
         Task { await refreshDirectorRuntimeStatus() }
+        hasUnreadDirectorReply = false
         directorMessages = DirectorMessage.initial
         directorStatus = "Готов выслушать ваш замысел"
         prompt = Self.defaultDirectorBrief
@@ -6470,6 +6476,7 @@ final class AppModel: ObservableObject {
         guard let pipeline, project != nil else { return }
         isRestoringWorkspaceState = true
         if let saved = project?.workspaceState {
+            hasUnreadDirectorReply = saved.hasUnreadDirectorReply == true && section != .director
             newMaterialCount = max(0, saved.pendingNewMaterialCount ?? 0)
             prompt = saved.prompt
             directorInput = saved.directorDraft
@@ -7194,7 +7201,7 @@ final class AppModel: ObservableObject {
         wasExecuted: Bool = false
     ) {
         guard let index = directorMessages.firstIndex(where: { $0.id == replyID }) else { return }
-        directorMessages[index].text = reply.text
+        completeDirectorReply(at: index, text: reply.text)
         directorAgent.restoreConversation(directorMessages)
         if mode == .advisory {
             directorRuntimeStatus = reply.runtimeLabel
@@ -7374,6 +7381,7 @@ final class AppModel: ObservableObject {
                 .filter { !$0.text.isEmpty }
                 .map { ProjectDirectorMessage(directorMessage: $0) }
         )
+        state.hasUnreadDirectorReply = hasUnreadDirectorReply ? true : nil
         state.pendingNewMaterialCount = newMaterialCount > 0 ? newMaterialCount : nil
         do {
             try await pipeline.updateWorkspaceState(state)
@@ -7410,7 +7418,17 @@ final class AppModel: ObservableObject {
     }
 
     private func appendDirectorNote(_ text: String) {
-        directorMessages.append(DirectorMessage(role: .assistant, text: text))
+        appendDirectorReply(DirectorMessage(role: .assistant, text: text))
+    }
+
+    private func appendDirectorReply(_ message: DirectorMessage) {
+        directorMessages.append(message)
+        if section != .director { hasUnreadDirectorReply = true }
+    }
+
+    private func completeDirectorReply(at index: Int, text: String) {
+        directorMessages[index].text = text
+        if section != .director { hasUnreadDirectorReply = true }
     }
 
     private func beginTimelineDirectorExchange(_ text: String, range: ClosedRange<Double>?) -> UUID {
@@ -7423,7 +7441,7 @@ final class AppModel: ObservableObject {
 
     private func updateTimelineDirectorExchange(_ replyID: UUID, status: String) {
         guard let index = directorMessages.firstIndex(where: { $0.id == replyID }) else { return }
-        directorMessages[index].text = status
+        completeDirectorReply(at: index, text: status)
         directorStatus = status
         activeTimelineAIEdit?.trace?.event("director.full-displayed", fields: ["state": directorMessages[index].response?.state.rawValue ?? "status"])
         directorAgent.restoreConversation(directorMessages)
@@ -7441,7 +7459,7 @@ final class AppModel: ObservableObject {
                 text: "Режиссёр ещё обрабатывает предыдущую задачу. Для оценки готового момента пока недостаточно данных.")
             reply.response = .init(state: .proposed, projectID: project?.id, revision: directorContextRevision,
                 advisory: true, fallback: true)
-            directorMessages.append(reply)
+            appendDirectorReply(reply)
             scheduleWorkspaceAutosave()
             return
         }
@@ -7551,7 +7569,7 @@ final class AppModel: ObservableObject {
                     }
                     return
                 }
-                self.directorMessages[i].text = reply.text
+                self.completeDirectorReply(at: i, text: reply.text)
                 self.directorMessages[i].response = .init(state: .proposed, projectID: projectID, revision: revision,
                     itemIDs: moment?.objects.map(\.itemID) ?? [], advisory: true, fallback: reply.isFallback,
                     details: (moment?.limitations ?? []) + (moment?.objects.flatMap(\.limitations) ?? []))

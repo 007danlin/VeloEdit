@@ -25,7 +25,6 @@ struct SettingsWorkspaceView: View {
             .onAppear {
                 if updater.availableVersion != nil {
                     model.settingsTab = .general
-                    updater.markUpdateSeen()
                 }
             }
     }
@@ -67,6 +66,9 @@ struct AppUpdateSettingsCard: View {
             RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(updater.highlightsUpdate ? Color.blue : Color.clear, lineWidth: 1)
                 .allowsHitTesting(false)
+        }
+        .onChange(of: updater.availableVersion, initial: true) {
+            if updater.availableVersion != nil { updater.markUpdateSeen() }
         }
         .accessibilityIdentifier("app-update-card")
     }
