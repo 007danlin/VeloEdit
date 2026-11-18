@@ -42,6 +42,19 @@ enum ExactEditorCommandParser {
         let remove = #"(?:убери|убрать|удали|удалить|отключи|отключить|выключи|выключить)\s+"#
 
         // Global soundtrack operations are handled before media target parsing.
+        let end = #"(?:в конце|под конец|к концу|в финале|к финалу)(?: (?:фильма|ролика|видео))?"#
+        let gradual = #"(?:плавно|постепенно|мягко)"#
+        let music = #"(?:музык[ау]|саундтрек|трек|мелоди[юя])"#
+        let fade = #"(?:пусть )?"# + music + #" (?:"# + gradual + #" )?(?:затихнет|затихает|затухнет|сойдет на нет|уйдет в тишину)"#
+        let fadeCommand = gradual + #" (?:убери|приглуши|уведи) "# + music
+        let fadeClause = #"(?:"# + fade + #"|"# + fadeCommand + #")"#
+        let endingRequest = #"(?:а )?(?:"# + end + #" "# + fadeClause + #"|"# + fadeClause + #" "# + end + #")"#
+        if match(endingRequest) != nil { return Result(commands: [.setMusicEndingFade(4)], target: nil) }
+        let opening = #"(?:начало|вступление|первый план)(?: (?:фильма|ролика|видео))?"#
+        let punchier = #"(?:по)?(?:бодрее|энергичнее|динамичнее|живее|плотнее)"#
+        if match(#"(?:сделай )?(?:"# + opening + #" "# + punchier + #"|"# + punchier + #" "# + opening + #")"#) != nil {
+            return Result(commands: [.tightenCut(.first)], target: .first)
+        }
         if let values = match(setting + #"(?:громкость музыки\s+(?:на\s+)?|музыку\s+на\s+)"# + decimal + #"\s*%"#),
            let value = number(values[0]), (0...100).contains(value) {
             return Result(commands: [.setMusicVolume(value / 100)], target: nil)

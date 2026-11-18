@@ -128,7 +128,7 @@ private struct OllamaDirectorCommand: Decodable {
     let secondaryTarget: String
 
     static let supportedActions = [
-        "replace_footage", "set_speed", "remove_slow_motion", "set_speed_ramp", "set_duration", "set_filter", "set_crop", "rotate",
+        "tighten_cut", "set_music_ending_fade", "replace_footage", "set_speed", "remove_slow_motion", "set_speed_ramp", "set_duration", "set_filter", "set_crop", "rotate",
         "set_brightness", "set_contrast", "set_saturation", "set_warmth", "set_opacity",
         "set_exposure", "set_highlights", "set_shadows", "set_vignette", "set_grain",
         "set_sharpening", "set_video_denoise", "set_blur", "set_stabilization",
@@ -371,23 +371,33 @@ final class LocalDirectorAgent {
     ) async throws -> DirectorAIReply {
         let ollamaAvailable = await hasOllamaModel(startService: true, mode: context.aiPowerMode)
         try Task.checkCancellation()
-        if ollamaAvailable, mode == .edit, !allowsFootageReplacement, !repairingPlan,
-           FilmWideVisualPlan.canInterpret(userMessage, context: context) {
+        if ollamaAvailable, mode == .edit, !allowsFootageReplacement, !repairingPlan {
+            let model = AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID
             do {
-                let request = try FilmWideVisualPlan.request(userMessage, model: AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID)
-                let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: 25)
-                if (response as? HTTPURLResponse)?.statusCode == 200 {
-                    var stream = DirectorReplyStream()
-                    _ = try stream.append(String(decoding: data, as: UTF8.self))
-                    if let commands = try FilmWideVisualPlan.commands(from: stream.completedContent()) {
-                        return DirectorAIReply(text: "Применяю правку.", runtimeLabel: Self.runtimeLabel(context.aiPowerMode),
-                                               normalizedBrief: nil, commands: commands)
+                var request: URLRequest?
+                var interpret = FilmWideVisualPlan.commands(from:)
+                if FilmWideVisualPlan.canInterpret(userMessage, context: context) {
+                    request = try FilmWideVisualPlan.request(userMessage, model: model)
+                } else if SectionPacingPlan.canInterpret(userMessage, context: context) {
+                    request = try SectionPacingPlan.request(userMessage, model: model)
+                    interpret = SectionPacingPlan.commands(from:)
+                }
+                if let request {
+                    let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: 25)
+                    if (response as? HTTPURLResponse)?.statusCode == 200 {
+                        var stream = DirectorReplyStream()
+                        _ = try stream.append(String(decoding: data, as: UTF8.self))
+                        if let commands = try interpret(stream.completedContent()),
+                           Set(EditorCommandParser().parse(userMessage, preset: context.preset)).isSubset(of: Set(commands)) {
+                            return DirectorAIReply(text: "Применяю правку.", runtimeLabel: Self.runtimeLabel(context.aiPowerMode),
+                                                   normalizedBrief: nil, commands: commands)
+                        }
                     }
                 }
             } catch {
                 try Task.checkCancellation()
                 if error is CancellationError { throw error }
-                PerformanceTrace.current?.event("director.visual-plan-deferred")
+                PerformanceTrace.current?.event("director.compact-plan-deferred")
             }
         }
         let requestModeInstruction = mode == .advisory
@@ -413,6 +423,7 @@ final class LocalDirectorAgent {
             \(allowsFootageReplacement && mode == .edit ? "Пользователь работает Волшебной кистью с выделенным диапазоном. Понимай смысл произвольной формулировки: просьба взять другой материал, неудачный дубль, заменить этот кусок, показать здесь что-то другое означает replace_footage, target selected, пустые value и secondaryTarget. Это реальная замена исходного видео другим моментом той же сцены. Смена музыки, цвета, титра, перестановка и удаление без замены не означают replace_footage. Не подменяй замену настройками звука или эффектами." : "Операция replace_footage недоступна вне Волшебной кисти.")
 
             Верни только JSON по выданной схеме: reply — ответ пользователю; normalizedBrief — краткий русский бриф для подбора истории; commands — полный исполняемый план. На каждое действие создавай отдельный элемент commands. target всегда один из: all, selected, first, last или number:N. Для неиспользуемых value и secondaryTarget передавай пустую строку. secondaryTarget нужен только наложению и использует тот же формат цели.
+            Для более бодрого вступления или плотной склейки в конкретном месте используй tighten_cut и цель first/last/number:N. Для плавного исчезновения музыки к концу фильма используй set_music_ending_fade с длительностью в секундах (обычно 4) без смены трека, изменения общей громкости или затухания картинки.
             Для переименования существующего титра используй set_title_text: новый текст в value, выбранный титр — target selected. Сохраняй регистр и пунктуацию текста. Не заменяй переименование добавлением нового титра.
             При общей просьбе об эффектах выбирай один set_effect (например push-in), для разнообразия — один set_effect_pattern (push-in,pan-left,pull-out,pan-right). Для разных переходов используй один set_transition_pattern. Не перечисляй эффекты отдельными командами. add_library_effect нужен для конкретного эффекта (камера/REC — video-camera, ручная камера — handheld, дрейф камеры — camera-drift). Совпадения с названиями в запросе: \(effectCatalog).
             apply_title_template принимает ID шаблона, для нового титра сначала add_title. Упомянутые шаблоны: \(templates). Упомянутые переходы: \(transitions).
@@ -558,6 +569,10 @@ final class LocalDirectorAgent {
             guard !value.isEmpty else { return nil }
             return .insertSource(command.value.trimmingCharacters(in: .whitespacesAndNewlines),
                 command.target == "beginning" || command.target == "first" ? .beginning : .end)
+        case "tighten_cut": return target.map(EditorCommand.tightenCut)
+        case "set_music_ending_fade":
+            guard let seconds = number, seconds.isFinite, (0...30).contains(seconds) else { return nil }
+            return .setMusicEndingFade(seconds)
         case "set_speed": return target.flatMap { target in number.map { .setSpeed($0, target) } }
         case "remove_slow_motion": return target.map(EditorCommand.removeSlowMotion)
         case "set_speed_ramp":

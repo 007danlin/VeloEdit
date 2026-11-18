@@ -9,6 +9,26 @@ struct EverydayDirectorCommandTests {
         var description: String { prompt }
     }
 
+    @Test func openingAndSoundtrackFinishAreIndependentEdits() throws {
+        let clips = (0..<4).map {
+            TimelineItem(kind: .video, sourceStart: 0, sourceDuration: 4, timelineStart: Double($0 * 4), timelineDuration: 4)
+        }
+        var timeline = Timeline(storyPlanID: UUID(), items: clips)
+        let commands = try #require(EditorCommandParser().parseComplete("Сделай начало бодрее, а в конце плавно убери музыку", hasSelection: false))
+        let missing = EditorCommandExecutor().apply(commands, to: timeline)
+        #expect(missing.timeline.musicEndingFadeDuration == nil)
+        #expect(missing.report.ignored.count == 1)
+        timeline.music = MusicDirective(style: .acoustic, bpm: 88)
+        let edited = EditorCommandExecutor().apply(commands, to: timeline)
+        #expect(edited.report.applied.count == 2 && edited.report.ignored.isEmpty)
+        #expect(edited.timeline.items.map(\.timelineDuration) == [3, 4, 4, 4])
+        #expect(edited.timeline.music == timeline.music)
+        #expect(edited.timeline.endingFadeDuration == nil)
+        #expect(edited.timeline.musicEndingFadeDuration == 4)
+        let restored = try JSONDecoder().decode(Timeline.self, from: JSONEncoder().encode(edited.timeline))
+        #expect(restored == edited.timeline)
+    }
+
     static let examples: [Sample] = [
         .init(prompt: "накидай всяких переходов", commands: [.setTransitionPattern([.crossDissolve, .fadeThroughBlack, .blurDissolve, .slideRight], .all)]),
         .init(prompt: "накидай разных эффектов на весь интервал видео", commands: [.setEffectPattern([.pushIn, .panLeft, .pullOut, .panRight], .all)]),

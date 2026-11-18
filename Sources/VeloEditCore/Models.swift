@@ -2563,6 +2563,8 @@ public struct Timeline: Codable, Identifiable, Hashable, Sendable {
     /// Movie-level fade to black. Missing on legacy/manual timelines; zero
     /// explicitly disables it. New automatic films save a three-second finish.
     public var endingFadeDuration: Double?
+    /// Duration on the rendered movie clock. Older projects use the automatic musical ending.
+    public var musicEndingFadeDuration: Double?
     public var movieEndingAudioVersion: Int? = nil
     public var audioDucking: AudioDuckingSettings?
     public var versionName: String?

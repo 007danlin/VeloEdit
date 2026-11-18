@@ -119,7 +119,7 @@ import Testing
         #expect(fade.opacity(at: duration - 1 / 30.0) == 0)
     }
 
-    @Test(arguments: ["ordinary", "adaptive", "manual", "short"])
+    @Test(arguments: ["ordinary", "adaptive", "manual", "short", "requested"])
     func decodedPreviewAndExportFinishMusicGradually(_ mode: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-music-finish-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -159,12 +159,15 @@ import Testing
                 sourceDuration: duration, timelineStart: 0, timelineDuration: duration,
                 adjustments: .init(volume: 0.4, fadeIn: 0.5, fadeOut: 0.5))]
         }
+        if mode == "requested" {
+            timeline = EditorCommandExecutor().apply([.setMusicEndingFade(5.5)], to: timeline).timeline
+        }
         let playback = try await PlaybackEngine().build(timeline: timeline, assets: [], musicTracks: tracks)
         let output = root.appendingPathComponent("finished.mp4")
         _ = try await RenderEngine().render(timeline: timeline, assets: [], musicTracks: tracks, quality: .maximum, destination: output)
         let movie = AVURLAsset(url: output)
         #expect(abs(try await movie.load(.duration).seconds - duration) < 1 / 30.0)
-        let fadeStart = max(0, duration - 1 / 30.0 - 3)
+        let fadeStart = max(0, duration - 1 / 30.0 - (mode == "requested" ? 5.5 : 3))
         let fadeLength = duration - 1 / 30.0 - fadeStart
         let sampleTimes = [0.05, 0.25, 0.50, 0.85, 0.999].map { fadeStart + $0 * fadeLength }
         let preview = try await levels(asset: playback.composition, mix: playback.audioMix, times: sampleTimes)

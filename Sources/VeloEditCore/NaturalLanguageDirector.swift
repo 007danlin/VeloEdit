@@ -442,8 +442,8 @@ public struct NaturalLanguageDirector: Sendable {
             // a local editor operation, not a request to resize the film.
             interpretedStoryConstraints.targetDuration = baseStoryConstraints.targetDuration
         }
-        if deterministicCommands.contains(where: { $0.semanticCategory == "speed" }),
-           !isVaguePacing(text) {
+        let scopedPacing = commands.contains { if case .tightenCut = $0 { return true }; return false }
+        if scopedPacing || (deterministicCommands.contains(where: { $0.semanticCategory == "speed" }) && !isVaguePacing(text)) {
             interpretedStoryConstraints.pacing = baseStoryConstraints.pacing
         }
         if deterministicCommands.contains(where: { $0.semanticCategory == "transition" }) {
@@ -451,7 +451,7 @@ public struct NaturalLanguageDirector: Sendable {
         }
         let requiresStoryConstraintRebuild = interpretedStoryConstraints != baseStoryConstraints
 
-        if isVaguePacing(text) {
+        if !scopedPacing && isVaguePacing(text) {
             // “Сделай быстрее” means denser editing, not 2× playback of every
             // source clip. Explicit rates still remain ordinary commands.
             commands.removeAll { $0.semanticCategory == "speed" }
@@ -608,7 +608,7 @@ public struct NaturalLanguageDirector: Sendable {
             }
         }
 
-        if isVaguePacing(text) {
+        if !scopedPacing && isVaguePacing(text) {
             let faster = NLText.containsAny(text, ["быстрее", "плотнее", "динамичнее", "энергичнее", "dense action"])
             let factor = faster ? 0.82 : 1.16
             let trimCalls = PhaseAwareNaturalLanguageTrimmer().pacingCalls(
@@ -786,7 +786,7 @@ public struct NaturalLanguageDirector: Sendable {
         if commandCategories.contains(where: { $0 == "add-title" || $0.hasPrefix("title-") || $0 == "remove-titles" }) {
             intents.append(EditIntent(scope: .overlay, operation: .title, desiredResult: "Изменить титры", confidence: 0.94, executionTier: .instant))
         }
-        if commandCategories.contains(where: { $0 == "music" || $0 == "music-volume" }) {
+        if commandCategories.contains(where: { $0 == "music" || $0 == "music-volume" || $0 == "music-ending-fade" }) {
             intents.append(EditIntent(scope: .audio, operation: .music, desiredResult: "Изменить музыку", confidence: 0.94, executionTier: .fast))
         }
         if hasLibraryInsertion {
@@ -813,7 +813,7 @@ public struct NaturalLanguageDirector: Sendable {
                 confidence: max(0.62, input.styleProfile.confidence * 0.65 + tasteConfidence * 0.35),
                 executionTier: .deep
             ))
-        } else if !hasLibraryInsertion && Self.requiresStyleRebuild(text) {
+        } else if !hasLibraryInsertion && Self.requiresStyleRebuild(text, scopedPacing: scopedPacing) {
             intents.append(EditIntent(
                 scope: .global,
                 operation: .style,
@@ -1059,10 +1059,10 @@ public struct NaturalLanguageDirector: Sendable {
         ])
     }
 
-    private static func requiresStyleRebuild(_ text: String) -> Bool {
-        NLText.containsAny(text, [
+    private static func requiresStyleRebuild(_ text: String, scopedPacing: Bool) -> Bool {
+        (!scopedPacing && text.contains("энергичнее")) || NLText.containsAny(text, [
             "кинематографич", "отпускной фильм", "сделай атмосфер", "больше экшена", "меньше экшена",
-            "энергичнее", "стиль путешеств", "vacation film"
+            "стиль путешеств", "vacation film"
         ])
     }
 

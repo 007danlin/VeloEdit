@@ -3,6 +3,13 @@ import Foundation
 public struct MusicPromptInterpreter: Sendable {
     public init() {}
 
+    static func mentionsMusicFade(_ text: String) -> Bool {
+        ["музык", "трек", "мелоди", "music"].contains(where: text.contains)
+            && (["затих", "затуха", "затухн", "сойдет на нет", "уйдет в тишину", "fade out", "fade-out"].contains(where: text.contains)
+                || (["плавно", "постепенно", "мягко"].contains(where: text.contains)
+                    && ["убери", "убрать", "приглуш", "уведи", "убав"].contains(where: text.contains)))
+    }
+
     public func interpret(
         prompt: String,
         preset: FilmPreset,
@@ -20,7 +27,7 @@ public struct MusicPromptInterpreter: Sendable {
         let alsoSelectsTrack = [
             "подбери", "выбери", "добавь", "поставь", "замени", "смени", "другой трек", "другую музыку"
         ].contains(where: value.contains)
-        if changesOnlyVolume && !alsoSelectsTrack { return nil }
+        if (changesOnlyVolume || Self.mentionsMusicFade(value)) && !alsoSelectsTrack { return nil }
 
         let searches = MusicSearchRequest.parse(prompt)
         let asksForMusic = !searches.isEmpty || [

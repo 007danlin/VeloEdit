@@ -663,7 +663,7 @@ public enum TimelineInvalidationPlanner {
             abs(old.effectiveOriginalAudioVolume - new.effectiveOriginalAudioVolume) > 0.000_1 {
             layers.insert(.sourceAudio)
         }
-        if old.music != new.music { layers.insert(.soundtrack) }
+        if old.music != new.music || old.musicEndingFadeDuration != new.musicEndingFadeDuration { layers.insert(.soundtrack) }
 
         let requiresComposition = !layers.intersection([.timelineStructure, .sourceVideo, .transitions]).isEmpty
         let decodedVideoReusable = layers.isDisjoint(with: [.timelineStructure, .sourceVideo])

@@ -18,6 +18,7 @@ public enum EditorCommand: Hashable, Sendable {
     case setSpeed(Double, EditorCommandTarget)
     case removeSlowMotion(EditorCommandTarget)
     case setSpeedRamp(SpeedRamp?, EditorCommandTarget)
+    case tightenCut(EditorCommandTarget)
     case setDuration(Double, EditorCommandTarget)
     case setFilter(VideoFilter, EditorCommandTarget)
     case setCrop(CropStyle, EditorCommandTarget)
@@ -69,6 +70,7 @@ public enum EditorCommand: Hashable, Sendable {
     case move(EditorCommandTarget, TimelineInsertionPosition)
     case setOriginalAudioVolume(Double)
     case setMusic(MusicDirective?)
+    case setMusicEndingFade(Double)
     case setMusicVolume(Double)
 
     /// Commands from the deterministic parser and the local language model
@@ -78,6 +80,7 @@ public enum EditorCommand: Hashable, Sendable {
         switch self {
         case .setSpeed, .removeSlowMotion: return "speed"
         case .setSpeedRamp: return "speed-ramp"
+        case .tightenCut: return "tighten-cut"
         case .setDuration: return "duration"
         case .setFilter: return "filter"
         case .setCrop: return "crop"
@@ -127,6 +130,7 @@ public enum EditorCommand: Hashable, Sendable {
         case .move: return "move"
         case .setOriginalAudioVolume: return "original-audio-volume"
         case .setMusic: return "music"
+        case .setMusicEndingFade: return "music-ending-fade"
         case .setMusicVolume: return "music-volume"
         }
     }
@@ -664,7 +668,7 @@ public struct EditorCommandParser: Sendable {
             result.append(.move(target, .end))
         }
 
-        if containsAny(text, ["без музы", "убери музыку", "удали музыку"]) {
+        if !MusicPromptInterpreter.mentionsMusicFade(text), containsAny(text, ["без музы", "убери музыку", "удали музыку"]) {
             result.append(.setMusic(nil))
         } else if (!containsAny(text, ["титр", "надпис", "текст"]) || containsAny(text, ["музык", "саундтр", "трек", "песн", "мелоди"])),
                   let music = MusicPromptInterpreter().interpret(prompt: prompt, preset: preset) {
@@ -1066,6 +1070,13 @@ public struct EditorCommandExecutor: Sendable {
                     item.speed = 1
                     item.speedRamp = ramp
                     item.timelineDuration = max(0.25, ramp?.outputDuration(sourceDuration: item.sourceDuration) ?? item.sourceDuration)
+                }
+            case .tightenCut(let target):
+                mutate(target, description: { "укорочено планов: \($0)" }) { item in
+                    guard !item.locked, item.overlay == nil, item.timelineDuration > 0.5 else { return }
+                    let duration = max(0.5, item.timelineDuration * 0.75)
+                    if !item.isFreezeFrame { item.sourceDuration *= duration / item.timelineDuration }
+                    item.timelineDuration = duration
                 }
             case .setDuration(let duration, let target):
                 mutate(target, description: { "длительность \(Self.number(duration)) с для \($0) фрагм." }) { item in
@@ -1553,6 +1564,14 @@ public struct EditorCommandExecutor: Sendable {
                 timeline.music = directive
                 timeline.adaptiveSoundtrack = nil
                 applied.append(directive.map { "музыка «\($0.style.localizedTitle)» добавлена" } ?? "музыка удалена")
+            case .setMusicEndingFade(let seconds):
+                guard timeline.music != nil || timeline.effectiveAudioClips.contains(where: { $0.role == .music }) else {
+                    ignored.append("в монтаже нет музыки для затухания")
+                    continue
+                }
+                guard seconds.isFinite, (0...30).contains(seconds) else { ignored.append("недопустимая длительность затухания"); continue }
+                timeline.musicEndingFadeDuration = seconds
+                applied.append("затухание музыки в финале — \(Self.number(seconds)) с")
             case .setMusicVolume(let volume):
                 guard timeline.music != nil else { ignored.append("сначала нужно добавить музыку"); continue }
                 timeline.setSoundtrackVolume(volume)
@@ -1561,6 +1580,15 @@ public struct EditorCommandExecutor: Sendable {
         }
 
         timeline.items = TimelineTiming.retimed(timeline.items)
+        // Transition objects are anchored to incoming cuts on the magnetic clock.
+        if timeline.items.map(\.timelineStart) != source.items.map(\.timelineStart), let transitions = timeline.transitionItems {
+            let starts = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0.timelineStart) })
+            timeline.transitionItems = transitions.map { transition in
+                var result = transition
+                result.startTime = starts[result.incomingClipID] ?? result.startTime
+                return result
+            }
+        }
         return (timeline, EditorCommandReport(
             recognizedCount: commands.count,
             applied: applied,

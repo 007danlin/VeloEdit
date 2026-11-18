@@ -25,6 +25,37 @@ import VeloEditCore
         #expect(moves.contains(.panLeft) || moves.contains(.panRight))
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func liveDirectorCombinesOpeningAndMusicEnding() async {
+        let prompt = "Хочется сразу задать темп — сделай вступление поэнергичнее, а под конец пусть музыка постепенно сойдёт на нет."
+        let parsed = EditorCommandParser().parse(prompt)
+        let reply = await LocalDirectorAgent().respond(to: prompt, context: context)
+        let plan = parsed + EditorCommand.supplemental(reply.commands, to: parsed)
+        #expect(!reply.planningFailed)
+        #expect(Set(plan) == [.tightenCut(.first), .setMusicEndingFade(4)])
+        let timeline = Timeline(storyPlanID: UUID(), items: (0..<5).map {
+            TimelineItem(kind: .video, sourceDuration: 3, timelineStart: Double($0 * 3), timelineDuration: 3)
+        }, music: MusicDirective(style: .acoustic, bpm: 100))
+        let input = NaturalLanguageDirectorInput(userRequest: prompt,
+            currentProject: ProjectManifest(name: "Проверка", timelines: [timeline]), timeline: timeline)
+        let director = NaturalLanguageDirector()
+        let edit = director.plan(input: input, supplementalCommands: reply.commands)
+        #expect(!edit.requiresBackgroundRefinement)
+        let result = director.execute(plan: edit, input: input)
+        #expect(result.committed && result.commandReport.applied.count == 2)
+        #expect(result.timeline.items.map(\.timelineDuration) == [2.25, 3, 3, 3, 3])
+        #expect(result.timeline.musicEndingFadeDuration == 4)
+    }
+
+    @Test func endingMusicEditsKeepTheTrackAndOpeningScope() {
+        let parser = EditorCommandParser()
+        #expect(parser.parseComplete("Сделай начало бодрее, а в конце плавно убери музыку", hasSelection: false)
+            == [.tightenCut(.first), .setMusicEndingFade(4)])
+        #expect(parser.parse("В конце плавно убери музыку") == [.setMusicEndingFade(4)])
+        #expect(parser.parse("Убери музыку") == [.setMusic(nil)])
+        #expect(parser.parseComplete("Пусть в конце музыка затихнет, если там есть диалог", hasSelection: false) == nil)
+    }
+
     @Test func semanticVisualPlansCoverWholeSequencesAndDelegateOtherScope() throws {
         let motion = "Можешь оживить все пять планов движением камеры? Пусть она то приближается, то отъезжает, то уходит вбок. Хочется, чтобы это движение чередовалось по ходу ролика."
         #expect(FilmWideVisualPlan.canInterpret(motion, context: context))

@@ -45,6 +45,7 @@ public final class TimelinePlayback: @unchecked Sendable {
               previous.effectiveOriginalAudioVolume > 0 else { return nil }
         var comparison = next
         comparison.originalAudioVolume = previous.originalAudioVolume
+        comparison.musicEndingFadeDuration = previous.musicEndingFadeDuration
         for index in next.items.indices {
             var audio = next.items[index].effectiveAudioAdjustments
             let before = previous.items[index].effectiveAudioAdjustments
@@ -530,7 +531,7 @@ public actor PlaybackEngine {
             duckingRegions: MusicSpeechDucking.regions(in: timeline, activity: speech.records),
             movieDuration: cursor.seconds,
             frameRate: timeline.frameRate,
-            endingFadeDuration: timeline.endingFadeDuration
+            endingFadeDuration: timeline.endingFadeDuration, musicEndingFadeDuration: timeline.musicEndingFadeDuration
         )
 
         // Exact loudness mastering happens against an encoded first pass in
@@ -569,7 +570,7 @@ public actor PlaybackEngine {
                     originalAudioVolume: Float(min(1, max(0, updated.effectiveOriginalAudioVolume))),
                     music: musicResult, additionalAudio: audioResult.placements + adaptiveMusic,
                     duckingRegions: MusicSpeechDucking.regions(in: updated, activity: speech.records), movieDuration: cursor.seconds,
-                    frameRate: updated.frameRate, endingFadeDuration: updated.endingFadeDuration)
+                    frameRate: updated.frameRate, endingFadeDuration: updated.endingFadeDuration, musicEndingFadeDuration: updated.musicEndingFadeDuration)
             }
         )
     }
@@ -1275,7 +1276,7 @@ public actor PlaybackEngine {
         return (placements, [])
     }
 
-    private static func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], duckingRegions: [MusicDuckingRegion], movieDuration: Double, frameRate: Double, endingFadeDuration: Double?) -> AVMutableAudioMix? {
+    private static func makeAudioMix(placements: [Placement], originalTracks: [AVMutableCompositionTrack], originalAudioVolume: Float, music: MusicTrack?, additionalAudio: [AudioPlacement], duckingRegions: [MusicDuckingRegion], movieDuration: Double, frameRate: Double, endingFadeDuration: Double?, musicEndingFadeDuration: Double?) -> AVMutableAudioMix? {
         guard !originalTracks.isEmpty || music != nil || !additionalAudio.isEmpty else { return nil }
         func clipVolume(_ placement: Placement) -> Float {
             originalAudioVolume * Float(placement.item.effectiveAudioAdjustments.effectiveVolume)
@@ -1461,14 +1462,13 @@ public actor PlaybackEngine {
         // clip fades and speech ducking. Legacy projects also get the finish;
         // disabling the visual fade does not disable the musical ending.
         // Source and detached sound follow the visual movie end, never a clip ID.
-        if let ending = FilmEndingFade(duration: FilmEndingFade.defaultDuration, movieDuration: movieDuration, frameRate: frameRate) {
-            var musicTrackIDs = Set(additionalAudio.filter { $0.clip.role == .music }.map { $0.track.trackID })
-            if let music { musicTrackIDs.formUnion(music.regions.map { $0.track.trackID }) }
-            let sourceEnding = FilmEndingFade(duration: endingFadeDuration, movieDuration: movieDuration, frameRate: frameRate)
-            parameters = parameters.map { value in
-                let fade = musicTrackIDs.contains(value.trackID) ? ending : sourceEnding
-                return fade?.applying(to: value, movieDuration: movieDuration) ?? value
-            }
+        let ending = FilmEndingFade(duration: musicEndingFadeDuration ?? FilmEndingFade.defaultDuration, movieDuration: movieDuration, frameRate: frameRate)
+        var musicTrackIDs = Set(additionalAudio.filter { $0.clip.role == .music }.map { $0.track.trackID })
+        if let music { musicTrackIDs.formUnion(music.regions.map { $0.track.trackID }) }
+        let sourceEnding = FilmEndingFade(duration: endingFadeDuration, movieDuration: movieDuration, frameRate: frameRate)
+        parameters = parameters.map { value in
+            let fade = musicTrackIDs.contains(value.trackID) ? ending : sourceEnding
+            return fade?.applying(to: value, movieDuration: movieDuration) ?? value
         }
         let mix = AVMutableAudioMix()
         mix.inputParameters = parameters

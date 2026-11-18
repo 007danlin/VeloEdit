@@ -4584,6 +4584,9 @@ public actor VeloEditPipeline {
             case .insertBackground, .insertSource:
                 ignored.append("Добавление материала доступно в помощнике монтажа вне выделенного диапазона")
                 continue
+            case .setMusicEndingFade:
+                ignored.append("Затухание в конце фильма задаётся вне выделенного диапазона")
+                continue
             case .setMusic, .setMusicVolume, .setAudioDucking:
                 if let updated = LocalizedSoundtrackEditing.apply(command, to: timeline, range: currentRange) {
                     timeline = updated
@@ -5713,6 +5716,7 @@ public actor VeloEditPipeline {
             }
         }
         result.music = previous.music
+        result.musicEndingFadeDuration = previous.musicEndingFadeDuration
         result.originalAudioVolume = previous.originalAudioVolume
         result.audioDucking = previous.audioDucking
         result.items = retimed(result.items)
@@ -5860,14 +5864,14 @@ private extension EditorCommand {
              .split(let target),
              .move(let target, _):
             return target
-        case .setClipFades(_, _, let target):
+        case .setClipFades(_, _, let target), .tightenCut(let target):
             return target
         case .setOverlay(_, let target, _):
             return target
         case .setTitleText(_, let target), .setTitleStyle(_, _, _, _, let target), .applyTitleTemplate(_, let target):
             return target
         case .insertBackground, .insertSource, .addTitle, .removeTitles, .setAudioDucking,
-             .setOriginalAudioVolume, .setMusic, .setMusicVolume:
+             .setOriginalAudioVolume, .setMusic, .setMusicVolume, .setMusicEndingFade:
             return nil
         }
     }
@@ -5895,6 +5899,7 @@ private extension EditorCommand {
         case .setSpeed(let value, _): return .setSpeed(value, target)
         case .removeSlowMotion: return .removeSlowMotion(target)
         case .setSpeedRamp(let value, _): return .setSpeedRamp(value, target)
+        case .tightenCut: return .tightenCut(target)
         case .setDuration(let value, _): return .setDuration(value, target)
         case .setFilter(let value, _): return .setFilter(value, target)
         case .setCrop(let value, _): return .setCrop(value, target)
@@ -5937,7 +5942,7 @@ private extension EditorCommand {
         case .duplicate: return .duplicate(target)
         case .split: return .split(target)
         case .setAudioDucking, .setOverlay, .addTitle, .removeTitles, .move,
-             .setOriginalAudioVolume, .setMusic, .setMusicVolume:
+             .setOriginalAudioVolume, .setMusic, .setMusicVolume, .setMusicEndingFade:
             return nil
         }
     }
