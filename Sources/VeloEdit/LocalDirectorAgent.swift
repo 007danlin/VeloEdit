@@ -57,7 +57,10 @@ private struct OllamaChatRequest: Encodable {
 }
 
 private struct OllamaDirectorSchema: Encodable {
-    struct StringProperty: Encodable { let type = "string" }
+    struct StringProperty: Encodable {
+        let type = "string"
+        var maxLength: Int? = nil
+    }
     struct EnumStringProperty: Encodable {
         let type = "string"
         let values: [String]
@@ -84,8 +87,8 @@ private struct OllamaDirectorSchema: Encodable {
         let items = CommandItem()
     }
     struct RootProperties: Encodable {
-        let reply = StringProperty()
-        let normalizedBrief = StringProperty()
+        let reply = StringProperty(maxLength: 180)
+        let normalizedBrief = StringProperty(maxLength: 480)
         let commands = CommandArray()
     }
     let type = "object"
@@ -368,9 +371,38 @@ final class LocalDirectorAgent {
     ) async throws -> DirectorAIReply {
         let ollamaAvailable = await hasOllamaModel(startService: true, mode: context.aiPowerMode)
         try Task.checkCancellation()
+        if ollamaAvailable, mode == .edit, !allowsFootageReplacement, !repairingPlan,
+           FilmWideVisualPlan.canInterpret(userMessage, context: context) {
+            do {
+                let request = try FilmWideVisualPlan.request(userMessage, model: AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID)
+                let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: 25)
+                if (response as? HTTPURLResponse)?.statusCode == 200 {
+                    var stream = DirectorReplyStream()
+                    _ = try stream.append(String(decoding: data, as: UTF8.self))
+                    if let commands = try FilmWideVisualPlan.commands(from: stream.completedContent()) {
+                        return DirectorAIReply(text: "Применяю правку.", runtimeLabel: Self.runtimeLabel(context.aiPowerMode),
+                                               normalizedBrief: nil, commands: commands)
+                    }
+                }
+            } catch {
+                try Task.checkCancellation()
+                if error is CancellationError { throw error }
+                PerformanceTrace.current?.event("director.visual-plan-deferred")
+            }
+        }
         let requestModeInstruction = mode == .advisory
             ? "РЕЖИМ СОВЕТА: предложи музыку, название или объясни звук по данным анализа. Ничего не применяй, пиши в настоящем времени, верни commands: [] и пустой normalizedBrief. Обязательно скажи, что исходник и Timeline не изменены."
             : "РЕЖИМ МОНТАЖА: подготовь исполняемый план только для явно запрошенных изменений."
+        let query = userMessage.lowercased().replacingOccurrences(of: "ё", with: "е")
+        func mentioned(_ name: String) -> Bool {
+            query.contains(name.lowercased().replacingOccurrences(of: "ё", with: "е"))
+        }
+        let namedEffects = TimelineEffectType.allCases.filter { mentioned($0.rawValue) || mentioned($0.localizedTitle) }
+        let effectCatalog = namedEffects.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: ", ")
+        let namedTemplates = TitleTemplateRegistry.all.filter { mentioned($0.id) || mentioned($0.name) }
+        let templates = namedTemplates.map { "\($0.id)=\($0.name)" }.joined(separator: ", ")
+        let transitions = TransitionStyle.allCases.filter { mentioned($0.rawValue) || mentioned($0.localizedTitle) }
+            .map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: ", ")
         let editingSystem = OllamaMessage(role: "system", content: """
             Ты монтажный режиссёр внутри VeloEdit. Отвечай естественно по-русски, ровно 1–2 короткими предложениями. Реагируй только на пожелание пользователя: не пересказывай служебную сводку, не делай арифметических расчётов и не выдумывай стиль или длительность. Точные числа повторяй буквально и считай жёсткими ограничениями. Сейчас ты только принимаешь задачу: пиши в будущем времени и не утверждай, что фильм, звук или музыка уже изменены. Например, говори «отключу звук исходников после применения правок», а не «звук убран». Не притворяйся, что просмотрел кадры, если анализ не завершён.
 
@@ -382,10 +414,8 @@ final class LocalDirectorAgent {
 
             Верни только JSON по выданной схеме: reply — ответ пользователю; normalizedBrief — краткий русский бриф для подбора истории; commands — полный исполняемый план. На каждое действие создавай отдельный элемент commands. target всегда один из: all, selected, first, last или number:N. Для неиспользуемых value и secondaryTarget передавай пустую строку. secondaryTarget нужен только наложению и использует тот же формат цели.
             Для переименования существующего титра используй set_title_text: новый текст в value, выбранный титр — target selected. Сохраняй регистр и пунктуацию текста. Не заменяй переименование добавлением нового титра.
-            add_library_effect: value — код эффекта из полного каталога: \(TimelineEffectType.allCases.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")). Добавляет редактируемый эффект на указанные клипы. Не дублируй то же действие через set_effect.
-            «Ещё хочу эффект камеры в первом видео» означает {"action":"add_library_effect","target":"first","value":"video-camera","secondaryTarget":""}. «Эффект камеры», «видеокамера», REC, видоискатель — video-camera; «ручная камера» — handheld; «дрейф камеры» — camera-drift. Это разные эффекты. Для эффекта из библиотеки всегда используй add_library_effect, а не set_effect. Вводные слова «ещё хочу», «можешь», «пожалуйста» не меняют действие. «В первом видео» указывает первый клип монтажа, «во втором» — number:2; не заменяй явный номер выбранным клипом.
-            apply_title_template: value — ID шаблона, target указывает титр. Каталог: \(TitleTemplateRegistry.all.map { "\($0.id)=\($0.name)" }.joined(separator: "; ")). Для нового титра сначала add_title, затем apply_title_template; текст сохраняется.
-            Полный каталог set_transition: \(TransitionStyle.allCases.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")).
+            При общей просьбе об эффектах выбирай один set_effect (например push-in), для разнообразия — один set_effect_pattern (push-in,pan-left,pull-out,pan-right). Для разных переходов используй один set_transition_pattern. Не перечисляй эффекты отдельными командами. add_library_effect нужен для конкретного эффекта (камера/REC — video-camera, ручная камера — handheld, дрейф камеры — camera-drift). Совпадения с названиями в запросе: \(effectCatalog).
+            apply_title_template принимает ID шаблона, для нового титра сначала add_title. Упомянутые шаблоны: \(templates). Упомянутые переходы: \(transitions).
             insert_background: target beginning/end; value — JSON строкой {"background":"clouds","title":"Путешествие","duration":4}; title можно опустить. Это отдельный клип из библиотеки и привязанный титр, а не set_overlay. Для неба используй clouds, для звёздного неба stars. Каталог фонов: \(BackgroundPreset.catalogPresets.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")).
             insert_source: target beginning/end; value — краткое описание искомой сцены из запроса (например «собака»). Ищет неиспользованный момент во всех проанализированных исходниках. Не заменяй это duplicate, move или пересборкой фильма. Не утверждай, что момент найден, до выполнения поиска.
             set_title_style: value — JSON-объект, закодированный строкой, с нужными полями fontSize (18...220), textColorHex, backgroundColorHex (#RRGGBB) и alignment (left, center, right); отсутствующие поля не меняются. remove_slow_motion убирает только замедление, сохраняя ускоренные участки; value пустой.
@@ -405,10 +435,14 @@ final class LocalDirectorAgent {
         } else {
             hardConstraint = "Явного ограничения на количество моментов нет."
         }
+        let recognized = EditorCommandParser().parse(userMessage, preset: context.preset).map(\.semanticCategory)
+        let hints = recognized.isEmpty ? "" : "Уже распознаны операции: " + recognized.joined(separator: ", ") + ". Сверь их с формулировкой пользователя."
         let contextualUser = OllamaMessage(role: "user", content: """
             \(context.modelPrompt)
 
             \(hardConstraint)
+            \(hints)
+            Верни краткий план именно этого сообщения. Одно действие пользователя — одна команда. Для всех клипов используй target all один раз, для чередования — одну команду pattern. Не перечисляй каталог и не повторяй команды. Для правки текущего монтажа оставь normalizedBrief пустым, если не требуется пересборка истории.
             Сообщение пользователя:
             \(userMessage)
             """)
@@ -487,7 +521,7 @@ final class LocalDirectorAgent {
 
     private static func sanitizedCommands(_ commands: [EditorCommand], for userMessage: String) -> [EditorCommand] {
         let request = userMessage.lowercased().replacingOccurrences(of: "ё", with: "е")
-        let explicitlyRequestsTitle = [
+        let explicitlyRequestsTitle = EditorialIntentEnforcer.titleRequest(userMessage) ?? [
             "добавь титр", "добавить титр", "добавь надпись", "напиши на экране",
             "сделай титр", "покажи текст", "title card", "вставь титр", "вставь надпись",
             "создай титр", "наложи текст", "наложи надпись", "хочу надпись", "нужен титр", "с титром", "с надписью"

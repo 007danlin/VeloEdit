@@ -114,7 +114,7 @@ public enum EditorialDeliveryVerifier {
             PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "miss", "reason": receipt == nil ? "missing-or-incompatible-receipt" : "artifact-changed", "signature": key])
             _ = try await PerformanceTrace.measure(name: "control.export", fields: ["signature": key, "contract": "final1080p"]) {
               try await FilmBuildReporting.forwarding { report in
-                try await RenderEngine().render(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources, sourceWarnings: sourceWarnings, quality: .final1080p, destination: output) { update in
+                try await RenderEngine().render(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources, sourceWarnings: sourceWarnings, quality: .final1080p, destination: output, masterForEditorialReview: true) { update in
                     report(FilmBuildProgress(.controlExport, completed: update.completed, total: update.total, detail: update.currentName))
                 }
             }

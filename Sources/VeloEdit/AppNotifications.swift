@@ -14,7 +14,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
         Task {
             do {
-                _ = try await center.requestAuthorization(options: [.alert, .sound])
+                _ = try await center.requestAuthorization(options: [.alert])
             } catch {
                 logger.error("Notification authorization failed: \(error.localizedDescription)")
             }
@@ -32,7 +32,6 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            content.sound = .default
             do {
                 try await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
             } catch {
@@ -46,7 +45,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .list, .sound])
+        completionHandler([.banner, .list])
     }
 
     nonisolated func userNotificationCenter(

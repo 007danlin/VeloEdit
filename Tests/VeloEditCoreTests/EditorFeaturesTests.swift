@@ -524,6 +524,10 @@ import Testing
     #expect(result.timeline.items[0].transition == nil)
     #expect(result.timeline.items.dropFirst().allSatisfy { $0.transition != nil })
     #expect(Set(result.timeline.items.compactMap(\.transition)).count > 1)
+    let cuts = result.timeline.effectiveTransitionItems
+    #expect(cuts.map(\.outgoingClipID) == timeline.items.dropLast().map(\.id))
+    #expect(cuts.map(\.incomingClipID) == timeline.items.dropFirst().map(\.id))
+    #expect(EditorCommandExecutor().apply(commands, to: result.timeline).timeline.effectiveTransitionItems == cuts)
     #expect(result.timeline.items.allSatisfy { $0.effect != nil })
     #expect(Set(result.timeline.items.compactMap(\.effect)).count > 1)
 }

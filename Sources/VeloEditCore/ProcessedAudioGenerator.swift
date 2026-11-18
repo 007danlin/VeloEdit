@@ -166,7 +166,7 @@ public actor ProcessedAudioGenerator {
         let resolvedURL = sourceURL.resolvingSymlinksInPath()
         let values = try FileManager.default.attributesOfItem(atPath: resolvedURL.path)
         return ProductionCacheIdentity.hash([
-            "processed-audio-v2-rnnoise-0.2-0b50c45-pcm", resolvedURL.path,
+            "processed-audio-v3-rnnoise-0.2-0b50c45-pcm", resolvedURL.path,
             String((values[.size] as? NSNumber)?.int64Value ?? 0),
             String(((values[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0).bitPattern),
             String(sourceStart.bitPattern), String(sourceDuration.bitPattern),
@@ -196,7 +196,7 @@ public actor ProcessedAudioGenerator {
     private func extractAudio(sourceURL: URL, sourceStart: Double, sourceDuration: Double, destination: URL) async throws {
         try? FileManager.default.removeItem(at: destination)
         let asset = AVURLAsset(url: sourceURL)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first,
+        guard let track = try await asset.sourceAudioTrack(),
               let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: SpeechNoiseReducer.sampleRate,
                                          channels: 2, interleaved: true) else {
             throw DerivedMediaError.exportUnavailable

@@ -76,7 +76,7 @@ enum EditorialRenderDependencies {
     // Track allocation is part of the render contract, including the audio
     // tracks used by connected clips. Old probes/mixes must be recomputed.
     // v5 also preserves requested source attenuation through export mastering.
-    static let compositionVersion = 14
+    static let compositionVersion = 15
     /// File reuse has a separate identity from a certificate for a timeline.
     /// Only simple materialized video cuts are canonicalized here. Other edit
     /// types keep the conservative existing dependency key until separately

@@ -9,6 +9,32 @@ import VeloEditCore
             currentTimelineItemCount: 3, targetDuration: 12, preset: .story, currentOperation: "test")
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func liveDirectorInterpretsCameraMovementInOrder() async throws {
+        let prompt = "Можешь оживить все пять планов движением камеры? Пусть она то приближается, то отъезжает, то уходит вбок. Хочется, чтобы это движение чередовалось по ходу ролика."
+        let reply = await LocalDirectorAgent().respond(to: prompt, context: context)
+        #expect(!reply.planningFailed)
+        #expect(reply.commands.count == 1)
+        guard case .setEffectPattern(let moves, .all) = reply.commands.first else {
+            Issue.record("Ожидались чередующиеся движения для всего фильма: \(reply.commands)")
+            return
+        }
+        #expect(moves.count >= 3)
+        #expect([ClipEffect.pushIn, .zoomIn].contains(moves.first))
+        #expect([ClipEffect.pullOut, .zoomOut].contains(moves.dropFirst().first))
+        #expect(moves.contains(.panLeft) || moves.contains(.panRight))
+    }
+
+    @Test func semanticVisualPlansCoverWholeSequencesAndDelegateOtherScope() throws {
+        let motion = "Можешь оживить все пять планов движением камеры? Пусть она то приближается, то отъезжает, то уходит вбок. Хочется, чтобы это движение чередовалось по ходу ролика."
+        #expect(FilmWideVisualPlan.canInterpret(motion, context: context))
+        #expect(!FilmWideVisualPlan.canInterpret(motion + " Только в 00:04–00:06.", context: context))
+        #expect(!FilmWideVisualPlan.canInterpret("Ускорь первый клип и добавь переходы во всем фильме", context: context))
+        #expect(try FilmWideVisualPlan.commands(from: #"{"coverage":"whole-film","motion":["push-in","pull-out","pan-left"],"cuts":[]}"#) == [.setEffectPattern([.pushIn, .pullOut, .panLeft], .all)])
+        #expect(try FilmWideVisualPlan.commands(from: #"{"coverage":"other","motion":["zoom-in"],"cuts":[]}"#) == nil)
+        #expect(try FilmWideVisualPlan.commands(from: #"{"coverage":"whole-film","motion":[],"cuts":["cross-dissolve"]}"#) == [.setTransition(.crossDissolve, .all)])
+    }
+
     @Test(arguments: [
         "еще хочу эффект камеры в первом видео", "Можешь добавить эффект видеокамеры во втором видео?",
         "Добавь эффект «Видеокамера» в первом видео; громкость музыки 20%",

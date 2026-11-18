@@ -10,6 +10,10 @@ struct EverydayDirectorCommandTests {
     }
 
     static let examples: [Sample] = [
+        .init(prompt: "накидай всяких переходов", commands: [.setTransitionPattern([.crossDissolve, .fadeThroughBlack, .blurDissolve, .slideRight], .all)]),
+        .init(prompt: "накидай разных эффектов на весь интервал видео", commands: [.setEffectPattern([.pushIn, .panLeft, .pullOut, .panRight], .all)]),
+        .init(prompt: "закинь эффект камеры во втором видео", commands: [.addLibraryEffect(.videoCamera, .number(2))]),
+        .init(prompt: "Докинь титр «Накинь шарф» в конце", commands: [.addTitle("Накинь шарф", .end)]),
         .init(prompt: "еще хочу эффект камеры в первом видео", commands: [.addLibraryEffect(.videoCamera, .first)]),
         .init(prompt: "Ещё хочу добавить эффект камеры на первое видео!", commands: [.addLibraryEffect(.videoCamera, .first)]),
         .init(prompt: "Можешь добавить эффект видеокамеры во втором видео?", commands: [.addLibraryEffect(.videoCamera, .number(2))]),

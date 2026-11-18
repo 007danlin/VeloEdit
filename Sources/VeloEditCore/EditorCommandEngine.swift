@@ -188,6 +188,9 @@ public struct EditorCommandReport: Hashable, Sendable {
 }
 
 public struct EditorCommandParser: Sendable {
+    static let variedTransitions: [TransitionStyle] = [.crossDissolve, .fadeThroughBlack, .blurDissolve, .slideRight]
+    static let variedEffects: [ClipEffect] = [.pushIn, .panLeft, .pullOut, .panRight]
+
     public init() {}
 
     /// A creative brief is not a list of literal timeline mutations. Only
@@ -211,7 +214,7 @@ public struct EditorCommandParser: Sendable {
             if let parsed = ExactEditorCommandParser.parseClause(segment, hasSelection: hasSelection, inheritedTarget: inheritedTarget) {
                 commands.append(contentsOf: parsed.commands)
                 inheritedTarget = parsed.target ?? inheritedTarget
-            } else if let parsed = parseLegacyComplete(segment, hasSelection: hasSelection) {
+            } else if let parsed = parseLegacyComplete(ExactEditorCommandParser.cleanRequest(segment), hasSelection: hasSelection) {
                 commands.append(contentsOf: parsed)
                 inheritedTarget = explicitTarget(in: Self.normalized(segment)) ?? inheritedTarget
             } else {
@@ -296,11 +299,12 @@ public struct EditorCommandParser: Sendable {
     }
 
     private func parseSegment(
-        _ prompt: String,
+        _ input: String,
         preset: FilmPreset,
         targetOverride: EditorCommandTarget?
     ) -> [EditorCommand] {
-        if let exact = ExactEditorCommandParser.parseClause(ExactEditorCommandParser.cleanRequest(prompt), hasSelection: true, inheritedTarget: targetOverride) {
+        let prompt = ExactEditorCommandParser.cleanRequest(input)
+        if let exact = ExactEditorCommandParser.parseClause(prompt, hasSelection: true, inheritedTarget: targetOverride) {
             return exact.commands
         }
         if let libraryCommand = DirectorLibraryEdits.parse(prompt) { return [libraryCommand] }
@@ -579,7 +583,7 @@ public struct EditorCommandParser: Sendable {
             if containsAny(text, ["разн", "черед", "разнообраз", "каждый переход другой"]) {
                 let styles: [TransitionStyle] = containsAny(text, ["динамич", "энергич", "эффектн", "крут", "вау"])
                     ? [.lightFlash, .slideLeft, .wipeRight, .blurDissolve]
-                    : [.crossDissolve, .fadeThroughBlack, .blurDissolve, .slideRight]
+                    : Self.variedTransitions
                 result.append(.setTransitionPattern(styles, transitionTarget))
             } else if containsAny(text, ["динамич", "энергич", "эффектн", "крут", "вау", "резк"]) {
                 result.append(.setTransition(.lightFlash, transitionTarget))
@@ -614,7 +618,7 @@ public struct EditorCommandParser: Sendable {
         } else if containsAny(text, ["отрази", "зеркально", "mirror"]) {
             result.append(.setEffect(.mirror, target))
         } else if containsAny(text, ["разные эффект", "разнообразные эффект", "чередуй эффект", "чередование эффект", "разное движение", "чередуй движение"]) {
-            result.append(.setEffectPattern([.pushIn, .panLeft, .pullOut, .panRight], target))
+            result.append(.setEffectPattern(Self.variedEffects, target))
         } else if containsAny(text, ["эффект", "движение кадр", "движение камер", "оживи кадр", "оживи видео", "оживи клип"]),
                   asksToApplyCreativeChange(text) {
             let effect: ClipEffect = containsAny(text, ["динамич", "энергич", "эффектн", "крут", "вау", "эпич"])
@@ -678,7 +682,7 @@ public struct EditorCommandParser: Sendable {
     }
 
     private func commandSegments(_ prompt: String, sentencesOnly: Bool = false) -> [String] {
-        let pattern = sentencesOnly ? #";\s*|\n+|[.!?](?:\s+|$)"# : #"[,;]\s+|;\s*|,(?!\d)\s*|\n+|[.!?]\s+|\s+(?:и|а также|а)\s+(?=(?:переимен\w*|замени\w*|добав\w*|сделай|убери|поставь|музык\w*|титр\w*|разреж\w*|раздели|ускор\w*|замедл\w*|перемес\w*|дублир\w*|скопир\w*|отдел\w*|включ\w*|выключ\w*|поверн\w*|обреж\w*|сниз\w*|увелич\w*|уменьш\w*|приглуш\w*|установ\w*|удали|налож\w*|примен\w*|хочу|нуж\w*)\b)"#
+        let pattern = sentencesOnly ? #";\s*|\n+|[.!?](?:\s+|$)"# : #"[,;]\s+|;\s*|,(?!\d)\s*|\n+|[.!?]\s+|\s+(?:и|а также|а)\s+(?=(?:накидай|накинь|закинь|докинь|подкинь|переимен\w*|замени\w*|добав\w*|сделай|убери|поставь|музык\w*|титр\w*|разреж\w*|раздели|ускор\w*|замедл\w*|перемес\w*|дублир\w*|скопир\w*|отдел\w*|включ\w*|выключ\w*|поверн\w*|обреж\w*|сниз\w*|увелич\w*|уменьш\w*|приглуш\w*|установ\w*|удали|налож\w*|примен\w*|хочу|нуж\w*)\b)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [prompt] }
         let quotedRanges = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]|плавно замедли и ускорь"#, options: .caseInsensitive))?
             .matches(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)).map(\.range) ?? []
@@ -898,6 +902,52 @@ public struct EditorCommandExecutor: Sendable {
             } else {
                 ignored.append("\(description(positions.count)) — уже было установлено")
             }
+        }
+
+        func applyTransitions(_ styles: [TransitionStyle], to target: EditorCommandTarget) {
+            let targets = Set(indexes(for: target))
+            let primary = timeline.items.indices.filter { timeline.items[$0].overlay == nil }
+            let cuts = zip(primary, primary.dropFirst()).filter { outgoing, incoming in
+                targets.contains(incoming) && timeline.items[incoming].kind != .title
+            }
+            guard !cuts.isEmpty, !styles.isEmpty else {
+                ignored.append("В указанном месте нет стыка клипов для перехода.")
+                return
+            }
+            var objects = timeline.effectiveTransitionItems
+            let existing = Dictionary(objects.indices.map { (objects[$0].incomingClipID, $0) }, uniquingKeysWith: { first, _ in first })
+            var changed = 0
+            for (offset, cut) in cuts.enumerated() {
+                let style = styles[offset % styles.count]
+                let outgoing = timeline.items[cut.0], incoming = timeline.items[cut.1]
+                let preset = TransitionPresetRegistry.preset(for: style)
+                var object: TimelineTransitionItem
+                if let index = existing[incoming.id] {
+                    object = objects[index]
+                    if object.style != style {
+                        object.style = style
+                        object.intensity = preset.defaultIntensity
+                        object.parameters = preset.defaultParameters
+                        object.direction = preset.defaultDirection
+                        object.easing = preset.defaultEasing
+                    }
+                    object.outgoingClipID = outgoing.id
+                    object.enabled = true
+                    guard objects[index] != object || incoming.transition != style.rawValue else { continue }
+                    objects[index] = object
+                } else {
+                    object = TimelineTransitionItem(style: style, outgoingClipID: outgoing.id, incomingClipID: incoming.id,
+                        startTime: incoming.timelineStart, duration: preset.defaultDuration)
+                    objects.append(object)
+                }
+                timeline.items[cut.1].transition = style.rawValue
+                affected.formUnion([incoming.id, object.id])
+                changed += 1
+            }
+            if changed > 0 {
+                timeline.transitionItems = objects
+                applied.append("Обновлены переходы на стыках клипов: \(changed).")
+            } else { ignored.append("На этих стыках уже стоят запрошенные переходы.") }
         }
 
         for command in commands {
@@ -1168,82 +1218,20 @@ public struct EditorCommandExecutor: Sendable {
                     timeline.adaptiveSoundtrack = plan
                 }
                 applied.append(enabled ? "автоматический ducking включён" : "автоматический ducking выключен")
-            case .setTransition(let transition, let target):
-                let targetIDs = Set(indexes(for: target).map { timeline.items[$0].id })
-                let previousObjects = timeline.effectiveTransitionItems
-                if let transition {
-                    timeline.transitionItems = previousObjects.map { item in
-                        guard targetIDs.contains(item.incomingClipID) else { return item }
-                        var copy = item
-                        copy.style = transition
-                        copy.intensity = TransitionPresetRegistry.preset(for: transition).defaultIntensity
-                        copy.parameters = TransitionPresetRegistry.preset(for: transition).defaultParameters
-                        return copy
-                    }
-                } else {
-                    timeline.transitionItems = previousObjects.filter { !targetIDs.contains($0.incomingClipID) }
+            case .setTransition(let style?, let target):
+                applyTransitions([style], to: target)
+            case .setTransition(nil, let target):
+                let targets = Set(indexes(for: target).map { timeline.items[$0].id })
+                let objects = timeline.effectiveTransitionItems
+                let removed = objects.filter { targets.contains($0.incomingClipID) }
+                if !removed.isEmpty {
+                    timeline.transitionItems = objects.filter { !targets.contains($0.incomingClipID) }
+                    affected.formUnion(removed.map(\.id))
+                    applied.append("Удалено объектов переходов: \(removed.count)")
                 }
-                let currentObjects = timeline.effectiveTransitionItems
-                var changedTransitionObjects = Set<UUID>()
-                for previous in previousObjects {
-                    if let current = currentObjects.first(where: { $0.id == previous.id }) {
-                        if current != previous { changedTransitionObjects.insert(current.id) }
-                    } else {
-                        changedTransitionObjects.insert(previous.id)
-                    }
-                }
-                for current in currentObjects where !previousObjects.contains(where: { $0.id == current.id }) {
-                    changedTransitionObjects.insert(current.id)
-                }
-                affected.formUnion(changedTransitionObjects)
-                if !changedTransitionObjects.isEmpty {
-                    applied.append("объекты переходов обновлены: \(changedTransitionObjects.count)")
-                }
-                mutate(target, description: { "переход «\(transition?.localizedTitle ?? "без перехода")» для \($0) фрагм." }) { $0.transition = transition?.rawValue }
+                mutate(target, description: { "без перехода для \($0) фрагм." }) { $0.transition = nil }
             case .setTransitionPattern(let styles, let target):
-                let positions = indexes(for: target)
-                guard !positions.isEmpty, !styles.isEmpty else {
-                    ignored.append("фрагменты для чередования переходов не найдены")
-                    continue
-                }
-                let applicable = positions.filter { index in
-                    timeline.items.indices.contains(where: { previous in
-                        previous < index && timeline.items[previous].kind != .title && timeline.items[previous].overlay == nil
-                    })
-                }
-                let styleByIncomingID = Dictionary(uniqueKeysWithValues: applicable.enumerated().map { offset, index in
-                    (timeline.items[index].id, styles[offset % styles.count])
-                })
-                let previousTransitions = timeline.effectiveTransitionItems
-                timeline.transitionItems = previousTransitions.map { transition in
-                    guard let style = styleByIncomingID[transition.incomingClipID] else { return transition }
-                    var copy = transition
-                    copy.style = style
-                    copy.intensity = TransitionPresetRegistry.preset(for: style).defaultIntensity
-                    copy.parameters = TransitionPresetRegistry.preset(for: style).defaultParameters
-                    return copy
-                }
-                var changedTransitionIDs = Set<UUID>()
-                for current in timeline.effectiveTransitionItems {
-                    if previousTransitions.first(where: { $0.id == current.id }) != current {
-                        changedTransitionIDs.insert(current.id)
-                    }
-                }
-                affected.formUnion(changedTransitionIDs)
-                var changed = 0
-                for (offset, index) in applicable.enumerated() {
-                    let style = styles[offset % styles.count]
-                    if timeline.items[index].transition != style.rawValue {
-                        timeline.items[index].transition = style.rawValue
-                        affected.insert(timeline.items[index].id)
-                        changed += 1
-                    }
-                }
-                if changed > 0 || !changedTransitionIDs.isEmpty {
-                    applied.append("чередование \(styles.count) переходов для \(max(changed, changedTransitionIDs.count)) фрагм.")
-                } else {
-                    ignored.append(applicable.isEmpty ? "для перехода нужен предыдущий фрагмент" : "чередование переходов уже установлено")
-                }
+                applyTransitions(styles, to: target)
             case .setEffect(let effect, let target):
                 if effect == nil {
                     let targetIDs = Set(indexes(for: target).map { timeline.items[$0].id })

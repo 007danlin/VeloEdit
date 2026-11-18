@@ -231,6 +231,22 @@ enum SoftwareCompositionExporter {
     /// Audio is encoded separately. Muxing and subsequent mastering copy the
     /// video stream without another generation of compression.
     private static func mux(videoURL: URL, audioURL: URL, duration: Double, destination: URL) async throws {
+        // The native passthrough session drops the M4A encoder priming edit.
+        // Stream-copy both tracks with their packet timing so AAC preroll
+        // does not delay speech (2112 samples at 48 kHz on the Apple encoder).
+        if let executable = MediaCompatibility.converterURL {
+            // A retimed mix can carry encoder padding beyond the last frame.
+            // Keep the final partial packet on each stream's own timebase.
+            let endPacket = "setts=duration='min(DURATION,round(\(duration)/TB)-PTS)'"
+            _ = try await DeliveryFFmpeg.run(executable: executable, arguments: [
+                "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
+                "-i", videoURL.path, "-i", audioURL.path,
+                "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-t", String(duration),
+                "-bsf:v", endPacket, "-bsf:a", endPacket,
+                "-movflags", "+faststart", destination.path
+            ], directory: destination.deletingLastPathComponent(), timeout: max(180, duration * 2))
+            return
+        }
         let videoAsset = AVURLAsset(url: videoURL)
         let audioAsset = AVURLAsset(url: audioURL)
         guard let sourceVideo = try await videoAsset.loadTracks(withMediaType: .video).first,

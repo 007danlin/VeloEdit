@@ -60,13 +60,22 @@ import Testing
         #expect(!SourceAudioMixPolicy.preservesAttenuation(in: timeline))
     }
 
-    @Test(arguments: ["embedded", "detached", "adaptive", "manual", "no-music", "clip-gain", "speed"])
-    func decodedTwentyPercentSourceMatchesPreviewAndExport(_ mode: String) async throws {
+    @Test func enabledCameraProgramIsSelectedWhenAnAlternateTrackComesFirst() async throws {
+        let movie = AVMutableComposition()
+        let alternate = try #require(movie.addMutableTrack(withMediaType: .audio, preferredTrackID: 1))
+        let program = try #require(movie.addMutableTrack(withMediaType: .audio, preferredTrackID: 2))
+        alternate.isEnabled = false
+        program.isEnabled = true
+        #expect(try await movie.sourceAudioTrack()?.trackID == program.trackID)
+    }
+
+    @Test(arguments: ["retimed-cuts", "embedded", "detached", "adaptive", "manual", "no-music", "clip-gain", "speed"])
+    func decodedSourceLevelsMatchPreviewAndExport(_ mode: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("veloedit-source-balance-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let sourceAudio = root.appendingPathComponent("camera.caf"), musicURL = root.appendingPathComponent("music.caf")
-        try writeTone(440, to: sourceAudio)
+        try writeTone(440, to: sourceAudio, silentInterval: mode == "retimed-cuts" ? 5..<5.25 : nil)
         try writeTone(880, to: musicURL)
         let card = try await TitleCardVideoGenerator().generate(text: "Audio balance", style: TitleStyle(), duration: 8,
             width: 160, height: 90, frameRate: 30, destination: root.appendingPathComponent("card.mov"))
@@ -118,6 +127,20 @@ import Testing
             timeline.items[1].speed = 2
             timeline.items[1].timelineDuration = 2
         }
+        if mode == "retimed-cuts" {
+            timeline.music = nil
+            timeline.originalAudioVolume = 1
+            timeline.items = [
+                TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 0.5,
+                    timelineStart: 0, timelineDuration: 2, speed: 0.25),
+                TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 4,
+                    timelineStart: 2, timelineDuration: 1, speed: 4),
+                TimelineItem(assetID: asset.id, kind: .video, sourceDuration: 1,
+                    timelineStart: 3, timelineDuration: 1),
+                TimelineItem(assetID: asset.id, kind: .video, sourceStart: 4, sourceDuration: 4,
+                    timelineStart: 4, timelineDuration: 4)
+            ]
+        }
         if mode == "adaptive" {
             timeline.adaptiveSoundtrack = .init(primaryTrackID: track.id, timelineDuration: 8,
                 timelineFingerprint: timeline.adaptiveSoundtrackFingerprint, segments: [
@@ -165,11 +188,37 @@ import Testing
             #expect(abs(second.timeMapping.target.duration.seconds - 2) < 0.001)
         }
         let exported = try await signalBalance(asset: AVURLAsset(url: exportURL), mix: nil)
+        if mode == "retimed-cuts", let decoder = MediaCompatibility.converterURL {
+            // An independent player must honor the AAC priming edit. The
+            // silence at 5 s and tone returning at 5.25 s expose a delayed mix
+            // even if steady-state tone levels match in both files.
+            let output = root.appendingPathComponent("decoded.pcm")
+            _ = try await DeliveryFFmpeg.run(executable: decoder, arguments: [
+                "-nostdin", "-v", "error", "-i", exportURL.path, "-vn", "-ac", "1",
+                "-ar", "48000", "-f", "f32le", output.path
+            ], directory: root, timeout: 30)
+            let samples = try Data(contentsOf: output)
+            try #require(samples.count >= 6 * 48_000 * MemoryLayout<Float>.stride)
+            func peak(at seconds: Double) -> Float {
+                samples.withUnsafeBytes { bytes in
+                    let pcm = bytes.bindMemory(to: Float.self)
+                    let start = Int(seconds * 48_000)
+                    return pcm[start..<(start + 960)].reduce(0) { max($0, abs($1)) }
+                }
+            }
+            #expect(peak(at: 5.015) < 0.001)
+            #expect(peak(at: 5.265) > 0.1)
+        }
         for index in preview.indices {
             // Equal input amplitudes: source at 20%, music at its unchanged 18%.
             // Measure decoded samples, including the final loudness mastering.
-            let expectedVolume = mode == "clip-gain" ? (index == 0 ? 0.25 : 0.5) : 0.20
-            if mode != "no-music" && mode != "speed" {
+            let expectedVolume: Double
+            switch mode {
+            case "clip-gain": expectedVolume = index == 0 ? 0.25 : 0.5
+            case "retimed-cuts": expectedVolume = 1
+            default: expectedVolume = 0.20
+            }
+            if mode != "no-music" && mode != "speed" && mode != "retimed-cuts" {
                 let expectedDB = 20 * log10(expectedVolume / 0.18)
                 #expect(abs(preview[index].balanceDB - expectedDB) < 0.5)
                 #expect(abs(exported[index].balanceDB - expectedDB) < 0.5)
@@ -183,12 +232,13 @@ import Testing
         }
     }
 
-    private func writeTone(_ frequency: Double, to url: URL) throws {
+    private func writeTone(_ frequency: Double, to url: URL, silentInterval: Range<Double>? = nil) throws {
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 384_000))
         buffer.frameLength = buffer.frameCapacity
         for i in 0..<Int(buffer.frameLength) {
-            buffer.floatChannelData![0][i] = Float(0.2 * sin(2 * .pi * frequency * Double(i) / 48_000))
+            let time = Double(i) / 48_000
+            buffer.floatChannelData![0][i] = silentInterval?.contains(time) == true ? 0 : Float(0.2 * sin(2 * .pi * frequency * time))
         }
         try AVAudioFile(forWriting: url, settings: format.settings).write(from: buffer)
     }

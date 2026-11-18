@@ -137,7 +137,7 @@ public actor PlaybackEngine {
         // the first camera's coarse timebase and round subsequent edit points.
         videoTracks.forEach { $0.naturalTimeScale = TimelineTiming.compositionTimescale }
         let originalAudioVolume = min(max(0, timeline.effectiveOriginalAudioVolume), 1)
-        let originalAudioTracks: [AVMutableCompositionTrack?] = originalAudioVolume > 0.0001
+        let reusableAudioTracks: [AVMutableCompositionTrack?] = originalAudioVolume > 0.0001
             ? (0..<4).map { _ in composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) }
             : [nil, nil, nil, nil]
         let timescale = TimelineTiming.compositionTimescale
@@ -334,7 +334,6 @@ public actor PlaybackEngine {
                 try videoTrack.insertTimeRange(sourceRange, of: sourceVideo, at: at)
             }
 
-            let audioTrack = originalAudioTracks[trackIndex]
             var insertedAudioTrack: AVMutableCompositionTrack?
             if originalAudioVolume > 0.0001,
                item.kind == .video,
@@ -362,22 +361,26 @@ public actor PlaybackEngine {
                 }
                 let audioSource = sourceAssets[audioSourceURL] ?? AVURLAsset(url: audioSourceURL)
                 sourceAssets[audioSourceURL] = audioSource
-                if let sourceAudio = try await audioSource.loadTracks(withMediaType: .audio).first {
+                if let sourceAudio = try await audioSource.sourceAudioTrack() {
                     let audioRange = CMTimeRange(
                         start: CMTime(seconds: audioSourceStart, preferredTimescale: timescale),
                         duration: CMTime(seconds: item.sourceDuration, preferredTimescale: timescale)
                     )
-                    if let audioTrack {
-                        do {
-                            if let ramp = item.speedRamp {
-                                _ = try insert(ramp: ramp, sourceRange: audioRange, sourceTrack: sourceAudio,
-                                    destinationTrack: audioTrack, at: at)
-                            } else {
-                                try audioTrack.insertTimeRange(audioRange, of: sourceAudio, at: at)
-                            }
-                            insertedAudioTrack = audioTrack
-                        } catch { /* A missing audio segment must not duck the soundtrack. */ }
+                    // A time-scaled segment on a reused track can make the offline
+                    // mixer shift or silence later cuts. Keep its pitch processing
+                    // and time mapping local to this clip.
+                    let changesRate = item.speedRamp != nil || audioRange.duration != targetDuration
+                    let destination = changesRate
+                        ? composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                        : reusableAudioTracks[trackIndex]
+                    guard let audioTrack = destination else { throw DerivedMediaError.cannotCreateDestination }
+                    if let ramp = item.speedRamp {
+                        _ = try insert(ramp: ramp, sourceRange: audioRange, sourceTrack: sourceAudio,
+                            destinationTrack: audioTrack, at: at)
+                    } else {
+                        try audioTrack.insertTimeRange(audioRange, of: sourceAudio, at: at)
                     }
+                    insertedAudioTrack = audioTrack
                 }
             }
             if insertedTimelineDuration != targetDuration {
@@ -516,9 +519,11 @@ public actor PlaybackEngine {
         progress?(ImportProgress(completed: playableItems.count, total: playableItems.count, currentName: "Определяю речь для музыки"))
         let speech = try await SpeechActivityDetector.shared.resolve(timeline: timeline, assets: assets,
             cacheDirectory: derivedMediaCacheURL)
+        let originalTrackIDs = Set(placements.compactMap { $0.audioTrack?.trackID })
+        let originalAudioTracks = composition.tracks(withMediaType: .audio).filter { originalTrackIDs.contains($0.trackID) }
         let audioMix: AVAudioMix? = Self.makeAudioMix(
             placements: placements,
-            originalTracks: originalAudioTracks.compactMap { $0 }.filter { !$0.segments.isEmpty },
+            originalTracks: originalAudioTracks,
             originalAudioVolume: Float(originalAudioVolume),
             music: musicResult,
             additionalAudio: audioResult.placements + adaptiveMusic,
@@ -560,7 +565,7 @@ public actor PlaybackEngine {
                     return value
                 }
                 return Self.makeAudioMix(placements: updatedPlacements,
-                    originalTracks: originalAudioTracks.compactMap { $0 }.filter { !$0.segments.isEmpty },
+                    originalTracks: originalAudioTracks,
                     originalAudioVolume: Float(min(1, max(0, updated.effectiveOriginalAudioVolume))),
                     music: musicResult, additionalAudio: audioResult.placements + adaptiveMusic,
                     duckingRegions: MusicSpeechDucking.regions(in: updated, activity: speech.records), movieDuration: cursor.seconds,
@@ -1056,7 +1061,7 @@ public actor PlaybackEngine {
         }
         let url = localTrack.localFileURL
         let source = AVURLAsset(url: url)
-        guard let sourceTrack = try await source.loadTracks(withMediaType: .audio).first else { return nil }
+        guard let sourceTrack = try await source.sourceAudioTrack() else { return nil }
         let sourceDuration = try await source.load(.duration)
         guard sourceDuration.seconds.isFinite, sourceDuration.seconds > 0 else { return nil }
         let sourceEnd = CMTimeConvertScale(sourceDuration, timescale: TimelineTiming.compositionTimescale, method: .roundTowardZero)
@@ -1116,7 +1121,7 @@ public actor PlaybackEngine {
                     preferredTrackID: kCMPersistentTrackID_Invalid
                   ) else { continue }
             let source = AVURLAsset(url: localTrack.localFileURL)
-            guard let sourceTrack = try await source.loadTracks(withMediaType: .audio).first else { continue }
+            guard let sourceTrack = try await source.sourceAudioTrack() else { continue }
             let sourceDuration = try await source.load(.duration).seconds
             guard sourceDuration > 0.05 else { continue }
             // Quantizing a floating-point asset duration to the composition's
@@ -1249,7 +1254,7 @@ public actor PlaybackEngine {
             }
 
             let sourceAsset = AVURLAsset(url: inputURL)
-            guard let sourceTrack = try await sourceAsset.loadTracks(withMediaType: .audio).first else { continue }
+            guard let sourceTrack = try await sourceAsset.sourceAudioTrack() else { continue }
             let loadedDuration = try await sourceAsset.load(.duration).seconds
             let availableSource = max(0.05, loadedDuration - sourceStart)
             let sourceDuration = min(clip.sourceDuration, availableSource)
@@ -1305,7 +1310,7 @@ public actor PlaybackEngine {
             let clips = placements.filter { $0.audioTrack?.trackID == track.trackID }
             value.audioTimePitchAlgorithm = clips.contains {
                 ($0.item.effectiveAudioAdjustments.preservePitch ?? true) &&
-                (abs($0.item.speed - 1) > 0.001 || $0.item.speedRamp != nil)
+                (TimelineTiming.compositionTime($0.item.sourceDuration) != $0.duration || $0.item.speedRamp != nil)
             } ? .spectral : .varispeed
             return value
         }

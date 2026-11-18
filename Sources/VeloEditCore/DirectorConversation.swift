@@ -13,21 +13,55 @@ public struct DirectorRequestIntentInterpreter: Sendable {
 
     public func mode(for prompt: String) -> DirectorRequestMode {
         let text = prompt.lowercased().replacingOccurrences(of: "ё", with: "е")
+        let speech = text.replacingOccurrences(of: #"[«“"][^»”"]*[»”"]"#, with: "…", options: .regularExpression)
         // A global prohibition wins; a local negation does not erase a separate
         // affirmative action ("не меняй цвет, убери переход").
-        if ["ничего не меняй", "без изменений", "без редактирования", "без монтажа", "только совет", "только посоветуй", "только предложи", "advice only", "without changing"].contains(where: text.contains) { return .advisory }
-        if ["да, сделай", "да сделай", "давай так", "сделай так", "примени совет", "проанализируй этот", "проанализируй момент"].contains(where: text.contains) { return .advisory }
-        let clauses = text.components(separatedBy: CharacterSet(charactersIn: ",;.!?\n")).flatMap { $0.components(separatedBy: " и ").flatMap { $0.components(separatedBy: " но ") } }
-        let action = #"(?:^|\s)(?:обрежь|сократи|переставь|сделай|убери|удали|замени|добавь|поставь|установи|измени|включи|выключи|отключи|ускорь|замедли|подбери|создай|собери|примени|стабилизируй|поверни|раздели|увеличь|уменьши|перенеси|вставь|верни|переименуй|подними|опусти)(?:\s|$)"#
+        if ["ничего не меняй", "без изменений", "без редактирования", "без монтажа", "только совет", "только посоветуй", "только предложи", "advice only", "without changing"].contains(where: speech.contains) { return .advisory }
+        let standalone = speech.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        if ["да, сделай", "да сделай", "давай так", "сделай так", "примени совет"].contains(standalone)
+            || ["проанализируй этот", "проанализируй момент"].contains(where: speech.contains) { return .advisory }
+        let phrasing = speech.replacingOccurrences(of: #"(хочу|хотелось бы),\s*чтобы\b"#, with: "$1 чтобы", options: .regularExpression)
+        let asksIfNeeded = speech.contains("?") && speech.range(of: #"^\s*(?:а |мне )?(?:нуж(?:ен|на|ны|но)|стоит ли|что если)\s"#, options: .regularExpression) != nil
+        let clauses = phrasing.components(separatedBy: CharacterSet(charactersIn: ",;.!?\n")).flatMap { $0.components(separatedBy: " и ").flatMap { $0.components(separatedBy: " но ") } }
+        let action = #"(?:^|\s)(?:обрежь|сократи|переставь|сделай|убери|удали|замени|добавь|поставь|установи|измени|включи|выключи|отключи|ускорь|замедли|подбери|создай|собери|примени|стабилизируй|поверни|раздели|увеличь|уменьши|перенеси|вставь|верни|переименуй|подними|опусти|раскидай|расставь|оживи|оформи|разнообразь|подмешай|смикшируй|смонтируй)(?:\s|$)"#
+        var asksForDiscussion = false
         for clause in clauses {
+            // Recognize the request form independently of the feature name. The
+            // planner can interpret a new creative direction even without an
+            // exact command for it. Keep requests for ideas in the conversation.
+            let words = clause.trimmingCharacters(in: .whitespacesAndNewlines)
+            let request = ExactEditorCommandParser.cleanRequest(words)
+            let asksForIdeas = request.range(of: #"^(?:добавь|добавить|дай|дать|хочу|предложи|подскажи|подбери)\s+(?:(?:мне|еще|пару|несколько|разных|всяких)\s+)*(?:иде[яиюй]|идей|вариант\w*|совет\w*|пример\w*)\b"#, options: .regularExpression) != nil
+            let discussion = #"(?:не|узна\w*|понимать|понять|знать|спросить|обсуд\w*|посмотр\w*|посовет\w*|предлож\w*|подсказ\w*|подум\w*|разобра\w*|уточн\w*|объясн\w*|оцен\w*|сравн\w*|рассказ\w*|проанализир\w*|сказать)\b"#
+            let wish = #"^(?:(?:я |еще )?хочу|хотелось бы|давай)\s+(?:просто\s+)?(?:чтобы (?:ты )?)?"#
+            if asksForIdeas || words.range(of: wish + discussion, options: .regularExpression) != nil {
+                asksForDiscussion = true
+                continue
+            }
+            // A polite request can name an operation outside the exact grammar.
+            // Let the model plan it using the available editor tools.
+            let polite = words.range(of: #"^(?:можешь|сможешь|не мог бы ты)\s+(?:пожалуйста\s+)?"#, options: .regularExpression)
+            if let polite {
+                let operation = String(words[polite.upperBound...])
+                if operation.range(of: "^" + discussion, options: .regularExpression) != nil {
+                    asksForDiscussion = true
+                    continue
+                }
+                if operation.range(of: #"^[а-я]+(?:ть|ти|чь)(?:ся|сь)?\s+"#, options: .regularExpression) != nil { return .edit }
+            }
+            if request.hasPrefix("добавь "), request != words { return .edit }
+            if words.range(of: #"^(?:(?:я |еще )?хочу|хотелось бы|давай)\s+"#, options: .regularExpression) != nil,
+               !text.contains("?") { return .edit }
+
             let negated = clause.range(of: #"\bне\s+(?:\S+\s+)?(?:меняй|трогай|изменяй|добавляй|сокращай|убирай|удаляй|переставляй|обрезай|делай|заменяй|включай|выключай|применяй)"#, options: .regularExpression) != nil
             if !negated, clause.range(of: action, options: .regularExpression) != nil { return .edit }
         }
+        if asksForDiscussion || asksIfNeeded { return .advisory }
         // Polite requests often use the infinitive and end in a question mark:
         // «Можешь добавить эффект камеры в первом видео?» is still an edit.
         // The closed grammar must cover the entire request before this shortcut.
         if EditorCommandParser().parseComplete(prompt, hasSelection: true) != nil { return .edit }
-        if ["как тебе", "затянуто", "почему", "зачем", "что здесь", "что тут", "не нравится", "мне нравится", "нравится эта", "слишком", "плохой", "удачн", "посоветуй", "предложи", "подойдет", "какая", "какой", "как назвать", "придумай название", "варианты", "что за шум", "определи шум", "что слышно", "оцени", "сравни", "объясни", "поясни", "не трогай", "не меняй", "не изменяй", "не добавляй", "не сокращай", "не надо", "готово", "продолжи ожидание", "подожди", "да, сделай", "да сделай", "давай так"].contains(where: text.contains) || text.contains("?") { return .advisory }
+        if ["как тебе", "затянуто", "почему", "зачем", "что здесь", "что тут", "не нравится", "мне нравится", "нравится эта", "слишком", "плохой", "удачн", "посоветуй", "предложи", "подойдет", "какая", "какой", "как назвать", "придумай название", "варианты", "что за шум", "определи шум", "что слышно", "оцени", "сравни", "объясни", "поясни", "не трогай", "не меняй", "не изменяй", "не добавляй", "не накидывай", "не накидай", "не хочу", "не сокращай", "не надо", "готово", "продолжи ожидание", "подожди", "да, сделай", "да сделай", "давай так"].contains(where: text.contains) || text.contains("?") { return .advisory }
         if !EditorCommandParser().parse(prompt).isEmpty { return .edit }
         if ["хочу фильм", "нужен фильм", "фильм на", "создать фильм", "собрать фильм", "сделать фильм"].contains(where: text.contains) { return .edit }
         return .advisory

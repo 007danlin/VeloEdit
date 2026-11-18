@@ -32,7 +32,7 @@ enum EncodedAudioNormalizer {
         let target = allowsQuietMix ? min(EditorialLoudnessPolicy.targetLUFS, loudness) : EditorialLoudnessPolicy.targetLUFS
         let base = "loudnorm=I=\(target):TP=-1.5:LRA=50"
         let common = ["-nostdin", "-hide_banner", "-nostats", "-threads", "1", "-filter_threads", "1", "-n"]
-        let scan = try await run(executable: executable, arguments: common + ["-i", source.path,
+        let scan = try await DeliveryFFmpeg.run(executable: executable, arguments: common + ["-i", source.path,
             "-map", "0:a:0", "-vn", "-af", base + ":print_format=json", "-f", "null", "-"],
             directory: destination.deletingLastPathComponent(), timeout: max(60, duration * 2))
         guard let start = scan.lastIndex(of: "{"), let end = scan.lastIndex(of: "}"), start < end,
@@ -52,7 +52,7 @@ enum EncodedAudioNormalizer {
         // Bound only the audio samples. A container-wide -t could trim a copied
         // video packet near the endpoint of a variable-frame-rate source.
         filter += ",atrim=duration=\(duration)"
-        _ = try await run(executable: executable, arguments: common + ["-i", source.path,
+        _ = try await DeliveryFFmpeg.run(executable: executable, arguments: common + ["-i", source.path,
             "-map", "0:v:0", "-map", "0:a:0", "-map_metadata", "0", "-c:v", "copy",
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-af", filter,
             "-movflags", "+faststart", destination.path],
@@ -97,40 +97,5 @@ enum EncodedAudioNormalizer {
         try Task.checkCancellation()
         _ = try FileManager.default.replaceItemAt(url, withItemAt: staged)
         return true
-    }
-
-    private static func run(executable: URL, arguments: [String], directory: URL, timeout: Double) async throws -> String {
-        let logURL = directory.appendingPathComponent(".audio-mastering-\(UUID()).log")
-        FileManager.default.createFile(atPath: logURL.path, contents: nil)
-        let log = try FileHandle(forWritingTo: logURL)
-        defer { try? log.close(); try? FileManager.default.removeItem(at: logURL) }
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = log
-        let started = ProcessInfo.processInfo.systemUptime
-        try await withTaskCancellationHandler {
-            try Task.checkCancellation()
-            try process.run()
-            while process.isRunning {
-                if Task.isCancelled || ProcessInfo.processInfo.systemUptime - started > timeout {
-                    process.terminate()
-                    for _ in 0..<20 where process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
-                    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-                    if Task.isCancelled { throw CancellationError() }
-                    throw DerivedMediaError.exportFailed("Истекло время обработки звука; завершённые проверки сохранены")
-                }
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-            try Task.checkCancellation()
-            guard process.terminationStatus == 0 else {
-                throw DerivedMediaError.exportFailed("Не удалось обработать звук MP4 (код \(process.terminationStatus))")
-            }
-        } onCancel: {
-            if process.isRunning { process.terminate() }
-        }
-        return try String(contentsOf: logURL, encoding: .utf8)
     }
 }

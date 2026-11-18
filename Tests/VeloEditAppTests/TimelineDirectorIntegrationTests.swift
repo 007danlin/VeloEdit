@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import Foundation
 import Testing
 import VeloEditCore
@@ -6,6 +7,70 @@ import VeloEditCore
 
 @Suite(.serialized) @MainActor
 struct TimelineDirectorIntegrationTests {
+    @Test(arguments: ["накидай всяких переходов", "на весь интервал видео", "00:01–00:05"])
+    func conversationalEditsReachRealTimeline(_ message: String) async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        if message != "накидай всяких переходов" {
+            // Reopen an exchange saved by the version that mistook the edit for advice.
+            var unanswered = DirectorMessage(role: .assistant, text: "Укажите клип или таймкод")
+            unanswered.response = .init(state: .proposed, projectID: model.project?.id, advisory: true, fallback: true)
+            model.directorMessages.append(DirectorMessage(role: .user, text: "накидай всяких переходов"))
+            model.directorMessages.append(unanswered)
+            if message.contains(":") {
+                model.directorMessages.append(DirectorMessage(role: .user, text: "на весь интервал видео"))
+                model.directorMessages.append(unanswered)
+            }
+        }
+        model.directorInput = message
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        let updated = try #require(model.timeline)
+        let transition = try #require(updated.effectiveTransitionItems.first)
+        #expect(updated.effectiveTransitionItems.count == 1)
+        #expect(transition.startTime == 3)
+        #expect(transition.style == .crossDissolve)
+        #expect(model.directorMessages.last?.response?.saved == true)
+        #expect(model.directorMessages.last?.response?.previewReady == true)
+        #expect(model.directorMessages.dropLast().last?.text == message)
+        #expect(fixture.requests.values.isEmpty)
+        model.undoTimelineEdit()
+        try await wait { model.timeline == original }
+    }
+
+    @Test func scopeAfterSavedInsertionDoesNotDuplicateTitle() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        model.submitTimelineAIEdit("Убери все титры")
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        #expect(model.timeline?.effectiveTitleItems.isEmpty == true)
+        model.directorInput = "Докинь титр «Поехали» в конце"
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        let titles = try #require(model.timeline?.effectiveTitleItems)
+        #expect(titles.filter { $0.text == "Поехали" }.count == 1)
+        model.directorInput = "на весь интервал видео"
+        model.sendDirectorMessage()
+        #expect(model.directorMessages.last?.text.contains("уже сохранена") == true)
+        #expect(model.timeline?.effectiveTitleItems == titles)
+        #expect(!model.isWorking && !model.isDirectorResponding)
+    }
+
+    @Test func inlineRangeLimitsOrdinaryEffectsToRequestedClips() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.submitTimelineAIEdit("Накинь эффект камеры 00:03–00:06")
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        #expect(model.timeline?.effectiveEffects.map(\.targetClipID) == [original.items[1].id])
+        #expect(model.directorMessages.last?.response?.range == 3...6)
+        #expect(fixture.requests.values.isEmpty)
+    }
+
     @Test func pronounAfterNamedClipDoesNotRequireUnrelatedSelection() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
@@ -106,14 +171,14 @@ struct TimelineDirectorIntegrationTests {
         model.selectTitleTimelineItem(fixture.secondTitleID)
         model.submitTimelineAIEdit("Музыку повеселее и переименуй титр на «Наш маршрут» и добавь крутые эффекты")
         try await wait { !model.isWorking }
-        #expect(model.directorRuntimeStatus.contains("Qwen"))
+        #expect(model.directorRuntimeStatus.hasPrefix(AIAnalysisProfile.resolve(mode: model.aiPowerMode).modelID))
         #expect(model.timeline?.music?.style == .joyful)
         #expect(model.timeline?.effectiveTitleItems.last?.text == "Наш маршрут")
         #expect(model.timeline?.items.allSatisfy { $0.effect == ClipEffect.pushIn.rawValue } == true)
         let outsideAdjustments = model.timeline?.items.last?.effectiveVideoAdjustments
         model.submitTimelineAIEdit("Переименуй титр на «Локальная сцена» и сделай выбранный фрагмент чёрно-белым", range: 0...3)
         try await wait { !model.isWorking }
-        #expect(model.directorRuntimeStatus.contains("Qwen"))
+        #expect(model.directorRuntimeStatus.hasPrefix(AIAnalysisProfile.resolve(mode: model.aiPowerMode).modelID))
         #expect(model.timeline?.effectiveTitleItems.first?.text == "Локальная сцена")
         #expect(model.timeline?.effectiveTitleItems.last?.text == "Наш маршрут")
         #expect(model.timeline?.items.first?.effectiveVideoAdjustments.filter == .monochrome)
@@ -291,6 +356,7 @@ struct TimelineDirectorIntegrationTests {
         let requests: Requests
         let secondTitleID: UUID
         let joyfulTrackID: UUID
+        private let mutePreview: AnyCancellable
 
         init(commands: [EditorCommand] = [], realDirector: Bool = false) async throws {
             suite = "VeloEdit.timeline-director.\(UUID())"
@@ -328,6 +394,8 @@ struct TimelineDirectorIntegrationTests {
             defaults.set(true, forKey: "freeToUseLicenseAccepted.v1")
             let taste = LocalPersonalTasteStore(url: root.appendingPathComponent("taste.json"))
             model = AppModel(defaults: defaults, startBackgroundServices: false, personalTasteStore: taste, directorAgent: realDirector ? LocalDirectorAgent() : agent)
+            // Exercise real playback without sending the fixture's sine waves to the speakers.
+            mutePreview = model.$previewPlayer.sink { $0?.isMuted = true }
             model.pipeline = VeloEditPipeline(store: store, musicLibrary: library,
                 musicSystem: MusicLibrary(localLibrary: library, providers: [LocalMusicProvider(library: library)]),
                 musicSelectionHistory: LocalMusicSelectionHistoryStore(url: root.appendingPathComponent("history.json")), personalTasteStore: taste)

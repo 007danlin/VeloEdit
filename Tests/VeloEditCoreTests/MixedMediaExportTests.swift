@@ -22,7 +22,7 @@ import UniformTypeIdentifiers
     try mixedImage(blue, color: (0.1, 0.25, 0.85))
     try mixedImage(orange, color: (0.85, 0.5, 0.1), width: 240, height: 180)
     try mixedImage(green, color: (0.1, 0.75, 0.2))
-    try mixedImage(red, color: (0.8, 0.12, 0.15), orientation: 6)
+    try mixedImage(red, color: (0.8, 0.1, 0.35), orientation: 6)
     var videoURLs: [URL] = []
     for (index, image) in [blue, green].enumerated() {
         let url = root.appendingPathComponent("video-\(index).mov")
@@ -35,7 +35,7 @@ import UniformTypeIdentifiers
     let imported = await MediaImporter().importAssets(from: [videoURLs[0], orange, videoURLs[1], red])
     let assets = try imported.map { try $0.get() }
     let byURL = Dictionary(uniqueKeysWithValues: assets.map { ($0.originalURL, $0) })
-    let orderedAssets = try [videoURLs[0], orange, videoURLs[1], red].map { try #require(byURL[$0]) }
+    let orderedAssets = try [videoURLs[0], orange, videoURLs[1], red].map { try #require(byURL[$0.standardizedFileURL]) }
     #expect(orderedAssets.map(\.kind) == [.video, .photo, .video, .photo])
     #expect(orderedAssets[3].displayDimensions?.width == 180)
     #expect(orderedAssets[3].displayDimensions?.height == 320)
@@ -139,7 +139,7 @@ private func mixedAverage(_ image: CIImage, context: CIContext) -> [Double] {
 private func mixedImage(_ url: URL, color: (CGFloat, CGFloat, CGFloat), width: Int = 320,
                         height: Int = 180, orientation: Int = 1) throws {
     let context = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                        bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                        bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
     context.setFillColor(CGColor(red: color.0, green: color.1, blue: color.2, alpha: 1))
     context.fill(CGRect(x: 0, y: 0, width: width, height: height))

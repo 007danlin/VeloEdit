@@ -69,6 +69,7 @@ public actor RenderEngine {
         frameRate: Double? = nil,
         destination: URL,
         softwareEncoder: Bool = false,
+        masterForEditorialReview: Bool = false,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> RenderReport {
         // Preview and export intentionally share one builder. This guarantees
@@ -102,7 +103,7 @@ public actor RenderEngine {
         let settings = ExportVideoSettings(timeline: renderTimeline, quality: quality)
         return try await renderComposition(
             playback: playback,
-            maximumAudioGainDB: SourceAudioMixPolicy.preservesAttenuation(in: renderTimeline) ? 0 : 12,
+            maximumAudioGainDB: masterForEditorialReview ? (SourceAudioMixPolicy.preservesAttenuation(in: renderTimeline) ? 0 : 12) : nil,
             settings: settings,
             destination: destination,
             softwareEncoder: softwareEncoder,
@@ -113,7 +114,7 @@ public actor RenderEngine {
 
     private func renderComposition(
         playback: TimelinePlayback,
-        maximumAudioGainDB: Double,
+        maximumAudioGainDB: Double?,
         settings: ExportVideoSettings,
         destination: URL,
         softwareEncoder: Bool,
@@ -137,7 +138,9 @@ public actor RenderEngine {
                                          currentName: "Кодирую фильм: \(settings.summary)"))
             }
             let firstPassAsset = AVURLAsset(url: staged)
-            if let measured = try await EditorialDeliveryVerifier.measureEncodedAudio(asset: firstPassAsset) {
+            // A user export preserves the levels auditioned in the editor.
+            // Only the editorial review pass has a separate loudness target.
+            if let maximumAudioGainDB, let measured = try await EditorialDeliveryVerifier.measureEncodedAudio(asset: firstPassAsset) {
                 let mastered = EditorialAudioMastering.adjustedMix(composition: firstPassAsset, mix: nil,
                     duration: playback.duration, measured: measured, maximumGainDB: maximumAudioGainDB)
                 let allowsQuietMix = maximumAudioGainDB == 0

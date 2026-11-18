@@ -8,7 +8,7 @@ import CryptoKit
 actor SpeechActivityDetector {
     static let shared = SpeechActivityDetector()
     private var memory: [String: [ClosedRange<Double>]] = [:]
-    private static let version = "apple-speech-v1-window1-threshold055"
+    private static let version = "apple-speech-v2-window1-threshold055"
 
     struct Resolution: Sendable {
         var records: [SpeechActivityRecord]
@@ -80,7 +80,7 @@ actor SpeechActivityDetector {
 
     private func classify(url: URL, range: ClosedRange<Double>) async throws -> [ClosedRange<Double>] {
         let asset = AVURLAsset(url: url)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return [] }
+        guard let track = try await asset.sourceAudioTrack() else { return [] }
         let rate = 16_000.0
         let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1)!
         let analyzer = SNAudioStreamAnalyzer(format: format)

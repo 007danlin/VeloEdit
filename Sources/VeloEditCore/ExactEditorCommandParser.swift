@@ -13,10 +13,12 @@ enum ExactEditorCommandParser {
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         // Strip politeness only at the edges. Never rewrite quoted title text.
         for _ in 0..<4 {
-            text = text.replacingOccurrences(of: #"^(?:(?:ну\s+)?(?:и\s+)?(?:еще|ещё|также|теперь|а еще|а ещё)|пожалуйста|можешь|можно)\b[,\s]*"#,
+            text = text.replacingOccurrences(of: #"^(?:(?:ну\s+)?(?:и\s+)?(?:еще|ещё|также|теперь|а еще|а ещё)|пожалуйста|можешь|сможешь|можно)\b[,\s]*"#,
                 with: "", options: [.regularExpression, .caseInsensitive])
         }
         text = text.replacingOccurrences(of: #"[,\s]+пожалуйста[.!?]*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: #"^(?:накидай|накинуть|накинь|накидать|закинь|закинуть|докинь|докинуть|подкинь|подкинуть)\b"#,
+            with: "добавь", options: [.regularExpression, .caseInsensitive])
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -71,7 +73,7 @@ enum ExactEditorCommandParser {
             + "(?:" + ordinal + "|" + selected + #"|\d+\s*[-–]?\s*(?:й|ый|ой|ий|м|ом|му|го|е))\s+"# + noun
             + "|" + noun + #"\s*(?:номер\s*|№\s*)?\d+"#
             + #"|(?:все|всех|всем|каждый|каждом)\s+(?:клипы?|клипов|клипах|клипам|фрагменты?|фрагментов|фрагментах|фрагментам|видео|ролики|роликах)"#
-            + #"|весь фильм|всего фильма|всем фильме|нем|него|здесь)(?![\p{L}\d])"#
+            + #"|весь интервал видео|все видео целиком|весь ролик|все видео|весь фильм|всего фильма|всем фильме|нем|него|здесь)(?![\p{L}\d])"#
         guard let scopeRegex = try? NSRegularExpression(pattern: scopePattern) else { return nil }
         // Quoted effect names (e.g. “Дрейф камеры”) must stay intact.
         let quotes = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]"#))?
@@ -106,6 +108,14 @@ enum ExactEditorCommandParser {
         guard target != .selected || hasSelection else { return nil }
         func result(_ command: EditorCommand) -> Result { Result(commands: [command], target: explicitTarget) }
 
+        let variety = #"(?:всяк(?:ие|их)|разн(?:ые|ых)|разнообразн(?:ые|ых)|каки[ех]-(?:нибудь|то))"#
+        if match(add + variety + #" переход(?:ы|ов)"#) != nil {
+            return result(.setTransitionPattern(EditorCommandParser.variedTransitions, target))
+        }
+        if match(add + #"переход(?:ы|ов)?"#) != nil { return result(.setTransition(.crossDissolve, target)) }
+        if match(add + variety + #" эффект(?:ы|ов)"#) != nil {
+            return result(.setEffectPattern(EditorCommandParser.variedEffects, target))
+        }
         if let values = match(add + #"(?:эффект\s+)?(.+)"#), let effect = libraryEffect(named: values[0]) {
             return result(.addLibraryEffect(effect, target))
         }

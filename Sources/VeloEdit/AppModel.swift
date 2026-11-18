@@ -1848,7 +1848,12 @@ final class AppModel: ObservableObject {
         onboarding.interrupt()
         let sourceText = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sourceText.isEmpty else { return }
-        if DirectorRequestIntentInterpreter().mode(for: sourceText) == .advisory {
+        if handleDirectorEditScope(sourceText) {
+            directorInput = ""
+            return
+        }
+        let requestMode = DirectorRequestIntentInterpreter().mode(for: sourceText)
+        if requestMode == .advisory {
             directorInput = ""
             submitDirectorAdvice(sourceText)
             return
@@ -1880,12 +1885,11 @@ final class AppModel: ObservableObject {
             } else { appendDirectorNote("Настройка надписей сохранена для фильма.") }
             return
         }
-        let requestMode = DirectorRequestIntentInterpreter().mode(for: sourceText)
         if requestMode == .edit, timeline != nil {
             // Both composers edit an existing movie through the same captured
             // selection, queue, transaction, preview and Undo path.
             directorInput = ""
-            submitTimelineAIEdit(sourceText)
+            enqueueTimelineAIEdit(sourceText, range: nil, displayedText: sourceText)
             return
         }
         let requestedMusic = requestMode == .edit
@@ -2358,24 +2362,90 @@ final class AppModel: ObservableObject {
         submitTimelineAIEdit(requestedFeedback)
     }
 
+    /// Only continue the immediately preceding exchange. A scope alone must
+    /// never repeat a saved operation (e.g. inserting a title or splitting a clip).
+    private func handleDirectorEditScope(_ text: String) -> Bool {
+        guard let timeline, let project else { return false }
+
+        func submit(_ instruction: String, scope: DirectorEditScope) {
+            switch scope {
+            case .wholeFilm:
+                enqueueTimelineAIEdit(instruction, range: nil, displayedText: text)
+            case .interval(let interval) where interval.lowerBound < timeline.duration:
+                let range = interval.lowerBound...min(interval.upperBound, timeline.duration)
+                enqueueTimelineAIEdit(instruction, range: range, displayedText: text)
+            default:
+                recordScopeReply("Укажите начало и конец интервала в пределах фильма, например 00:05–00:12.")
+            }
+        }
+        func recordScopeReply(_ message: String) {
+            directorMessages.append(DirectorMessage(role: .user, text: text))
+            var answer = DirectorMessage(role: .assistant, text: message)
+            answer.response = .init(state: .proposed, projectID: project.id, advisory: true)
+            directorMessages.append(answer)
+            directorAgent.restoreConversation(directorMessages)
+        }
+        if let (instruction, scope) = DirectorEditScope.splitInterval(from: text),
+           DirectorRequestIntentInterpreter().mode(for: instruction) == .edit {
+            submit(instruction, scope: scope)
+            return true
+        }
+        guard let scope = DirectorEditScope(text) else { return false }
+        var history = directorMessages[...]
+        var lastReceipt: DirectorResponseRecord?
+        while history.count >= 2 {
+            let reply = history.removeLast()
+            let user = history.removeLast()
+            guard reply.role == .assistant, user.role == .user else { return false }
+            if activeTimelineAIEdit?.replyID == reply.id || pendingTimelineAIEdits.contains(where: { $0.replyID == reply.id }) {
+                recordScopeReply("Предыдущая команда ещё выполняется. Результат появится под её текстом.")
+                return true
+            }
+            guard let record = reply.response, record.projectID == project.id else { return false }
+            if !record.advisory { lastReceipt = lastReceipt ?? record }
+            if DirectorEditScope(user.text) != nil { continue }
+            let instruction = DirectorEditScope.splitInterval(from: user.text)?.instruction ?? user.text
+            guard DirectorRequestIntentInterpreter().mode(for: instruction) == .edit else { return false }
+            if let receipt = lastReceipt, receipt.saved {
+                let priorRange = receipt.range ?? 0...timeline.duration
+                let sameRange = scope == .interval(priorRange) || (scope == .wholeFilm && receipt.range == nil)
+                recordScopeReply(sameRange ? "Предыдущая правка уже сохранена."
+                    : "Предыдущая правка уже сохранена. Чтобы изменить её диапазон, отмените правку и отправьте команду с нужным интервалом.")
+            } else {
+                submit(instruction, scope: scope)
+            }
+            return true
+        }
+        return false
+    }
+
     /// Accept an edit from the timeline composer even while another pipeline
     /// operation is finishing. Pipeline mutations remain serialized; busy-time
     /// submissions are queued instead of being rejected by a disabled button.
     func submitTimelineAIEdit(_ instruction: String, range: ClosedRange<Double>? = nil, proposal: DirectorEditProposal? = nil) {
         let clean = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        if range == nil, handleDirectorEditScope(clean) {
+            feedback = ""
+            return
+        }
         if DirectorRequestIntentInterpreter().mode(for: clean) == .advisory {
             feedback = ""
             submitDirectorAdvice(clean, range: range)
             return
         }
+        enqueueTimelineAIEdit(clean, range: range, displayedText: clean, proposal: proposal)
+    }
+
+    private func enqueueTimelineAIEdit(_ clean: String, range: ClosedRange<Double>?, displayedText: String,
+                                       proposal: DirectorEditProposal? = nil) {
         let trace = PerformanceTrace(name: "edit.command", projectID: project?.id, revision: String(timelineEditRevision))
         trace.event("edit.submitted", fields: ["selectedID": selectedTimelineItemID?.uuidString ?? ""])
         trace.event("edit.accepted")
 
         if range == nil, !isWorking, !isDirectorResponding,
            selectedTitleTimelineItem != nil, TitleEditInterpreter.targetsSelectedTitle(clean) {
-            let replyID = beginTimelineDirectorExchange(clean, range: nil)
+            let replyID = beginTimelineDirectorExchange(displayedText, range: nil)
             if editSelectedTitleWithAI(clean) { feedback = "" }
             status = titleEditStatus ?? status
             updateTimelineDirectorExchange(replyID, status: status)
@@ -2455,7 +2525,7 @@ final class AppModel: ObservableObject {
         let selectedItem = timeline?.items.first { $0.id == (proposal?.item.id ?? selectedTimelineItemID) }
         let edit = PendingTimelineAIEdit(
             instruction: clean,
-            replyID: beginTimelineDirectorExchange(clean, range: range),
+            replyID: beginTimelineDirectorExchange(displayedText, range: range),
             range: range,
             timelineAnchor: timeline.map(TimelineAIAnchor.init),
             selectedItemID: proposal?.item.id ?? selectedTitleTimelineItem?.id ?? selectedItem?.id,
@@ -4189,7 +4259,7 @@ final class AppModel: ObservableObject {
             let renamed = try await pipeline.refreshChapterTitles()
             await self.refresh()
             let playback = try await pipeline.makePlayback(interactiveQuality: Self.interactivePreviewQuality)
-            self.setPlayback(playback, show: false)
+            self.setPlayback(playback, show: false, autoplay: false)
             let limited = (renamed.chapterTitleDecisions ?? []).filter { $0.source == .fallback || $0.source == .retained }.count
             self.status = limited == 0 ? "Названия частей обновлены" : "Названия обновлены · для \(limited) частей недостаточно подтверждений"
         }

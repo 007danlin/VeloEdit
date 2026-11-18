@@ -4529,6 +4529,7 @@ public actor VeloEditPipeline {
         }
         var localized = TimelineRangeSlicer.slice(source, for: timelineRange)
         let slicedBaseline = localized.timeline
+        let originalCuts = Set(source.items.filter { $0.overlay == nil }.dropFirst().map(\.id))
         var timeline = slicedBaseline
 
         func targetIDs(for command: EditorCommand, candidates: [UUID]) -> [UUID] {
@@ -4713,7 +4714,18 @@ public actor VeloEditPipeline {
 
             let executorTargets = command.targetsLegacyTitles ? legacyTitleTargets : clipTargets
             if let localizedCommand = command.retargetedForTimelineRange() {
-                for (offset, itemID) in executorTargets.enumerated() {
+                var targets = executorTargets
+                if command.semanticCategory == "transition" {
+                    // A transition belongs to the incoming shot. Include a real
+                    // cut at the lower bound, but never invent one where the
+                    // range slicer temporarily splits a shot.
+                    targets = targets.filter(originalCuts.contains)
+                    if targets.isEmpty {
+                        ignored.append("В выделенном интервале нет стыка клипов для перехода.")
+                        continue
+                    }
+                }
+                for (offset, itemID) in targets.enumerated() {
                     let commandForItem: EditorCommand
                     switch localizedCommand {
                     case .setTransitionPattern(let styles, let target) where !styles.isEmpty:
@@ -4889,23 +4901,6 @@ public actor VeloEditPipeline {
                 timeline.titleItems = timeline.effectiveTitleItems.filter { !titleIDs.contains($0.id) }
                 affected.formUnion(audioIDs); affected.formUnion(telemetryIDs)
                 affected.formUnion(effectIDs); affected.formUnion(titleIDs)
-            case .setTransition(let style, _):
-                let matching = timeline.effectiveTransitionItems.filter { clipTargetSet.contains($0.incomingClipID) }
-                if let style {
-                    timeline.transitionItems = timeline.effectiveTransitionItems.map { transition in
-                        guard clipTargetSet.contains(transition.incomingClipID) else { return transition }
-                        var copy = transition
-                        copy.style = style
-                        copy.intensity = TransitionPresetRegistry.preset(for: style).defaultIntensity
-                        copy.parameters = TransitionPresetRegistry.preset(for: style).defaultParameters
-                        if copy != transition { affected.insert(copy.id) }
-                        return copy
-                    }
-                } else {
-                    let ids = Set(matching.map(\.id))
-                    timeline.transitionItems = timeline.effectiveTransitionItems.filter { !ids.contains($0.id) }
-                    affected.formUnion(ids)
-                }
             case .setEffect(let effect, _):
                 if effect == nil {
                     let ids = Set(timeline.effectiveEffects.filter {

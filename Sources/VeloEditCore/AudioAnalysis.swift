@@ -15,7 +15,7 @@ actor LocalAudioAnalyzer {
     func analyze(url: URL, level: AudioAnalysisLevel) async throws -> AudioAnalysisSummary? {
         guard level != .none else { return nil }
         let asset = AVURLAsset(url: url)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return nil }
+        guard let track = try await asset.sourceAudioTrack() else { return nil }
         let reader = try AVAssetReader(asset: asset)
         guard let sampleRate = Self.sampleRate(for: level) else { return nil }
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
