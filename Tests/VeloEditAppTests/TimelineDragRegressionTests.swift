@@ -190,6 +190,31 @@ struct TimelineDragRegressionTests {
         #expect(abs(Double(x) - (cut * 64 + 8)) < 0.000001)
     }
 
+    @Test func groupDragClampsAllSelectedLanesTogether() {
+        var film = timeline()
+        let title = TitleTimelineItem(kind: .title, text: "T", startTime: 2, duration: 4)
+        let effect = EffectTimelineItem(effectType: .blur, startTime: 8, duration: 3)
+        film.titleItems = [title]
+        film.effects = [effect]
+        let selection: Set<TimelineSelectionKey> = [.title(title.id), .effect(effect.id)]
+        #expect(TimelineGroupMove.apply(to: &film, selection: selection, anchor: .effect(effect.id), delta: -8))
+        #expect(film.effectiveTitleItems.first?.startTime == 0)
+        #expect(film.effectiveEffects.first?.startTime == 6)
+        #expect(film.effectiveEffects.first?.duration == 3)
+    }
+
+    @Test func draggingSecondSelectedClipReordersTheGroupAndMovesItsTitleOnce() {
+        var film = timeline()
+        let items = film.items
+        var title = TitleTimelineItem(kind: .title, text: "T", startTime: 12, duration: 3)
+        title.anchorClipID = items[1].id
+        film.titleItems = [title]
+        let selection: Set<TimelineSelectionKey> = [.item(items[0].id), .item(items[1].id), .title(title.id)]
+        #expect(TimelineGroupMove.apply(to: &film, selection: selection, anchor: .item(items[1].id), delta: 10))
+        #expect(film.items.map(\.id) == [items[2].id, items[0].id, items[1].id])
+        #expect(film.effectiveTitleItems.first?.startTime == 22)
+    }
+
     private func timeline() -> Timeline {
         Timeline(storyPlanID: UUID(), items: (0..<3).map {
             TimelineItem(kind: .video, sourceDuration: 10, timelineStart: Double($0) * 10, timelineDuration: 10)

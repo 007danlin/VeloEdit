@@ -3210,6 +3210,35 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func moveTimelineDragGroup(by delta: Double, anchor: TimelineSelectionKey) {
+        let selection = currentTimelineSelection
+        guard selection.count > 1, selection.contains(anchor) else { return }
+        let track = musicTracks.first { $0.id == timeline?.music?.trackID }
+        var replacement: UUID?
+        editTimelineOptimistically("Перемещаю выделенные объекты", didApply: {
+            if let replacement {
+                self.setTimelineMarqueeSelection(selection.subtracting([.soundtrack]).union([.audio(replacement)]))
+            }
+        }) { timeline in
+            TimelineGroupMove.apply(to: &timeline, selection: selection, anchor: anchor, delta: delta) { timeline, start in
+                guard let track, let music = timeline.music else { return false }
+                let source = music.sourceStart ?? 0
+                let speed = music.effectiveSpeed
+                let duration = min((track.duration - source) / speed, timeline.duration - start)
+                guard duration >= 0.05 else { return false }
+                let clip = TimelineAudioClip(trackID: track.id, title: track.title, role: .music,
+                    sourceStart: source, sourceDuration: duration * speed, timelineStart: start,
+                    timelineDuration: duration, speed: speed, adjustments: AudioAdjustments(volume: music.volume))
+                guard TimelineMutationEngine.insertAudioClip(in: &timeline, clip: clip) else { return false }
+                MusicSpeechDucking.retargetExclusions(from: MusicSpeechDucking.soundtrack, to: clip.id.uuidString, in: &timeline)
+                timeline.music = nil
+                timeline.adaptiveSoundtrack = nil
+                replacement = clip.id
+                return true
+            }
+        }
+    }
+
     func movePrimaryTimelineItem(_ id: UUID, toPrimaryIndex index: Int) {
         reorderTimelineItem(id) {
             TimelineMutationEngine.movePrimaryItem(in: &$0, id: id, toPrimaryIndex: index)

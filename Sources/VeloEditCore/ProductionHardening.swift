@@ -333,6 +333,18 @@ public enum TimelineMutationEngine {
         return true
     }
 
+    /// Applies a magnetic group reorder once, so attachments follow their owners once.
+    public static func reorderPrimaryItems(in timeline: inout Timeline, order: [UUID]) -> Bool {
+        let current = timeline.items.filter { $0.overlay == nil }.map(\.id)
+        guard current != order, current.count == order.count, Set(current) == Set(order) else { return false }
+        timeline = FilmEndingFade.migratingLegacyClipAudio(timeline)
+        let previous = Dictionary(uniqueKeysWithValues: timeline.items.map { ($0.id, $0) })
+        let connected = timeline.items.filter { $0.overlay != nil }
+        timeline.items = TimelineTiming.retimed(order.compactMap { previous[$0] } + connected)
+        alignTelemetry(in: &timeline, previousItems: previous)
+        return true
+    }
+
     @discardableResult
     public static func moveConnectedItem(
         in timeline: inout Timeline,

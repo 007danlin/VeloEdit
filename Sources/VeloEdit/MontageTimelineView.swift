@@ -39,6 +39,33 @@ struct MagneticTimelineView: View {
     @State private var brushCurrent: Double?
     @State private var renderWindow = TimelineRenderWindow(visibleRect: CGRect(x: 0, y: 0, width: 1_200, height: 500))
     @State private var isDraggingSoundtrack = false
+    @State private var groupDragAnchor: TimelineSelectionKey?
+
+    private func beginObjectDrag(_ key: TimelineSelectionKey, select: () -> Void) {
+        let selection = model.currentTimelineSelection
+        if selection.count > 1 && selection.contains(key) {
+            groupDragAnchor = key
+        } else {
+            groupDragAnchor = nil
+            select()
+        }
+    }
+
+    private func finishObjectDrag(from start: Double, to target: Double, single: () -> Void) {
+        if let anchor = groupDragAnchor {
+            model.moveTimelineDragGroup(by: target - start, anchor: anchor)
+            groupDragAnchor = nil
+        } else {
+            single()
+        }
+    }
+
+    private func dragOffset(_ key: TimelineSelectionKey, single: CGFloat) -> CGFloat {
+        guard groupDragAnchor != nil, model.currentTimelineSelection.contains(key) else { return single }
+        return dragTranslation + connectedDragTranslation + audioDragTranslation + telemetryDragTranslation
+            + effectDragTranslation + titleDragTranslation + soundtrackDragTranslation
+    }
+
     @State private var draggedItemID: UUID?
     @State private var dragTranslation: CGFloat = 0
     @State private var dropPrimaryIndex: Int?
@@ -632,7 +659,7 @@ struct MagneticTimelineView: View {
                         .onChanged { value in
                             if draggedTitleID == nil {
                                 draggedTitleID = item.id
-                                model.selectTitleTimelineItem(item.id)
+                                beginObjectDrag(.title(item.id)) { model.selectTitleTimelineItem(item.id) }
                             }
                             titleDragTranslation = value.translation.width
                         }
@@ -640,7 +667,7 @@ struct MagneticTimelineView: View {
                             let target = movedTime(from: item.startTime, translation: value.translation.width)
                             draggedTitleID = nil
                             titleDragTranslation = 0
-                            model.moveTitleTimelineItem(item.id, to: target)
+                            finishObjectDrag(from: item.startTime, to: target) { model.moveTitleTimelineItem(item.id, to: target) }
                         }
                 )
                 .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? Color.yellow : .white.opacity(0.14), lineWidth: selected ? 2 : 1).allowsHitTesting(false) }
@@ -653,7 +680,7 @@ struct MagneticTimelineView: View {
                         width: min(14, frame.width / 2)) { translation in trimTitle(item, edge: .trailing, translation: translation) }
                 }
                 .offset(
-                    x: frame.minX + (draggedTitleID == item.id ? titleDragTranslation : 0),
+                    x: frame.minX + dragOffset(.title(item.id), single: draggedTitleID == item.id ? titleDragTranslation : 0),
                     y: CGFloat(titleLaneAssignments[item.id] ?? 0) * 31
                 )
                 .contextMenu {
@@ -694,7 +721,7 @@ struct MagneticTimelineView: View {
                         .onChanged { value in
                             if draggedEffectID == nil {
                                 draggedEffectID = block.id
-                                model.selectEffectTimelineItems(block.itemIDs, primaryID: item.id)
+                                beginObjectDrag(.effect(item.id)) { model.selectEffectTimelineItems(block.itemIDs, primaryID: item.id) }
                             }
                             effectDragTranslation = value.translation.width
                         }
@@ -702,7 +729,7 @@ struct MagneticTimelineView: View {
                             let target = movedTime(from: block.startTime, translation: value.translation.width)
                             draggedEffectID = nil
                             effectDragTranslation = 0
-                            model.moveEffectTimelineItems(block.itemIDs, primaryID: item.id, to: target)
+                            finishObjectDrag(from: block.startTime, to: target) { model.moveEffectTimelineItems(block.itemIDs, primaryID: item.id, to: target) }
                         }
                 )
                 .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? Color.yellow : .white.opacity(0.14), lineWidth: selected ? 2 : 1).allowsHitTesting(false) }
@@ -715,7 +742,7 @@ struct MagneticTimelineView: View {
                         width: min(14, frame.width / 2)) { translation in trimEffect(block, edge: .trailing, translation: translation) }
                 }
                 .offset(
-                    x: frame.minX + (draggedEffectID == block.id ? effectDragTranslation : 0),
+                    x: frame.minX + dragOffset(.effect(item.id), single: draggedEffectID == block.id ? effectDragTranslation : 0),
                     y: CGFloat(effectLaneAssignments[block.id] ?? 0) * 31
                 )
                 .contextMenu {
@@ -845,7 +872,7 @@ struct MagneticTimelineView: View {
                 }
                 .offset(
                     x: frame.minX +
-                    (draggedConnectedID == item.id ? connectedDragTranslation : 0),
+                    dragOffset(.item(item.id), single: draggedConnectedID == item.id ? connectedDragTranslation : 0),
                     y: CGFloat(connectedLaneAssignments[item.id] ?? 0) * 31
                 )
                 .scaleEffect(draggedConnectedID == item.id ? 1.025 : 1)
@@ -937,7 +964,7 @@ struct MagneticTimelineView: View {
         return VStack(alignment: .leading, spacing: 5) {
             musicStrip
             musicDuckingObjects(target: MusicSpeechDucking.soundtrack, frame: frame)
-                .offset(x: frame.minX + soundtrackDragTranslation)
+                .offset(x: frame.minX + dragOffset(.soundtrack, single: soundtrackDragTranslation))
         }
     }
 
@@ -989,7 +1016,7 @@ struct MagneticTimelineView: View {
                     guard abs(value.translation.width) > abs(value.translation.height) else { return }
                     if !isDraggingSoundtrack {
                         isDraggingSoundtrack = true
-                        model.selectSoundtrack()
+                        beginObjectDrag(.soundtrack) { model.selectSoundtrack() }
                     }
                     soundtrackDragTranslation = value.translation.width
                 }
@@ -997,7 +1024,7 @@ struct MagneticTimelineView: View {
                     let start = movedTime(from: 0, translation: value.translation.width)
                     soundtrackDragTranslation = 0
                     isDraggingSoundtrack = false
-                    model.moveSoundtrack(toTimelineStart: snapped(start))
+                    finishObjectDrag(from: 0, to: start) { model.moveSoundtrack(toTimelineStart: snapped(start)) }
                 }
         )
         .overlay {
@@ -1036,7 +1063,7 @@ struct MagneticTimelineView: View {
             .padding(.trailing, 16)
             .padding(.top, 4)
         }
-        .offset(x: frame.minX + soundtrackDragTranslation)
+        .offset(x: frame.minX + dragOffset(.soundtrack, single: soundtrackDragTranslation))
         .contextMenu {
             Button("Другая музыка", action: model.replaceMusicImmediately)
             Button("Послушать варианты", action: model.listenToMusicAlternatives)
@@ -1140,7 +1167,7 @@ struct MagneticTimelineView: View {
                 }
                 .offset(
                     x: frame.minX +
-                    (draggedAudioID == clip.id ? audioDragTranslation : 0),
+                    dragOffset(.audio(clip.id), single: draggedAudioID == clip.id ? audioDragTranslation : 0),
                     y: CGFloat(audioLaneAssignments[clip.id] ?? 0) * audioLaneStride
                 )
                 .scaleEffect(draggedAudioID == clip.id ? 1.02 : 1)
@@ -1175,13 +1202,16 @@ struct MagneticTimelineView: View {
                 .gesture(
                     DragGesture(minimumDistance: 3, coordinateSpace: .named("timelineCanvas"))
                         .onChanged { value in
-                            if draggedTelemetryID == nil { model.selectTelemetryItem(item.id); draggedTelemetryID = item.id }
+                            if draggedTelemetryID == nil {
+                                draggedTelemetryID = item.id
+                                beginObjectDrag(.telemetry(item.id)) { model.selectTelemetryItem(item.id) }
+                            }
                             telemetryDragTranslation = value.translation.width
                         }
                         .onEnded { value in
                             let requested = movedTime(from: item.timelineStart, translation: value.translation.width)
                             draggedTelemetryID = nil; telemetryDragTranslation = 0
-                            model.moveTelemetryItem(item.id, toTimelineStart: snapped(requested))
+                            finishObjectDrag(from: item.timelineStart, to: requested) { model.moveTelemetryItem(item.id, toTimelineStart: snapped(requested)) }
                         }
                 )
                 .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? Color.yellow : Color.white.opacity(0.2), lineWidth: selected ? 2 : 1).allowsHitTesting(false) }
@@ -1195,7 +1225,7 @@ struct MagneticTimelineView: View {
                         minimumStart: max(0, item.timelineStart - item.sourceStart),
                         width: min(14, frame.width / 2)) { translation in trimTelemetry(item, edge: .trailing, translation: translation) }
                 }
-                .offset(x: frame.minX + (draggedTelemetryID == item.id ? telemetryDragTranslation : 0), y: CGFloat(telemetryLaneAssignments[item.id] ?? 0) * 31)
+                .offset(x: frame.minX + dragOffset(.telemetry(item.id), single: draggedTelemetryID == item.id ? telemetryDragTranslation : 0), y: CGFloat(telemetryLaneAssignments[item.id] ?? 0) * 31)
                 .contextMenu {
                     Button("Копировать стиль", systemImage: "doc.on.doc") { model.selectTelemetryItem(item.id); model.copySelectedTelemetrySettings() }
                     Button("Вставить стиль", systemImage: "doc.on.clipboard") { model.selectTelemetryItem(item.id); model.pasteSelectedTelemetrySettings() }
@@ -1286,7 +1316,7 @@ struct MagneticTimelineView: View {
                 .padding(.trailing, 2)
             }
         }
-        .offset(x: (draggedItemID == item.id ? dragTranslation : 0) + magneticNeighborOffset(for: primaryIndex))
+        .offset(x: dragOffset(.item(item.id), single: draggedItemID == item.id ? dragTranslation : 0) + magneticNeighborOffset(for: primaryIndex))
         .scaleEffect(draggedItemID == item.id ? 1.025 : 1)
         .shadow(color: .black.opacity(draggedItemID == item.id ? 0.28 : 0), radius: 7, y: 3)
         .zIndex(draggedItemID == item.id || selected ? 3 : 0)
@@ -1473,7 +1503,7 @@ struct MagneticTimelineView: View {
                       abs(value.translation.width) > abs(value.translation.height) else { return }
                 if draggedItemID == nil {
                     draggedItemID = item.id
-                    model.selectTimelineItem(item.id)
+                    beginObjectDrag(.item(item.id)) { model.selectTimelineItem(item.id) }
                 }
                 guard draggedItemID == item.id else { return }
                 dragTranslation = value.translation.width
@@ -1489,8 +1519,11 @@ struct MagneticTimelineView: View {
                     dragTranslation = 0
                     dropPrimaryIndex = nil
                 }
-                if destinationPrimary != primaryIndex {
-                    model.movePrimaryTimelineItem(item.id, toPrimaryIndex: destinationPrimary)
+                let target = movedTime(from: item.timelineStart, translation: value.translation.width)
+                finishObjectDrag(from: item.timelineStart, to: target) {
+                    if destinationPrimary != primaryIndex {
+                        model.movePrimaryTimelineItem(item.id, toPrimaryIndex: destinationPrimary)
+                    }
                 }
             }
     }
@@ -1501,7 +1534,7 @@ struct MagneticTimelineView: View {
                 guard !brushEnabled, abs(value.translation.width) > abs(value.translation.height) else { return }
                 if draggedConnectedID == nil {
                     draggedConnectedID = item.id
-                    model.selectTimelineItem(item.id)
+                    beginObjectDrag(.item(item.id)) { model.selectTimelineItem(item.id) }
                 }
                 guard draggedConnectedID == item.id else { return }
                 connectedDragTranslation = value.translation.width
@@ -1511,7 +1544,7 @@ struct MagneticTimelineView: View {
                 let requested = movedTime(from: item.timelineStart, translation: value.translation.width)
                 draggedConnectedID = nil
                 connectedDragTranslation = 0
-                model.moveConnectedTimelineItem(item.id, toTimelineStart: snapped(requested))
+                finishObjectDrag(from: item.timelineStart, to: requested) { model.moveConnectedTimelineItem(item.id, toTimelineStart: snapped(requested)) }
             }
     }
 
@@ -1521,7 +1554,7 @@ struct MagneticTimelineView: View {
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 if draggedAudioID == nil {
                     draggedAudioID = clip.id
-                    model.selectTimelineAudioClip(clip.id)
+                    beginObjectDrag(.audio(clip.id)) { model.selectTimelineAudioClip(clip.id) }
                 }
                 guard draggedAudioID == clip.id else { return }
                 audioDragTranslation = value.translation.width
@@ -1531,7 +1564,7 @@ struct MagneticTimelineView: View {
                 let requested = movedTime(from: clip.timelineStart, translation: value.translation.width)
                 draggedAudioID = nil
                 audioDragTranslation = 0
-                model.moveTimelineAudioClip(clip.id, toTimelineStart: snapped(requested))
+                finishObjectDrag(from: clip.timelineStart, to: requested) { model.moveTimelineAudioClip(clip.id, toTimelineStart: snapped(requested)) }
             }
     }
 
@@ -1817,7 +1850,7 @@ struct MagneticTimelineView: View {
     }
 
     private func magneticNeighborOffset(for index: Int) -> CGFloat {
-        guard let draggedID = draggedItemID,
+        guard groupDragAnchor == nil, let draggedID = draggedItemID,
               let source = layout.primaryIndices[draggedID],
               let target = dropPrimaryIndex,
               source != target else { return 0 }

@@ -266,6 +266,23 @@ struct InstantTimelineInteractionTests {
         #expect(await model.flushAutosave())
     }
 
+    @Test func magneticGroupDragKeepsSelectionAndUndoesInOneStep() async throws {
+        let fixture = try await Fixture(clipCount: 3)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let initial = try #require(model.timeline)
+        let ids = initial.items.map(\.id)
+        let keys: Set<TimelineSelectionKey> = [.item(ids[1]), .item(ids[2])]
+        model.setTimelineMarqueeSelection(keys)
+        model.moveTimelineDragGroup(by: -10, anchor: .item(ids[2]))
+        #expect(model.timeline?.items.map(\.id) == [ids[1], ids[2], ids[0]])
+        #expect(model.currentTimelineSelection == keys)
+        #expect(await model.flushAutosave())
+        model.undoTimelineEdit()
+        #expect(model.timeline == initial)
+        #expect(await model.flushAutosave())
+    }
+
     @Test func movingWatchedClipKeepsPreviewAtItsNewPositionAndPreservesFinish() async throws {
         let fixture = try await Fixture(clipCount: 3); defer { fixture.remove() }
         let model = fixture.model
