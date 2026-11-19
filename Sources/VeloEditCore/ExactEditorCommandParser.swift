@@ -82,6 +82,12 @@ enum ExactEditorCommandParser {
         let noun = #"(?:клип(?:а|е|у|ом)?|фрагмент(?:а|е|у|ом)?|момент(?:а|е|у|ом)?|план(?:а|е|у|ом)?|видео|ролик(?:а|е|у|ом)?)"#
         let ordinal = #"(?:перв(?:ый|ое|ого|ом|ому)|втор(?:ой|ое|ого|ом|ому)|трет(?:ий|ье|ьего|ьем|ьему)|четверт(?:ый|ое|ого|ом|ому)|пят(?:ый|ое|ого|ом|ому)|шест(?:ой|ое|ого|ом|ому)|седьм(?:ой|ое|ого|ом|ому)|восьм(?:ой|ое|ого|ом|ому)|девят(?:ый|ое|ого|ом|ому)|десят(?:ый|ое|ого|ом|ому)|последн(?:ий|ее|его|ем|ему))"#
         let selected = #"(?:(?:выбранн|выделенн)(?:ый|ое|ого|ом|ому)|эт(?:от|о|ого|ом|ому))"#
+        // In “во втором плане …, а третий …” the second ordinal inherits the
+        // noun, not the preceding clip number. Keep unknown trailing words intact.
+        if inheritedTarget != nil {
+            text = text.replacingOccurrences(of: #"^(?:а |и )?("# + ordinal + #") (?=(?:промотай|ускорь|замедли|сделай|поверни|отрази|покажи|оставь)\b)"#,
+                with: "$1 план ", options: .regularExpression)
+        }
         let scopePattern = #"(?<![\p{L}\d])(?:(?:в|во|на|у|для|ко?|из|с|со)\s+)?(?:"#
             + "(?:" + ordinal + "|" + selected + #"|\d+\s*[-–]?\s*(?:й|ый|ой|ий|м|ом|му|го|е))\s+"# + noun
             + "|" + noun + #"\s*(?:номер\s*|№\s*)?\d+"#
@@ -140,6 +146,13 @@ enum ExactEditorCommandParser {
         ]
         for (pattern, effect) in motion where match(add + "(?:" + pattern + ")") != nil {
             return result(.setEffect(effect, target))
+        }
+        if let values = match(#"(?:(?:промотай|покажи|пусть идет|сделай) )?(вдвое|втрое) (быстрее|медленнее)"#) {
+            let factor = values[0] == "вдвое" ? 2.0 : 3.0
+            return result(.setSpeed(values[1] == "быстрее" ? factor : 1 / factor, target))
+        }
+        if match(#"(?:(?:хочется|хочу) )?(?:оставь|оставить|покажи) (?:только )?(?:оттенки серого|черно-белую картинку)"#) != nil {
+            return result(.setFilter(.monochrome, target))
         }
         if let values = match(#"(?:ускорь|ускорить|замедли|замедлить)\s+в\s+"# + decimal + #"\s*раз(?:а)?"#),
            let factor = number(values[0]), (1...8).contains(factor) {

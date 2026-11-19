@@ -29,7 +29,17 @@ struct EverydayDirectorCommandTests {
         #expect(restored == edited.timeline)
     }
 
+    @Test func conversationalUndoRequiresTheEntireInstruction() {
+        #expect(DirectorHistoryCommand("Я передумал, отмени последнюю правку.") == .undo)
+        #expect(DirectorHistoryCommand("Ладно, верни отменённую правку.") == .redo)
+        #expect(DirectorHistoryCommand("Как отменить правку?") == nil)
+        #expect(DirectorHistoryCommand("Отмени и ускорь первый клип") == nil)
+    }
+
     static let examples: [Sample] = [
+        .init(prompt: "Во втором плане хочется оставить только оттенки серого, а третий промотай вдвое быстрее.", commands: [.setFilter(.monochrome, .number(2)), .setSpeed(2, .number(3))]),
+        .init(prompt: "В конце напиши «Дальше — лес». Пусть это будет финальный титр.", commands: [.addTitle("Дальше — лес", .end)]),
+        .init(prompt: "Нет, давай в последнем титре напишем «До новых встреч».", commands: [.setTitleText("До новых встреч", .last)]),
         .init(prompt: "накидай всяких переходов", commands: [.setTransitionPattern([.crossDissolve, .fadeThroughBlack, .blurDissolve, .slideRight], .all)]),
         .init(prompt: "накидай разных эффектов на весь интервал видео", commands: [.setEffectPattern([.pushIn, .panLeft, .pullOut, .panRight], .all)]),
         .init(prompt: "закинь эффект камеры во втором видео", commands: [.addLibraryEffect(.videoCamera, .number(2))]),

@@ -59,6 +59,29 @@ struct TimelineDirectorIntegrationTests {
         #expect(!model.isWorking && !model.isDirectorResponding)
     }
 
+    @Test func chatUndoAndRedoRestoreTheSavedTitleAndLeaveOtherItemsAlone() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        for (message, expected) in [
+            ("Нет, давай в последнем титре напишем «До новых встреч».", "До новых встреч"),
+            ("Я передумал, отмени последнюю правку.", "Вторая глава"),
+            ("Ладно, верни отменённую правку.", "До новых встреч")
+        ] {
+            model.directorInput = message
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            let reopened = try ProjectStore(open: fixture.url)
+            let saved = try #require(await reopened.manifest.timelines.last)
+            #expect(saved.effectiveTitleItems.last?.text == expected)
+            #expect(saved.effectiveTitleItems.last?.id == fixture.secondTitleID)
+            #expect(saved.effectiveTitleItems.first == original.effectiveTitleItems.first)
+            #expect(saved.items == original.items)
+            #expect(model.directorMessages.last?.response?.saved == true)
+        }
+    }
+
     @Test func inlineRangeLimitsOrdinaryEffectsToRequestedClips() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }

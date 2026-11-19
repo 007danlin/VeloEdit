@@ -210,12 +210,16 @@ public struct EditorCommandParser: Sendable {
     /// entire request needs interpretation; no recognized prefix may be applied.
     public func parseComplete(_ prompt: String, hasSelection: Bool) -> [EditorCommand]? {
         let text = ExactEditorCommandParser.cleanRequest(prompt)
+        if let title = conversationalTitle(text) { return [title] }
         let segments = commandSegments(text)
         guard !segments.isEmpty else { return nil }
         var commands: [EditorCommand] = []
         var inheritedTarget: EditorCommandTarget?
         for segment in segments {
-            if let parsed = ExactEditorCommandParser.parseClause(segment, hasSelection: hasSelection, inheritedTarget: inheritedTarget) {
+            if let title = conversationalTitle(segment) {
+                commands.append(title)
+                inheritedTarget = nil
+            } else if let parsed = ExactEditorCommandParser.parseClause(segment, hasSelection: hasSelection, inheritedTarget: inheritedTarget) {
                 commands.append(contentsOf: parsed.commands)
                 inheritedTarget = parsed.target ?? inheritedTarget
             } else if let parsed = parseLegacyComplete(ExactEditorCommandParser.cleanRequest(segment), hasSelection: hasSelection) {
@@ -226,6 +230,31 @@ public struct EditorCommandParser: Sendable {
             }
         }
         return commands.isEmpty ? nil : commands
+    }
+
+    private func conversationalTitle(_ text: String) -> EditorCommand? {
+        guard text.contains("«") || text.contains("“") || text.contains("\"") else { return nil }
+        // Match the opening and closing quote together so punctuation inside the caption is literal.
+        let quote = #"(?:«([^«»]+)»|“([^“”]+)”|"([^"]+)")"#
+        let placements: [(String, String, TimelineInsertionPosition)] = [
+            ("в конце|в финале|под конец", "финальный|последний", .end),
+            ("в начале|в самом начале", "начальный|первый", .beginning)
+        ]
+        func caption(_ pattern: String) -> String? {
+            guard let regex = try? NSRegularExpression(pattern: "^(?:" + pattern + ")$", options: .caseInsensitive),
+                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+            return (1..<match.numberOfRanges).compactMap { Range(match.range(at: $0), in: text) }.first.map { String(text[$0]) }
+        }
+        for (whereText, adjective, position) in placements {
+            let instruction = "(?:" + whereText + #")(?: (?:ролика|фильма|видео))? (?:напиши|покажи надпись|добавь надпись|поставь титр) "# + quote
+            let clarification = #"(?:[.!,]\s*(?:пусть это будет|это будет) (?:"# + adjective + ") титр)?[.!]?"
+            if let value = caption(instruction + clarification) { return .addTitle(value, position) }
+        }
+        for (name, target): (String, EditorCommandTarget) in [("последн", .last), ("перв", .first)] {
+            let instruction = #"(?:нет,?\s+)?(?:переименуй "# + name + #"(?:ий|ый) титр в|(?:давай )?в "# + name + #"(?:ем|ом) титре (?:напишем|напиши)) "#
+            if let value = caption(instruction + quote + "[.!]?") { return .setTitleText(value, target) }
+        }
+        return nil
     }
 
     private func parseLegacyComplete(_ prompt: String, hasSelection: Bool) -> [EditorCommand]? {

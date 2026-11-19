@@ -51,6 +51,24 @@ enum AutomaticEditorialAssembly {
     }
 
     static func prepare(timeline source: Timeline, plan original: StoryPlan, analyses: [AnalysisResult], events: [Event], assets: [MediaAsset] = [], excluded: Set<UUID> = [], preferShortShots: Bool = true, verifiedSource: [ShotContentAssessment] = []) -> (timeline: Timeline, plan: StoryPlan) {
+        var retryThreshold: Double?
+        let result = assemble(timeline: source, plan: original, analyses: analyses, events: events,
+            assets: assets, excluded: excluded, preferShortShots: preferShortShots, verifiedSource: verifiedSource,
+            retryThreshold: &retryThreshold)
+        if let threshold = retryThreshold {
+            let expanded = assemble(timeline: source, plan: original, analyses: analyses, events: events,
+                assets: assets, excluded: excluded, preferShortShots: false, verifiedSource: verifiedSource,
+                retryThreshold: &retryThreshold)
+            if expanded.timeline.duration > threshold { return expanded }
+        }
+        return result
+    }
+
+    // Finish each pass before trying longer holds. Nesting two complete
+    // assembly passes can exhaust a cooperative executor thread's stack.
+    private static func assemble(timeline source: Timeline, plan original: StoryPlan, analyses: [AnalysisResult],
+        events: [Event], assets: [MediaAsset], excluded: Set<UUID>, preferShortShots: Bool,
+        verifiedSource: [ShotContentAssessment], retryThreshold: inout Double?) -> (timeline: Timeline, plan: StoryPlan) {
         // Connected/manual edits and retiming carry their own contracts. This
         // policy owns the plain, automatically generated primary storyline.
         guard original.narrativeBeatPlan != nil, !source.items.isEmpty,
@@ -412,9 +430,7 @@ enum AutomaticEditorialAssembly {
         }
         var capacity = selected.reduce(0) { $0 + $1.capacity }
         if requested != nil, capacity < targetFrames, preferShortShots, !observational {
-            let expanded = prepare(timeline: source, plan: original, analyses: analyses, events: events,
-                                   assets: assets, excluded: excluded, preferShortShots: false, verifiedSource: verifiedSource)
-            if expanded.timeline.duration > Double(capacity) / fps + 1 / fps { return expanded }
+            retryThreshold = Double(capacity) / fps + 1 / fps
         }
         // Soft observational requests retain measured preferred holds. They
         // neither expand a weak detail to fill a deficit nor shrink every

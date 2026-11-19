@@ -8056,6 +8056,51 @@ final class AppModel: ObservableObject {
             Task { @MainActor [weak self] in self?.startNextQueuedTimelineAIEdit() }
             return
         }
+        if edit.range == nil, let command = DirectorHistoryCommand(edit.instruction), let pipeline {
+            run("Обновляю историю монтажа", presentation: .silentEditor) {
+                let target = command == .undo ? self.undoTimelineHistory.last : self.redoTimelineHistory.last
+                var receipt = DirectorExecutionReceipt()
+                if command == .undo, let removed = self.project?.removedMedia?.last,
+                   removed.afterTimelines == self.project?.timelines {
+                    do {
+                        try await pipeline.restoreRemovedMedia(id: removed.id)
+                        receipt.saved = true
+                        receipt.applied = ["Материал и его монтаж восстановлены"]
+                    } catch { receipt.failure = error.localizedDescription }
+                } else if let target, let current = self.timeline {
+                    do {
+                        self.timelineEditRevision &+= 1
+                        guard try await pipeline.commitLatestTimeline(target, clientRevision: self.timelineEditRevision) else {
+                            throw ProjectStoreError.externalModification
+                        }
+                        guard self.pipeline === pipeline, !Task.isCancelled else { return }
+                        if command == .undo {
+                            self.undoTimelineHistory.removeLast()
+                            self.redoTimelineHistory.append(current)
+                        } else {
+                            self.redoTimelineHistory.removeLast()
+                            self.undoTimelineHistory.append(current)
+                        }
+                        receipt.saved = true
+                        receipt.applied = [command == .undo ? "Последняя правка отменена" : "Отменённая правка возвращена"]
+                    } catch { receipt.failure = error.localizedDescription }
+                } else {
+                    receipt.omitted = [command == .undo ? "В истории нет правки для отмены" : "Нет отменённой правки для повтора"]
+                }
+                guard self.pipeline === pipeline, !Task.isCancelled else { return }
+                if receipt.saved {
+                    await self.refresh()
+                    self.updateTimelineHistoryAvailability()
+                    receipt.previewReady = await self.rebuildPlaybackIfPossible(show: false)
+                }
+                guard self.pipeline === pipeline, !Task.isCancelled else { return }
+                self.setDirectorResponseRecord(edit.replyID, receipt: receipt)
+                self.status = receipt.saved && receipt.previewReady ? receipt.applied.joined() : DirectorResponseComposer.execution(receipt)
+                self.updateTimelineDirectorExchange(edit.replyID, status: self.status)
+                _ = await self.persistWorkspaceState()
+            }
+            return
+        }
         activeTimelineAIEdit = edit
         editTrace = edit.trace
         edit.trace?.event("edit.dequeued")

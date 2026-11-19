@@ -1991,61 +1991,84 @@ private struct MontageMediaBrowser: View {
     private var filteredAssets: [MediaAsset] {
         let assets = (model.project?.assets ?? []).filter { BackgroundPreset.preset(for: $0) == nil }
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        return query.isEmpty ? assets : assets.filter { $0.displayName.localizedCaseInsensitiveContains(query) }
+        let matches = query.isEmpty ? assets : assets.filter { $0.displayName.localizedCaseInsensitiveContains(query) }
+        return matches.sorted {
+            let lhs = $0.metadata.effectiveCaptureDate ?? .distantFuture
+            let rhs = $1.metadata.effectiveCaptureDate ?? .distantFuture
+            if lhs != rhs { return lhs < rhs }
+            let names = $0.displayName.localizedStandardCompare($1.displayName)
+            return names == .orderedSame ? $0.id.uuidString < $1.id.uuidString : names == .orderedAscending
+        }
     }
 
     private var mediaGrid: some View {
-        ScrollView {
-            if filteredAssets.isEmpty {
+        let sortedAssets = filteredAssets
+        return ScrollView {
+            if sortedAssets.isEmpty {
                 ContentUnavailableView("Нет материалов", systemImage: "photo.on.rectangle.angled")
                     .padding(.top, 24)
             } else {
                 LazyVGrid(columns: columns, spacing: 10) {
-                    ForEach(filteredAssets) { asset in
-                        VStack(alignment: .leading, spacing: 5) {
-                            ZStack {
-                                MediaThumbnail(url: model.thumbnailURLs[asset.id], kind: asset.kind)
-                                    .frame(height: 64)
-                                    .frame(maxWidth: .infinity)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                if let duration = asset.metadata.duration {
-                                    Text(shortTime(duration))
-                                        .font(.caption2.monospacedDigit().weight(.medium))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 2)
-                                        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 3))
-                                        .padding(4)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                                }
-                                Button {
-                                    model.insertAssetIntoTimeline(asset.id)
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .font(.caption.bold())
-                                        .frame(width: 20, height: 20)
-                                        .background(.black.opacity(0.68), in: Circle())
-                                        .foregroundStyle(.white)
-                                }
-                                .buttonStyle(.plain)
-                                .padding(4)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                                .help("Добавить в конец фильма")
+                    ForEach(MediaKind.allCases, id: \.self) { kind in
+                        let assets = sortedAssets.filter { $0.kind == kind }
+                        if !assets.isEmpty {
+                            Section {
+                                ForEach(assets) { asset in mediaCard(asset) }
+                            } header: {
+                                Text(kind == .video ? "Видео" : "Фото")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityAddTraits(.isHeader)
                             }
-                            Text(asset.displayName)
-                                .font(.caption)
-                                .lineLimit(1)
                         }
-                        .padding(5)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
-                        .contentShape(Rectangle())
-                        .onTapGesture { model.selectedAssetID = asset.id }
-                        .libraryDraggable(asset.id.uuidString)
                     }
                 }
                 .padding(10)
             }
         }
+    }
+
+    private func mediaCard(_ asset: MediaAsset) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ZStack {
+                MediaThumbnail(url: model.thumbnailURLs[asset.id], kind: asset.kind)
+                    .frame(height: 64)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                if let duration = asset.metadata.duration {
+                    Text(shortTime(duration))
+                        .font(.caption2.monospacedDigit().weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 3))
+                        .padding(4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                }
+                Button {
+                    model.insertAssetIntoTimeline(asset.id)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.caption.bold())
+                        .frame(width: 20, height: 20)
+                        .background(.black.opacity(0.68), in: Circle())
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+                .padding(4)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .help("Добавить в конец фильма")
+                .accessibilityLabel("Добавить в конец фильма: \(asset.displayName)")
+            }
+            Text(asset.displayName)
+                .font(.caption)
+                .lineLimit(1)
+        }
+        .padding(5)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture { model.selectedAssetID = asset.id }
+        .libraryDraggable(asset.id.uuidString)
     }
 
     private var audioList: some View {

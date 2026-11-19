@@ -17,13 +17,14 @@ public struct DirectorRequestIntentInterpreter: Sendable {
         // A global prohibition wins; a local negation does not erase a separate
         // affirmative action ("не меняй цвет, убери переход").
         if ["ничего не меняй", "без изменений", "без редактирования", "без монтажа", "только совет", "только посоветуй", "только предложи", "advice only", "without changing"].contains(where: speech.contains) { return .advisory }
+        if DirectorHistoryCommand(prompt) != nil { return .edit }
         let standalone = speech.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         if ["да, сделай", "да сделай", "давай так", "сделай так", "примени совет"].contains(standalone)
             || ["проанализируй этот", "проанализируй момент"].contains(where: speech.contains) { return .advisory }
         let phrasing = speech.replacingOccurrences(of: #"(хочу|хотелось бы),\s*чтобы\b"#, with: "$1 чтобы", options: .regularExpression)
         let asksIfNeeded = speech.contains("?") && speech.range(of: #"^\s*(?:а |мне )?(?:нуж(?:ен|на|ны|но)|стоит ли|что если)\s"#, options: .regularExpression) != nil
         let clauses = phrasing.components(separatedBy: CharacterSet(charactersIn: ",;.!?\n")).flatMap { $0.components(separatedBy: " и ").flatMap { $0.components(separatedBy: " но ") } }
-        let action = #"(?:^|\s)(?:обрежь|сократи|переставь|сделай|убери|удали|замени|добавь|поставь|установи|измени|включи|выключи|отключи|ускорь|замедли|подбери|создай|собери|примени|стабилизируй|поверни|раздели|увеличь|уменьши|перенеси|вставь|верни|переименуй|подними|опусти|раскидай|расставь|оживи|оформи|разнообразь|подмешай|смикшируй|смонтируй)(?:\s|$)"#
+        let action = #"(?:^|\s)(?:обрежь|сократи|переставь|сделай|убери|удали|замени|добавь|поставь|установи|измени|включи|выключи|отключи|ускорь|замедли|подбери|создай|собери|примени|стабилизируй|поверни|раздели|увеличь|уменьши|перенеси|вставь|верни|переименуй|подними|опусти|раскидай|расставь|оживи|оформи|разнообразь|подмешай|смикшируй|смонтируй|напиши|промотай|отрази|обесцветь|разверни|приглуши|наложи|продли|приблизь|отдали)(?:\s|$)"#
         var asksForDiscussion = false
         for clause in clauses {
             // Recognize the request form independently of the feature name. The
