@@ -622,6 +622,32 @@ struct ProjectInteractionTests {
         await model.stopForApplicationTermination()
     }
 
+    @Test func switchedProjectDoesNotReceiveCancelledBuildReply() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let first = try fixture.project("first"), second = try fixture.project("second")
+        let gate = ProjectLoadGate()
+        var started = false, returned = false
+        let agent = LocalDirectorAgent { _, _, _, _ in
+            started = true
+            await gate.wait()
+            returned = true
+            return DirectorAIReply(text: "План готов", runtimeLabel: "fixture", normalizedBrief: nil)
+        }
+        let model = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: false, directorAgent: agent)
+        model.openRecentProject(first)
+        try await wait { model.projectURL == first }
+        model.directorInput = "Собери фильм по моему описанию"
+        model.createFilm()
+        try await wait { started }
+        model.openRecentProject(second)
+        try await wait { model.projectURL == second }
+        await gate.release()
+        try await wait { returned }
+        #expect(!model.directorMessages.contains { $0.text.contains("Остановил создание фильма") })
+        #expect(!model.directorStatus.contains("отменено"))
+        await model.flushAutosave()
+    }
+
     private func wait(_ predicate: () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(8)
         // Yield at least once because card actions dispatch on the next turn.

@@ -4685,16 +4685,16 @@ private struct DirectorConversationView: View {
         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
     }
 
-    private enum SetupQuestionKind {
-        case canvas
-        case duration
-        case mood
-        case subtitleStyle
-        case effects
-        case music
-        case sourceAudio
-        case telemetry
-        case titles
+    private enum SetupQuestionKind: String {
+        case canvas = "Формат кадра"
+        case duration = "Длительность"
+        case mood = "Стиль монтажа"
+        case subtitleStyle = "Стиль субтитров"
+        case effects = "Эффекты и переходы"
+        case music = "Музыка"
+        case sourceAudio = "Звук исходников"
+        case telemetry = "Телеметрия"
+        case titles = "Титры"
     }
 
     private enum SetupAnswer {
@@ -4822,7 +4822,7 @@ private struct DirectorConversationView: View {
                 .fixedSize(horizontal: false, vertical: true)
             WrappingRowLayout(horizontalSpacing: 8, verticalSpacing: 8, alignment: .center) {
                 ForEach(question.options) { option in
-                    Button { applySetupAnswer(option) } label: {
+                    Button { applySetupAnswer(option, for: question.kind) } label: {
                         Text(option.title)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
@@ -4856,7 +4856,7 @@ private struct DirectorConversationView: View {
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private func applySetupAnswer(_ option: SetupOption) {
+    private func applySetupAnswer(_ option: SetupOption, for kind: SetupQuestionKind) {
         switch option.answer {
         case .automaticCanvas:
             model.setDirectorCanvasFormatAutomatic()
@@ -4890,7 +4890,7 @@ private struct DirectorConversationView: View {
         }
         isEnteringCustomDuration = false
         customDurationError = nil
-        model.insertDirectorSuggestion(option.title)
+        model.insertDirectorSetupAnswer(field: kind.rawValue, answer: option.title)
         finishSetupQuestion()
     }
 
@@ -4903,7 +4903,7 @@ private struct DirectorConversationView: View {
             return
         }
         model.setTargetMinutes(minutes)
-        model.insertDirectorSuggestion("\(formattedMinutes(minutes)) мин")
+        model.insertDirectorSetupAnswer(field: SetupQuestionKind.duration.rawValue, answer: "\(formattedMinutes(minutes)) мин")
         isEnteringCustomDuration = false
         customDurationError = nil
         finishSetupQuestion()

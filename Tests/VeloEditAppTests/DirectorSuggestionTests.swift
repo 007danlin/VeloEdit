@@ -6,6 +6,27 @@ import VeloEditCore
 
 @Suite(.serialized) @MainActor
 struct DirectorSuggestionTests {
+    @Test func setupAnswersSubmitAsFilmSettingsWithoutMomentAdvice() {
+        let model = AppModel(startBackgroundServices: false, directorAgent: LocalDirectorAgent { _, _, _, _ in
+            Issue.record("Setup choices should not require a model to interpret them")
+            return DirectorAIReply(text: "Unexpected", runtimeLabel: "fixture", normalizedBrief: nil)
+        })
+        model.project = ProjectManifest(name: "Setup")
+        for (field, answer) in [("Стиль монтажа", "Киношный"), ("Формат кадра", "Горизонтальный 16:9"),
+                                ("Длительность", "2 мин"), ("Эффекты и переходы", "Много"), ("Музыка", "Подобрать под видео"),
+                                ("Звук исходников", "Приглушить"), ("Титры", "Только ключевые")] {
+            model.insertDirectorSetupAnswer(field: field, answer: answer)
+        }
+        let draft = model.directorInput
+        #expect(draft.contains("\nЭффекты и переходы: Много.\n"))
+        #expect(!model.directorMessages.contains { $0.role == .user })
+        model.sendDirectorMessage()
+        #expect(model.directorInput.isEmpty && model.hasPendingFilmChanges)
+        #expect(model.directorMessages.last(where: { $0.role == .user })?.text == draft)
+        #expect(model.directorMessages.last?.text.contains("Добавьте исходники") == true)
+        #expect(model.prompt.contains(draft))
+    }
+
     @Test(arguments: ["", "Мой черновик", "Черновик с пробелом ", "Первая строка\nВторая 🎬"])
     func suggestionsAppendWithoutSendingOrStartingWork(draft: String) async throws {
         let suite = "VeloEdit.suggestions.\(UUID())"

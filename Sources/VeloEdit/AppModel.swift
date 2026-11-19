@@ -351,6 +351,7 @@ final class AppModel: ObservableObject {
     @Published var prompt = AppModel.defaultDirectorBrief { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorInput = "" { didSet { scheduleWorkspaceAutosave() } }
     @Published private(set) var directorInputFocusRequest = UUID()
+    private var generatedSetupDraft: String?
     @Published private(set) var hasUnreadDirectorReply = false
     @Published var directorMessages = DirectorMessage.initial { didSet { scheduleWorkspaceAutosave() } }
     @Published var directorStatus = "Готов выслушать ваш замысел"
@@ -1853,6 +1854,13 @@ final class AppModel: ObservableObject {
         onboarding.interrupt()
         let sourceText = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sourceText.isEmpty else { return }
+        if acceptDirectorSetupDraft() {
+            if project?.assets.isEmpty == false {
+                if isWorking || isDirectorResponding { hasQueuedFilmRequest = true }
+                else { createFilm() }
+            }
+            return
+        }
         if handleDirectorEditScope(sourceText) {
             directorInput = ""
             return
@@ -2139,17 +2147,38 @@ final class AppModel: ObservableObject {
         directorInputFocusRequest = UUID()
     }
 
+    func insertDirectorSetupAnswer(field: String, answer: String) {
+        let draft = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let onlySetup = draft.isEmpty || draft == generatedSetupDraft
+        directorInput = (draft.isEmpty ? "Собери фильм." : directorInput) + "\n"
+        insertDirectorSuggestion("\(field): \(answer).")
+        generatedSetupDraft = onlySetup ? directorInput : nil
+    }
+
+    private func acceptDirectorSetupDraft() -> Bool {
+        guard timeline == nil, let generatedSetupDraft,
+              directorInput.trimmingCharacters(in: .whitespacesAndNewlines) == generatedSetupDraft,
+              beginDirectorExchange(interpretDuration: false) != nil else { return false }
+        let message = project?.assets.isEmpty == false ? "Принял параметры фильма." : "Принял параметры фильма. Добавьте исходники, чтобы начать монтаж."
+        completeDirectorReply(at: directorMessages.count - 1, text: message)
+        directorAgent.restoreConversation(directorMessages)
+        self.generatedSetupDraft = nil
+        return true
+    }
+
     func createFilm(forceFullRemake: Bool = false) {
         onboarding.interrupt()
         guard let pipeline, !isWorking, !isDirectorResponding else { return }
         let isRebuildingFilm = timeline != nil
         let timelineToAvoid = forceFullRemake ? timeline : nil
         let selectedDirectorTrack = directorMusicTrack
-        let pendingExchange = beginDirectorExchange()
+        let pendingExchange = acceptDirectorSetupDraft() ? nil : beginDirectorExchange()
         progress = 0
         isCreatingFilm = true
         run("Запускаю создание фильма") {
-            defer { self.isCreatingFilm = false }
+            guard self.pipeline === pipeline else { throw CancellationError() }
+            let filmBuildGeneration = self.operationGeneration
+            defer { if self.operationGeneration == filmBuildGeneration { self.isCreatingFilm = false } }
             do {
                 self.activityTitle = "Умный режиссёр изучает задачу"
                 self.status = "Фиксирую замысел и параметры фильма"
@@ -2199,7 +2228,6 @@ final class AppModel: ObservableObject {
                 self.activityTitle = "Умный режиссёр собирает историю"
                 self.status = "Готовлю материалы и выбираю лучшие моменты"
                 self.beginUnmeasuredActivity(at: 0.60, step: .preparing)
-                let filmBuildGeneration = self.operationGeneration
                 let buildProgress: FilmBuildProgressHandler = { [weak self] update in
                     await self?.setFilmBuildProgress(update, generation: filmBuildGeneration)
                 }
@@ -2240,6 +2268,7 @@ final class AppModel: ObservableObject {
                         progress: buildProgress
                     )
                 }
+                try Task.checkCancellation()
                 self.activityTitle = "Исполняю команды видеоредактора"
                 self.status = "Применяю скорость, кадр, звук, титры, переходы и эффекты из запроса"
                 self.beginUnmeasuredActivity(at: 0.78, step: .commands)
@@ -2250,7 +2279,9 @@ final class AppModel: ObservableObject {
                 } else {
                     commandReport = EditorCommandReport(recognizedCount: editorCommands.count)
                 }
+                try Task.checkCancellation()
                 await self.refresh()
+                try Task.checkCancellation()
                 let timeline = self.timeline ?? baseTimeline
                 self.activityTitle = "Готовлю просмотр фильма"
                 self.status = "Соединяю \(timeline.items.count) фрагментов в одну композицию"
@@ -2275,6 +2306,7 @@ final class AppModel: ObservableObject {
                     usesCompactConfirmation: isRebuildingFilm
                 )
             } catch {
+                guard self.operationGeneration == filmBuildGeneration, self.pipeline === pipeline else { throw error }
                 self.finishUnmeasuredActivity()
                 if self.directorTask == nil { self.isDirectorResponding = false }
                 if let pendingExchange {
@@ -6296,6 +6328,8 @@ final class AppModel: ObservableObject {
     }
 
     private func resetProjectUI() {
+        generatedSetupDraft = nil
+        hasQueuedFilmRequest = false
         unavailableProjectURL = nil
         directorAdviceContinuation = nil
         showsMissingMedia = false
@@ -7169,14 +7203,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func beginDirectorExchange(mode: DirectorRequestMode = .edit) -> (text: String, replyID: UUID)? {
+    private func beginDirectorExchange(mode: DirectorRequestMode = .edit, interpretDuration: Bool = true) -> (text: String, replyID: UUID)? {
         let text = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         directorInput = ""
         if mode == .edit {
             let interpreted = PromptInterpreter().interpret(prompt: text, preset: preset)
             let presetDefault = PromptInterpreter.defaults(for: preset)
-            if abs(interpreted.targetDuration - presetDefault.targetDuration) > 0.001 {
+            if interpretDuration, abs(interpreted.targetDuration - presetDefault.targetDuration) > 0.001 {
                 targetMinutes = interpreted.targetDuration / 60
                 directorBrief.requestedDuration = interpreted.targetDuration
                 directorBrief.durationMode = FilmDurationRequirement.parse(prompt: text).mode
