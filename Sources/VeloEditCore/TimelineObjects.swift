@@ -419,7 +419,7 @@ public struct EffectTimelineItem: Codable, Identifiable, Hashable, Sendable {
     public var endTime: Double { startTime + duration }
 
     public func affects(clipID: UUID, clipTrack: Int = 0, timelineTime: Double) -> Bool {
-        enabled && timelineTime >= startTime && timelineTime <= endTime &&
+        enabled && timelineTime >= startTime && timelineTime < endTime &&
             (targetClipID == nil || targetClipID == clipID) &&
             (targetTrack == nil || targetTrack == clipTrack)
     }

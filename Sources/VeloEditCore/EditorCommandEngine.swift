@@ -1,6 +1,6 @@
 import Foundation
 
-public enum EditorCommandTarget: Hashable, Sendable {
+public enum EditorCommandTarget: Codable, Hashable, Sendable {
     case all
     case selected
     case first
@@ -9,12 +9,12 @@ public enum EditorCommandTarget: Hashable, Sendable {
     case number(Int)
 }
 
-public enum TimelineInsertionPosition: Hashable, Sendable {
+public enum TimelineInsertionPosition: Codable, Hashable, Sendable {
     case beginning
     case end
 }
 
-public enum EditorCommand: Hashable, Sendable {
+public enum EditorCommand: Codable, Hashable, Sendable {
     case setSpeed(Double, EditorCommandTarget)
     case removeSlowMotion(EditorCommandTarget)
     case setSpeedRamp(SpeedRamp?, EditorCommandTarget)
@@ -71,6 +71,7 @@ public enum EditorCommand: Hashable, Sendable {
     case setOriginalAudioVolume(Double)
     case setMusic(MusicDirective?)
     case setMusicEndingFade(Double)
+    case lowerMusicVolume
     case setMusicVolume(Double)
 
     /// Commands from the deterministic parser and the local language model
@@ -131,7 +132,7 @@ public enum EditorCommand: Hashable, Sendable {
         case .setOriginalAudioVolume: return "original-audio-volume"
         case .setMusic: return "music"
         case .setMusicEndingFade: return "music-ending-fade"
-        case .setMusicVolume: return "music-volume"
+        case .lowerMusicVolume, .setMusicVolume: return "music-volume"
         }
     }
 
@@ -197,6 +198,12 @@ public struct EditorCommandParser: Sendable {
 
     public init() {}
 
+    public static func refersToCurrentLocation(_ text: String) -> Bool {
+        let unquoted = text.replacingOccurrences(of: #"[«“"][^»”"]*[»”"]"#, with: "", options: .regularExpression)
+        return unquoted.range(of: #"\b(?:здесь|тут|сюда|(?:на|в) этом (?:месте|участке|куске|диапазоне))\b"#,
+                              options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     /// A creative brief is not a list of literal timeline mutations. Only
     /// complete instruction sentences may be replayed after composition;
     /// commas must not detach a command from its condition or qualification.
@@ -210,13 +217,13 @@ public struct EditorCommandParser: Sendable {
     /// entire request needs interpretation; no recognized prefix may be applied.
     public func parseComplete(_ prompt: String, hasSelection: Bool) -> [EditorCommand]? {
         let text = ExactEditorCommandParser.cleanRequest(prompt)
-        if let title = conversationalTitle(text) { return [title] }
+        if let title = conversationalTitle(text, hasSelection: hasSelection) { return [title] }
         let segments = commandSegments(text)
         guard !segments.isEmpty else { return nil }
         var commands: [EditorCommand] = []
         var inheritedTarget: EditorCommandTarget?
         for segment in segments {
-            if let title = conversationalTitle(segment) {
+            if let title = conversationalTitle(segment, hasSelection: hasSelection) {
                 commands.append(title)
                 inheritedTarget = nil
             } else if let parsed = ExactEditorCommandParser.parseClause(segment, hasSelection: hasSelection, inheritedTarget: inheritedTarget) {
@@ -232,7 +239,7 @@ public struct EditorCommandParser: Sendable {
         return commands.isEmpty ? nil : commands
     }
 
-    private func conversationalTitle(_ text: String) -> EditorCommand? {
+    private func conversationalTitle(_ text: String, hasSelection: Bool) -> EditorCommand? {
         guard text.contains("«") || text.contains("“") || text.contains("\"") else { return nil }
         // Match the opening and closing quote together so punctuation inside the caption is literal.
         let quote = #"(?:«([^«»]+)»|“([^“”]+)”|"([^"]+)")"#
@@ -249,6 +256,9 @@ public struct EditorCommandParser: Sendable {
             let instruction = "(?:" + whereText + #")(?: (?:ролика|фильма|видео))? (?:напиши|покажи надпись|добавь надпись|поставь титр) "# + quote
             let clarification = #"(?:[.!,]\s*(?:пусть это будет|это будет) (?:"# + adjective + ") титр)?[.!]?"
             if let value = caption(instruction + clarification) { return .addTitle(value, position) }
+        }
+        if hasSelection, let value = caption(#"переименуй (?:выбранный |этот )?титр (?:в|на) "# + quote + "[.!]?") {
+            return .setTitleText(value, .selected)
         }
         for (name, target): (String, EditorCommandTarget) in [("последн", .last), ("перв", .first)] {
             let instruction = #"(?:нет,?\s+)?(?:переименуй "# + name + #"(?:ий|ый) титр в|(?:давай )?в "# + name + #"(?:ем|ом) титре (?:напишем|напиши)) "#
@@ -652,7 +662,8 @@ public struct EditorCommandParser: Sendable {
             result.append(.setEffect(.mirror, target))
         } else if containsAny(text, ["разные эффект", "разнообразные эффект", "чередуй эффект", "чередование эффект", "разное движение", "чередуй движение"]) {
             result.append(.setEffectPattern(Self.variedEffects, target))
-        } else if containsAny(text, ["эффект", "движение кадр", "движение камер", "оживи кадр", "оживи видео", "оживи клип"]),
+        } else if containsAny(text, ["движение кадр", "движение камер", "оживи кадр", "оживи видео", "оживи клип"])
+                    || text.range(of: #"\b(?:крут\w*|эффектн\w*|динамич\w*|эпич\w*|красив\w*|вау|добавь|наложи|поставь|хочу|нужны?) эффекты?(?: на все клипы)?[.!]?$"#, options: .regularExpression) != nil,
                   asksToApplyCreativeChange(text) {
             let effect: ClipEffect = containsAny(text, ["динамич", "энергич", "эффектн", "крут", "вау", "эпич"])
                 ? .pushIn
@@ -703,12 +714,14 @@ public struct EditorCommandParser: Sendable {
                   let music = MusicPromptInterpreter().interpret(prompt: prompt, preset: preset) {
             result.append(.setMusic(music))
         }
-        if text.contains("музык") {
+        if let volume = MusicPromptInterpreter.explicitVolume(text) {
+            result.append(.setMusicVolume(volume))
+        } else if text.contains("музык") {
             if let value = firstNumber(in: text, patterns: [#"громкост\w*\s*(?:музык\w*\s*)?(\d+(?:[\.,]\d+)?)\s*%"#, #"музык\w*\s*(?:на\s*)?(\d+(?:[\.,]\d+)?)\s*%"#]) {
                 result.append(.setMusicVolume(min(max(0, value / 100), 1)))
             } else if containsAny(text, ["приглуши музыку", "сделай музыку тише", "музыку потише", "убавь музыку"]) &&
                         !containsAny(text, ["под речь", "под голос", "когда говорят"]) {
-                result.append(.setMusicVolume(0.25))
+                result.append(.lowerMusicVolume)
             }
         }
         return result
@@ -717,7 +730,9 @@ public struct EditorCommandParser: Sendable {
     private func commandSegments(_ prompt: String, sentencesOnly: Bool = false) -> [String] {
         let pattern = sentencesOnly ? #";\s*|\n+|[.!?](?:\s+|$)"# : #"[,;]\s+|;\s*|,(?!\d)\s*|\n+|[.!?]\s+|\s+(?:и|а также|а)\s+(?=(?:накидай|накинь|закинь|докинь|подкинь|переимен\w*|замени\w*|добав\w*|сделай|убери|поставь|музык\w*|титр\w*|разреж\w*|раздели|ускор\w*|замедл\w*|перемес\w*|дублир\w*|скопир\w*|отдел\w*|включ\w*|выключ\w*|поверн\w*|обреж\w*|сниз\w*|увелич\w*|уменьш\w*|приглуш\w*|установ\w*|удали|налож\w*|примен\w*|хочу|нуж\w*)\b)"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [prompt] }
-        let quotedRanges = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]|плавно замедли и ускорь"#, options: .caseInsensitive))?
+        // Keep descriptions attached to the action: «добавь эффект, будто …»
+        // must not turn into a generic effect followed by an unrelated clause.
+        let quotedRanges = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]|плавно замедли и ускорь|,\s*(?=(?:чтобы|будто|словно|как будто|котор\w*)\b)"#, options: .caseInsensitive))?
             .matches(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)).map(\.range) ?? []
         let range = NSRange(prompt.startIndex..<prompt.endIndex, in: prompt)
         var cursor = prompt.startIndex
@@ -738,7 +753,7 @@ public struct EditorCommandParser: Sendable {
         if containsAny(text, ["все клип", "все фрагмент", "ко всем клип", "на весь фильм", "для всего фильма"]) { return .all }
         let target = parseTarget(text)
         if target == .selected,
-           !containsAny(text, ["выбранн", "этот клип", "этот фрагмент"]) {
+           !Self.refersToCurrentLocation(text), !containsAny(text, ["выбранн", "этот клип", "этот фрагмент"]) {
             return nil
         }
         return target == .all ? nil : target
@@ -762,7 +777,7 @@ public struct EditorCommandParser: Sendable {
         if let value = firstNumber(in: text, patterns: [#"(?:клип|фрагмент|момент|план|титр|видео)\w*\s*(?:№\s*)?(\d+)"#, #"(\d+)\s*[- ]?(?:й|ый|ой)\s+(?:клип|фрагмент|момент|план|титр|видео)"#]) {
             return .number(max(1, Int(value)))
         }
-        if containsAny(text, ["выбранн", "выделенн", "этот клип", "этот фрагмент", "у него", "на нем", "на нём", "сделай его", "для него"]) { return .selected }
+        if Self.refersToCurrentLocation(text) || containsAny(text, ["выбранн", "выделенн", "этот клип", "этот фрагмент", "у него", "на нем", "на нём", "сделай его", "для него"]) { return .selected }
         return .all
     }
 
@@ -858,6 +873,43 @@ public struct EditorCommandParser: Sendable {
 
 public struct EditorCommandExecutor: Sendable {
     public init() {}
+
+    static func addLibraryEffect(_ type: TimelineEffectType, to clips: [TimelineItem], in timeline: inout Timeline,
+                                 range: ClosedRange<Double>? = nil) -> EditorCommandReport {
+        var effects = timeline.effectiveEffects
+        var affected: [UUID] = []
+        for clip in clips {
+            let start = max(clip.timelineStart, range?.lowerBound ?? clip.timelineStart)
+            let end = min(clip.timelineStart + clip.timelineDuration, range?.upperBound ?? .infinity)
+            let existing = effects.filter { $0.enabled && $0.targetClipID == clip.id && $0.effectType == type }
+            // Extend coverage only into gaps; reapplying an overlapping brush
+            // must preserve existing keyframes and never double the intensity.
+            var cursor = start
+            var gaps: [Range<Double>] = []
+            for layer in existing.sorted(by: { $0.startTime < $1.startTime }) where layer.endTime > cursor && layer.startTime < end {
+                if cursor < layer.startTime { gaps.append(cursor..<layer.startTime) }
+                cursor = max(cursor, layer.endTime)
+            }
+            if cursor < end { gaps.append(cursor..<end) }
+            guard !gaps.isEmpty else { continue }
+            affected.append(clip.id)
+            for gap in gaps {
+                let duration = gap.upperBound - gap.lowerBound
+                var effect = EffectTimelineItem(effectType: type, startTime: gap.lowerBound, duration: duration,
+                    parameters: EffectPresetRegistry.preset(for: type).defaultParameters, targetClipID: clip.id,
+                    stackOrder: effects.filter { $0.targetClipID == clip.id }.count, explanation: ["Эффект из библиотеки по запросу"])
+                // A boundary can leave a single frame shorter than the default minimum for a new layer.
+                effect.duration = duration
+                effects.append(effect)
+                affected.append(effect.id)
+            }
+        }
+        guard !affected.isEmpty else {
+            return EditorCommandReport(recognizedCount: 1, ignored: [clips.isEmpty ? "Клип для эффекта не найден" : "Эффект «\(type.localizedTitle)» уже применён"])
+        }
+        timeline.effects = effects
+        return EditorCommandReport(recognizedCount: 1, applied: ["добавлен эффект «\(type.localizedTitle)»"], affectedItemIDs: affected)
+    }
 
     public func apply(
         _ commands: [EditorCommand],
@@ -986,24 +1038,11 @@ public struct EditorCommandExecutor: Sendable {
         for command in commands {
             switch command {
             case .addLibraryEffect(let type, let target):
-                let positions = indexes(for: target)
-                guard !positions.isEmpty else { ignored.append("клип для эффекта не найден"); continue }
-                let preset = EffectPresetRegistry.preset(for: type)
-                var effects = timeline.effectiveEffects
-                var added = 0
-                for index in positions {
-                    let clip = timeline.items[index]
-                    guard !effects.contains(where: { $0.effectType == type && $0.targetClipID == clip.id && $0.enabled }) else { continue }
-                    let effect = EffectTimelineItem(effectType: type, startTime: clip.timelineStart,
-                        duration: clip.timelineDuration, parameters: preset.defaultParameters,
-                        targetClipID: clip.id, stackOrder: effects.filter { $0.targetClipID == clip.id }.count,
-                        explanation: ["Эффект из библиотеки по запросу"])
-                    effects.append(effect)
-                    affected.formUnion([clip.id, effect.id])
-                    added += 1
-                }
-                timeline.effects = effects
-                if added > 0 { applied.append("эффект «\(type.localizedTitle)» добавлен к \(added) фрагм.") }
+                let clips = indexes(for: target).map { timeline.items[$0] }
+                let report = Self.addLibraryEffect(type, to: clips, in: &timeline)
+                applied += report.applied
+                ignored += report.ignored
+                affected.formUnion(report.affectedItemIDs)
             case .applyTitleTemplate(let templateID, let target):
                 guard let template = TitleTemplateRegistry.template(id: templateID) else {
                     ignored.append("шаблон титра «\(templateID)» не найден"); continue
@@ -1482,6 +1521,11 @@ public struct EditorCommandExecutor: Sendable {
             case .setTitleText(let text, let target):
                 var legacyPositions = titleIndexes(for: target)
                 var objectPositions = titleObjectIndexes(for: target)
+                // Numbered modern and legacy titles share the ordering shown to the director.
+                if case .number(let number) = target, !timeline.effectiveTitleItems.isEmpty {
+                    let legacyNumber = number - timeline.effectiveTitleItems.count
+                    legacyPositions = legacyNumber > 0 ? titleIndexes(for: .number(legacyNumber)) : []
+                }
                 if target == .selected,
                    selectedItemID == nil || timeline.items.contains(where: { $0.id == selectedItemID && $0.kind != .title }) {
                     let legacy = titleIndexes(for: .all)
@@ -1495,17 +1539,20 @@ public struct EditorCommandExecutor: Sendable {
                     ignored.append("выберите титр для переименования или укажите его номер")
                     continue
                 }
-                for index in legacyPositions {
+                let legacyChanges = legacyPositions.filter { timeline.items[$0].title != text }
+                var titles = timeline.effectiveTitleItems
+                let objectChanges = objectPositions.filter { titles[$0].text != text }
+                guard !legacyChanges.isEmpty || !objectChanges.isEmpty else { continue }
+                for index in legacyChanges {
                     timeline.items[index].title = text
                     affected.insert(timeline.items[index].id)
                 }
-                var titles = timeline.effectiveTitleItems
-                for index in objectPositions {
+                for index in objectChanges {
                     titles[index].text = text
                     titles[index].userEdited = true
                     affected.insert(titles[index].id)
                 }
-                timeline.titleItems = titles
+                if !objectChanges.isEmpty { timeline.titleItems = titles }
                 applied.append("текст титра изменён на «\(text)»")
             case .setTitleStyle(let fontSize, let textColor, let backgroundColor, let alignment, let target):
                 var legacyPositions = titleIndexes(for: target)
@@ -1601,6 +1648,15 @@ public struct EditorCommandExecutor: Sendable {
                 guard seconds.isFinite, (0...30).contains(seconds) else { ignored.append("недопустимая длительность затухания"); continue }
                 timeline.musicEndingFadeDuration = seconds
                 applied.append("затухание музыки в финале — \(Self.number(seconds)) с")
+            case .lowerMusicVolume:
+                guard timeline.music != nil else { ignored.append("сначала нужно добавить музыку"); continue }
+                timeline.music?.volume *= MusicDirective.quieterGain
+                if timeline.adaptiveSoundtrack?.userEdited == true {
+                    for index in timeline.adaptiveSoundtrack!.segments.indices {
+                        timeline.adaptiveSoundtrack!.segments[index].directive.volume *= MusicDirective.quieterGain
+                    }
+                }
+                applied.append("музыка стала тише")
             case .setMusicVolume(let volume):
                 guard timeline.music != nil else { ignored.append("сначала нужно добавить музыку"); continue }
                 timeline.setSoundtrackVolume(volume)

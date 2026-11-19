@@ -37,8 +37,9 @@ enum ExactEditorCommandParser {
         }
         func number(_ string: String) -> Double? { Double(string.replacingOccurrences(of: ",", with: ".")) }
         let decimal = #"(\d+(?:[.,]\d+)?)"#
+        let percent = decimal + #"\s*(?:%|процент(?:а|ов)?)"#
         let setting = #"(?:(?:сделай|поставь|установи|установить|выставь)\s+)?"#
-        let add = #"(?:(?:хочу|нужно)\s+)?(?:добавь|добавить|наложи|наложить|поставь|поставить|примени|применить|включи|включить|хочу|нужен|нужна|нужно|сделай)\s+"#
+        let add = #"(?:(?:я\s+)?хочу\s+|нужно\s+|давай\s+)?(?:добавь|добавить|наложи|наложить|поставь|поставить|примени|применить|включи|включить|хочу|нужен|нужна|нужно|сделай|сделать)\s+"#
         let remove = #"(?:убери|убрать|удали|удалить|отключи|отключить|выключи|выключить)\s+"#
 
         // Global soundtrack operations are handled before media target parsing.
@@ -55,12 +56,16 @@ enum ExactEditorCommandParser {
         if match(#"(?:сделай )?(?:"# + opening + #" "# + punchier + #"|"# + punchier + #" "# + opening + #")"#) != nil {
             return Result(commands: [.tightenCut(.first)], target: .first)
         }
-        if let values = match(setting + #"(?:громкость музыки\s+(?:на\s+)?|музыку\s+на\s+)"# + decimal + #"\s*%"#),
+        if let values = match(setting + #"(?:громкость музыки\s+(?:на\s+)?|музыку\s+на\s+)"# + percent),
            let value = number(values[0]), (0...100).contains(value) {
             return Result(commands: [.setMusicVolume(value / 100)], target: nil)
         }
-        if match(#"(?:приглуши музыку|сделай музыку тише|музыку потише|убавь музыку)"#) != nil {
-            return Result(commands: [.setMusicVolume(0.25)], target: nil)
+        if let values = match(#"громкость (?:исходного звука|звука исходников) (?:на )?"# + percent),
+           let value = number(values[0]), (0...100).contains(value) {
+            return Result(commands: [.setOriginalAudioVolume(value / 100)], target: nil)
+        }
+        if match(#"(?:приглуши музыку|(?:сделай )?музыку (?:по)?тише|убавь музыку)"#) != nil {
+            return Result(commands: [.lowerMusicVolume], target: nil)
         }
         if match(remove + #"музыку|без музыки"#) != nil { return Result(commands: [.setMusic(nil)], target: nil) }
         if match(#"(?:приглуши музыку|музыку тише) под (?:речь|голос)"#) != nil {
@@ -79,7 +84,7 @@ enum ExactEditorCommandParser {
 
         // Recognize one explicit media scope. Multiple targets, ranges and
         // exclusions are intentionally not collapsed to the first mentioned clip.
-        let noun = #"(?:клип(?:а|е|у|ом)?|фрагмент(?:а|е|у|ом)?|момент(?:а|е|у|ом)?|план(?:а|е|у|ом)?|видео|ролик(?:а|е|у|ом)?)"#
+        let noun = #"(?:клип(?:а|е|у|ом)?|фрагмент(?:а|е|у|ом)?|момент(?:а|е|у|ом)?|план(?:а|е|у|ом)?|участ(?:ок|ка|ке)|кус(?:ок|ка|ке)|диапазон(?:а|е)?|мест(?:о|е)|видео|ролик(?:а|е|у|ом)?)"#
         let ordinal = #"(?:перв(?:ый|ое|ого|ом|ому)|втор(?:ой|ое|ого|ом|ому)|трет(?:ий|ье|ьего|ьем|ьему)|четверт(?:ый|ое|ого|ом|ому)|пят(?:ый|ое|ого|ом|ому)|шест(?:ой|ое|ого|ом|ому)|седьм(?:ой|ое|ого|ом|ому)|восьм(?:ой|ое|ого|ом|ому)|девят(?:ый|ое|ого|ом|ому)|десят(?:ый|ое|ого|ом|ому)|последн(?:ий|ее|его|ем|ему))"#
         let selected = #"(?:(?:выбранн|выделенн)(?:ый|ое|ого|ом|ому)|эт(?:от|о|ого|ом|ому))"#
         // In “во втором плане …, а третий …” the second ordinal inherits the
@@ -92,7 +97,7 @@ enum ExactEditorCommandParser {
             + "(?:" + ordinal + "|" + selected + #"|\d+\s*[-–]?\s*(?:й|ый|ой|ий|м|ом|му|го|е))\s+"# + noun
             + "|" + noun + #"\s*(?:номер\s*|№\s*)?\d+"#
             + #"|(?:все|всех|всем|каждый|каждом)\s+(?:клипы?|клипов|клипах|клипам|фрагменты?|фрагментов|фрагментах|фрагментам|видео|ролики|роликах)"#
-            + #"|весь интервал видео|все видео целиком|весь ролик|все видео|весь фильм|всего фильма|всем фильме|нем|него|здесь)(?![\p{L}\d])"#
+            + #"|весь интервал видео|все видео целиком|весь ролик|все видео|весь фильм|всего фильма|всем фильме|нем|него|(?:вот )?(?:тут|здесь|сюда))(?![\p{L}\d])"#
         guard let scopeRegex = try? NSRegularExpression(pattern: scopePattern) else { return nil }
         // Quoted effect names (e.g. “Дрейф камеры”) must stay intact.
         let quotes = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]"#))?
@@ -108,7 +113,7 @@ enum ExactEditorCommandParser {
                 // «Во втором клипе … у него …» refers to that clip; an
                 // explicit «выбранный» in the next clause still means selection.
                 explicitTarget = inheritedTarget ?? .selected
-            } else if phrase.range(of: #"\b(?:выбранн|выделенн|эт)"#, options: .regularExpression) != nil || phrase == "здесь" {
+            } else if phrase.range(of: #"\b(?:выбранн|выделенн|эт|тут\b|здесь\b|сюда\b)"#, options: .regularExpression) != nil {
                 explicitTarget = .selected
             } else if phrase.contains("перв") { explicitTarget = .first }
             else if phrase.contains("последн") { explicitTarget = .last }
@@ -128,15 +133,29 @@ enum ExactEditorCommandParser {
         func result(_ command: EditorCommand) -> Result { Result(commands: [command], target: explicitTarget) }
 
         let variety = #"(?:всяк(?:ие|их)|разн(?:ые|ых)|разнообразн(?:ые|ых)|каки[ех]-(?:нибудь|то))"#
-        if match(add + variety + #" переход(?:ы|ов)"#) != nil {
+        if match(add + variety + #" переход(?:ы|ов)"#) != nil || match(#"(?:поменяй|замени|измени) переходы"#) != nil {
             return result(.setTransitionPattern(EditorCommandParser.variedTransitions, target))
         }
         if match(add + #"переход(?:ы|ов)?"#) != nil { return result(.setTransition(.crossDissolve, target)) }
         if match(add + variety + #" эффект(?:ы|ов)"#) != nil {
             return result(.setEffectPattern(EditorCommandParser.variedEffects, target))
         }
-        if let values = match(add + #"(?:эффект\s+)?(.+)"#), let effect = libraryEffect(named: values[0]) {
-            return result(.addLibraryEffect(effect, target))
+        if match(add + "виньетку") != nil { return result(.setVignette(0.45, target)) }
+        // Resolve the entire remaining name, including ordinary descriptions.
+        // Unconsumed conditions or a second operation still need the planner.
+        let wish = #"(?:(?:я )?хочу|хотелось бы),? чтобы (?:картинка|изображение|кадр) (?:был[ао]?|выглядел[ао]?) (.+)"#
+        let look = match(wish)?.first ?? match(add + #"(.+)"#)?.first
+            ?? (explicitTarget == .selected && !input.contains("?") ? text : nil)
+        if let look {
+            let marker = #"(эффект|фильтр|переход)"#
+            let prefix = match(marker + #" (.+)"#, in: look)
+            let suffix = match(#"(.+) "# + marker, in: look)
+            let label = prefix?.first ?? suffix?.last
+            let name = prefix?.last ?? suffix?.first ?? look
+            let kind: EditorVisualCatalog.Kind = label == "переход" ? .transition : label == "фильтр" ? .filter : .libraryEffect
+            if let command = EditorVisualCatalog.command(named: name, kind: kind, target: target) {
+                return result(command)
+            }
         }
         if match(remove + #"(?:все )?эффекты?|без эффектов"#) != nil { return result(.setEffect(nil, target)) }
         let motion: [(String, ClipEffect)] = [
@@ -166,9 +185,9 @@ enum ExactEditorCommandParser {
            explicitTarget != nil, let seconds = number(values[0]), (0.25...3600).contains(seconds) {
             return result(.setDuration(seconds, target))
         }
-        if match(remove + #"звук"#) != nil { return result(target == .all ? .setOriginalAudioVolume(0) : .setClipMuted(true, target)) }
+        if match(remove + #"звук|(?:сделай )?без звука|заглуши звук"#) != nil { return result(target == .all ? .setOriginalAudioVolume(0) : .setClipMuted(true, target)) }
         if match(#"(?:верни|включи|включить) звук"#) != nil { return result(target == .all ? .setOriginalAudioVolume(1) : .setClipMuted(false, target)) }
-        if let values = match(setting + #"громкость(?: звука)?\s+(?:на\s+)?"# + decimal + #"\s*%"#),
+        if let values = match(setting + #"громкость(?: звука)?\s+(?:на\s+)?"# + percent),
            let value = number(values[0]), (0...200).contains(value) { return result(.setClipVolume(value / 100, target)) }
         if match(#"(?:отдели|отделить) звук"#) != nil { return result(.detachAudio(target)) }
         if match(#"(?:стабилизируй|стабилизировать)(?: видео)?|убери тряску"#) != nil { return result(.setStabilization(0.58, target)) }
@@ -180,10 +199,6 @@ enum ExactEditorCommandParser {
         if match(#"покажи целиком|вмести в кадр"#) != nil { return result(.setCrop(.fit, target)) }
         if match(remove + #"фильтр|сбрось цвет|верни цвет"#) != nil { return result(.setFilter(.none, target)) }
         if match(#"сделай (?:черно-белым|черно-белое|монохромным)"#) != nil { return result(.setFilter(.monochrome, target)) }
-        let filters: [(String, VideoFilter)] = [("черно-белый", .monochrome), ("монохром", .monochrome), ("нуар", .noir), ("сепия", .sepia), ("теплый", .warm), ("холодный", .cool), ("яркий", .vivid), ("драматичный", .dramatic)]
-        for (name, filter) in filters where match(add + "(?:фильтр " + name + "|" + name + " фильтр)") != nil {
-            return result(.setFilter(filter, target))
-        }
         // Destructive operations require an explicit clip, never an empty scope.
         if explicitTarget != nil {
             if match(#"(?:удали|удалить|убери|убрать)"#) != nil { return result(.delete(target)) }
@@ -195,19 +210,4 @@ enum ExactEditorCommandParser {
         return nil
     }
 
-    static func libraryEffect(named input: String) -> TimelineEffectType? {
-        let name = input.lowercased().replacingOccurrences(of: "ё", with: "е")
-            .trimmingCharacters(in: CharacterSet(charactersIn: " «»\"“”"))
-        let aliases: [String: TimelineEffectType] = [
-            "камеры": .videoCamera, "камера": .videoCamera, "видеокамеры": .videoCamera,
-            "video camera": .videoCamera, "camera": .videoCamera, "rec": .videoCamera,
-            "видоискатель": .videoCamera, "видоискателя": .videoCamera,
-            "глитч": .glitch, "зум": .zoom, "дрожание камеры": .shake,
-            "ручной камеры": .handheld, "дрейфа камеры": .cameraDrift,
-            "рыбьего глаза": .fisheye, "пленочного зерна": .filmGrain
-        ]
-        return aliases[name] ?? TimelineEffectType.allCases.first {
-            name == $0.rawValue || name == $0.localizedTitle.lowercased().replacingOccurrences(of: "ё", with: "е")
-        }
-    }
 }

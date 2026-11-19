@@ -37,6 +37,15 @@ struct EverydayDirectorCommandTests {
     }
 
     static let examples: [Sample] = [
+        .init(prompt: "Добавь тут фильтр пикселизация", commands: [.addLibraryEffect(.pixelate, .selected)]),
+        .init(prompt: "Добавь сюда фильтр пиксилизацию", commands: [.addLibraryEffect(.pixelate, .selected)]),
+        .init(prompt: "Тёплый фильтр сюда", commands: [.setFilter(.warm, .selected)]),
+        .init(prompt: "Накинь мозаику на этот участок", commands: [.addLibraryEffect(.pixelate, .selected)]),
+        .init(prompt: "Поставь в этом куске виньетку", commands: [.setVignette(0.45, .selected)]),
+        .init(prompt: "Хочу, чтобы здесь картинка выглядела как на старой видеокассете", commands: [.addLibraryEffect(.vhsDistortion, .selected)]),
+        .init(prompt: "Сделай тут без звука и поставь фильтр сепию", commands: [.setClipMuted(true, .selected), .setFilter(.sepia, .selected)]),
+        .init(prompt: "В этом месте вдвое медленнее", commands: [.setSpeed(0.5, .selected)]),
+        .init(prompt: "Добавь глитч переход на второй клип", commands: [.setTransition(.glitch, .number(2))]),
         .init(prompt: "Во втором плане хочется оставить только оттенки серого, а третий промотай вдвое быстрее.", commands: [.setFilter(.monochrome, .number(2)), .setSpeed(2, .number(3))]),
         .init(prompt: "В конце напиши «Дальше — лес». Пусть это будет финальный титр.", commands: [.addTitle("Дальше — лес", .end)]),
         .init(prompt: "Нет, давай в последнем титре напишем «До новых встреч».", commands: [.setTitleText("До новых встреч", .last)]),
@@ -66,7 +75,7 @@ struct EverydayDirectorCommandTests {
         .init(prompt: "Добавь эффект камеры в клипе номер 15", commands: [.addLibraryEffect(.videoCamera, .number(15))]),
         .init(prompt: "Пожалуйста, установи громкость музыки на 12,5%", commands: [.setMusicVolume(0.125)]),
         .init(prompt: "Музыку на 0%, пожалуйста!", commands: [.setMusicVolume(0)]),
-        .init(prompt: "Сделай музыку тише", commands: [.setMusicVolume(0.25)]),
+        .init(prompt: "Сделай музыку тише", commands: [.lowerMusicVolume]),
         .init(prompt: "Убери музыку", commands: [.setMusic(nil)]),
         .init(prompt: "Приглуши музыку под речь", commands: [.setAudioDucking(true)]),
         .init(prompt: "Приглуши звук исходников", commands: [.setOriginalAudioVolume(0.2)]),
@@ -126,10 +135,19 @@ struct EverydayDirectorCommandTests {
             let prompt = "Пожалуйста, добавь эффект «\(name)» в первом видео"
             #expect(parser.parseComplete(prompt, hasSelection: false) == [.addLibraryEffect(effect, .first)], "\(prompt)")
             #expect(parser.parse(prompt) == [.addLibraryEffect(effect, .first)])
+            #expect(parser.parseComplete("Наложи тут фильтр «\(name)»", hasSelection: true) == [.addLibraryEffect(effect, .selected)])
+        }
+    }
+
+    @Test(arguments: TransitionStyle.allCases) func namedTransitionsStayOnCuts(_ style: TransitionStyle) {
+        for name in [style.localizedTitle, style.rawValue] {
+            #expect(EditorCommandParser().parseComplete("Добавь переход «\(name)» на второй клип", hasSelection: false) == [.setTransition(style, .number(2))])
         }
     }
 
     static let uncertainRequests = [
+        "Что делает фильтр пикселизация?", "Тут пикселизация?", "Поставь тут пикселизацию только на лицо",
+        "Не добавляй тут виньетку", "Наложи VHS на этот участок кроме последних двух секунд",
         "Не добавляй эффект камеры в первом видео", "Не надо эффект камеры в первом видео",
         "Стоит ли добавить эффект камеры в первом видео?", "Почему не добавился эффект камеры?",
         "Как выглядит эффект камеры?", "Какой эффект камеры лучше?", "Объясни эффект камеры",

@@ -46,6 +46,50 @@ struct DirectorLiveInteractionTests {
         #expect(agent.recentConversationContext.contains("Для вывода пока мало данных"))
     }
 
+    @Test func clarificationUsesTheVisibleExchangeEvenWithoutModelOrMediaAnalysis() async throws {
+        let agent = LocalDirectorAgent { _, _, _, _ in throw URLError(.cannotConnectToHost) }
+        let model = fixture(agent: agent)
+        let before = model.timeline
+        var previous = DirectorMessage(role: .assistant, text: "Данных для оценки недостаточно.")
+        previous.response = .init(state: .proposed, advisory: true, fallback: true)
+        model.directorMessages += [DirectorMessage(role: .user, text: "Переработай вступление"), previous]
+        model.directorInput = "Что?"
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding }
+        #expect(model.directorMessages.last?.text.contains("ответил советом") == true)
+        #expect(model.directorMessages.last?.response?.range == nil)
+        #expect(model.timeline == before)
+        #expect(!model.hasPendingFilmChanges)
+    }
+
+    @Test func dialogueRequiresAnExplicitEditableRoute() throws {
+        let edit = #"{"route":"edit","reply":"Удали всё"}"#
+        #expect(try DirectorDialogueTurn.intent(from: edit, allowsEdit: true) == .edit)
+        #expect(throws: URLError.self) { try DirectorDialogueTurn.intent(from: edit, allowsEdit: false) }
+        let router = DirectorRequestIntentInterpreter()
+        #expect(router.route(for: "Переделай титры на понятные") == .edit)
+        #expect(router.route(for: "Как мне изменить переход?") == .conversation)
+        #expect(router.route(for: "Не понял") == .conversation)
+        #expect(router.route(for: "Финалу бы капельку воздуха") == .interpret)
+    }
+
+    @Test func ordinaryConversationCanContinueWithoutClipEvidence() async throws {
+        var turns: [String] = []
+        let agent = LocalDirectorAgent { prompt, _, _, _ in
+            turns.append(prompt)
+            return DirectorAIReply(text: "Речь идёт о громкости исходного звука.", runtimeLabel: "test", normalizedBrief: nil)
+        }
+        let model = fixture(agent: agent)
+        for prompt in ["Что значит приглушить звук?", "Подробнее"] {
+            model.directorInput = prompt
+            model.sendDirectorMessage()
+            try await wait { !model.isDirectorResponding }
+        }
+        #expect(turns == ["Что значит приглушить звук?", "Подробнее"])
+        #expect(model.directorMessages.last?.response?.conversational == true)
+        #expect(!model.hasPendingFilmChanges)
+    }
+
     @Test func lateAnswerCannotReachReplacedProject() async throws {
         var resume: CheckedContinuation<Void, Never>?
         let agent = LocalDirectorAgent { _, _, _, _ in

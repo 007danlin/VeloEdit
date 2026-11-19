@@ -475,7 +475,7 @@ import Testing
 
 @Test func naturalAudioRequestsDistinguishMusicSpeechAndNoise() {
     let quieterMusic = EditorCommandParser().parse("Пожалуйста, приглуши музыку")
-    #expect(quieterMusic.contains(.setMusicVolume(0.25)))
+    #expect(quieterMusic.contains(.lowerMusicVolume))
     #expect(!quieterMusic.contains { command in
         if case .setMusic = command { return true }
         return false
@@ -483,7 +483,7 @@ import Testing
 
     let ducking = EditorCommandParser().parse("Приглуши музыку под речь")
     #expect(ducking.contains(.setAudioDucking(true)))
-    #expect(!ducking.contains(.setMusicVolume(0.25)))
+    #expect(!ducking.contains(.lowerMusicVolume))
 
     let voice = EditorCommandParser().parse("Сделай голос тише до 35%")
     #expect(voice.contains(.setClipVolume(0.35, .all)))

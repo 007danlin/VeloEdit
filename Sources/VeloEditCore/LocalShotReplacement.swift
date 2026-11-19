@@ -6,7 +6,7 @@ enum LocalShotReplacement {
     private static let visual = #"(?:фрагмент\w*|кус(?:ок|к\w*|очек\w*)|клип\w*|кадр\w*|эпизод\w*|момент\w*|сцен\w*|дубл\w*|отрыв\w*|участ\w*|видео\w*|shot|clip|footage|scene|segment)"#
     private static let change = #"(?:замен\w*|поменя\w*|смени\w*|сменить|меняй|переподбер\w*|переподобр\w*|перевыбер\w*|перевыбр\w*|replace|swap)"#
     private static let alternative = #"(?:друг\w*|ино[йею]|иную|иным|нов\w*|альтернатив\w*|another|different|alternative)"#
-    private static let otherMedia = #"(?:музык\w*|трек\w*|звук\w*|аудио\w*|титр\w*|надпис\w*|назван\w*|цвет\w*|фильтр\w*|переход\w*|скорост\w*|громкост\w*|яркост\w*|контраст\w*|music|audio|title|color|filter|transition)"#
+    private static let otherMedia = #"(?:музык\w*|трек\w*|звук\w*|аудио\w*|титр\w*|надпис\w*|назван\w*|цвет\w*|фильтр\w*|эффект\w*|стилизаци\w*|переход\w*|скорост\w*|громкост\w*|яркост\w*|контраст\w*|music|audio|title|color|filter|effects?|transition)"#
 
     private static func normalized(_ prompt: String) -> String {
         prompt.lowercased().replacingOccurrences(of: "ё", with: "е")
@@ -19,6 +19,12 @@ enum LocalShotReplacement {
 
     static func allowsReplacement(_ prompt: String) -> Bool {
         let text = normalized(prompt)
+        let clauses = text.components(separatedBy: CharacterSet(charactersIn: ",;.!?\n")).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        // A reference to the current shot locates the look/sound change. It
+        // does not authorize the model to replace the underlying recording.
+        if clauses.count == 1, matches(text, otherMedia),
+           !matches(text, change + #"(?:\s+(?:этот|выбранный|выделенный))?\s+"# + visual),
+           !matches(text, alternative + #"\s+"# + visual) { return false }
         // A semantic model must also respect an explicit instruction to keep
         // the footage. Negating a music edit does not prohibit video replacement.
         let negatedChange = #"(?:не\s+(?:надо\s+|нужно\s+)?|don't\s+|do\s+not\s+)"# + change

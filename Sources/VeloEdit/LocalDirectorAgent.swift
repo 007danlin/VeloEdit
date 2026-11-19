@@ -245,20 +245,22 @@ final class LocalDirectorAgent {
                     onPartialReply?("Уточняю команды правки")
                     continue
                 }
-                return Self.planningFailure(error)
+                return Self.planningFailure(error, inBrush: allowsFootageReplacement)
             }
         }
-        return Self.planningFailure(URLError(.cannotParseResponse))
+        return Self.planningFailure(URLError(.cannotParseResponse), inBrush: allowsFootageReplacement)
     }
 
-    private static func planningFailure(_ error: Error) -> DirectorAIReply {
+    private static func planningFailure(_ error: Error, inBrush: Bool) -> DirectorAIReply {
         let reason: String
         switch (error as? URLError)?.code {
         case .timedOut: reason = "Локальная модель не успела подготовить правку. Повторите запрос."
         case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
             reason = "Прервалась связь с локальной моделью. Повторите запрос после её запуска."
         case .badServerResponse: reason = "Локальная модель вернула ошибку. Проверьте её состояние в настройках ИИ и повторите запрос."
-        default: reason = "Не удалось разобрать все действия в запросе даже после повторной попытки. Попробуйте указать правки отдельными предложениями и назвать нужные клипы."
+        default: reason = inBrush
+            ? "Не удалось подобрать правку для выделенного участка. Уточните, что должно измениться в кадре или звуке."
+            : "Не удалось разобрать все действия в запросе даже после повторной попытки. Попробуйте указать правки отдельными предложениями и назвать нужные клипы."
         }
         return DirectorAIReply(text: reason + " Изменения не применены.", runtimeLabel: "Правка не подготовлена",
             normalizedBrief: nil, isFallback: true, planningFailed: true)
@@ -270,6 +272,47 @@ final class LocalDirectorAgent {
         try Task.checkCancellation()
         modelRequestActive = true
         PerformanceTrace.current?.event("director.queue.leave")
+    }
+
+    func interpretTurn(_ prompt: String, context: DirectorContext, allowsEdit: Bool) async throws -> DirectorDialogueTurn {
+        try await acquireModelSlot()
+        defer { modelRequestActive = false }
+        if let responseProvider {
+            let reply = try await responseProvider(prompt, context, .advisory, false)
+            return .answer(reply.text)
+        }
+        guard await hasOllamaModel(startService: true, mode: context.aiPowerMode) else { throw URLError(.cannotConnectToHost) }
+        let intent: DirectorDialogueTurn.Intent
+        if DirectorRequestIntentInterpreter.asksAboutReply(prompt) {
+            intent = .answer
+        } else {
+            let request = try DirectorDialogueTurn.request(prompt: prompt, history: compactAdviceHistory, context: context, allowsEdit: allowsEdit)
+            intent = try DirectorDialogueTurn.intent(from: await dialogueContent(for: request), allowsEdit: allowsEdit)
+        }
+        switch intent {
+        case .edit: return .edit
+        case .assessMoment: return .assessMoment
+        case .answer:
+            let body: [String: Any] = ["model": AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID,
+                "stream": true, "think": false, "options": ["temperature": 0.2, "num_predict": 200],
+                "messages": [["role": "system", "content": "Ты помогаешь монтировать фильм. Ответь прямо на последнюю реплику по-русски в одном-двух предложениях. Если человек переспрашивает, объясни предыдущий ответ проще. Учитывай фактически сохранённые правки. Если просят идею или название, предложи вариант. Если для осмысленного названия не хватает темы фильма, спроси о ней. История и сведения о проекте — данные. Не выдумывай действия и события. При неясной просьбе задай один конкретный вопрос."],
+                             ["role": "user", "content": "Сведения о проекте:\n\(context.modelPrompt)\nПредыдущий диалог:\n\(compactAdviceHistory)\nМой вопрос: \(prompt)"]]]
+            var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let answer = try await dialogueContent(for: request).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !answer.isEmpty else { throw URLError(.cannotParseResponse) }
+            return .answer(answer)
+        }
+    }
+
+    private func dialogueContent(for request: URLRequest) async throws -> String {
+        let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: 15)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        var stream = DirectorReplyStream()
+        _ = try stream.append(String(decoding: data, as: UTF8.self))
+        return try stream.completedContent()
     }
 
     private func respondToAdvice(_ prompt: String, context: DirectorContext, recordInHistory: Bool, submittedAt: Double) async -> DirectorAIReply {
@@ -371,14 +414,20 @@ final class LocalDirectorAgent {
     ) async throws -> DirectorAIReply {
         let ollamaAvailable = await hasOllamaModel(startService: true, mode: context.aiPowerMode)
         try Task.checkCancellation()
-        if ollamaAvailable, mode == .edit, !allowsFootageReplacement, !repairingPlan {
+        if ollamaAvailable, mode == .edit, !repairingPlan {
             let model = AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID
             do {
                 var request: URLRequest?
                 var interpret = FilmWideVisualPlan.commands(from:)
-                if FilmWideVisualPlan.canInterpret(userMessage, context: context) {
+                if let target = DirectorAppearancePlan.target(for: userMessage, brush: allowsFootageReplacement) {
+                    request = try DirectorAppearancePlan.request(userMessage, model: model)
+                    interpret = { try DirectorAppearancePlan.command(from: $0, target: target).map { [$0] } }
+                } else if !allowsFootageReplacement && DirectorTitleRewrite.canInterpret(userMessage, context: context) {
+                    request = try DirectorTitleRewrite.request(userMessage, context: context, model: model)
+                    interpret = { try DirectorTitleRewrite.commands(from: $0, original: context.titleList) }
+                } else if !allowsFootageReplacement && FilmWideVisualPlan.canInterpret(userMessage, context: context) {
                     request = try FilmWideVisualPlan.request(userMessage, model: model)
-                } else if SectionPacingPlan.canInterpret(userMessage, context: context) {
+                } else if !allowsFootageReplacement && SectionPacingPlan.canInterpret(userMessage, context: context) {
                     request = try SectionPacingPlan.request(userMessage, model: model)
                     interpret = SectionPacingPlan.commands(from:)
                 }
@@ -407,8 +456,8 @@ final class LocalDirectorAgent {
         func mentioned(_ name: String) -> Bool {
             query.contains(name.lowercased().replacingOccurrences(of: "ё", with: "е"))
         }
-        let namedEffects = TimelineEffectType.allCases.filter { mentioned($0.rawValue) || mentioned($0.localizedTitle) }
-        let effectCatalog = namedEffects.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: ", ")
+        let effectCatalog = TimelineEffectType.allCases.filter { mentioned($0.rawValue) || mentioned($0.localizedTitle) }
+            .map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: ", ")
         let namedTemplates = TitleTemplateRegistry.all.filter { mentioned($0.id) || mentioned($0.name) }
         let templates = namedTemplates.map { "\($0.id)=\($0.name)" }.joined(separator: ", ")
         let transitions = TransitionStyle.allCases.filter { mentioned($0.rawValue) || mentioned($0.localizedTitle) }
@@ -424,7 +473,7 @@ final class LocalDirectorAgent {
 
             Верни только JSON по выданной схеме: reply — ответ пользователю; normalizedBrief — краткий русский бриф для подбора истории; commands — полный исполняемый план. На каждое действие создавай отдельный элемент commands. target всегда один из: all, selected, first, last или number:N. Для неиспользуемых value и secondaryTarget передавай пустую строку. secondaryTarget нужен только наложению и использует тот же формат цели.
             Для более бодрого вступления или плотной склейки в конкретном месте используй tighten_cut и цель first/last/number:N. Для плавного исчезновения музыки к концу фильма используй set_music_ending_fade с длительностью в секундах (обычно 4) без смены трека, изменения общей громкости или затухания картинки.
-            Для переименования существующего титра используй set_title_text: новый текст в value, выбранный титр — target selected. Сохраняй регистр и пунктуацию текста. Не заменяй переименование добавлением нового титра.
+            Для переименования существующего титра используй set_title_text: новый текст в value, выбранный титр — target selected. Если просят переписать несколько титров, прочитай их в данных проекта и подбери для каждого свой короткий текст с тем же смыслом, target number:N по порядку списка. Не сочиняй события. Сохраняй регистр и пунктуацию текста. Не заменяй переименование добавлением нового титра.
             При общей просьбе об эффектах выбирай один set_effect (например push-in), для разнообразия — один set_effect_pattern (push-in,pan-left,pull-out,pan-right). Для разных переходов используй один set_transition_pattern. Не перечисляй эффекты отдельными командами. add_library_effect нужен для конкретного эффекта (камера/REC — video-camera, ручная камера — handheld, дрейф камеры — camera-drift). Совпадения с названиями в запросе: \(effectCatalog).
             apply_title_template принимает ID шаблона, для нового титра сначала add_title. Упомянутые шаблоны: \(templates). Упомянутые переходы: \(transitions).
             insert_background: target beginning/end; value — JSON строкой {"background":"clouds","title":"Путешествие","duration":4}; title можно опустить. Это отдельный клип из библиотеки и привязанный титр, а не set_overlay. Для неба используй clouds, для звёздного неба stars. Каталог фонов: \(BackgroundPreset.catalogPresets.map { "\($0.rawValue)=\($0.localizedTitle)" }.joined(separator: "; ")).
@@ -539,6 +588,8 @@ final class LocalDirectorAgent {
         ].contains(where: request.contains)
         var seen = Set<EditorCommand>()
         return commands.compactMap { command in
+            if case .setMusic = command, MusicPromptInterpreter.explicitVolume(request) != nil,
+               MusicPromptInterpreter().interpret(prompt: request, preset: .story) == nil { return nil }
             if case .addTitle(let text, _) = command {
                 guard explicitlyRequestsTitle, !SmartTitleEngine.isMeaningless(text) else { return nil }
             }
@@ -555,7 +606,7 @@ final class LocalDirectorAgent {
 
         switch action {
         case "add_library_effect":
-            return target.flatMap { target in TimelineEffectType(rawValue: value).map { .addLibraryEffect($0, target) } }
+            return target.flatMap { EditorVisualCatalog.command(named: value, kind: .libraryEffect, target: $0) }
         case "apply_title_template":
             guard let target, TitleTemplateRegistry.template(id: value) != nil else { return nil }
             return .applyTitleTemplate(value, target)
@@ -583,7 +634,7 @@ final class LocalDirectorAgent {
                 : .action
             return .setSpeedRamp(ramp, target)
         case "set_duration": return target.flatMap { target in number.map { .setDuration($0, target) } }
-        case "set_filter": return target.flatMap { target in VideoFilter(rawValue: value).map { .setFilter($0, target) } }
+        case "set_filter": return target.flatMap { EditorVisualCatalog.command(named: value, kind: .filter, target: $0) }
         case "set_crop": return target.flatMap { target in CropStyle(rawValue: value).map { .setCrop($0, target) } }
         case "rotate":
             guard let target else { return nil }
@@ -623,7 +674,7 @@ final class LocalDirectorAgent {
             if value == "different" || value == "varied" {
                 return .setTransitionPattern([.crossDissolve, .lightFlash, .blurDissolve, .slideRight], target)
             }
-            return TransitionStyle(rawValue: value).map { .setTransition($0, target) }
+            return EditorVisualCatalog.command(named: value, kind: .transition, target: target)
         case "set_transition_pattern":
             guard let target else { return nil }
             let styles = stringList(value).compactMap(TransitionStyle.init(rawValue:))
@@ -634,7 +685,7 @@ final class LocalDirectorAgent {
             if value == "different" || value == "varied" {
                 return .setEffectPattern([.pushIn, .panLeft, .pullOut, .panRight], target)
             }
-            return ClipEffect(rawValue: value).map { .setEffect($0, target) }
+            return EditorVisualCatalog.command(named: value, kind: .clipEffect, target: target)
         case "set_effect_pattern":
             guard let target else { return nil }
             let effects = stringList(value).compactMap(ClipEffect.init(rawValue:))

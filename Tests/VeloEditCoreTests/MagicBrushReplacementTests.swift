@@ -33,6 +33,7 @@ import Testing
         ]
         for text in replacements { #expect(LocalShotReplacement.requestsReplacement(text), "\(text)") }
         let otherEdits = [
+            "Хочу другой эффект", "Смени эффект на этом фрагменте", "Поменяй стилизацию этого куска",
             "замени музыку", "смени титр", "не заменяй фрагмент, сделай ярче", "не меняй кадры", "замени музыку в этом фрагменте",
             "другой трек для этого фрагмента", "измени цвет этого куска", "не нравится цвет этого кадра", "удали этот фрагмент",
             "замени текст", "поменяй голос", "не заменяй", "не хочу другой кадр", "не надо заменять этот клип",
@@ -49,6 +50,8 @@ import Testing
         let store = try ProjectStore(createAt: root, name: project.name)
         try await store.update { $0 = project }
         let pipeline = VeloEditPipeline(store: store)
+        _ = try await pipeline.applyEditorCommands("Хочу другой эффект", timelineRange: 0...8, modelRequestsReplacement: true)
+        #expect(await store.manifest.timelines.last == before)
         _ = try await pipeline.applyEditorCommands("не заменяй этот фрагмент", timelineRange: 0...8, modelRequestsReplacement: true)
         #expect(await store.manifest.timelines.last == before)
         let prompt = "Вместо того, что тут стоит, возьми более удачную запись"

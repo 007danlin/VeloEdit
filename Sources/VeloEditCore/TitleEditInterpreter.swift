@@ -12,8 +12,11 @@ public enum TitleEditInterpreter {
         let text = normalized(instruction.replacingOccurrences(of: #"[«“\"][^»”\"]+[»”\"]"#, with: "", options: .regularExpression))
         guard DirectorRequestIntentInterpreter().mode(for: instruction) == .edit else { return false }
         // Keep wider montage requests on their existing execution path.
-        guard !["фильм", "монтаж", "музык", "звук", "клип", "ролик", "видео", "переход", "эффект", "все титры", "всех титр"]
+        guard !["фильм", "монтаж", "музык", "звук", "клип", "ролик", "видео", "переход", "эффект", "титры", "всех титр", "надписи во всех"]
             .contains(where: text.contains) else { return false }
+        // An explicitly addressed edit or insertion already has a destination.
+        // Selecting a different title must not redirect it to the inspector.
+        if EditorCommandParser().parseComplete(instruction, hasSelection: false) != nil { return false }
         return ["титр", "глав", "надпис", "подзаголов", "шрифт", "текст"].contains(where: text.contains)
             || applying(instruction, to: TitleTimelineItem(kind: .title, text: "", startTime: 0, duration: 3)) != nil
     }

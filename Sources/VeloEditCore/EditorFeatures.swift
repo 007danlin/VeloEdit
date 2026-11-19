@@ -10,6 +10,14 @@ public struct MusicPromptInterpreter: Sendable {
                     && ["убери", "убрать", "приглуш", "уведи", "убав"].contains(where: text.contains)))
     }
 
+    public static func explicitVolume(_ text: String) -> Double? {
+        let pattern = #"(?:громкость\s+)?(?:музык\w*|саундтрек\w*|мелоди\w*|трек\w*)\s+(?:(?:звучит|играет|играл[аи]?|звучал[аи]?|громкостью)\s+)?(?:на\s+)?(\d{1,3}(?:[.,]\d+)?)\s*%"#
+        guard let regex = try? Regex(pattern), let match = text.lowercased().firstMatch(of: regex),
+              let capture = match.output[1].substring,
+              let value = Double(capture.replacingOccurrences(of: ",", with: ".")), (0...100).contains(value) else { return nil }
+        return value / 100
+    }
+
     public func interpret(
         prompt: String,
         preset: FilmPreset,
@@ -27,7 +35,7 @@ public struct MusicPromptInterpreter: Sendable {
         let alsoSelectsTrack = [
             "подбери", "выбери", "добавь", "поставь", "замени", "смени", "другой трек", "другую музыку"
         ].contains(where: value.contains)
-        if (changesOnlyVolume || Self.mentionsMusicFade(value)) && !alsoSelectsTrack { return nil }
+        if (changesOnlyVolume || Self.explicitVolume(value) != nil || Self.mentionsMusicFade(value)) && !alsoSelectsTrack { return nil }
 
         let searches = MusicSearchRequest.parse(prompt)
         let asksForMusic = !searches.isEmpty || [

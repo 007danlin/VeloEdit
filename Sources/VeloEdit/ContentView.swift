@@ -2169,20 +2169,24 @@ private struct MontageMediaBrowser: View {
     private var backgroundsBrowser: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 6)], alignment: .leading, spacing: 6) {
+                WrappingRowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
                     ForEach(BackgroundCategory.allCases) { category in
-                        Button(category.localizedTitle) {
+                        Button {
                             backgroundCategory = category
+                        } label: {
+                            Text(category.localizedTitle)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.horizontal, 9)
+                                .frame(minHeight: 27)
+                                .background(
+                                    backgroundCategory == category ? Color.accentColor : Color.primary.opacity(0.07),
+                                    in: Capsule()
+                                )
                         }
-                        .font(.caption.weight(.semibold))
                         .buttonStyle(.plain)
                         .foregroundStyle(backgroundCategory == category ? Color.white : Color.primary)
-                        .padding(.horizontal, 9)
-                        .frame(maxWidth: .infinity, minHeight: 27)
-                        .background(
-                            backgroundCategory == category ? Color.accentColor : Color.primary.opacity(0.07),
-                            in: Capsule()
-                        )
                     }
                 }
 
@@ -5186,15 +5190,15 @@ private struct DirectorMessageBubble: View {
                     .foregroundStyle(.secondary)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
-                        if let response = message.response {
-                            Text((response.advisory ? (response.fallback ? "Совет · ограниченные данные" : "Совет") : response.saved ? "Сохранено" : "Результат")
-                                + (response.range.map { String(format: " · %.1f–%.1f с", $0.lowerBound, $0.upperBound) } ?? ""))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
                         Text(message.text).textSelection(.enabled)
-                        if let response = message.response, !response.details.isEmpty {
+                        if let response = message.response, response.range != nil || !response.details.isEmpty {
                             DisclosureGroup("Подробности") {
-                                Text(response.details.joined(separator: "\n")).font(.caption).textSelection(.enabled)
+                                if let range = response.range {
+                                    Text(String(format: "%.1f–%.1f с", range.lowerBound, range.upperBound))
+                                }
+                                if !response.details.isEmpty {
+                                    Text(response.details.joined(separator: "\n")).textSelection(.enabled)
+                                }
                             }.font(.caption).foregroundStyle(.secondary)
                         }
                     }

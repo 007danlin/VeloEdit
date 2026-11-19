@@ -16,6 +16,23 @@ struct ScopedDirectorCommandTests {
         Timeline(storyPlanID: UUID(), items: [TimelineItem(kind: .video, sourceDuration: 8, timelineStart: 0, timelineDuration: 8)])
     }
 
+    @Test func overlappingEffectBrushesFillOnlyUncoveredTimesAndPreserveTitleAnimation() async throws {
+        var original = timeline()
+        original.titleItems = [TitleTimelineItem(kind: .title, text: "В путь", startTime: 0, duration: 8)]
+        let command = EditorCommand.addLibraryEffect(.pixelate, .selected)
+        let (first, _) = try await edit([command], timeline: original, range: 3...5)
+        let (second, report) = try await edit([command], timeline: first, range: 2...6)
+        let layers = second.effectiveEffects.sorted { $0.startTime < $1.startTime }
+        #expect(report.hasChanges && report.ignored.isEmpty)
+        #expect(second.items == original.items && second.titleItems == original.titleItems)
+        #expect(layers.first { $0.startTime == 3 } == first.effectiveEffects.first)
+        #expect(layers.map(\.startTime) == [2, 3, 5] && layers.map(\.endTime) == [3, 5, 6])
+        #expect(layers.active(at: 3, for: original.items[0].id).count == 1)
+        #expect(layers.active(at: 6, for: original.items[0].id).isEmpty)
+        let (repeated, repeatedReport) = try await edit([command], timeline: second, range: 2...6)
+        #expect(!repeatedReport.hasChanges && repeated == second)
+    }
+
     @Test func titleCreationStylingAndRenamingExecuteInOrderWithinBrush() async throws {
         let (result, report) = try await edit([
             .addTitle("В пути", .beginning), .setTitleStyle(80, "#FF0000", nil, .left, .first),

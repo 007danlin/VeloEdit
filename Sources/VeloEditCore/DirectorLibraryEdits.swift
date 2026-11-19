@@ -2,7 +2,7 @@ import Foundation
 
 /// Library insertions are one operation: a title requested on a background
 /// must travel with that background and must not land on an existing shot.
-public struct DirectorBackgroundInsertion: Hashable, Sendable {
+public struct DirectorBackgroundInsertion: Codable, Hashable, Sendable {
     public var background: String
     public var title: String?
     public var duration: Double

@@ -475,8 +475,10 @@ public enum TitleTemplateRegistry {
         let serif = "Georgia"
         let mono = "Menlo"
 
-        return [
-            TitleTemplateDefinition(
+        // Construct one layout per call. The combined temporary layout values
+        // otherwise exhaust a Swift concurrency worker stack on first use.
+        let templates: [() -> TitleTemplateDefinition] = [
+            { TitleTemplateDefinition(
                 id: "title.minimal-clean.v1", name: "Minimal Clean", category: .minimalTitles, kind: .title,
                 preview: TitleTemplatePreview(primaryText: "МОЁ ЛЕТО", secondaryText: "маленькая история"),
                 typography: type(sans, 78, 0.62, "#FFFFFF", 5),
@@ -486,8 +488,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.22, y: 0.59, width: 0.56, height: 0.10), type(sans, 28, 0.38, "#D8D8DE", 2), stagger: 2)
                 ]), animation: fadeBlur,
                 textConstraints: TitleTextConstraints(maxCharacters: 52, maxLines: 2, maxWidth: 0.76, maxHeight: 0.24, minFontScale: 0.48)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.cinematic.v1", name: "Cinematic", category: .cinematicTitles, kind: .cinematicTitle,
                 preview: TitleTemplatePreview(primaryText: "ДОРОГА ДОМОЙ", secondaryText: "A VELOEDIT FILM"), duration: 4,
                 typography: type(serif, 88, 0.58, "#F6F0E6", 9),
@@ -498,8 +500,8 @@ public enum TitleTemplateRegistry {
                     shape("bottom-rule", .line, .init(x: 0.36, y: 0.72, width: 0.28, height: 0.003), "#F6F0E6", opacity: 0.56, lineWidth: 1, stagger: 3, reveal: .horizontal)
                 ]), animation: fadeBlur, safeArea: TitleSafeArea(horizontal: 0.055, vertical: 0.08, portraitHorizontal: 0.08, portraitVertical: 0.07),
                 textConstraints: TitleTextConstraints(maxCharacters: 46, maxLines: 2, maxWidth: 0.8, maxHeight: 0.28, minFontScale: 0.43)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.modern.v1", name: "Modern", category: .mainTitles, kind: .animatedTitle,
                 preview: TitleTemplatePreview(primaryText: "НОВЫЙ МАРШРУТ", secondaryText: "MOVE FORWARD"),
                 typography: type(sans, 94, 0.88, "#FFFFFF", -1, .left),
@@ -510,8 +512,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.145, y: 0.57, width: 0.52, height: 0.07), type(sans, 24, 0.56, "#5AC8FA", 4, .left), uppercase: true, stagger: 3)
                 ]), animation: maskReveal,
                 textConstraints: TitleTextConstraints(maxCharacters: 42, maxLines: 2, maxWidth: 0.60, maxHeight: 0.23, minFontScale: 0.44)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.bold.v1", name: "Bold", category: .dynamicKinetic, kind: .keywordOverlay,
                 preview: TitleTemplatePreview(primaryText: "90 КМ/Ч", secondaryText: "ПОЛНЫЙ ГАЗ"),
                 typography: type(sans, 126, 1, "#0B0B0D", -4, .left),
@@ -523,8 +525,8 @@ public enum TitleTemplateRegistry {
                 ]), animation: kinetic,
                 textConstraints: TitleTextConstraints(maxCharacters: 24, maxLines: 2, maxWidth: 0.61, maxHeight: 0.23, minFontScale: 0.45),
                 styleAnchor: .init(x: 0.17, y: 0.355, width: 0.59, height: 0.20)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.elegant.v1", name: "Elegant", category: .mainTitles, kind: .title,
                 preview: TitleTemplatePreview(primaryText: "Тихий вечер", secondaryText: "КАРЕЛИЯ · 2026"), duration: 4,
                 typography: type(serif, 82, 0.42, "#FFF9F0", 2),
@@ -535,8 +537,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.28, y: 0.65, width: 0.44, height: 0.07), type(sans, 20, 0.44, "#E9D9BF", 5), uppercase: true, stagger: 3)
                 ]), animation: fadeBlur,
                 textConstraints: TitleTextConstraints(maxCharacters: 54, maxLines: 2, maxWidth: 0.50, maxHeight: 0.22, minFontScale: 0.46)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.dynamic.v1", name: "Dynamic", category: .dynamicKinetic, kind: .kineticText,
                 preview: TitleTemplatePreview(primaryText: "ВПЕРЁД!", secondaryText: "RIDE · EXPLORE · REPEAT"),
                 typography: type(sans, 132, 1, "#FFFFFF", -2),
@@ -547,8 +549,8 @@ public enum TitleTemplateRegistry {
                 ]), animation: kinetic,
                 textConstraints: TitleTextConstraints(maxCharacters: 28, maxLines: 1, maxWidth: 0.66, maxHeight: 0.23, minFontScale: 0.44),
                 styleAnchor: .init(x: 0.23, y: 0.36, width: 0.66, height: 0.23)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.travel.v1", name: "Travel", category: .mainTitles, kind: .titleCard,
                 preview: TitleTemplatePreview(primaryText: "TRAVEL 2026", secondaryText: "МОСКВА → СОЧИ"), duration: 4,
                 typography: type(sans, 96, 0.82, "#FFFFFF", 3, .left),
@@ -560,8 +562,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.10, y: 0.62, width: 0.52, height: 0.08), type(mono, 22, 0.52, "#FFD8A8", 2, .left), uppercase: true, stagger: 3)
                 ]), animation: maskReveal,
                 textConstraints: TitleTextConstraints(maxCharacters: 38, maxLines: 2, maxWidth: 0.66, maxHeight: 0.25, minFontScale: 0.44)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.chapter.v1", name: "Chapter", category: .chapterTitles, kind: .chapter,
                 preview: TitleTemplatePreview(primaryText: "ВЕЛОПРОГУЛКА", secondaryText: "ГЛАВА"),
                 typography: type(sans, 84, 0.78, "#FFFFFF", 1, .left),
@@ -572,8 +574,8 @@ public enum TitleTemplateRegistry {
                 ]), animation: maskReveal,
                 textConstraints: TitleTextConstraints(maxCharacters: 40, maxLines: 2, maxWidth: 0.54, maxHeight: 0.23, minFontScale: 0.45),
                 styleAnchor: .init(x: 0.35, y: 0.36, width: 0.54, height: 0.22)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.location.v1", name: "Location", category: .locationTitles, kind: .location,
                 preview: TitleTemplatePreview(primaryText: "СОЧИ", secondaryText: "43.5855° N · 39.7231° E"),
                 typography: type(sans, 86, 0.86, "#FFFFFF", 2, .left),
@@ -584,8 +586,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.145, y: 0.79, width: 0.48, height: 0.06), type(mono, 18, 0.48, "#D1D1D6", 1, .left), uppercase: true, stagger: 3)
                 ]), animation: maskReveal,
                 textConstraints: TitleTextConstraints(maxCharacters: 34, maxLines: 1, maxWidth: 0.50, maxHeight: 0.16, minFontScale: 0.48)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.lower-third.v1", name: "Lower Third", category: .lowerThirds, kind: .lowerThird,
                 preview: TitleTemplatePreview(primaryText: "АННА ПЕТРОВА", secondaryText: "ПУТЕШЕСТВЕННИК"),
                 typography: type(sans, 56, 0.82, "#FFFFFF", 1, .left),
@@ -596,8 +598,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.098, y: 0.80, width: 0.36, height: 0.055), type(sans, 20, 0.50, "#D9B4EA", 2, .left), uppercase: true, stagger: 3)
                 ]), animation: maskReveal,
                 textConstraints: TitleTextConstraints(maxCharacters: 48, maxLines: 1, maxWidth: 0.40, maxHeight: 0.10, minFontScale: 0.50)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.date.v1", name: "Date", category: .dateTime, kind: .date,
                 preview: TitleTemplatePreview(primaryText: "16 АПРЕЛЯ", secondaryText: "2026 · 07:40"),
                 typography: type(mono, 48, 0.85, "#FFFFFF", 2, .right),
@@ -607,8 +609,8 @@ public enum TitleTemplateRegistry {
                     text("secondary", .secondaryText, .init(x: 0.64, y: 0.205, width: 0.28, height: 0.055), type(mono, 19, 0.45, "#9EDBFF", 1, .right), uppercase: true, stagger: 2)
                 ]), animation: fadeBlur,
                 textConstraints: TitleTextConstraints(maxCharacters: 34, maxLines: 1, maxWidth: 0.37, maxHeight: 0.11, minFontScale: 0.55)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "title.end-card.v1", name: "End Card", category: .endCards, kind: .endCard,
                 preview: TitleTemplatePreview(primaryText: "КОНЕЦ", secondaryText: "СПАСИБО ЗА ПРОСМОТР", callToAction: "ПОДПИСАТЬСЯ"), duration: 4.5,
                 typography: type(serif, 92, 0.50, "#FFF8EE", 7),
@@ -621,8 +623,8 @@ public enum TitleTemplateRegistry {
                 ]), animation: fadeBlur, safeArea: TitleSafeArea(horizontal: 0.06, vertical: 0.06, portraitHorizontal: 0.07, portraitVertical: 0.06),
                 textConstraints: TitleTextConstraints(maxCharacters: 36, maxLines: 2, maxWidth: 0.60, maxHeight: 0.20, minFontScale: 0.46),
                 styleAnchor: .init(x: 0.20, y: 0.34, width: 0.60, height: 0.19)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "caption.clean.v1", name: "Subtitles Clean", category: .captions, kind: .automaticSubtitles,
                 preview: TitleTemplatePreview(primaryText: "Дорога начинается здесь"), duration: 2.6,
                 typography: type(sans, 50, 0.66, "#FFFFFF"),
@@ -631,8 +633,8 @@ public enum TitleTemplateRegistry {
                     text("primary", .primaryText, .init(x: 0.15, y: 0.79, width: 0.70, height: 0.11), type(sans, 50, 0.66, "#FFFFFF"), stagger: 1, reveal: .vertical)
                 ]), animation: cleanCaption,
                 textConstraints: TitleTextConstraints(maxCharacters: 92, maxLines: 2, maxWidth: 0.70, maxHeight: 0.12, minFontScale: 0.50)
-            ),
-            TitleTemplateDefinition(
+            ) },
+            { TitleTemplateDefinition(
                 id: "caption.word-focus.v1", name: "Word Focus", category: .captions, kind: .wordLevelCaptions,
                 preview: TitleTemplatePreview(primaryText: "Каждый момент имеет значение"), duration: 2.8,
                 typography: type(sans, 58, 0.82, "#FFFFFF", -1),
@@ -642,7 +644,8 @@ public enum TitleTemplateRegistry {
                     text("primary", .activeCaption, .init(x: 0.13, y: 0.765, width: 0.74, height: 0.13), type(sans, 58, 0.82, "#FFFFFF", -1), stagger: 2, reveal: .vertical)
                 ]), animation: cleanCaption,
                 textConstraints: TitleTextConstraints(maxCharacters: 88, maxLines: 2, maxWidth: 0.74, maxHeight: 0.14, minFontScale: 0.48)
-            )
-        ].map(portraitLayout) + SpeechCaptionStyleCandidates.templates
+            ) }
+        ]
+        return templates.map { portraitLayout($0()) } + SpeechCaptionStyleCandidates.templates
     }
 }

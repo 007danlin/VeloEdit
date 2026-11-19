@@ -5,6 +5,10 @@ public enum DirectorRequestMode: String, Sendable {
     case advisory
 }
 
+public enum DirectorTurnRoute: Sendable {
+    case edit, advice, conversation, interpret
+}
+
 /// Keeps questions and creative suggestions out of the edit queue. The
 /// explicit non-destructive wording wins even if the same sentence mentions
 /// music or titles, because those words are otherwise valid editing commands.
@@ -12,19 +16,29 @@ public struct DirectorRequestIntentInterpreter: Sendable {
     public init() {}
 
     public func mode(for prompt: String) -> DirectorRequestMode {
+        route(for: prompt) == .edit ? .edit : .advisory
+    }
+
+    public func route(for prompt: String) -> DirectorTurnRoute {
         let text = prompt.lowercased().replacingOccurrences(of: "ё", with: "е")
         let speech = text.replacingOccurrences(of: #"[«“"][^»”"]*[»”"]"#, with: "…", options: .regularExpression)
         // A global prohibition wins; a local negation does not erase a separate
         // affirmative action ("не меняй цвет, убери переход").
-        if ["ничего не меняй", "без изменений", "без редактирования", "без монтажа", "только совет", "только посоветуй", "только предложи", "advice only", "without changing"].contains(where: speech.contains) { return .advisory }
+        if ["ничего не меняй", "без изменений", "без редактирования", "без монтажа", "только совет", "только посоветуй", "только предложи", "advice only", "without changing"].contains(where: speech.contains) { return .conversation }
         if DirectorHistoryCommand(prompt) != nil { return .edit }
         let standalone = speech.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         if ["да, сделай", "да сделай", "давай так", "сделай так", "примени совет"].contains(standalone)
-            || ["проанализируй этот", "проанализируй момент"].contains(where: speech.contains) { return .advisory }
+            || ["проанализируй этот", "проанализируй момент"].contains(where: speech.contains) { return .advice }
+        if Self.asksAboutReply(standalone) { return .conversation }
+        if speech.range(of: #"\b(?:твой|свой|предыдущий|последний) (?:ответ|вопрос)\b"#, options: .regularExpression) != nil,
+           !speech.contains("титр"), !speech.contains("надпис") { return .conversation }
+        // A how-to question describes an operation without asking us to run it.
+        if speech.range(of: #"^\s*(?:как (?:мне |можно )?\p{L}+(?:ть|ти|чь)(?:ся|сь)?\b|что (?:означает|значит)\b|что ты (?:можешь|умеешь)\b)"#, options: .regularExpression) != nil,
+           !speech.contains(",") && !speech.contains(" и ") { return .conversation }
         let phrasing = speech.replacingOccurrences(of: #"(хочу|хотелось бы),\s*чтобы\b"#, with: "$1 чтобы", options: .regularExpression)
         let asksIfNeeded = speech.contains("?") && speech.range(of: #"^\s*(?:а |мне )?(?:нуж(?:ен|на|ны|но)|стоит ли|что если)\s"#, options: .regularExpression) != nil
         let clauses = phrasing.components(separatedBy: CharacterSet(charactersIn: ",;.!?\n")).flatMap { $0.components(separatedBy: " и ").flatMap { $0.components(separatedBy: " но ") } }
-        let action = #"(?:^|\s)(?:обрежь|сократи|переставь|сделай|убери|удали|замени|добавь|поставь|установи|измени|включи|выключи|отключи|ускорь|замедли|подбери|создай|собери|примени|стабилизируй|поверни|раздели|увеличь|уменьши|перенеси|вставь|верни|переименуй|подними|опусти|раскидай|расставь|оживи|оформи|разнообразь|подмешай|смикшируй|смонтируй|напиши|промотай|отрази|обесцветь|разверни|приглуши|наложи|продли|приблизь|отдали)(?:\s|$)"#
+        let action = #"(?:^|\s)(?:переделай|перепиши|упрости|поправь|исправь|переработай|обрежь|сократи|переставь|сделай|убери|удали|замени|добавь|поставь|установи|измени|включи|выключи|отключи|ускорь|замедли|подбери|создай|собери|примени|стабилизируй|поверни|раздели|увеличь|уменьши|перенеси|вставь|верни|переименуй|подними|опусти|раскидай|расставь|оживи|оформи|разнообразь|подмешай|смикшируй|смонтируй|напиши|промотай|отрази|обесцветь|разверни|приглуши|наложи|продли|приблизь|отдали)(?:\s|$)"#
         var asksForDiscussion = false
         for clause in clauses {
             // Recognize the request form independently of the feature name. The
@@ -57,15 +71,26 @@ public struct DirectorRequestIntentInterpreter: Sendable {
             let negated = clause.range(of: #"\bне\s+(?:\S+\s+)?(?:меняй|трогай|изменяй|добавляй|сокращай|убирай|удаляй|переставляй|обрезай|делай|заменяй|включай|выключай|применяй)"#, options: .regularExpression) != nil
             if !negated, clause.range(of: action, options: .regularExpression) != nil { return .edit }
         }
-        if asksForDiscussion || asksIfNeeded { return .advisory }
+        if asksForDiscussion { return .conversation }
+        if asksIfNeeded { return .advice }
         // Polite requests often use the infinitive and end in a question mark:
         // «Можешь добавить эффект камеры в первом видео?» is still an edit.
         // The closed grammar must cover the entire request before this shortcut.
         if EditorCommandParser().parseComplete(prompt, hasSelection: true) != nil { return .edit }
-        if ["как тебе", "затянуто", "почему", "зачем", "что здесь", "что тут", "не нравится", "мне нравится", "нравится эта", "слишком", "плохой", "удачн", "посоветуй", "предложи", "подойдет", "какая", "какой", "как назвать", "придумай название", "варианты", "что за шум", "определи шум", "что слышно", "оцени", "сравни", "объясни", "поясни", "не трогай", "не меняй", "не изменяй", "не добавляй", "не накидывай", "не накидай", "не хочу", "не сокращай", "не надо", "готово", "продолжи ожидание", "подожди", "да, сделай", "да сделай", "давай так"].contains(where: text.contains) || text.contains("?") { return .advisory }
-        if !EditorCommandParser().parse(prompt).isEmpty { return .edit }
+        if ["как тебе", "затянуто", "что здесь", "что тут", "что за шум", "что слышно", "оцени", "сравни", "проанализируй"].contains(where: speech.contains)
+            || DirectorResponseComposer.asksForPastEditReason(prompt) { return .advice }
+        if ["почему", "зачем", "как назвать", "придумай название", "не нравится", "мне нравится", "нравится эта", "слишком", "плохой", "удачн", "посоветуй", "предложи", "подойдет", "какая", "какой", "варианты", "объясни", "поясни", "не трогай", "не меняй", "не изменяй", "не добавляй", "не накидывай", "не накидай", "не хочу", "не сокращай", "не надо", "готово", "продолжи ожидание", "подожди"].contains(where: speech.contains) { return .conversation }
+        if speech.range(of: #"^\s*(?:а )?можно (?:ли|оставить|узнать|спросить)\b"#, options: .regularExpression) != nil { return .conversation }
+        if speech.range(of: #"^\s*(?:а )?(?:можно|можешь|сможешь|не мог(?:ла|ли)? бы)\s+"#, options: .regularExpression) != nil { return .interpret }
+        if text.contains("?") { return .conversation }
+        if ["без субтитров", "оставь субтитры без звука"].contains(standalone) { return .edit }
         if ["хочу фильм", "нужен фильм", "фильм на", "создать фильм", "собрать фильм", "сделать фильм"].contains(where: text.contains) { return .edit }
-        return .advisory
+        return .interpret
+    }
+
+    public static func asksAboutReply(_ text: String) -> Bool {
+        text.lowercased().replacingOccurrences(of: "ё", with: "е").trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            .range(of: #"^(?:а )?(?:что|что (?:именно )?(?:изменилось|поменялось|(?:ты )?(?:поменял|изменил|сделал))|в смысле|не понял[аи]?|что ты имеешь в виду|ты о чем|объясни проще|можно (?:проще|по-человечески))$"#, options: .regularExpression) != nil
     }
 }
 
@@ -95,6 +120,12 @@ public struct DirectorContext: Equatable, Sendable {
     public var contentHints: [String]
     public var audioHints: [String]
     public var moment: DirectorMomentContext?
+    public struct TitleReference: Equatable, Sendable {
+        public let number: Int
+        public let text: String
+        public init(number: Int, text: String) { self.number = number; self.text = text }
+    }
+    public var titleList: [TitleReference] = []
     public var musicVolume: Double?
 
     public init(
@@ -154,9 +185,10 @@ public struct DirectorContext: Equatable, Sendable {
         В проекте: \(assetCount) материалов (видео: \(videoCount), фото: \(photoCount)).
         Проанализировано: \(analyzedCount) из \(assetCount), найдено кандидатов: \(candidateCount).
         Текущий монтаж: \(currentTimelineItemCount) фрагментов.
-        Локальная музыкальная библиотека: \(localMusicTrackCount) треков. Текущий трек: \(currentMusicTrackTitle ?? "не выбран").
+        Локальная музыкальная библиотека: \(localMusicTrackCount) треков. Текущий трек: \(currentMusicTrackTitle ?? "не выбран"). Громкость музыки: \(musicVolume.map { String(format: "%g%%", $0 * 100) } ?? "не задана").
         Выбранный стиль: \(preset.localizedTitle). Целевая длительность: \(Self.durationText(targetDuration)).
         Story Plan: \(storyRoles.isEmpty ? "ещё не создан" : storyRoles.joined(separator: " → ")).
+        Существующие титры (номер и текст, данные проекта): \(titleList.prefix(32).map { "\($0.number). \($0.text.prefix(200))" }.joined(separator: "\n"))
         Выбранный объект: \(selectedItemSummary ?? "нет"). Playhead: \(playheadTime.map { String(format: "%.2f с", $0) } ?? "не задан").
         Соседний контекст: \(neighboringItemSummaries.isEmpty ? "нет" : neighboringItemSummaries.joined(separator: " | ")).
         Оценка последнего self-review: \(lastDirectorReviewScore.map { String(format: "%.0f%%", $0 * 100) } ?? "нет").

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 import SwiftUI
 import AppKit
 import AVKit
@@ -167,6 +168,195 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private struct RevisableDirectorEdit {
+        var replyID: UUID
+        let projectID: UUID
+        var baseline: Timeline
+        var fullResult: Timeline
+        var expected: Timeline
+        var commands: [EditorCommand]
+        var range: ClosedRange<Double>? = nil
+        var transitionsOnly: Bool { commands.allSatisfy { $0.semanticCategory == "transition" } }
+
+        var category: String? {
+            guard let first = commands.first?.semanticCategory,
+                  commands.allSatisfy({ $0.semanticCategory == first }) else { return nil }
+            return first
+        }
+
+        // Keep only edits whose owned fields are independent of the later edit.
+        // Project each version onto the newly committed timeline so narrowing
+        // or restoring the older request cannot restore any other track.
+        func rebased(from before: Timeline, onto after: Timeline) -> Self? {
+            guard expected.matchesDirectorEdit(before), let category,
+                  TimelineAIAnchor(before) == TimelineAIAnchor(after) else { return nil }
+            func project(_ source: Timeline, onto target: Timeline) -> Timeline? {
+                guard source.items.map(\.id) == target.items.map(\.id) else { return nil }
+                var result = target
+                switch category {
+                case "transition":
+                    result.transitionItems = source.transitionItems
+                    for i in result.items.indices { result.items[i].transition = source.items[i].transition }
+                case "music-volume":
+                    result.music = source.music
+                    result.adaptiveSoundtrack = source.adaptiveSoundtrack
+                case "original-audio-volume": result.originalAudioVolume = source.originalAudioVolume
+                case "effect":
+                    result.effects = source.effects
+                    for i in result.items.indices { result.items[i].effect = source.items[i].effect }
+                case "filter":
+                    for i in result.items.indices { result.items[i].videoAdjustments = source.items[i].videoAdjustments }
+                default: return nil
+                }
+                return result
+            }
+            guard project(before, onto: after)?.matchesDirectorEdit(after) == true else { return nil }
+            guard let base = project(baseline, onto: after), let full = project(fullResult, onto: after) else { return nil }
+            var updated = self
+            updated.baseline = base
+            updated.fullResult = full
+            updated.expected = after
+            return updated
+        }
+
+        @MainActor mutating func applyFollowUp(_ text: String) -> String? {
+            if let percent = DirectorEditScope.revisedPercent(text), commands.count == 1,
+               let value = Double(percent.replacingOccurrences(of: ",", with: ".")) {
+                let subject: String
+                switch commands[0] {
+                case .lowerMusicVolume, .setMusicVolume: commands = [.setMusicVolume(value / 100)]; subject = "музыки"
+                case .setOriginalAudioVolume: commands = [.setOriginalAudioVolume(value / 100)]; subject = "исходного звука"
+                default: return nil
+                }
+                fullResult = EditorCommandExecutor().apply(commands, to: fullResult).timeline
+                let location = range.map { " на \(AppModel.clockText($0.lowerBound))–\(AppModel.clockText($0.upperBound))" } ?? ""
+                return "Громкость \(subject)\(location) теперь \(percent)%."
+            }
+            if let category = DirectorEditScope.restoredCategory(text), commands.allSatisfy({ $0.semanticCategory == category }) {
+                range = nil
+                fullResult = baseline
+                return category == "transition" ? "Вернул прежние переходы." : "Вернул прежнюю громкость музыки."
+            }
+            guard let scope = DirectorEditScope(text), let interval = scope.range(in: baseline, transitions: transitionsOnly) else { return nil }
+            range = scope == .wholeFilm ? nil : interval
+            if scope == .end && transitionsOnly { return "Оставил правку только на последней склейке." }
+            if scope == .beginning && transitionsOnly { return "Оставил правку только на первой склейке." }
+            if commands.count == 1 {
+                let look: String?
+                switch commands[0] {
+                case .addLibraryEffect(let effect, _): look = effect.localizedTitle
+                case .setFilter(let filter, _): look = filter.localizedTitle
+                default: look = nil
+                }
+                if let look { return "«\(look)» действует на \(AppModel.clockText(interval.lowerBound))–\(AppModel.clockText(interval.upperBound))." }
+            }
+            return "Правка действует на \(AppModel.clockText(interval.lowerBound))–\(AppModel.clockText(interval.upperBound))."
+        }
+    }
+    private var revisableDirectorEdits: [RevisableDirectorEdit] = []
+
+    private enum DirectorCorrectionReference {
+        case reply(UUID)
+        case topic(String)
+    }
+
+    private func rememberDirectorEdit(_ edit: RevisableDirectorEdit?, replacing previous: UUID? = nil,
+                                      from before: Timeline, to after: Timeline) {
+        revisableDirectorEdits = revisableDirectorEdits.compactMap { prior in
+            guard prior.replyID != previous, edit == nil || prior.category != edit?.category else { return nil }
+            return prior.rebased(from: before, onto: after)
+        }
+        if let edit { revisableDirectorEdits.append(edit) }
+    }
+
+    private static func revisionDigest(_ timeline: Timeline) -> Data? {
+        var edit = timeline
+        edit.editorialReview = nil
+        edit.selectedContentReview = nil
+        edit.filmDeliveryReport = nil
+        let encoder = JSONEncoder.veloEdit
+        encoder.outputFormatting.insert(.sortedKeys)
+        return (try? encoder.encode(edit)).map { Data(SHA256.hash(data: $0)) }
+    }
+
+    private func linkDirectorRevision(_ replyID: UUID, before: Timeline, after: Timeline,
+                                      commands: [EditorCommand], previousReplyID: UUID? = nil) {
+        guard let checkpoint = project?.timelineCheckpoints?.last, checkpoint.timeline.matchesDirectorEdit(before),
+              let index = directorMessages.firstIndex(where: { $0.id == replyID }),
+              let digest = Self.revisionDigest(after) else { return }
+        directorMessages[index].response?.revisionLink = DirectorRevisionLink(checkpointID: checkpoint.id,
+            resultDigest: digest, commands: commands, previousReplyID: previousReplyID)
+    }
+
+    /// Older project packages contain the command text, its receipt and the actual cut objects.
+    /// Accept a legacy pair only when executing the exact request in memory reproduces its result.
+    private static func legacyCommands(_ request: String, before: Timeline, after: Timeline) -> [EditorCommand]? {
+        guard let record = after.naturalLanguageHistory?.last, record.request == request,
+              before.naturalLanguageHistory?.last?.id != record.id,
+              let commands = EditorCommandParser().parseComplete(request, hasSelection: false),
+              !commands.isEmpty, commands.allSatisfy(\.allowsScopeCorrection) else { return nil }
+        var replay = EditorCommandExecutor().apply(commands, to: before).timeline
+        replay.naturalLanguageHistory = after.naturalLanguageHistory
+        if replay.effectiveOriginalAudioVolume == after.effectiveOriginalAudioVolume { replay.originalAudioVolume = after.originalAudioVolume }
+        if commands.allSatisfy({ $0.semanticCategory == "transition" }), var objects = replay.transitionItems {
+            let existing = Set(before.effectiveTransitionItems.map(\.id))
+            for i in objects.indices where !existing.contains(objects[i].id) {
+                guard let saved = after.effectiveTransitionItems.first(where: { $0.incomingClipID == objects[i].incomingClipID }) else { return nil }
+                objects[i].id = saved.id
+            }
+            replay.transitionItems = objects
+        }
+        return replay.matchesDirectorEdit(after) ? commands : nil
+    }
+
+    private func restoreDirectorRevisions() {
+        guard let project, let timeline, let checkpoints = project.timelineCheckpoints else { return }
+        var nextMessage = 0
+        let messages = directorMessages
+        for i in checkpoints.indices {
+            let checkpoint = checkpoints[i]
+            let before = checkpoint.timeline
+            let after = i + 1 < checkpoints.count ? checkpoints[i + 1].timeline : timeline
+            guard before.id == timeline.id, after.id == timeline.id else { revisableDirectorEdits.removeAll(); continue }
+            var restored = false
+            for j in messages.indices.dropFirst(max(nextMessage, 1)) {
+                guard let receipt = messages[j].response, receipt.saved, receipt.projectID == project.id,
+                      messages[j - 1].role == .user else { continue }
+                let request = messages[j - 1].text
+                let commands: [EditorCommand]
+                if let link = receipt.revisionLink {
+                    guard link.checkpointID == checkpoint.id, link.resultDigest == Self.revisionDigest(after) else { continue }
+                    if let id = link.previousReplyID {
+                        guard var prior = revisableDirectorEdits.first(where: { $0.replyID == id }),
+                              prior.expected.matchesDirectorEdit(before),
+                              prior.applyFollowUp(DirectorEditScope.namedCorrection(request)?.qualifier ?? request) != nil else { break }
+                        prior.replyID = messages[j].id
+                        prior.expected = after
+                        rememberDirectorEdit(DirectorEditScope.restoredCategory(request) == nil ? prior : nil,
+                                             replacing: id, from: before, to: after)
+                        nextMessage = j + 1
+                        restored = true
+                        break
+                    }
+                    commands = link.commands
+                } else {
+                    guard checkpoint.reason == "Перед natural-language правкой: \(request.prefix(80))",
+                          let verified = Self.legacyCommands(request, before: before, after: after) else { continue }
+                    commands = verified
+                }
+                guard !commands.isEmpty, commands.allSatisfy(\.allowsScopeCorrection) else { break }
+                let revision = RevisableDirectorEdit(replyID: messages[j].id, projectID: project.id,
+                    baseline: before, fullResult: after, expected: after, commands: commands)
+                rememberDirectorEdit(revision, from: before, to: after)
+                nextMessage = j + 1
+                restored = true
+                break
+            }
+            // An unaccounted-for manual change interrupts the historical chain.
+            if !restored { revisableDirectorEdits.removeAll() }
+        }
+    }
+
     private struct PendingTimelineAIEdit {
         let instruction: String
         let replyID: UUID
@@ -184,6 +374,7 @@ final class AppModel: ObservableObject {
         var retryCount: Int = 0
         var trace: PerformanceTrace? = nil
         var proposal: DirectorEditProposal? = nil
+        var correctionOf: DirectorCorrectionReference? = nil
     }
 
     private static let recentProjectsKey = "recentProjectPaths.v1"
@@ -1590,7 +1781,7 @@ final class AppModel: ObservableObject {
         guard AIPowerMode.allCases.contains(value), aiPowerMode != value, !isCreatingFilm else { return }
         aiPowerMode = value
         persistAISettings()
-        if timeline != nil { markFilmNeedsRebuild("Мощность AI изменена — фильм нужно обновить") }
+        status = "Модель выбрана для следующих запросов."
         Task { await refreshLocalVisionModelStatus() }
     }
 
@@ -1599,8 +1790,7 @@ final class AppModel: ObservableObject {
         advancedAISettings = value
         aiModelAvailability = [:]
         persistAISettings()
-        status = "Расширенные настройки AI сохранены. Анализ будет обновлён при следующем запуске."
-        if timeline != nil { markFilmNeedsRebuild("Модель AI изменена — фильм нужно обновить") }
+        status = "Настройки ИИ сохранены для следующих запросов."
         Task { await refreshAIModelAvailability() }
     }
 
@@ -1684,16 +1874,28 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private var aiSettingsSave: Task<Void, Never>?
+    private var pendingAISettingsProject: UUID?
+
     private func persistAISettings() {
         guard let pipeline else { return }
         let mode = aiPowerMode
         let advanced = advancedAISettings
-        Task {
+        guard var preferences = project?.preferences else { return }
+        preferences.aiPowerMode = mode
+        preferences.advancedAISettings = advanced
+        project?.preferences = preferences
+        pendingAISettingsProject = project?.id
+        let previous = aiSettingsSave
+        aiSettingsSave = Task {
+            await previous?.value
             do {
                 try await pipeline.updateAISettings(mode: mode, advanced: advanced)
-                await refresh()
             } catch {
-                errorMessage = error.localizedDescription
+                if self.pipeline === pipeline { errorMessage = error.localizedDescription }
+            }
+            if self.pipeline === pipeline, aiPowerMode == mode, advancedAISettings == advanced {
+                pendingAISettingsProject = nil
             }
         }
     }
@@ -1851,6 +2053,10 @@ final class AppModel: ObservableObject {
     }
 
     func sendDirectorMessage() {
+        sendDirectorMessage(resolvedEdit: false)
+    }
+
+    private func sendDirectorMessage(resolvedEdit: Bool) {
         onboarding.interrupt()
         let sourceText = directorInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sourceText.isEmpty else { return }
@@ -1865,10 +2071,11 @@ final class AppModel: ObservableObject {
             directorInput = ""
             return
         }
-        let requestMode = DirectorRequestIntentInterpreter().mode(for: sourceText)
+        let route: DirectorTurnRoute = resolvedEdit ? .edit : DirectorRequestIntentInterpreter().route(for: sourceText)
+        let requestMode: DirectorRequestMode = route == .edit ? .edit : .advisory
         if requestMode == .advisory {
             directorInput = ""
-            submitDirectorAdvice(sourceText)
+            submitDirectorAdvice(sourceText, route: route)
             return
         }
         if isDirectorResponding {
@@ -1877,7 +2084,8 @@ final class AppModel: ObservableObject {
             directorStatus = "Сообщение принято · отправлю следом"
             return
         }
-        if selectedTitleTimelineItem != nil, TitleEditInterpreter.targetsSelectedTitle(sourceText) {
+        if let title = selectedTitleTimelineItem, TitleEditInterpreter.targetsSelectedTitle(sourceText),
+           TitleEditInterpreter.applying(sourceText, to: title) != nil {
             directorInput = ""
             directorMessages.append(DirectorMessage(role: .user, text: sourceText))
             _ = editSelectedTitleWithAI(sourceText)
@@ -2112,13 +2320,7 @@ final class AppModel: ObservableObject {
             )
             isDirectorResponding = false
             directorTask = nil
-            if !self.queuedDirectorMessages.isEmpty {
-                let draft = self.directorInput
-                self.directorInput = self.queuedDirectorMessages.removeFirst()
-                self.sendDirectorMessage()
-                self.directorInput = draft
-                return
-            }
+            if self.sendNextQueuedDirectorMessage() { return }
             // Editing requests are actions, not drafts. A fast in-place edit
             // is preferred, but if there is no Timeline yet or the request
             // needs the full director pipeline, continue automatically instead
@@ -2408,11 +2610,11 @@ final class AppModel: ObservableObject {
             switch scope {
             case .wholeFilm:
                 enqueueTimelineAIEdit(instruction, range: nil, displayedText: text)
-            case .interval(let interval) where interval.lowerBound < timeline.duration:
-                let range = interval.lowerBound...min(interval.upperBound, timeline.duration)
-                enqueueTimelineAIEdit(instruction, range: range, displayedText: text)
             default:
-                recordScopeReply("Укажите начало и конец интервала в пределах фильма, например 00:05–00:12.")
+                let transitions = EditorCommandParser().parse(instruction).contains { $0.semanticCategory == "transition" }
+                if let range = scope.range(in: timeline, transitions: transitions) {
+                    enqueueTimelineAIEdit(instruction, range: range, displayedText: text)
+                } else { recordScopeReply("Укажите клип или интервал в пределах фильма.") }
             }
         }
         func recordScopeReply(_ message: String) {
@@ -2422,12 +2624,26 @@ final class AppModel: ObservableObject {
             appendDirectorReply(answer)
             directorAgent.restoreConversation(directorMessages)
         }
+        if let named = DirectorEditScope.namedCorrection(text),
+           revisableDirectorEdits.contains(where: { $0.category == named.category }) ||
+            (DirectorEditScope.revisedPercent(named.qualifier) == nil &&
+             (activeTimelineAIEdit != nil || !pendingTimelineAIEdits.isEmpty)) {
+            enqueueTimelineAIEdit(text, range: nil, displayedText: text, correctionOf: .topic(named.category))
+            return true
+        }
+        if let named = DirectorEditScope.namedCorrection(text), DirectorEditScope(named.qualifier) != nil,
+           directorMessages.contains(where: { $0.response?.saved == true }) {
+            recordScopeReply("Не удалось связать это уточнение с сохранённой правкой. Что именно поменять сейчас?")
+            return true
+        }
         if let (instruction, scope) = DirectorEditScope.splitInterval(from: text),
            DirectorRequestIntentInterpreter().mode(for: instruction) == .edit {
             submit(instruction, scope: scope)
             return true
         }
-        guard let scope = DirectorEditScope(text) else { return false }
+        let scope = DirectorEditScope(text)
+        let restore = DirectorEditScope.restoredCategory(text)
+        guard scope != nil || restore != nil || DirectorEditScope.revisedPercent(text) != nil else { return false }
         var history = directorMessages[...]
         var lastReceipt: DirectorResponseRecord?
         while history.count >= 2 {
@@ -2435,14 +2651,22 @@ final class AppModel: ObservableObject {
             let user = history.removeLast()
             guard reply.role == .assistant, user.role == .user else { return false }
             if activeTimelineAIEdit?.replyID == reply.id || pendingTimelineAIEdits.contains(where: { $0.replyID == reply.id }) {
-                recordScopeReply("Предыдущая команда ещё выполняется. Результат появится под её текстом.")
+                enqueueTimelineAIEdit(text, range: nil, displayedText: text, correctionOf: .reply(reply.id))
                 return true
             }
-            guard let record = reply.response, record.projectID == project.id else { return false }
+            guard let record = reply.response, record.projectID == project.id else { break }
+            if record.advisory && DirectorRequestIntentInterpreter.asksAboutReply(user.text) { continue }
+            if revisableDirectorEdits.contains(where: { $0.projectID == project.id && $0.replyID == reply.id }), record.saved || record.state == .noChange {
+                // A request on a named clip also has a nil brush range.
+                // Let the pipeline compare the revised timeline with the saved one.
+                enqueueTimelineAIEdit(text, range: nil, displayedText: text, correctionOf: .reply(reply.id))
+                return true
+            }
             if !record.advisory { lastReceipt = lastReceipt ?? record }
+            guard let scope else { break }
             if DirectorEditScope(user.text) != nil { continue }
             let instruction = DirectorEditScope.splitInterval(from: user.text)?.instruction ?? user.text
-            guard DirectorRequestIntentInterpreter().mode(for: instruction) == .edit else { return false }
+            guard DirectorRequestIntentInterpreter().mode(for: instruction) == .edit else { break }
             if let receipt = lastReceipt, receipt.saved {
                 let priorRange = receipt.range ?? 0...timeline.duration
                 let sameRange = scope == .interval(priorRange) || (scope == .wholeFilm && receipt.range == nil)
@@ -2453,7 +2677,10 @@ final class AppModel: ObservableObject {
             }
             return true
         }
-        return false
+        if restore != nil { recordScopeReply("Какую именно правку нужно вернуть?") }
+        else if scope == nil { recordScopeReply("Какую громкость выставить — музыки или исходного звука?") }
+        else { recordScopeReply("Какую правку применить в этом месте?") }
+        return true
     }
 
     /// Accept an edit from the timeline composer even while another pipeline
@@ -2462,26 +2689,34 @@ final class AppModel: ObservableObject {
     func submitTimelineAIEdit(_ instruction: String, range: ClosedRange<Double>? = nil, proposal: DirectorEditProposal? = nil) {
         let clean = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        // A bare look name in the brush is an edit to the marked range. Keep
+        // the user's actual words in the conversation and in quoted titles.
+        if range != nil, EditorVisualCatalog.command(named: clean, kind: .filter, target: .selected) != nil {
+            enqueueTimelineAIEdit("Примени здесь фильтр \(clean)", range: range, displayedText: clean, proposal: proposal)
+            return
+        }
         if range == nil, handleDirectorEditScope(clean) {
             feedback = ""
             return
         }
-        if DirectorRequestIntentInterpreter().mode(for: clean) == .advisory {
+        let route = DirectorRequestIntentInterpreter().route(for: clean)
+        if route != .edit {
             feedback = ""
-            submitDirectorAdvice(clean, range: range)
+            submitDirectorAdvice(clean, range: range, route: route)
             return
         }
         enqueueTimelineAIEdit(clean, range: range, displayedText: clean, proposal: proposal)
     }
 
     private func enqueueTimelineAIEdit(_ clean: String, range: ClosedRange<Double>?, displayedText: String,
-                                       proposal: DirectorEditProposal? = nil) {
+                                       submittedPlayhead: Double? = nil, proposal: DirectorEditProposal? = nil, correctionOf: DirectorCorrectionReference? = nil) {
         let trace = PerformanceTrace(name: "edit.command", projectID: project?.id, revision: String(timelineEditRevision))
         trace.event("edit.submitted", fields: ["selectedID": selectedTimelineItemID?.uuidString ?? ""])
         trace.event("edit.accepted")
 
-        if range == nil, !isWorking, !isDirectorResponding,
-           selectedTitleTimelineItem != nil, TitleEditInterpreter.targetsSelectedTitle(clean) {
+        if correctionOf == nil, range == nil, !isWorking, !isDirectorResponding,
+           let title = selectedTitleTimelineItem, TitleEditInterpreter.targetsSelectedTitle(clean),
+           TitleEditInterpreter.applying(clean, to: title) != nil {
             let replyID = beginTimelineDirectorExchange(displayedText, range: nil)
             if editSelectedTitleWithAI(clean) { feedback = "" }
             status = titleEditStatus ?? status
@@ -2489,7 +2724,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let parsedCommands = EditorCommandParser().parse(clean, preset: preset)
+        let parsedCommands = correctionOf == nil ? EditorCommandParser().parse(clean, preset: preset) : []
         let requestsDownloadableMusic = range == nil && parsedCommands.contains { command in
             if case .setMusic(let directive?) = command { return directive.trackID == nil }
             return false
@@ -2504,7 +2739,7 @@ final class AppModel: ObservableObject {
             if case .insertSource = command { return true }
             return false
         }
-        let requestedFilmDuration: Double? = if range == nil,
+        let requestedFilmDuration: Double? = if correctionOf == nil, range == nil,
                                                !hasClipDurationCommand,
                                                AutonomousDurationOptimizer.requestContainsExplicitDuration(clean) {
             min(3_600, AutomaticFilmDurationPolicy.normalizedRequest(PromptInterpreter().interpret(prompt: clean, preset: preset).targetDuration))
@@ -2559,7 +2794,11 @@ final class AppModel: ObservableObject {
         }
 
         feedback = ""
+        let playhead = submittedPlayhead ?? timelinePlayheadTime
         let selectedItem = timeline?.items.first { $0.id == (proposal?.item.id ?? selectedTimelineItemID) }
+            ?? (EditorCommandParser.refersToCurrentLocation(clean) ? timeline?.items.first {
+                $0.overlay == nil && $0.kind != .title && $0.timelineStart <= playhead && playhead < $0.timelineStart + $0.timelineDuration
+            } : nil)
         let edit = PendingTimelineAIEdit(
             instruction: clean,
             replyID: beginTimelineDirectorExchange(displayedText, range: range),
@@ -2568,14 +2807,14 @@ final class AppModel: ObservableObject {
             selectedItemID: proposal?.item.id ?? selectedTitleTimelineItem?.id ?? selectedItem?.id,
             selectedItemIsTitle: proposal == nil && selectedTitleTimelineItem != nil,
             selectedCandidateID: selectedItem?.candidateID,
-            playheadTime: timelinePlayheadTime,
+            playheadTime: playhead,
             preset: preset,
             targetDuration: requestedFilmDuration ?? requestedDirectorBrief.explicitRequestedDuration,
             preferredMusicTrackID: requestedPreferredMusicTrackID,
             directorBrief: requestedDirectorBrief,
             briefChanges: briefChanges,
             trace: trace,
-            proposal: proposal
+            proposal: proposal, correctionOf: correctionOf
         )
         pendingTimelineAIEdits.append(edit)
         queuedTimelineAIEditCount = pendingTimelineAIEdits.count
@@ -4964,10 +5203,12 @@ final class AppModel: ObservableObject {
             "выбранн", "выделенн", "этот клип", "этого клипа", "этом клипе",
             "этот фрагмент", "этого фрагмента", "этом фрагменте",
             "этот момент", "этого момента", "этом моменте", "это видео", "этом видео", "этого видео",
-            "этот ролик", "этом ролике", "этого ролика", "здесь", "у него", "для него", "на нем", "сделай его"
+            "этот ролик", "этом ролике", "этого ролика", "у него", "для него", "на нем", "сделай его"
         ].contains(where: normalizedInstruction.contains)
+            || EditorCommandParser.refersToCurrentLocation(clean)
+            || EditorCommandParser().parseComplete(clean, hasSelection: true) != nil
             || (edit.selectedItemIsTitle
-                && EditorCommandParser().parse(clean, preset: edit.preset).contains { $0.semanticCategory.hasPrefix("title-") }))
+                && (TitleEditInterpreter.targetsSelectedTitle(clean) || EditorCommandParser().parse(clean, preset: edit.preset).contains { $0.semanticCategory.hasPrefix("title-") })))
         let selectedItemID: UUID? = {
             guard explicitlyUsesSelection else { return nil }
             if let id = edit.selectedItemID,
@@ -4979,7 +5220,8 @@ final class AppModel: ObservableObject {
         }()
         guard !explicitlyUsesSelection || selectedItemID != nil else {
             feedback = clean
-            status = "Выбранный при отправке клип удалён — выберите адресат правки заново"
+            status = edit.selectedItemID == nil ? "Выберите клип или выделите диапазон для этой правки."
+                : "Выбранный при отправке клип удалён — выберите адресат правки заново"
             updateTimelineDirectorExchange(edit.replyID, status: status)
             activeTimelineAIEdit = nil
             Task { @MainActor [weak self] in self?.startNextQueuedTimelineAIEdit() }
@@ -5122,7 +5364,7 @@ final class AppModel: ObservableObject {
             self.directorMusicTrackID = edit.directorBrief.musicPolicy == .specificTrack
                 ? edit.directorBrief.musicTrackID
                 : nil
-            let changed = previousTimeline != self.timeline
+            let changed = (didRebuild || finalExecution?.committed == true) && previousTimeline != self.timeline
             if changed {
                 PerformanceTrace.current?.event("comment.applied-and-saved")
                 self.editTrace?.event("edit.saved")
@@ -5163,8 +5405,18 @@ final class AppModel: ObservableObject {
             let receipt = DirectorExecutionReceipt(requested: finalExecution?.plan.commands ?? reply.commands,
                 applied: applied, omitted: omitted, saved: changed || didRebuild, previewReady: previewReady,
                 cancelled: Task.isCancelled, failure: refinementFailure)
-            self.status = DirectorResponseComposer.execution(receipt)
             self.setDirectorResponseRecord(edit.replyID, receipt: receipt)
+            if receipt.state == .applied, !didRebuild, finalExecution?.toolReport.applied.isEmpty == true,
+               let baseline = previousTimeline, let current = self.timeline, let projectID = self.project?.id,
+               !receipt.requested.isEmpty, receipt.requested.allSatisfy(\.allowsScopeCorrection) {
+                let revision = RevisableDirectorEdit(replyID: edit.replyID, projectID: projectID,
+                    baseline: baseline, fullResult: current, expected: current, commands: receipt.requested)
+                self.rememberDirectorEdit(revision, from: baseline, to: current)
+                self.linkDirectorRevision(edit.replyID, before: baseline, after: current, commands: receipt.requested)
+            } else if changed, let baseline = previousTimeline, let current = self.timeline {
+                self.rememberDirectorEdit(nil, from: baseline, to: current)
+            }
+            self.status = DirectorResponseComposer.execution(receipt)
             if changed { self.scheduleFilmVerification() }
         }
     }
@@ -6174,6 +6426,10 @@ final class AppModel: ObservableObject {
            let visible = timeline, let index = refreshed.timelines.firstIndex(where: { $0.id == visible.id }) {
             refreshed.timelines[index] = visible
         }
+        if pendingAISettingsProject == refreshed.id {
+            refreshed.preferences.aiPowerMode = aiPowerMode
+            refreshed.preferences.advancedAISettings = advancedAISettings
+        }
         project = refreshed
         if selectedTimelineItemID.flatMap({ id in timeline?.items.contains(where: { $0.id == id }) }) != true {
             selectedTimelineItemID = nil
@@ -6218,6 +6474,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func flushAutosave() async -> Bool {
+        await aiSettingsSave?.value
         workspaceAutosaveTask?.cancel()
         workspaceAutosaveTask = nil
         while let pendingTimelineCommit = timelineCommitTask {
@@ -6460,6 +6717,7 @@ final class AppModel: ObservableObject {
         copiedEffectKeyframe = nil
         timelineClipboard = nil
         timelineSelectionAnchor = nil
+        revisableDirectorEdits.removeAll()
         undoTimelineHistory = []
         redoTimelineHistory = []
         updateTimelineHistoryAvailability()
@@ -6587,6 +6845,7 @@ final class AppModel: ObservableObject {
                 ? directorBrief.musicTrackID
                 : nil
         }
+        restoreDirectorRevisions()
         directorAgent.restoreConversation(directorMessages)
         undoTimelineHistory = (project?.timelineCheckpoints ?? [])
             .suffix(40)
@@ -7204,8 +7463,12 @@ final class AppModel: ObservableObject {
     }
 
     private static func clockText(_ seconds: Double) -> String {
-        let safe = max(0, Int(seconds.rounded()))
-        return String(format: "%d:%02d", safe / 60, safe % 60)
+        let hundredths = max(0, Int((seconds * 100).rounded()))
+        let whole = hundredths / 100
+        let clock = String(format: "%d:%02d", whole / 60, whole % 60)
+        let fraction = hundredths % 100
+        if fraction == 0 { return clock }
+        return clock + (fraction.isMultiple(of: 10) ? ",\(fraction / 10)" : String(format: ",%02d", fraction))
     }
 
     private static func defaultBPM(for style: MusicStyle) -> Double {
@@ -7496,14 +7759,14 @@ final class AppModel: ObservableObject {
 
     /// All three composers route discussion here before touching a brief, queue
     /// or editing transaction. Every await consumes one send-to-display budget.
-    private func submitDirectorAdvice(_ text: String, range: ClosedRange<Double>? = nil) {
+    private func submitDirectorAdvice(_ text: String, range: ClosedRange<Double>? = nil, route: DirectorTurnRoute) {
         // A question does not cancel an already authorized film-building task.
         // Timeline editing owns a separate ordered operation; this guard is
         // for the initial director task before a movie exists.
         if isDirectorResponding, directorAdviceReplyID == nil, directorTask != nil {
             directorMessages.append(DirectorMessage(role: .user, text: text))
             var reply = DirectorMessage(role: .assistant,
-                text: "Режиссёр ещё обрабатывает предыдущую задачу. Для оценки готового момента пока недостаточно данных.")
+                text: "Ещё работаю над предыдущей просьбой. Результат появится здесь.")
             reply.response = .init(state: .proposed, projectID: project?.id, revision: directorContextRevision,
                 advisory: true, fallback: true)
             appendDirectorReply(reply)
@@ -7518,17 +7781,24 @@ final class AppModel: ObservableObject {
             }
         }
         let submittedAt = ProcessInfo.processInfo.systemUptime
+        let history = directorMessages
         let followsPrevious = ["продолжи ожидание", "подожди", "подробнее", "объясни подробнее"].contains(
             text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)))
         let continuation = followsPrevious ? directorAdviceContinuation.flatMap {
             $0.projectID == project?.id && $0.revision == directorContextRevision ? $0 : nil
         } : nil
+        let previousResponse = history.last?.response
+        let continuesDialogue = previousResponse?.conversational == true && previousResponse?.projectID == project?.id
+            && previousResponse?.revision == directorContextRevision
+        let dialogue = (!followsPrevious && (route == .interpret || route == .conversation))
+            || (followsPrevious && directorAdviceContinuation == nil && (continuesDialogue || previousResponse?.advisory == false))
         let requestPrompt = continuation.map { $0.prompt + "\nПользователь просит: " + text } ?? text
         let capturedRange = followsPrevious ? continuation?.range : range
         if !followsPrevious { directorAdviceContinuation = nil }
         let projectID = project?.id
         let revision = directorContextRevision
         let selection = selectedTimelineItemID
+        let titleSelection = selectedTitleTimelineItemID
         let playhead = timelinePlayheadTime
         let snapshot = project
         let indexTask = directorMomentIndexTask
@@ -7548,18 +7818,34 @@ final class AppModel: ObservableObject {
         directorAdviceReplyID = replyID
         directorMessages.append(DirectorMessage(role: .user, text: text))
         directorMessages.append(DirectorMessage(id: replyID, role: .assistant, text: ""))
-        directorStatus = "Обдумываю момент · совет"
+        directorStatus = "Обдумываю ответ"
         isDirectorResponding = true
         trace.event("director.ui-accepted")
         let knownReply: String? = {
-            if followsPrevious, continuation == nil {
+            if DirectorRequestIntentInterpreter.asksAboutReply(text), let previous = history.last?.response,
+               previous.fallback || !previous.advisory {
+                return DirectorDialogueTurn.fallback(prompt: text, history: history)
+            }
+            if followsPrevious, continuation == nil, !dialogue {
                 return "Нет актуального вопроса для продолжения. Повторите вопрос о нужном фрагменте."
             }
             if let reason = DirectorResponseComposer.recordedDurationReason(prompt: text,
                 reasons: snapshot?.timelines.last?.directorRun?.decisionReasons ?? []) { return reason }
             let query = text.lowercased()
             if ["какая громкость", "громкость музыки?", "какой уровень музыки"].contains(where: query.contains) {
-                guard let music = snapshot?.timelines.last?.music else { return "В этом монтаже музыка не выбрана." }
+                guard let timeline = snapshot?.timelines.last, let music = timeline.music else { return "В этом монтаже музыка не выбрана." }
+                if let plan = timeline.effectiveAdaptiveSoundtrack, plan.userEdited == true {
+                    let segments = plan.segments.filter { segment in
+                        if let capturedRange { return segment.timelineStart < capturedRange.upperBound && segment.timelineEnd > capturedRange.lowerBound }
+                        return EditorCommandParser.refersToCurrentLocation(query) && segment.timelineStart <= playhead && segment.timelineEnd > playhead
+                    }
+                    let levels = segments.map(\.directive.volume)
+                    if let low = levels.min(), let high = levels.max() {
+                        let percent = { (volume: Double) in String(format: "%g%%", volume * 100) }
+                        return low == high ? "Здесь громкость музыки — \(percent(low))."
+                            : "На выделенном участке громкость музыки меняется от \(percent(low)) до \(percent(high))."
+                    }
+                }
                 return "Громкость музыки — \(String(format: "%g", music.volume * 100))%."
             }
             if ["готово", "сделано", "ты закончил"].contains(query.trimmingCharacters(in: .punctuationCharacters)) {
@@ -7581,13 +7867,34 @@ final class AppModel: ObservableObject {
         directorTask = Task {
             await PerformanceTrace.$current.withValue(trace) {
                 var moment = continuation?.context.moment
-                let fallback = DirectorAIReply(text: "Не успел подготовить оценку за отведённое время. Можно попросить продолжить ожидание.", runtimeLabel: "Ограниченный ответ", normalizedBrief: nil, isFallback: true)
+                var redirectToEdit = false
+                let fallbackText = dialogue ? DirectorDialogueTurn.fallback(prompt: text, history: history)
+                    : "Не успел оценить этот фрагмент. Напишите «подожди», и я продолжу."
+                let fallback = DirectorAIReply(text: fallbackText, runtimeLabel: "Ограниченный ответ", normalizedBrief: nil, isFallback: true)
                 let detailed = ["подробнее", "подробно", "подробный", "продолжи ожидание", "подожди"].contains(where: text.lowercased().contains)
                 let reply: DirectorAIReply
                 if let knownReply {
                     reply = DirectorAIReply(text: knownReply, runtimeLabel: "Данные проекта", normalizedBrief: nil)
                 } else {
-                    reply = await DirectorReplyDeadline.run(seconds: detailed ? 30 : 6, fallback: fallback) {
+                    reply = await DirectorReplyDeadline.run(seconds: detailed ? 30 : dialogue ? 18 : 6, fallback: fallback) {
+                        if dialogue {
+                            do {
+                                let allowsEdit = route == .interpret && !followsPrevious
+                                self.directorAgent.restoreConversation(history)
+                                let turn = try await self.directorAgent.interpretTurn(text,
+                                    context: self.directorContext(selection: (selection, playhead)), allowsEdit: allowsEdit)
+                                try Task.checkCancellation()
+                                switch turn {
+                                case .answer(let answer):
+                                    return DirectorAIReply(text: answer, runtimeLabel: "Диалог", normalizedBrief: nil)
+                                case .edit:
+                                    redirectToEdit = allowsEdit
+                                    return allowsEdit ? DirectorAIReply(text: "", runtimeLabel: "Монтаж", normalizedBrief: nil) : fallback
+                                case .assessMoment:
+                                    if DirectorRequestIntentInterpreter.asksAboutReply(text) { return fallback }
+                                }
+                            } catch { return fallback }
+                        }
                         let index = await indexTask?.value
                         guard !Task.isCancelled else { return fallback }
                         moment = continuation?.context.moment ?? index?.resolve(prompt: text, selectedID: selection, playhead: playhead, range: capturedRange)
@@ -7605,7 +7912,7 @@ final class AppModel: ObservableObject {
                                 context: context, range: capturedRange, projectID: projectID, revision: revision)
                         }
                         return await self.directorAgent.respond(to: requestPrompt, context: context, mode: .advisory,
-                            recordInHistory: false, submittedAt: submittedAt)
+                            recordInHistory: false, submittedAt: dialogue ? ProcessInfo.processInfo.systemUptime : submittedAt)
                     }
                 }
                 guard !Task.isCancelled, self.directorGeneration == generation, self.project?.id == projectID,
@@ -7616,10 +7923,40 @@ final class AppModel: ObservableObject {
                     }
                     return
                 }
-                self.completeDirectorReply(at: i, text: reply.text)
+                if redirectToEdit, !reply.isFallback, i > 0, self.directorContextRevision == revision,
+                   self.selectedTimelineItemID == selection, self.selectedTitleTimelineItemID == titleSelection {
+                    // Replace this provisional exchange with the normal editing transaction.
+                    self.directorMessages.removeSubrange((i - 1)...i)
+                    self.isDirectorResponding = false
+                    self.directorTask = nil
+                    self.directorAdviceReplyID = nil
+                    trace.finish(status: "edit")
+                    if let timeline = self.timeline {
+                        if capturedRange == nil, let (instruction, scope) = DirectorEditScope.splitInterval(from: text) {
+                            if case .interval(let interval) = scope, interval.lowerBound < timeline.duration {
+                                let range = interval.lowerBound...min(interval.upperBound, timeline.duration)
+                                self.enqueueTimelineAIEdit(instruction, range: range, displayedText: text, submittedPlayhead: playhead)
+                            } else {
+                                self.directorMessages.append(DirectorMessage(role: .user, text: text))
+                                self.appendDirectorNote("Укажите начало и конец интервала в пределах фильма.")
+                                self.startNextQueuedTimelineAIEdit()
+                            }
+                        } else {
+                            self.enqueueTimelineAIEdit(text, range: capturedRange, displayedText: text, submittedPlayhead: playhead)
+                        }
+                    } else {
+                        let draft = self.directorInput
+                        self.directorInput = text
+                        self.sendDirectorMessage(resolvedEdit: true)
+                        self.directorInput = draft
+                    }
+                    return
+                }
+                self.completeDirectorReply(at: i, text: redirectToEdit ? "Пока я разбирал запрос, монтаж или выделение изменились. Отправьте правку для нужного фрагмента ещё раз." : reply.text)
                 self.directorMessages[i].response = .init(state: .proposed, projectID: projectID, revision: revision,
                     itemIDs: moment?.objects.map(\.itemID) ?? [], advisory: true, fallback: reply.isFallback,
                     details: (moment?.limitations ?? []) + (moment?.objects.flatMap(\.limitations) ?? []))
+                self.directorMessages[i].response?.conversational = dialogue && moment == nil
                 self.directorMessages[i].response?.range = capturedRange ?? (moment?.objects.count == 1 ? moment?.objects.first?.filmRange : nil)
                 if capturedRange == nil, let snapshot, let objects = moment?.objects, objects.count == 1, let object = objects.first,
                    (reply.judgment?.stance == .keep || reply.isFallback),
@@ -7629,7 +7966,7 @@ final class AppModel: ObservableObject {
                 }
                 self.directorAgent.restoreConversation(self.directorMessages)
                 self.directorRuntimeStatus = reply.runtimeLabel
-                self.directorStatus = reply.isFallback ? "Совет · ограниченные данные" : "Совет"
+                self.directorStatus = "Ответ готов"
                 trace.event("director.first-displayed", fields: ["result": reply.isFallback ? "fallback" : "answer"])
                 trace.event("director.full-displayed")
                 trace.finish(status: reply.isFallback ? "fallback" : "success")
@@ -7637,12 +7974,7 @@ final class AppModel: ObservableObject {
                 self.directorTask = nil
                 self.directorAdviceReplyID = nil
                 self.scheduleWorkspaceAutosave()
-                if !self.queuedDirectorMessages.isEmpty {
-                    let draft = self.directorInput
-                    self.directorInput = self.queuedDirectorMessages.removeFirst()
-                    self.sendDirectorMessage()
-                    self.directorInput = draft
-                } else { self.startNextQueuedTimelineAIEdit() }
+                self.startNextQueuedTimelineAIEdit()
             }
         }
     }
@@ -7701,7 +8033,7 @@ final class AppModel: ObservableObject {
         let audioHints = audioCounts.sorted {
             $0.value == $1.value ? $0.key.rawValue < $1.key.rawValue : $0.value > $1.value
         }.prefix(6).map { "\(Self.audioEventTitle($0.key)): \($0.value) эпиз." }
-        return DirectorContext(
+        var context = DirectorContext(
             assetCount: assets.count,
             videoCount: assets.filter { $0.kind == .video }.count,
             photoCount: assets.filter { $0.kind == .photo }.count,
@@ -7726,6 +8058,15 @@ final class AppModel: ObservableObject {
             aiPowerMode: project?.autonomousJob?.state.resumesAutomatically == true
                 ? (project?.autonomousJob?.processProfile?.mode ?? aiPowerMode) : aiPowerMode
         )
+        context.musicVolume = currentTimeline?.music?.volume
+        let titles = currentTimeline?.effectiveTitleItems ?? []
+        context.titleList = titles.enumerated().compactMap { offset, title in
+            guard title.kind != .subtitle, title.kind.category != .captions, title.speechAnchor == nil else { return nil }
+            return .init(number: offset + 1, text: title.text)
+        }
+        let legacy = currentTimeline?.items.filter { $0.kind == .title } ?? []
+        context.titleList += legacy.enumerated().map { .init(number: titles.count + $0.offset + 1, text: $0.element.title ?? "") }
+        return context
     }
 
     private static func audioEventTitle(_ kind: AudioEventKind) -> String {
@@ -8097,6 +8438,10 @@ final class AppModel: ObservableObject {
 
     private func startTimelineAIEdit(_ pendingEdit: PendingTimelineAIEdit) {
         let edit = rebasedTimelineAIEdit(pendingEdit)
+        if let priorID = edit.correctionOf {
+            reviseDirectorScope(edit, priorID: priorID)
+            return
+        }
         if let proposal = edit.proposal,
            project.map({ !proposal.isApplicable(to: $0, selectedID: edit.selectedItemID) }) ?? true {
             updateTimelineDirectorExchange(edit.replyID, status: "Момент изменился после совета — сначала нужно оценить его заново.")
@@ -8170,6 +8515,68 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func reviseDirectorScope(_ edit: PendingTimelineAIEdit, priorID: DirectorCorrectionReference) {
+        guard let pipeline else { return }
+        run("Уточняю диапазон правки", presentation: .silentEditor) {
+            let before = self.timeline
+            var receipt = DirectorExecutionReceipt()
+            var range: ClosedRange<Double>?
+            var message = "Не могу применить это уточнение к предыдущей правке."
+            let previous = self.revisableDirectorEdits.last { candidate in
+                switch priorID {
+                case .reply(let id): return candidate.replyID == id
+                case .topic(let category): return candidate.category == category
+                }
+            }
+            let qualifier = DirectorEditScope.namedCorrection(edit.instruction)?.qualifier ?? edit.instruction
+            if var prior = previous, prior.projectID == self.project?.id,
+               let summary = prior.applyFollowUp(qualifier) {
+                if let current = self.timeline, current.matchesDirectorEdit(prior.expected) {
+                    do {
+                        let requested = prior.range ?? 0...prior.baseline.duration
+                        let report = try await pipeline.reviseDirectorRange(prior.commands, from: prior.baseline,
+                            fullResult: prior.fullResult, expected: current, range: requested)
+                        guard self.pipeline === pipeline else { return }
+                        receipt.omitted = report.ignored
+                        range = prior.range
+                        if report.hasChanges {
+                            await self.refresh()
+                            guard self.pipeline === pipeline, let updated = self.timeline else { return }
+                            self.recordTimelineChange(from: current)
+                            prior.expected = updated
+                            prior.replyID = edit.replyID
+                            self.rememberDirectorEdit(DirectorEditScope.restoredCategory(edit.instruction) == nil ? prior : nil,
+                                                      replacing: previous?.replyID, from: current, to: updated)
+                            receipt.applied = [summary]
+                            receipt.saved = true
+                            receipt.previewReady = await self.rebuildPlaybackIfPossible(show: false)
+                            message = summary
+                            if !receipt.previewReady { message += " Просмотр пока не обновился." }
+                            self.scheduleFilmVerification()
+                        } else {
+                            message = report.ignored.first ?? "Это уже так."
+                            if report.ignored.isEmpty {
+                                prior.replyID = edit.replyID
+                                self.rememberDirectorEdit(prior, replacing: previous?.replyID, from: current, to: current)
+                            }
+                        }
+                    } catch { receipt.failure = error.localizedDescription; message = "Не удалось уточнить правку. \(error.localizedDescription)" }
+                } else { message = "После этой правки монтаж изменился. Уточните, что нужно поменять сейчас." }
+            }
+            guard self.pipeline === pipeline else { return }
+            self.setDirectorResponseRecord(edit.replyID, receipt: receipt)
+            if receipt.saved, let before, let after = self.timeline, let previous {
+                self.linkDirectorRevision(edit.replyID, before: before, after: after, commands: [], previousReplyID: previous.replyID)
+            }
+            if let index = self.directorMessages.firstIndex(where: { $0.id == edit.replyID }) {
+                self.directorMessages[index].response?.range = range
+            }
+            self.status = message
+            self.updateTimelineDirectorExchange(edit.replyID, status: message)
+            _ = await self.persistWorkspaceState()
+        }
+    }
+
     private func rebasedTimelineAIEdit(_ edit: PendingTimelineAIEdit) -> PendingTimelineAIEdit {
         var brief = directorBrief
         if edit.briefChanges.contains(.duration) {
@@ -8206,7 +8613,7 @@ final class AppModel: ObservableObject {
             briefChanges: edit.briefChanges,
             retryCount: edit.retryCount,
             trace: edit.trace,
-            proposal: edit.proposal
+            proposal: edit.proposal, correctionOf: edit.correctionOf
         )
     }
 
@@ -8260,8 +8667,21 @@ final class AppModel: ObservableObject {
         return ignored
     }
 
+    private func sendNextQueuedDirectorMessage() -> Bool {
+        guard !queuedDirectorMessages.isEmpty else { return false }
+        let draft = directorInput
+        directorInput = queuedDirectorMessages.removeFirst()
+        sendDirectorMessage()
+        directorInput = draft
+        return true
+    }
+
     private func startNextQueuedTimelineAIEdit() {
-        guard !isWorking, !isDirectorResponding, !pendingTimelineAIEdits.isEmpty else { return }
+        guard !isWorking, !isDirectorResponding else { return }
+        guard !pendingTimelineAIEdits.isEmpty else {
+            _ = sendNextQueuedDirectorMessage()
+            return
+        }
         let edit = pendingTimelineAIEdits.removeFirst()
         queuedTimelineAIEditCount = pendingTimelineAIEdits.count
         startTimelineAIEdit(edit)

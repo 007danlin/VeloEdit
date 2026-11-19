@@ -799,7 +799,8 @@ public struct NaturalLanguageDirector: Sendable {
             intents.append(EditIntent(scope: .shot, target: generalTarget, operation: .genericEdit, desiredResult: "Применить монтажные команды", confidence: 0.93, executionTier: .instant))
         }
 
-        if Self.requiresAutonomousEdit(text) || requiresStoryConstraintRebuild {
+        if Self.requiresAutonomousEdit(text) || requiresStoryConstraintRebuild
+            || (intents.isEmpty && commands.isEmpty && calls.isEmpty && DirectorRequestContract.requiresStoryRebuild(input.userRequest)) {
             let tasteConfidence = BundledEditorialTaste.resolving(input.tasteProfile).adaptiveConfidence
             intents.append(EditIntent(
                 scope: .global,
@@ -824,16 +825,8 @@ public struct NaturalLanguageDirector: Sendable {
             ))
         }
 
-        if intents.isEmpty {
-            intents.append(EditIntent(
-                scope: .global,
-                target: generalTarget,
-                operation: .autonomousEdit,
-                constraints: ["do not ask for low-risk choices", "reuse PersonalTaste"],
-                desiredResult: "Интерпретировать запрос как автономную режиссёрскую правку",
-                confidence: 0.58,
-                executionTier: .deep
-            ))
+        if intents.isEmpty && rejected.isEmpty {
+            rejected.append("Не удалось подобрать действие для этой просьбы. Что именно должно измениться?")
         }
 
         let dependencies = EditDependencyGraph().plan(for: intents)
@@ -1055,7 +1048,8 @@ public struct NaturalLanguageDirector: Sendable {
     private static func requiresAutonomousEdit(_ text: String) -> Bool {
         NLText.containsAny(text, [
             "сделай красиво", "сделай как считаешь лучше", "сам выбери длину", "не спрашивай меня",
-            "просто сделай красиво", "do your best", "make it beautiful"
+            "просто сделай красиво", "пересобери фильм", "пересобери монтаж", "собери фильм заново",
+            "смонтируй фильм заново", "собери новый фильм", "do your best", "make it beautiful"
         ])
     }
 

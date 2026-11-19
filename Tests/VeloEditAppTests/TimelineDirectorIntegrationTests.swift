@@ -2,7 +2,7 @@ import AVFoundation
 import Combine
 import Foundation
 import Testing
-import VeloEditCore
+@testable import VeloEditCore
 @testable import VeloEdit
 
 @Suite(.serialized) @MainActor
@@ -40,16 +40,505 @@ struct TimelineDirectorIntegrationTests {
         try await wait { model.timeline == original }
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"), arguments: [
+        ["Первая глава", "Вторая глава"],
+        ["Осуществление посадки пассажиров в поезд", "Прибытие поезда к месту назначения"]
+    ])
+    func realDirectorRewritesExistingTitlesAndExplainsWhatChanged(_ titleTexts: [String]) async throws {
+        let fixture = try await Fixture(realDirector: true, titleTexts: titleTexts)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.selectTitleTimelineItem(fixture.secondTitleID)
+        model.directorInput = "Переделай титры на понятные"
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        let updated = try #require(model.timeline)
+        print("Результат правки титров:", model.directorMessages.last?.text ?? "")
+        #expect(updated.effectiveTitleItems.map(\.id) == original.effectiveTitleItems.map(\.id))
+        #expect(zip(updated.effectiveTitleItems, original.effectiveTitleItems).allSatisfy { $0.text != $1.text })
+        #expect(Set(updated.effectiveTitleItems.map(\.text)).count == 2)
+        #expect(updated.items == original.items)
+        #expect(model.directorMessages.last?.response?.saved == true)
+        model.directorInput = "Что?"
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding }
+        print("Пояснение:", model.directorMessages.last?.text ?? "")
+        #expect(updated.effectiveTitleItems.allSatisfy { model.directorMessages.last?.text.contains($0.text) == true })
+        #expect(model.directorMessages.last?.response?.range == nil)
+        #expect(model.timeline == updated)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func realDialogueRoutesAnIndirectMusicRequestThroughTheEditor() async throws {
+        let fixture = try await Fixture(realDirector: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        let request = "Пускай фоновая мелодия звучит на 17%"
+        #expect(DirectorRequestIntentInterpreter().route(for: request) == .interpret)
+        model.directorInput = request
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        print("Ответ на просьбу о музыке:", model.directorMessages.last?.text ?? "")
+        #expect(model.directorMessages.filter { $0.role == .user }.map(\.text) == [request])
+        #expect(model.timeline?.music?.trackID == original.music?.trackID)
+        #expect(model.timeline?.music?.volume == 0.17)
+        #expect(model.timeline?.items == original.items)
+        #expect(model.directorMessages.last?.response?.saved == true)
+    }
+
+    @Test(arguments: [false, true]) func transitionsCanBeNarrowedAndRestored(whileApplying: Bool) async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.directorInput = "Поменяй переходы"
+        model.sendDirectorMessage()
+        if !whileApplying {
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            #expect(model.timeline?.effectiveTransitionItems.count == 3)
+        }
+        model.directorInput = "Только в конце"
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        let saved = try #require(model.timeline)
+        #expect(saved.effectiveTransitionItems.map(\.incomingClipID) == [original.items[3].id])
+        #expect(saved.items.dropLast() == original.items.dropLast())
+        #expect(model.directorMessages.last?.response?.saved == true)
+        let reopened = try ProjectStore(open: fixture.url)
+        let persisted = try #require(await reopened.manifest.timelines.last)
+        #expect(persisted.items == saved.items)
+        #expect(persisted.effectiveTransitionItems == saved.effectiveTransitionItems)
+        for (message, count) in [("Нет, верни как было", 3), ("Верни отменённую правку", 1)] {
+            model.directorInput = message
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            #expect(model.timeline?.effectiveTransitionItems.count == count)
+        }
+    }
+
+    @Test(arguments: [false, true]) func namedTransitionCorrectionKeepsInterveningMusic(queued: Bool) async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        let music = try #require(original.music)
+        func send(_ text: String) { model.directorInput = text; model.sendDirectorMessage() }
+        func settle() async throws {
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        }
+        var quieterRMS: Double?
+        send("Поменяй переходы")
+        if !queued { try await settle() }
+        send("Сделай музыку потише")
+        if !queued {
+            try await settle()
+            #expect(model.timeline?.effectiveTransitionItems.count == 3)
+            #expect((model.timeline?.music?.volume ?? 1) < music.volume)
+            let preview = try #require(model.previewPlayer?.currentItem)
+            quieterRMS = try await audioSignature(preview, start: 0.25, duration: 0.5).rms
+        }
+        send("А переходы оставь только в конце")
+        try await settle()
+        let corrected = try #require(model.timeline)
+        #expect(model.directorMessages.last?.response?.saved == true)
+        #expect(corrected.effectiveTransitionItems.map(\.incomingClipID) == [original.items[3].id])
+        #expect(corrected.items.dropLast() == original.items.dropLast())
+        let quieter = try #require(corrected.music)
+        #expect(quieter.trackID == music.trackID && quieter.volume > 0 && quieter.volume < music.volume)
+        if let quieterRMS {
+            let preview = try #require(model.previewPlayer?.currentItem)
+            let correctedRMS = try await audioSignature(preview, start: 0.25, duration: 0.5).rms
+            #expect(quieterRMS > 0 && abs(correctedRMS / quieterRMS - 1) < 0.01)
+        }
+        let saved = try ProjectStore(open: fixture.url)
+        #expect(await saved.manifest.timelines.last?.music == quieter)
+        #expect(await saved.manifest.timelines.last?.effectiveTransitionItems == corrected.effectiveTransitionItems)
+        send("Отмени последнюю правку")
+        try await settle()
+        #expect(model.timeline?.effectiveTransitionItems.count == 3)
+        #expect(model.timeline?.music == quieter)
+        send("Верни отменённую правку")
+        try await settle()
+        #expect(model.timeline?.effectiveTransitionItems == corrected.effectiveTransitionItems)
+        send("Верни прежнюю громкость музыки")
+        try await settle()
+        #expect(model.timeline?.music == original.music)
+        #expect(model.timeline?.effectiveTransitionItems == corrected.effectiveTransitionItems)
+    }
+
+    @Test(arguments: [false, true]) func reopenedProjectRemembersTransitionsAndKeepsQuieterSoundtrack(legacy: Bool) async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        func send(_ text: String, to model: AppModel) async throws {
+            model.directorInput = text
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        }
+        func reopen() async throws -> AppModel {
+            let model = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: false)
+            model.openRecentProject(fixture.url)
+            try await wait { model.projectURL == fixture.url && model.openingProjectURL == nil }
+            return model
+        }
+        let initial = try #require(fixture.model.timeline)
+        try await send("Поменяй переходы", to: fixture.model)
+        try await send("Сделай музыку потише", to: fixture.model)
+        let edited = try #require(fixture.model.timeline)
+        let quieter = try #require(edited.music)
+        #expect(quieter.trackID == initial.music?.trackID && quieter.volume < (initial.music?.volume ?? 0))
+        #expect(edited.effectiveTransitionItems.count == 3)
+        let beforePlayer = try #require(fixture.model.previewPlayer?.currentItem)
+        let beforeRMS = try await audioSignature(beforePlayer, start: 0.25, duration: 0.5).rms
+        #expect(await fixture.model.stopForApplicationTermination())
+        #expect(await fixture.model.flushAutosave())
+
+        let receipts = fixture.model.directorMessages.compactMap { $0.response?.revisionLink }
+        #expect(receipts.count == 2)
+        if legacy {
+            let old = try ProjectStore(open: fixture.url)
+            try await old.update { project in
+                guard var state = project.workspaceState, var messages = state.directorMessages else { return }
+                for i in messages.indices { messages[i].response?.revisionLink = nil }
+                state.directorMessages = messages
+                project.workspaceState = state
+            }
+        }
+        let reopened = try await reopen()
+        #expect(reopened.directorMessages.contains { $0.text == "Поменяй переходы" })
+        #expect(reopened.timeline?.effectiveTransitionItems == edited.effectiveTransitionItems)
+        try await send("А переходы оставь только в конце", to: reopened)
+        #expect(reopened.directorMessages.last?.response?.saved == true)
+        #expect(reopened.timeline?.effectiveTransitionItems == Array(edited.effectiveTransitionItems.suffix(1)))
+        #expect(reopened.timeline?.items.dropLast() == initial.items.dropLast())
+        #expect(reopened.timeline?.music == quieter)
+        let afterPlayer = try #require(reopened.previewPlayer?.currentItem)
+        let afterRMS = try await audioSignature(afterPlayer, start: 0.25, duration: 0.5).rms
+        #expect(beforeRMS > 0 && abs(afterRMS / beforeRMS - 1) < 0.01)
+        #expect(await reopened.stopForApplicationTermination())
+        #expect(await reopened.flushAutosave())
+
+        let again = try await reopen()
+        #expect(again.timeline?.effectiveTransitionItems == Array(edited.effectiveTransitionItems.suffix(1)))
+        try await send("Верни прежние переходы", to: again)
+        #expect(again.timeline?.effectiveTransitionItems == initial.effectiveTransitionItems)
+        #expect(again.timeline?.music == quieter)
+        #expect(await again.stopForApplicationTermination())
+    }
+
+    @Test func reopenedProjectRejectsScopeWhenSavedTimelineNoLongerMatchesChat() async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        for text in ["Поменяй переходы", "Сделай музыку потише"] {
+            fixture.model.directorInput = text
+            fixture.model.sendDirectorMessage()
+            try await wait { !fixture.model.isWorking && !fixture.model.isDirectorResponding && fixture.model.queuedTimelineAIEditCount == 0 }
+        }
+        #expect(await fixture.model.stopForApplicationTermination())
+        #expect(await fixture.model.flushAutosave())
+        let store = try ProjectStore(open: fixture.url)
+        try await store.update { project in project.timelines[0].items[0].locked.toggle() }
+        let manuallyEdited = try #require(await store.manifest.timelines.last)
+        let reopened = AppModel(defaults: UserDefaults(suiteName: fixture.suite)!, startBackgroundServices: false)
+        reopened.openRecentProject(fixture.url)
+        try await wait { reopened.projectURL == fixture.url && reopened.openingProjectURL == nil }
+        reopened.directorInput = "А переходы оставь только в конце"
+        reopened.sendDirectorMessage()
+        try await wait { !reopened.isWorking && !reopened.isDirectorResponding && reopened.queuedTimelineAIEditCount == 0 }
+        #expect(reopened.directorMessages.last?.response?.saved == false)
+        #expect(reopened.timeline?.items == manuallyEdited.items)
+        #expect(reopened.timeline?.effectiveTransitionItems == manuallyEdited.effectiveTransitionItems)
+        #expect(reopened.timeline?.music == manuallyEdited.music)
+        #expect(await reopened.stopForApplicationTermination())
+    }
+
+    @Test func missingSavedMusicDoesNotSelectAnotherTrackOnOpen() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let pipeline = try #require(fixture.model.pipeline)
+        var timeline = try #require(fixture.model.timeline)
+        timeline.music?.trackID = UUID()
+        timeline.music?.trackTitle = "Отсутствующий трек"
+        try await pipeline.replaceLatestTimeline(with: timeline)
+        await #expect(throws: FreeToUseAPIError.self) { try await pipeline.resolvePendingMusic() }
+        #expect(await pipeline.store.manifest.timelines.last?.music == timeline.music)
+    }
+
+    @Test func namedFilterScopePreservesIndependentCameraEffects() async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        var effects: [EffectTimelineItem] = []
+        for request in ["Сделай все клипы чёрно-белыми", "Добавь эффект камеры на все клипы", "А фильтр оставь только в начале"] {
+            model.directorInput = request
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            if request.contains("камеры") { effects = model.timeline?.effectiveEffects ?? [] }
+        }
+        let timeline = try #require(model.timeline)
+        #expect(timeline.items.map { $0.effectiveVideoAdjustments.filter } == [.monochrome, .none, .none, .none])
+        #expect(effects.count == 4 && timeline.effectiveEffects == effects)
+    }
+
+    @Test func modelSwitchLeavesCompletedFilmReady() async throws {
+        let fixture = try await Fixture(completedFilm: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        model.renderPreview()
+        try await wait { !model.isWorking }
+        let player = try #require(model.previewPlayer?.currentItem)
+        let project = try #require(model.project)
+        #expect(model.montageReady)
+        model.setAIPowerMode(.balanced)
+        try await wait { model.project?.preferences.effectiveAIPowerMode == .balanced }
+        model.setAdvancedAISettings(.init(enabled: true, runtime: .ollama))
+        try await wait { model.project?.preferences.effectiveAdvancedAISettings.enabled == true }
+        #expect(!model.hasPendingFilmChanges && model.montageReady && !model.isCreatingFilm)
+        #expect(model.previewPlayer?.currentItem === player)
+        #expect(model.project?.timelines == project.timelines)
+        #expect(model.project?.autonomousJob?.id == project.autonomousJob?.id)
+        #expect(model.project?.autonomousJob?.state == .completed)
+        #expect(model.project?.autonomousJob?.processProfile?.mode == .fast)
+        #expect(model.project?.timelineCheckpoints?.count == project.timelineCheckpoints?.count)
+        #expect(await model.flushAutosave())
+        let persisted = try ProjectStore(open: fixture.url)
+        #expect(await persisted.manifest.preferences.effectiveAIPowerMode == .balanced)
+        #expect(await persisted.manifest.workspaceState?.hasPendingFilmChanges != true)
+        model.directorInput = "Предложи название для фильма"
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding && !fixture.requests.values.isEmpty }
+        #expect(fixture.requests.values.last?.1.aiPowerMode == .balanced)
+        model.selectPreset(.vlog)
+        model.setAIPowerMode(.quality)
+        try await wait { model.project?.preferences.effectiveAIPowerMode == .quality }
+        #expect(model.hasPendingFilmChanges)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func newModelHandlesNextRequestAfterFilmCompletion() async throws {
+        let fixture = try await Fixture(realDirector: true, completedFilm: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.setAIPowerMode(.balanced)
+        try await wait { model.project?.preferences.effectiveAIPowerMode == .balanced }
+        #expect(model.timeline == original && model.montageReady)
+        model.directorInput = "Переделай титры на понятные"
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding && !model.isWorking && model.queuedTimelineAIEditCount == 0 }
+        print("Новая модель:", model.directorRuntimeStatus, model.directorMessages.last?.text ?? "")
+        #expect(model.directorRuntimeStatus.hasPrefix(AIAnalysisProfile.resolve(mode: .balanced).modelID))
+        #expect(model.timeline?.effectiveTitleItems.map(\.text) != original.effectiveTitleItems.map(\.text))
+        #expect(model.timeline?.music == original.music)
+        #expect(model.timeline?.items == original.items)
+        #expect(model.project?.autonomousJob?.state == .completed)
+    }
+
+    @Test func scopeAfterAnInterveningManualEditCannotRestoreAnOlderSnapshot() async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        model.directorInput = "Поменяй переходы"
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        var manuallyEdited = try #require(model.timeline)
+        manuallyEdited.items[0].locked.toggle()
+        try await model.pipeline?.replaceLatestTimeline(with: manuallyEdited)
+        model.project = await model.pipeline?.snapshot()
+        model.directorInput = "Только в конце"
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+        #expect(model.timeline?.items == manuallyEdited.items)
+        #expect(model.timeline?.effectiveTransitionItems == manuallyEdited.effectiveTransitionItems)
+        #expect(model.directorMessages.last?.response?.saved == false)
+    }
+
+    @Test func previousTransitionsSurviveScopeCorrectionAndNamedRestore() async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        // A pre-existing transition at the first cut must survive both narrowing and restore.
+        let baseline = try #require(model.timeline)
+        let seeded = EditorCommandExecutor().apply([.setTransition(.fade, .number(2))], to: baseline).timeline
+        try await model.pipeline?.replaceLatestTimeline(with: seeded)
+        model.project = await model.pipeline?.snapshot()
+        for message in ["Поменяй переходы", "Только в конце", "Верни прежние переходы"] {
+            model.directorInput = message
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            if message == "Только в конце" {
+                let transitions = try #require(model.timeline?.effectiveTransitionItems)
+                #expect(transitions.count == 2)
+                #expect(transitions.first == seeded.effectiveTransitionItems.first)
+                #expect(transitions.last?.incomingClipID == seeded.items.last?.id)
+            }
+        }
+        #expect(model.timeline?.effectiveTransitionItems == seeded.effectiveTransitionItems)
+        #expect(model.timeline?.items == seeded.items)
+    }
+
+    @Test func musicVolumeFollowsCorrectionsAndKeepsTheTrack() async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        for (message, expected) in [("Поставь громкость музыки на 20%", 0.2), ("А лучше на 35%", 0.35),
+                                    ("Нет, верни как было", 0.2)] {
+            model.directorInput = message
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            #expect(model.timeline?.music?.volume == expected)
+            #expect(model.timeline?.music?.trackID == original.music?.trackID)
+            #expect(model.timeline?.items == original.items)
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func liveDirectorCanNarrowADescribedLook() async throws {
+        let fixture = try await Fixture(realDirector: true, clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.renderPreview()
+        try await wait { !model.isWorking }
+        let initial = try #require(model.previewPlayer?.currentItem)
+        let firstFrame = try await frame(initial, at: 0.75)
+        let lastFrame = try await frame(initial, at: 5.25)
+        let script = ["Сделай так, чтобы весь ролик выглядел как запись на старую видеокассету",
+                      "Я передумал, оставь это только на последнем плане", "А что именно поменялось?"]
+        for (index, message) in script.enumerated() {
+            let timeline = try await sendAndReopen(message, in: fixture)
+            let clips = index == 0 ? original.items[...] : original.items.suffix(1)
+            #expect(timeline.effectiveEffects.map(\.effectType) == Array(repeating: .vhsDistortion, count: clips.count))
+            #expect(timeline.effectiveEffects.compactMap(\.targetClipID) == clips.map(\.id))
+            #expect(timeline.items == original.items)
+            #expect(timeline.music == original.music)
+            let preview = try #require(model.previewPlayer?.currentItem)
+            #expect(try await (frame(preview, at: 0.75) == firstFrame) == (index != 0))
+            #expect(try await frame(preview, at: 5.25) != lastFrame)
+            if index == 2 {
+                let explanation = try #require(model.directorMessages.last?.text)
+                #expect(explanation.contains("VHS"))
+                #expect(explanation.contains("0:04,5–0:06"))
+                #expect(DirectorEditScope("0:04,5–0:06") == .interval(4.5...6))
+            }
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func liveDirectorEditsTwoTracksThenUndoesTogether() async throws {
+        let fixture = try await Fixture(realDirector: true, clipCount: 4)
+        defer { fixture.remove() }
+        let original = try #require(fixture.model.timeline)
+        for (message, undo) in [("Поставь музыку на 12 процентов и переименуй первый титр в «Новый день»", false),
+                                ("Нет, передумал, отмени последнее изменение", true)] {
+            let timeline = try await sendAndReopen(message, in: fixture)
+            var expectedMusic = try #require(original.music)
+            if !undo { expectedMusic.volume = 0.12 }
+            #expect(timeline.music == expectedMusic)
+            #expect(timeline.effectiveTitleItems.map(\.text) == (undo ? ["Первая глава", "Вторая глава"] : ["Новый день", "Вторая глава"]))
+            #expect(timeline.effectiveTitleItems.map(\.id) == original.effectiveTitleItems.map(\.id))
+            #expect(timeline.items == original.items)
+            #expect(fixture.model.directorMessages.last?.response?.saved == true)
+        }
+    }
+
+    private func sendAndReopen(_ message: String, in fixture: Fixture) async throws -> Timeline {
+        let model = fixture.model
+        model.directorInput = message
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding && !model.isWorking && model.queuedTimelineAIEditCount == 0 }
+        print("Чат монтажёра:", message, "→", model.directorMessages.last?.text ?? "")
+        #expect(await model.flushAutosave())
+        let store = try ProjectStore(open: fixture.url)
+        return try #require(await store.manifest.timelines.last)
+    }
+
+    @Test func explicitChatTargetWinsOverSelectionAndCanExpandImmediately() async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        fixture.model.selectTitleTimelineItem(fixture.secondTitleID)
+        let titleEdit = try await sendAndReopen("Переименуй первый титр в «Сборы»", in: fixture)
+        #expect(titleEdit.effectiveTitleItems.map(\.text) == ["Сборы", "Вторая глава"])
+        let first = try await sendAndReopen("Сделай первый клип чёрно-белым", in: fixture)
+        #expect(first.items.filter { $0.effectiveVideoAdjustments.filter == .monochrome }.count == 1)
+        let film = try await sendAndReopen("А лучше на весь фильм", in: fixture)
+        #expect(film.items.allSatisfy { $0.effectiveVideoAdjustments.filter == .monochrome })
+        #expect(film.effectiveTitleItems == titleEdit.effectiveTitleItems)
+    }
+
+    @Test func effectCanMoveBetweenClipsWithoutAccumulatingCopies() async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        for (message, indices) in [("Добавь эффект камеры на все клипы", [0, 1, 2, 3]),
+                                   ("Нет, только во втором клипе", [1]), ("Только в начале", [0])] {
+            model.directorInput = message
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            #expect(model.timeline?.effectiveEffects.compactMap(\.targetClipID) == indices.map { original.items[$0].id })
+            #expect(model.timeline?.items == original.items)
+        }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func liveMusicRequestThenOnlyTheFinalSeconds() async throws {
+        let fixture = try await Fixture(realDirector: true, clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        let script = ["Пускай фоновая мелодия звучит на 17%", "Только последние 2 секунды", "А лучше на 30%", "Нет, лучше на 25%", "Что?", "Передумал, откати последнее изменение"]
+        for (index, message) in script.enumerated() {
+            model.directorInput = message
+            model.sendDirectorMessage()
+            try await wait { !model.isDirectorResponding && !model.isWorking && model.queuedTimelineAIEditCount == 0 }
+            print("Диалог со звуком:", message, "→", model.directorMessages.last?.text ?? "")
+            let timeline = try #require(model.timeline)
+            #expect(timeline.items == original.items)
+            #expect(timeline.music?.trackID == original.music?.trackID)
+            if index == 0 {
+                #expect(timeline.music?.volume == 0.17)
+            } else {
+                let segments = try #require(timeline.effectiveAdaptiveSoundtrack?.segments)
+                #expect(segments.first?.timelineStart == 0)
+                #expect(segments.first?.directive.volume == original.music?.volume)
+                #expect(segments.last?.timelineStart == 4)
+                #expect(segments.last?.directive.volume == [1: 0.17, 2: 0.30, 3: 0.25, 4: 0.25, 5: 0.30][index])
+                #expect(segments.allSatisfy { $0.directive.trackID == original.music?.trackID })
+            }
+        }
+    }
+
+    @Test(arguments: [false, true]) func filterFollowsFirstClipThenWholeFilm(startOnOneClip: Bool) async throws {
+        let fixture = try await Fixture(clipCount: 4)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        let initial = startOnOneClip ? ("Сделай первый клип чёрно-белым", 1) : ("Сделай все клипы чёрно-белыми", 4)
+        for (message, count) in [initial, ("А лучше только на первом", 1),
+                                 ("На весь фильм", 4), ("Отмени последнюю правку", 1)] {
+            model.directorInput = message
+            model.sendDirectorMessage()
+            try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
+            let current = try #require(model.timeline)
+            #expect(current.items.filter { $0.effectiveVideoAdjustments.filter == .monochrome }.map(\.id)
+                == Array(original.items.prefix(count)).map(\.id))
+            #expect(current.music?.trackID == original.music?.trackID)
+        }
+    }
+
     @Test func scopeAfterSavedInsertionDoesNotDuplicateTitle() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         let model = fixture.model
         model.submitTimelineAIEdit("Убери все титры")
-        try await wait { !model.isWorking && !model.isDirectorResponding }
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
         #expect(model.timeline?.effectiveTitleItems.isEmpty == true)
         model.directorInput = "Докинь титр «Поехали» в конце"
         model.sendDirectorMessage()
-        try await wait { !model.isWorking && !model.isDirectorResponding }
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
         let titles = try #require(model.timeline?.effectiveTitleItems)
         #expect(titles.filter { $0.text == "Поехали" }.count == 1)
         model.directorInput = "на весь интервал видео"
@@ -88,7 +577,7 @@ struct TimelineDirectorIntegrationTests {
         let model = fixture.model
         let original = try #require(model.timeline)
         model.submitTimelineAIEdit("Накинь эффект камеры 00:03–00:06")
-        try await wait { !model.isWorking && !model.isDirectorResponding }
+        try await wait { !model.isWorking && !model.isDirectorResponding && model.queuedTimelineAIEditCount == 0 }
         #expect(model.timeline?.effectiveEffects.map(\.targetClipID) == [original.items[1].id])
         #expect(model.directorMessages.last?.response?.range == 3...6)
         #expect(fixture.requests.values.isEmpty)
@@ -201,7 +690,7 @@ struct TimelineDirectorIntegrationTests {
         let outsideAdjustments = model.timeline?.items.last?.effectiveVideoAdjustments
         model.submitTimelineAIEdit("Переименуй титр на «Локальная сцена» и сделай выбранный фрагмент чёрно-белым", range: 0...3)
         try await wait { !model.isWorking }
-        #expect(model.directorRuntimeStatus.hasPrefix(AIAnalysisProfile.resolve(mode: model.aiPowerMode).modelID))
+        #expect(model.directorRuntimeStatus == "Точная монтажная команда")
         #expect(model.timeline?.effectiveTitleItems.first?.text == "Локальная сцена")
         #expect(model.timeline?.effectiveTitleItems.last?.text == "Наш маршрут")
         #expect(model.timeline?.items.first?.effectiveVideoAdjustments.filter == .monochrome)
@@ -255,6 +744,116 @@ struct TimelineDirectorIntegrationTests {
         #expect(saved.workspaceState?.directorMessages?.filter { $0.role == .user && $0.text == request }.count == 1)
         #expect(saved.workspaceState?.directorMessages?.last?.response?.saved == true)
         #expect(saved.workspaceState?.directorMessages?.last?.response?.previewReady == true)
+    }
+
+    @Test func conversationalBrushAppliesNamedLookAcrossTwoShotsAndUndoes() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        model.renderPreview()
+        try await wait { !model.isWorking }
+        let before = try #require(model.previewPlayer?.currentItem)
+        let inside = try await frame(before, at: 2)
+        let outside = try await frame(before, at: 5.5)
+        model.submitTimelineAIEdit("добавь тут фильтр пикселизация", range: 1...5)
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        let updated = try #require(model.timeline)
+        let effects = updated.effectiveEffects.sorted { $0.startTime < $1.startTime }
+        #expect(effects.map(\.effectType) == [.pixelate, .pixelate])
+        #expect(effects.map(\.startTime) == [1, 3] && effects.map(\.endTime) == [3, 5])
+        #expect(model.directorMessages.last?.response?.saved == true)
+        #expect(model.directorMessages.last?.response?.previewReady == true)
+        let after = try #require(model.previewPlayer?.currentItem)
+        #expect(try await frame(after, at: 2) != inside)
+        #expect(try await frame(after, at: 5.5) == outside)
+        #expect(fixture.requests.values.isEmpty)
+        let reopened = try ProjectStore(open: fixture.url)
+        #expect(await reopened.manifest.timelines.last?.effectiveEffects == updated.effectiveEffects)
+        model.directorInput = "А что именно поменялось?"
+        model.sendDirectorMessage()
+        try await wait { !model.isDirectorResponding }
+        #expect(model.directorMessages.last?.text.contains("Пикселизация") == true)
+        #expect(model.timeline == updated)
+        model.directorInput = "Отмени последнюю правку"
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        #expect(model.timeline?.effectiveEffects == original.effectiveEffects)
+        #expect(model.timeline?.items == original.items)
+    }
+
+    @Test func directorResolvesHereAtThePlayheadAndKeepsLaterEditsLocal() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        model.seekTimeline(to: 4)
+        model.directorInput = "Накинь тут сепию"
+        model.sendDirectorMessage()
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        #expect(model.timeline?.items.map { $0.effectiveVideoAdjustments.filter } == [.none, .sepia])
+        model.submitTimelineAIEdit("Сделай тут без звука и добавь глитч", range: 1...2)
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        let timeline = try #require(model.timeline)
+        #expect(timeline.items.filter { $0.effectiveAudioAdjustments.muted }.map(\.timelineStart) == [1])
+        let effect = try #require(timeline.effectiveEffects.first)
+        #expect(effect.effectType == .glitch && effect.startTime == 1 && effect.endTime == 2)
+        #expect(timeline.items.last?.effectiveVideoAdjustments.filter == .sepia)
+        model.submitTimelineAIEdit("блюр", range: 4...5)
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        let blur = try #require(model.timeline?.effectiveEffects.first { $0.effectType == .blur })
+        #expect(blur.startTime == 4 && blur.endTime == 5)
+        #expect(model.directorMessages.dropLast().last?.text == "блюр")
+        #expect(fixture.requests.values.isEmpty)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func realBrushInterpretsAnAppearanceWithoutAnEffectName() async throws {
+        let fixture = try await Fixture(realDirector: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        model.submitTimelineAIEdit("Оставь в этом куске только серые тона, пусть все цвета исчезнут", range: 0...3)
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        let timeline = try #require(model.timeline)
+        print("Режиссёр о серых тонах:", model.directorMessages.last?.text ?? "")
+        let shot = try #require(timeline.items.first)
+        #expect(shot.effectiveVideoAdjustments.filter == .monochrome || shot.effectiveVideoAdjustments.saturation == 0)
+        #expect(timeline.items.last?.effectiveVideoAdjustments == VideoAdjustments())
+        #expect(model.directorMessages.last?.response?.saved == true)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func realBrushFindsAnOpticalEffectForAPeephole() async throws {
+        let fixture = try await Fixture(realDirector: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        model.submitTimelineAIEdit("Сделай картинку выпуклой, словно смотришь через дверной глазок", range: 3...5)
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        print("Режиссёр о дверном глазке:", model.directorMessages.last?.text ?? "")
+        let effects = try #require(model.timeline).effectiveEffects
+        #expect(effects.count == 1)
+        let optical: Set<TimelineEffectType> = [.fisheye, .barrelDistortion, .lensDistortion]
+        #expect(effects.contains { optical.contains($0.effectType) && $0.startTime == 3 && $0.endTime == 5 })
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func realBrushChoosesCassetteEffectFromDescriptionThenHandlesMusic() async throws {
+        let fixture = try await Fixture(realDirector: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        model.submitTimelineAIEdit("Добавь такой эффект, будто смотришь затёртую видеокассету из девяностых", range: 1...2)
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        print("Режиссёр о видеокассете:", model.directorMessages.last?.text ?? "")
+        let timeline = try #require(model.timeline)
+        let effect = try #require(timeline.effectiveEffects.first { $0.effectType == .vhsDistortion })
+        #expect(effect.startTime == 1 && effect.endTime == 2)
+        #expect(timeline.items.allSatisfy { $0.effect == nil })
+        model.submitTimelineAIEdit("Музыку на 12%", range: 1...2)
+        try await wait { !model.isWorking && !model.isDirectorResponding }
+        #expect(model.timeline?.effectiveAdaptiveSoundtrack?.segments.map(\.directive.volume) == [0.18, 0.12, 0.18])
+        #expect(model.timeline?.effectiveEffects == timeline.effectiveEffects)
+        model.submitTimelineAIEdit("Какая громкость музыки?", range: 1...2)
+        try await wait { !model.isDirectorResponding }
+        #expect(model.directorMessages.last?.text.contains("12%") == true)
     }
 
     @Test func brushChangesMusicOnlyInsideRangeAndRecordsItInDirectorChat() async throws {
@@ -399,7 +998,7 @@ struct TimelineDirectorIntegrationTests {
         let joyfulTrackID: UUID
         private let mutePreview: AnyCancellable
 
-        init(commands: [EditorCommand] = [], realDirector: Bool = false) async throws {
+        init(commands: [EditorCommand] = [], realDirector: Bool = false, titleTexts: [String] = ["Первая глава", "Вторая глава"], clipCount: Int = 2, completedFilm: Bool = false) async throws {
             suite = "VeloEdit.timeline-director.\(UUID())"
             root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
             url = root.appendingPathComponent("test.veloedit")
@@ -408,16 +1007,17 @@ struct TimelineDirectorIntegrationTests {
                 width: 640, height: 360, frameRate: 20, destination: root.appendingPathComponent("source.mov"), codec: .jpeg)
             let asset = MediaAsset(originalURL: source, kind: .video, byteSize: 1, contentHash: UUID().uuidString,
                 metadata: MediaMetadata(duration: 6, width: 640, height: 360, frameRate: 20, hasAudio: false))
-            let library = LocalMusicLibrary(rootURL: root.appendingPathComponent("music"))
+            let library = LocalMusicLibrary(rootURL: store.musicLibraryURL)
             let calm = try await Self.track(root: root, library: library, title: "Calm", mood: "calm", frequency: 220)
             let happy = try await Self.track(root: root, library: library, title: "Happy", mood: "joyful", frequency: 440)
             joyfulTrackID = happy.id
-            let titles = [TitleTimelineItem(kind: .title, text: "Первая глава", startTime: 0, duration: 3),
-                          TitleTimelineItem(kind: .title, text: "Вторая глава", startTime: 3, duration: 3)]
+            let titles = [TitleTimelineItem(kind: .title, text: titleTexts[0], startTime: 0, duration: 3),
+                          TitleTimelineItem(kind: .title, text: titleTexts[1], startTime: 3, duration: 3)]
             secondTitleID = titles[1].id
-            let items: [TimelineItem] = (0..<2).map { index in
-                let start = Double(index) * 3
-                return TimelineItem(assetID: asset.id, kind: .video, sourceStart: start, sourceDuration: 3, timelineStart: start, timelineDuration: 3)
+            let clipDuration = 6 / Double(clipCount)
+            let items: [TimelineItem] = (0..<clipCount).map { index in
+                let start = Double(index) * clipDuration
+                return TimelineItem(assetID: asset.id, kind: .video, sourceStart: start, sourceDuration: clipDuration, timelineStart: start, timelineDuration: clipDuration)
             }
             var music = MusicDirective(style: .calm, bpm: 68)
             music.trackID = calm.id
@@ -425,6 +1025,14 @@ struct TimelineDirectorIntegrationTests {
             let timeline = Timeline(storyPlanID: UUID(), width: 640, height: 360, frameRate: 20,
                 items: items, titleItems: titles, music: music)
             try await store.update { $0.assets = [asset]; $0.timelines = [timeline] }
+            if completedFilm {
+                _ = try await store.beginAutonomousJob(kind: .film)
+                try await store.updateAutonomousJob {
+                    $0.state = .completed
+                    $0.processProfile = FilmProcessProfile(analysis: AIAnalysisProfile.resolve(mode: .fast))
+                    $0.resultTimelineID = timeline.id
+                }
+            }
             let recorder = Requests()
             requests = recorder
             let agent = LocalDirectorAgent { message, context, _, _ in

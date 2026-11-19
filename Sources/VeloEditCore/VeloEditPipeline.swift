@@ -938,7 +938,9 @@ public actor VeloEditPipeline {
         supplementalCommands: [EditorCommand] = [],
         modelRequestsReplacement: Bool = false
     ) async throws -> EditorCommandReport {
-        let parsed = EditorCommandParser().parse("выбранный фрагмент, \(prompt)", preset: preset)
+        // Range localization below already binds all/selected to the brushed
+        // pieces. Keep the original clauses intact (including quoted titles).
+        let parsed = EditorCommandParser().parse(prompt, preset: preset)
         let replacement = LocalShotReplacement.requestsReplacement(prompt)
             || (modelRequestsReplacement && LocalShotReplacement.allowsReplacement(prompt))
         // A replacement request must not be approximated by unrelated model
@@ -1023,6 +1025,54 @@ public actor VeloEditPipeline {
             Self.recordMusicCredit(from: result.timeline, tracks: resolvedTracks, in: &project)
         }
         return result.report
+    }
+
+    /// Replace the result of the previous command in a single store transaction.
+    /// The baseline is never installed as an intermediate (visible or durable) timeline.
+    public func reviseDirectorRange(_ commands: [EditorCommand], from baseline: Timeline, fullResult: Timeline,
+                                    expected: Timeline, range: ClosedRange<Double>) async throws -> EditorCommandReport {
+        let snapshot = await store.snapshot()
+        guard let current = snapshot.manifest.timelines.last, current.matchesDirectorEdit(expected),
+              baseline.id == current.id, fullResult.id == current.id else {
+            throw ProjectStoreError.externalModification
+        }
+        let targets = Set(commands.compactMap(\.timelineRangeTarget))
+        let retarget = targets.count == 1 && targets.first != .all
+        let scopedCommands = retarget ? commands.map { $0.retargetedForTimelineRange() ?? $0 } : commands
+        var revised = baseline
+        if range == 0...baseline.duration && (!retarget || fullResult.matchesDirectorEdit(baseline)) {
+            revised = fullResult
+        } else if !retarget && commands.allSatisfy({ $0.semanticCategory == "transition" }) && !commands.isEmpty {
+            // Keep the actual transitions (including IDs, style and pattern position)
+            // at the requested cuts. Restore the original transitions everywhere else.
+            let cuts = Set(baseline.items.filter { item in
+                item.overlay == nil && item.kind != .title && item.timelineStart >= range.lowerBound
+                    && item.timelineStart < range.upperBound && item.timelineStart > 0
+            }.map(\.id))
+            guard !cuts.isEmpty else {
+                return EditorCommandReport(recognizedCount: commands.count, ignored: ["В этом интервале нет склейки."])
+            }
+            let finalItems = Dictionary(uniqueKeysWithValues: fullResult.items.map { ($0.id, $0) })
+            for index in revised.items.indices where cuts.contains(revised.items[index].id) {
+                revised.items[index].transition = finalItems[revised.items[index].id]?.transition
+            }
+            revised.transitionItems = (baseline.effectiveTransitionItems.filter { !cuts.contains($0.incomingClipID) }
+                + fullResult.effectiveTransitionItems.filter { cuts.contains($0.incomingClipID) }).sorted { $0.startTime < $1.startTime }
+        } else {
+            let result = Self.applyingLocalizedEditorCommands(scopedCommands, to: baseline, timelineRange: range,
+                                                              assets: snapshot.manifest.assets)
+            guard result.report.hasChanges && result.report.ignored.isEmpty else { return EditorCommandReport(
+                recognizedCount: commands.count, ignored: result.report.ignored.isEmpty ? ["В этом месте правка ничего не меняет."] : result.report.ignored) }
+            revised = result.timeline
+        }
+        guard !revised.matchesDirectorEdit(current) else { return EditorCommandReport(recognizedCount: commands.count) }
+        try Task.checkCancellation()
+        try await store.update(ifRevision: snapshot.revision) { project in
+            guard let index = project.timelines.indices.last else { throw ProjectStoreError.externalModification }
+            Self.appendCheckpoint(timeline: current, reason: "Перед уточнением диапазона правки", to: &project)
+            project.timelines[index] = revised
+        }
+        return EditorCommandReport(recognizedCount: commands.count, applied: ["Диапазон предыдущей правки изменён"])
     }
 
     public func updateMusic(_ directive: MusicDirective?) async throws {
@@ -1122,6 +1172,9 @@ public actor VeloEditPipeline {
             return try await musicLibrary.importExistingTrack(legacy)
         }
 
+        if previousTrackID != nil, directive.preferDifferentTrack != true {
+            throw FreeToUseAPIError.providerFailure("Не найден сохранённый трек «" + (directive.trackTitle ?? "Музыка") + "». Подключите его файл или выберите другую музыку.")
+        }
         directive.trackID = nil
         directive.trackTitle = nil
         let tracks = try await tracksForResolving(directive)
@@ -1135,7 +1188,8 @@ public actor VeloEditPipeline {
             )
         }
         try await store.update { project in
-            guard let timelineIndex = project.timelines.indices.last else { return }
+            guard let timelineIndex = project.timelines.indices.last, project.timelines[timelineIndex].id == timeline.id,
+                  project.timelines[timelineIndex].music == timeline.music else { throw ProjectStoreError.externalModification }
             var resolved = directive
             resolved.trackID = track.id
             resolved.trackTitle = track.title
@@ -4537,11 +4591,6 @@ public actor VeloEditPipeline {
         guard !commands.isEmpty else {
             return (source, EditorCommandReport(recognizedCount: 0, ignored: ["Не удалось составить исполняемый план правки"]))
         }
-        var localized = TimelineRangeSlicer.slice(source, for: timelineRange)
-        let slicedBaseline = localized.timeline
-        let originalCuts = Set(source.items.filter { $0.overlay == nil }.dropFirst().map(\.id))
-        var timeline = slicedBaseline
-
         func targetIDs(for command: EditorCommand, candidates: [UUID]) -> [UUID] {
             guard !candidates.isEmpty else { return [] }
             switch command.timelineRangeTarget ?? .all {
@@ -4561,6 +4610,38 @@ public actor VeloEditPipeline {
             ignored.append(contentsOf: report.ignored)
             affected.formUnion(report.affectedItemIDs)
         }
+
+        // Soundtrack regions and effect layers have their own clocks. Cutting
+        // the picture here also restarts attached title animations outside the brush.
+        if commands.allSatisfy({
+            switch $0 {
+            case .addLibraryEffect, .setMusic, .lowerMusicVolume, .setMusicVolume, .setAudioDucking: true
+            default: false
+            }
+        }) {
+            var timeline = source
+            let clips = TimelineTiming.retimed(source.items).filter {
+                $0.kind != .title && $0.timelineStart < timelineRange.upperBound && $0.timelineStart + $0.timelineDuration > timelineRange.lowerBound
+            }
+            for command in commands {
+                if case .addLibraryEffect(let type, _) = command {
+                    let ids = Set(targetIDs(for: command, candidates: clips.map(\.id)))
+                    appendReport(EditorCommandExecutor.addLibraryEffect(type, to: clips.filter { ids.contains($0.id) },
+                                                                        in: &timeline, range: timelineRange))
+                } else if let updated = LocalizedSoundtrackEditing.apply(command, to: timeline, range: timelineRange) {
+                    timeline = updated
+                    applied.append("Музыка изменена только в выделенном диапазоне")
+                } else {
+                    return (source, EditorCommandReport(recognizedCount: commands.count, ignored: ["В выделенном диапазоне нет музыки для этой правки."]))
+                }
+            }
+            return (timeline, EditorCommandReport(recognizedCount: commands.count, applied: deduplicated(applied),
+                ignored: deduplicated(ignored), affectedItemIDs: affected.sorted { $0.uuidString < $1.uuidString }))
+        }
+        var localized = TimelineRangeSlicer.slice(source, for: timelineRange)
+        let slicedBaseline = localized.timeline
+        let originalCuts = Set(source.items.filter { $0.overlay == nil }.dropFirst().map(\.id))
+        var timeline = slicedBaseline
 
         func appliesToAttachedTarget(_ targetID: UUID?, commandTargets: Set<UUID>) -> Bool {
             guard let targetID else { return true }
@@ -4597,7 +4678,7 @@ public actor VeloEditPipeline {
             case .setMusicEndingFade:
                 ignored.append("Затухание в конце фильма задаётся вне выделенного диапазона")
                 continue
-            case .setMusic, .setMusicVolume, .setAudioDucking:
+            case .setMusic, .lowerMusicVolume, .setMusicVolume, .setAudioDucking:
                 if let updated = LocalizedSoundtrackEditing.apply(command, to: timeline, range: currentRange) {
                     timeline = updated
                     applied.append("музыка изменена только внутри выделенного диапазона")
@@ -4811,7 +4892,7 @@ public actor VeloEditPipeline {
                 let targets = Set(targetIDs(for: command, candidates: localized.titleItemIDs.filter { id in timeline.effectiveTitleItems.contains { $0.id == id } }))
                 var renamed = 0
                 timeline.titleItems = timeline.effectiveTitleItems.map { title in
-                    guard targets.contains(title.id) else { return title }
+                    guard targets.contains(title.id), title.text != text else { return title }
                     var copy = title
                     copy.text = text
                     copy.userEdited = true
@@ -5881,7 +5962,7 @@ private extension EditorCommand {
         case .setTitleText(_, let target), .setTitleStyle(_, _, _, _, let target), .applyTitleTemplate(_, let target):
             return target
         case .insertBackground, .insertSource, .addTitle, .removeTitles, .setAudioDucking,
-             .setOriginalAudioVolume, .setMusic, .setMusicVolume, .setMusicEndingFade:
+             .setOriginalAudioVolume, .setMusic, .lowerMusicVolume, .setMusicVolume, .setMusicEndingFade:
             return nil
         }
     }
@@ -5952,7 +6033,7 @@ private extension EditorCommand {
         case .duplicate: return .duplicate(target)
         case .split: return .split(target)
         case .setAudioDucking, .setOverlay, .addTitle, .removeTitles, .move,
-             .setOriginalAudioVolume, .setMusic, .setMusicVolume, .setMusicEndingFade:
+             .setOriginalAudioVolume, .setMusic, .lowerMusicVolume, .setMusicVolume, .setMusicEndingFade:
             return nil
         }
     }

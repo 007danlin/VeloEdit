@@ -10,9 +10,9 @@ public enum DirectorHistoryCommand: Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         text = text.replacingOccurrences(of: #"^(?:(?:нет|стоп|я передумал[аи]?|передумал[аи]?|все-таки|давай|ладно)[, —]+)+"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".! "))
-        if text.range(of: #"^(?:undo|(?:отмени|откати)(?: (?:это|последн(?:юю|ее) (?:правку|изменение|действие)))?|верни как было|шаг назад)$"#, options: .regularExpression) != nil {
+        if text.range(of: #"^(?:undo|(?:отмени|откати)(?: (?:это|последн(?:юю|ее) (?:правку|изменение|действие)))?|верни(?: все)? как было|откати назад|отмени последнее|шаг назад)$"#, options: .regularExpression) != nil {
             self = .undo
-        } else if text.range(of: #"^(?:redo|повтори (?:последнюю правку|отмененную правку|отмененное действие)|верни (?:отмененную правку|отмененное изменение)|шаг вперед)$"#, options: .regularExpression) != nil {
+        } else if text.range(of: #"^(?:redo|повтори (?:последнюю правку|отмененную правку|отмененное действие)|(?:снова |теперь )?верни (?:отмененную правку|отмененное изменение|отмененное)|шаг вперед)$"#, options: .regularExpression) != nil {
             self = .redo
         } else { return nil }
     }

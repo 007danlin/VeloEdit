@@ -161,10 +161,14 @@ import Testing
                 fontFamily: "Avenir Next", fontWeight: 0.88, xPosition: 0.36, yPosition: 0.78, shadow: 0.25, backgroundOpacity: 0.75),
             animation: TitleAnimation(entrance: .none, exit: .none, duration: 0))
         #expect(actual.targetClipID == nil)
+        // Since 0.1.13 the landscape chapter artwork sits 3% further inside
+        // the safe area than Minimal Clean. Keep an independent pixel reference.
+        var landscapeReference = reference
+        landscapeReference.style.xPosition = 0.39
         for size in [CGSize(width: 1920, height: 1080), CGSize(width: 1280, height: 720)] {
             for time in [0.0, 1, 3.3] {
                 let a = try #require(TitleOverlayRenderer.cgImage(item: actual, timelineTime: time, renderSize: size)?.dataProvider?.data)
-                let b = try #require(TitleOverlayRenderer.cgImage(item: reference, timelineTime: time, renderSize: size)?.dataProvider?.data)
+                let b = try #require(TitleOverlayRenderer.cgImage(item: landscapeReference, timelineTime: time, renderSize: size)?.dataProvider?.data)
                 #expect((a as Data) == (b as Data))
             }
         }

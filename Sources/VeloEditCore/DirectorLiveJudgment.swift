@@ -79,6 +79,21 @@ public enum DirectorExecutionState: String, Codable, Sendable {
 }
 
 /// Stored beside the final text; optional on legacy workspace messages.
+/// Links a chat receipt to the exact before/after pair in the project's edit history.
+public struct DirectorRevisionLink: Codable, Hashable, Sendable {
+    public let checkpointID: UUID
+    public let resultDigest: Data
+    public let commands: [EditorCommand]
+    public let previousReplyID: UUID?
+
+    public init(checkpointID: UUID, resultDigest: Data, commands: [EditorCommand], previousReplyID: UUID?) {
+        self.checkpointID = checkpointID
+        self.resultDigest = resultDigest
+        self.commands = commands
+        self.previousReplyID = previousReplyID
+    }
+}
+
 public struct DirectorResponseRecord: Codable, Hashable, Sendable {
     public var state: DirectorExecutionState
     public var projectID: UUID?
@@ -89,6 +104,8 @@ public struct DirectorResponseRecord: Codable, Hashable, Sendable {
     public var advisory: Bool
     public var fallback: Bool
     public var details: [String]
+    public var revisionLink: DirectorRevisionLink? = nil
+    public var conversational: Bool? = nil
     public var proposal: DirectorEditProposal? = nil
     public var range: ClosedRange<Double>? = nil
 
@@ -150,9 +167,15 @@ public enum DirectorResponseComposer {
             result = "Поставил музыку на \(number(volume * 100))%."
         } else if receipt.requested.count == 1, receipt.omitted.isEmpty, case .setOriginalAudioVolume(let volume) = receipt.requested[0] {
             result = "Поставил звук исходников на \(number(volume * 100))%."
+        } else if !receipt.applied.isEmpty, receipt.applied.allSatisfy({ $0.hasPrefix("текст титра изменён на «") }) {
+            let titles = receipt.applied.compactMap { item -> String? in
+                guard let first = item.firstIndex(of: "«"), let last = item.lastIndex(of: "»"), first < last else { return nil }
+                return String(item[first...last])
+            }
+            result = titles.count == 1 ? "Теперь титр называется \(titles[0])." : "Переписал титры: \(titles.prefix(3).joined(separator: ", "))\(titles.count > 3 ? "…" : ".")"
         } else if receipt.applied.isEmpty { result = "Монтаж сохранён." }
         else if receipt.applied.count <= 2 { result = "Сохранено: \(receipt.applied.joined(separator: "; "))." }
-        else { result = "Сохранил \(receipt.applied.count) правки." }
+        else { result = "Готово. \(receipt.applied.prefix(2).joined(separator: "; ")). Остальные изменения — в подробностях." }
         if !receipt.omitted.isEmpty { result += " Не выполнено: \(receipt.omitted.joined(separator: "; "))." }
         if let failure = receipt.failure { result += " \(failure)" }
         if !receipt.previewReady { result += " Просмотр пока не обновлён." }
@@ -175,9 +198,9 @@ public enum DirectorResponseComposer {
         }
         if delayed { return "Модель не успела ответить. По готовым данным уверенной оценки пока нет; можно попросить продолжить ожидание." }
         if moment.objects.allSatisfy({ $0.facts.isEmpty }) {
-            return "Для этого фрагмента нет актуальных содержательных наблюдений — пока не могу оценить его монтаж. Анализ можно запустить в медиатеке."
+            return "Я пока не вижу, что происходит в этом фрагменте. Его можно проанализировать в медиатеке."
         }
-        return "Готовые наблюдения покрывают лишь часть этого момента. Пока оставил бы монтаж как есть: данных для уверенной правки недостаточно."
+        return "Какую часть фрагмента оценить — звук, картинку или склейку?"
     }
     private static func number(_ value: Double) -> String { String(format: "%g", value) }
 }
@@ -212,5 +235,17 @@ public struct DirectorEditProposal: Codable, Hashable, Sendable {
             && project.assets.first(where: { $0.id == item.assetID })?.contentHash == contentHash
             && project.analyses.first(where: { $0.assetID == item.assetID })?.analyzedAt == analysisDate
             && Self.completingCutWord(project: project, targetID: item.id) == self
+    }
+}
+
+extension Timeline {
+    /// Background verification may finish between two chat turns. Ignore only
+    /// its reports; a change to the actual edit still invalidates the follow-up.
+    public func matchesDirectorEdit(_ expected: Timeline) -> Bool {
+        var checked = self
+        checked.filmDeliveryReport = expected.filmDeliveryReport
+        checked.editorialReview = expected.editorialReview
+        checked.selectedContentReview = expected.selectedContentReview
+        return checked == expected
     }
 }

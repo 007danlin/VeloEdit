@@ -1,5 +1,9 @@
 import Foundation
 
+extension MusicDirective {
+    static let quieterGain = 0.75
+}
+
 public extension Timeline {
     mutating func setSoundtrackVolume(_ volume: Double) {
         let volume = min(1, max(0, volume))
@@ -67,6 +71,7 @@ enum LocalizedSoundtrackEditing {
                             part.directive.volume = 0
                             part.semanticLabel = "Без музыки"
                         }
+                    case .lowerMusicVolume: part.directive.volume *= MusicDirective.quieterGain
                     case .setMusicVolume(let volume): part.directive.volume = min(1, max(0, volume))
                     case .setAudioDucking(let enabled): part.duckingEnabled = enabled
                     default: return nil
