@@ -97,6 +97,18 @@ struct AppUpdaterTests {
         #expect(updater.status == "Новых совместимых обновлений пока нет")
     }
 
+    @Test func downloadTimeoutExplainsTheNetworkPauseAndRetainsTheCause() {
+        let timeout = URLError(.timedOut) as NSError
+        let wrapped = NSError(domain: SUSparkleErrorDomain, code: Int(SUError.downloadError.rawValue),
+                              userInfo: [NSUnderlyingErrorKey: timeout])
+        let presented = AppUpdater.downloadErrorForDisplay(wrapped) as NSError
+        #expect(presented.localizedDescription.contains("паузы в соединении"))
+        #expect((presented.userInfo[NSUnderlyingErrorKey] as? NSError) == timeout)
+        let other = NSError(domain: SUSparkleErrorDomain, code: Int(SUError.downloadError.rawValue),
+                            userInfo: [NSUnderlyingErrorKey: URLError(.badServerResponse)])
+        #expect(AppUpdater.downloadErrorForDisplay(other) as NSError === other)
+    }
+
     @Test func postponedBackgroundCheckDoesNotLeaveAnError() {
         let updater = AppUpdater()
         let sparkle = sparkle(delegate: updater)

@@ -115,6 +115,9 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconc
     }
 
     func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
+        // The universal DMG exceeds 1 GB. Allow a stalled transfer to recover
+        // without imposing this longer idle timeout on appcast checks.
+        request.timeoutInterval = max(request.timeoutInterval, 5 * 60)
         markInstallationRequested()
         status = "Загружаем версию \(item.displayVersionString)… Прогресс — в окне обновления."
     }
@@ -169,7 +172,24 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconc
             default: break
             }
         }
-        status = "Обновление не завершено: \(error.localizedDescription)"
+        status = "Обновление не завершено: \(Self.downloadErrorForDisplay(error).localizedDescription)"
+    }
+
+    static func downloadErrorForDisplay(_ error: Error) -> Error {
+        let outer = error as NSError
+        guard outer.domain == SUSparkleErrorDomain,
+              outer.code == Int(SUError.downloadError.rawValue) else { return error }
+        var cause = outer.userInfo[NSUnderlyingErrorKey] as? NSError
+        for _ in 0..<8 {
+            guard let current = cause else { break }
+            if current.domain == NSURLErrorDomain, current.code == URLError.timedOut.rawValue {
+                var info = outer.userInfo
+                info[NSLocalizedDescriptionKey] = "Загрузка обновления прервалась из-за длительной паузы в соединении. Проверьте подключение и повторите обновление."
+                return NSError(domain: outer.domain, code: outer.code, userInfo: info)
+            }
+            cause = current.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return error
     }
 
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
@@ -189,6 +209,10 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, @preconc
 /// The initial Install choice also authorizes the relaunch after the download.
 @MainActor
 final class AppUpdateUserDriver: SPUStandardUserDriver {
+    override func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
+        super.showUpdaterError(AppUpdater.downloadErrorForDisplay(error), acknowledgement: acknowledgement)
+    }
+
     override func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
         reply(.install)
     }
