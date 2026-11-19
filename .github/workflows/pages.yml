@@ -9,11 +9,21 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: github-pages
+  group: ${{ github.event_name == 'release' && 'request-pages-update' || 'github-pages' }}
   cancel-in-progress: false
 jobs:
+  update-after-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Request deployment from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
   build:
-    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

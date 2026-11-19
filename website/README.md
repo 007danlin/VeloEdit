@@ -2,7 +2,8 @@
 
 Основной сайт обслуживает GitHub Pages из репозитория `007danlin/VeloEdit`.
 Workflow `.github/workflows/pages.yml` публикует папку `website` при изменениях
-в `main`, публикации/редактировании релиза и ручном запуске. GitHub Pages использует
+в `main` и ручном запуске из `main`. Публикация или редактирование релиза автоматически
+запрашивает такой запуск из `main`, разрешённой ветки среды `github-pages`. GitHub Pages использует
 режим GitHub Actions и custom domain `veloedit.ru`; HTTPS должен быть включён.
 
 DNS остаётся в Cloudflare. Записи `veloedit.ru` и `www.veloedit.ru` ведут на
