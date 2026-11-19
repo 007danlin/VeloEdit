@@ -292,6 +292,24 @@ public struct SmartTitleEngine: Sendable {
         var explanation: String
     }
 
+    /// Exact, editor-authored Russian wording only. A match says nothing
+    /// about whether the activity actually occurred in a particular chapter.
+    func hasEditorialActivityWording(_ title: String) -> Bool {
+        recognizedActivity(in: [Self.normalizePhrase(title)])?.eventTitle == title
+    }
+
+    /// Expand the editor's compact event label to the corresponding chapter
+    /// wording. Only recognized activities are proposals for the verifier.
+    func activityChapterCandidate(for label: String) -> String? {
+        let phrase = Self.normalizePhrase(label)
+        guard let activity = recognizedActivity(in: [phrase]) else { return nil }
+        // Generic travel and setting labels do not identify a specific event.
+        guard activity.eventTitle != "В дороге",
+              ActivityCompatibilityContract.evidence(in: [phrase]).family != nil
+                || phrase == Self.normalizePhrase(activity.eventTitle) else { return nil }
+        return phrase == Self.normalizePhrase(activity.shortTitle) ? activity.eventTitle : label
+    }
+
     private func recognizedActivity(in evidence: [String]) -> Activity? {
         func has(_ values: [String]) -> Bool { Self.hasEvidence(values, in: evidence) }
         let sharedEvidence = ActivityCompatibilityContract.evidence(in: Set(evidence))
@@ -302,8 +320,11 @@ public struct SmartTitleEngine: Sendable {
             case .cycling:
                 return .init(eventTitle: "Велопрогулка", shortTitle: "Велопрогулка", confidence: confidence, explanation: "Общий activity vocabulary распознал велосипедную прогулку")
             case .motorized:
-                if !markers.isDisjoint(with: ["buggy", "багги", "utv", "atv", "quadbike", "quad bike", "side by side", "квадроцикл"]) {
+                if !markers.isDisjoint(with: ["buggy", "багги", "utv", "side by side"]) {
                     return .init(eventTitle: "Поездка на багги", shortTitle: "Багги", confidence: confidence, explanation: "Общий activity vocabulary распознал поездку на багги")
+                }
+                if !markers.isDisjoint(with: ["atv", "quadbike", "quad bike", "квадроцикл"]) {
+                    return .init(eventTitle: "Поездка на квадроцикле", shortTitle: "Квадроцикл", confidence: confidence, explanation: "Распознана поездка на квадроцикле")
                 }
                 if !markers.isDisjoint(with: ["motocross", "motorcycle", "motorbike", "мотоцикл"]) {
                     return .init(eventTitle: "Мотопоездка", shortTitle: "Мотопоездка", confidence: confidence, explanation: "Общий activity vocabulary распознал мотопоездку")

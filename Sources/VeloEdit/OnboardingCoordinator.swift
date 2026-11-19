@@ -2,21 +2,21 @@ import AppKit
 import SwiftUI
 
 enum OnboardingStep: String, Codable, CaseIterable {
-    case welcome, media, director, montage, export
+    case welcome, media, director, montage, filmOptions, export
 
     var section: WorkspaceSection {
         switch self {
         case .welcome: return .home
         case .media: return .media
         case .director: return .director
-        case .montage: return .timeline
+        case .montage, .filmOptions: return .timeline
         case .export: return .export
         }
     }
 
     var progress: String {
         guard let index = Self.allCases.firstIndex(of: self), index > 0 else { return "Знакомство с VeloEdit" }
-        return "\(index) из 4"
+        return "\(index) из \(Self.allCases.count - 1)"
     }
 
     var title: String {
@@ -25,6 +25,7 @@ enum OnboardingStep: String, Codable, CaseIterable {
         case .media: return "Добавьте материалы"
         case .director: return "Расскажите, какой фильм хотите"
         case .montage: return "Здесь вы монтируете фильм"
+        case .filmOptions: return "Дополнительные настройки фильма"
         case .export: return "Сохраните готовое видео"
         }
     }
@@ -42,6 +43,8 @@ enum OnboardingStep: String, Codable, CaseIterable {
             return "Ответьте на вопросы режиссёра или опишите задумку своими словами. Например: «Собери минутный ролик о поездке со спокойной музыкой»."
         case .montage:
             return "Справа вверху — просмотр, внизу — монтажная шкала. Здесь можно менять порядок сцен, подрезать клипы и добавлять титры."
+        case .filmOptions:
+            return "Откройте меню с ползунками в верхней панели. Здесь можно заменить музыку, послушать варианты и запомнить стиль монтажа."
         case .export:
             return "Когда фильм будет готов, выберите качество и папку, затем нажмите «Сохранить видео». Вернуться сюда можно через раздел «Экспорт»."
         }
@@ -75,7 +78,7 @@ final class OnboardingCoordinator: ObservableObject {
     var step: OnboardingStep { record.step }
     var canResume: Bool { record.status == .interrupted && !isPresented && !awaitsProject }
     var showsProjectlessWorkspace: Bool { isPresented && step != .welcome && model?.project == nil }
-    var showsEmptyMontagePreview: Bool { isPresented && step == .montage && model?.timeline == nil }
+    var showsEmptyMontagePreview: Bool { isPresented && step.section == .timeline && model?.timeline == nil }
 
     init(defaults: UserDefaults, intro: FirstLaunchCoordinator) {
         self.defaults = defaults
@@ -162,7 +165,8 @@ final class OnboardingCoordinator: ObservableObject {
         case .welcome: present(.media)
         case .media: present(.director)
         case .director: present(.montage)
-        case .montage: present(.export)
+        case .montage: present(.filmOptions)
+        case .filmOptions: present(.export)
         case .export: finish()
         }
     }
@@ -173,7 +177,8 @@ final class OnboardingCoordinator: ObservableObject {
         case .media where model?.project == nil: present(.welcome)
         case .director: present(.media)
         case .montage: present(.director)
-        case .export: present(.montage)
+        case .export: present(.filmOptions)
+        case .filmOptions: present(.montage)
         default: break
         }
     }

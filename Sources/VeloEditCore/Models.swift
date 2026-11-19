@@ -2685,7 +2685,7 @@ public struct UserPreferences: Codable, Hashable, Sendable {
         aiPowerMode = .fast
     }
 
-    public var effectiveAIPowerMode: AIPowerMode { aiPowerMode ?? .fast }
+    public var effectiveAIPowerMode: AIPowerMode { aiPowerMode?.modeForNewJobs ?? .fast }
     public var effectiveAdvancedAISettings: AdvancedAISettings { advancedAISettings ?? AdvancedAISettings() }
 }
 

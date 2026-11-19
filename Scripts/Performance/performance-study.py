@@ -28,7 +28,8 @@ def main():
     parser.add_argument('--cli', type=pathlib.Path, required=True)
     parser.add_argument('--project', type=pathlib.Path, required=True)
     parser.add_argument('--label', required=True)
-    parser.add_argument('--modes', nargs='+', default=['fast', 'balanced', 'quality', 'maximum'])
+    modes = ['fast', 'balanced', 'quality']
+    parser.add_argument('--modes', nargs='+', choices=modes, default=modes)
     parser.add_argument('--root', type=pathlib.Path, default=pathlib.Path('Build/Performance'))
     args = parser.parse_args()
     root = args.root.resolve() / args.label

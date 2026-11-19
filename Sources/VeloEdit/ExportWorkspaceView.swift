@@ -114,9 +114,14 @@ private struct ExportWorkspaceContent: View {
                 Label("Видео", systemImage: "film")
                     .font(.headline)
                 Spacer()
-                Button("Предпросмотр", systemImage: "play", action: model.renderPreview)
-                    .help("Посмотреть монтаж без сохранения файла")
-                    .disabled(exportUnavailable)
+                if model.timeline?.filmDeliveryReport?.exportVerification?.outputURL != nil {
+                    Button("Посмотреть фильм", systemImage: "play", action: model.openVerifiedMovie)
+                        .help("Открыть готовую проверенную копию, в том числе во время экспорта")
+                } else {
+                    Button("Предпросмотр", systemImage: "play", action: model.renderPreview)
+                        .help("Посмотреть монтаж без сохранения файла")
+                        .disabled(exportUnavailable)
+                }
             }
 
             VStack(alignment: .leading, spacing: 16) {

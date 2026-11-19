@@ -3,6 +3,12 @@ import Testing
 @testable import VeloEditCore
 
 @Suite struct GeneralVisualSelectionIntentTests {
+    @Test func defaultBriefAndPreviouslyQueuedClausesBelongToFilmCreation() {
+        let prompt = IntentLedgerEngine.defaultFilmPrompt
+        let pending = prompt.components(separatedBy: ". ")
+        #expect(IntentLedgerEngine.intents(prompt: prompt, brief: nil, pending: pending, newAssetIDs: []) == [.createFilm])
+    }
+
     @Test(arguments: ["Выбери красивые кадры и понятные визуальные моменты",
                       "Подбери самые интересные фрагменты", "Покажи удачные сцены, пожалуйста"])
     func genericSelectionIsTheExistingGenerationIntent(_ prompt: String) {

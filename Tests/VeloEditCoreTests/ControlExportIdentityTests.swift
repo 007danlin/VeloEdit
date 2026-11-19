@@ -145,6 +145,10 @@ struct ControlExportIdentityTests {
         let complete = RenderedProbeCache(directory: root.appendingPathComponent("complete"))
         try await preview.store([frame], timeline: first, assets: [])
         try await complete.store([frame], timeline: first, assets: [])
+        let quietMix = RenderedProbeCache(directory: root.appendingPathComponent("complete"), allowsQuietMix: true)
+        #expect(await quietMix.load(timeline: first, assets: []) == nil)
+        try await quietMix.store([frame], timeline: first, assets: [])
+        #expect(await quietMix.load(timeline: first, assets: []) != nil)
         var second = first; second.id = UUID(); second.storyPlanID = UUID()
         second.items[0].id = UUID(); second.titleItems?[0].id = UUID()
         second.originalAudioVolume = 0.2

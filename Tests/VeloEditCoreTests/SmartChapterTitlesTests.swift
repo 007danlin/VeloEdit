@@ -102,6 +102,27 @@ struct SmartChapterTitlesTests {
         #expect(result.items == timeline.items)
     }
 
+    @Test(arguments: [
+        ("Багги", "Пейзаж с автомобилем", "Поездка на багги", "A buggy drives along the track"),
+        ("Сплав", "Озеро с деревьями", "Сплав", "Paddlers are rafting down the river"),
+        ("Рыбалка", "Берег с деревьями", "Рыбалка", "An angler is fishing from the bank")
+    ])
+    func plannedEventIsVerifiedBeforeScenery(label: String, draft: String, expected: String, action: String) async throws {
+        var (timeline, plan, assets, analyses) = fixture(partCount: 1, withActions: false)
+        for i in plan.chapters.indices { plan.chapters[i].title = label }
+        for i in analyses.indices {
+            analyses[i].candidates[0].insights?.sceneSummary = action
+            analyses[i].candidates[0].tags = []
+        }
+        timeline.titleItems = [.init(kind: .chapter, text: draft, startTime: 0, duration: 4,
+                                     explanation: ["Editorial chapter"])]
+        let model = DraftTitleModel()
+        let result = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan,
+            assets: assets, analyses: analyses, mode: .fast, model: model)
+        #expect(await model.checked == [expected])
+        #expect(result.effectiveTitleItems.map(\.text) == [expected])
+    }
+
     @Test func alreadySuitableExistingTitleIsRetainedAfterEvidenceRefresh() async throws {
         var (timeline, plan, assets, analyses) = fixture(partCount: 1)
         timeline.titleItems = [.init(kind: .chapter, text: "На реке", startTime: 0, duration: 4,

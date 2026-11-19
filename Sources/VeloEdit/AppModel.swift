@@ -195,7 +195,7 @@ final class AppModel: ObservableObject {
     private static let projectLibraryKey = "projectLibraryPaths.v1"
     private let defaults: UserDefaults
     private static let freeToUseLicenseAcceptedKey = "freeToUseLicenseAccepted.v1"
-    private static let defaultDirectorBrief = "Сделай связный фильм из лучших моментов. Начни спокойно, затем добавь динамики и закончи красивым финалом."
+    private static let defaultDirectorBrief = IntentLedgerEngine.defaultFilmPrompt
     /// A 16:9 preview becomes 1920x1080 (1080x1920 in portrait). The matching
     /// render-quality policy also bounds custom aspect ratios without changing
     /// their editable or exported resolution.
@@ -689,12 +689,12 @@ final class AppModel: ObservableObject {
         AIAnalysisProfile.resolve(mode: aiPowerMode, advanced: advancedAISettings, thermalState: .nominal)
     }
     var aiProfileSummary: String { aiProfile.summary }
-    var canDownloadAIModel: Bool { true }
+    var canDownloadAIModel: Bool { canDownloadAIModel(for: aiPowerMode) }
     func isAIModelInstalled(for mode: AIPowerMode) -> Bool {
         return aiModelAvailability[mode] ?? (mode == aiPowerMode && aiVisionModelInstalled)
     }
     func canDownloadAIModel(for mode: AIPowerMode) -> Bool {
-        return true
+        AIPowerMode.allCases.contains(mode)
     }
     var aiAnalysisRuntimeStatus: String {
         guard let result = project?.analyses.last else { return "Runtime будет проверен при первом анализе" }
@@ -1587,7 +1587,7 @@ final class AppModel: ObservableObject {
     }
 
     func setAIPowerMode(_ value: AIPowerMode) {
-        guard aiPowerMode != value, !isCreatingFilm else { return }
+        guard AIPowerMode.allCases.contains(value), aiPowerMode != value, !isCreatingFilm else { return }
         aiPowerMode = value
         persistAISettings()
         if timeline != nil { markFilmNeedsRebuild("Мощность AI изменена — фильм нужно обновить") }
@@ -2586,6 +2586,22 @@ final class AppModel: ObservableObject {
         // A new submission can arrive during the completion callback's delay.
         // It must not overtake commands that were accepted while we were busy.
         startNextQueuedTimelineAIEdit()
+    }
+
+    private var verifiedMovieURL: URL? {
+        guard let timeline, let report = timeline.filmDeliveryReport,
+              let evidence = report.exportVerification, let url = evidence.outputURL,
+              let projectURL, url.isFileURL, url.pathExtension.lowercased() == "mp4",
+              ProjectVideoFiles.isInsideProject(url.resolvingSymlinksInPath(), package: projectURL.resolvingSymlinksInPath()),
+              evidence.renderSignature == report.renderSignature, report.isCurrent(for: timeline),
+              evidence.artifactIsCurrent else { return nil }
+        return url
+    }
+
+    func openVerifiedMovie() {
+        if let url = verifiedMovieURL, NSWorkspace.shared.open(url) { return }
+        if previewPlayer != nil || !isWorking { renderPreview() }
+        else { status = "Сохранённая копия недоступна. Экспорт продолжается." }
     }
 
     func renderPreview() {
@@ -7358,9 +7374,6 @@ final class AppModel: ObservableObject {
 
         if !pendingDirectorInstructions.isEmpty {
             appendDirectorNote("Остались невыполненные инструкции: \(pendingDirectorInstructions.joined(separator: "; "))")
-        }
-        if let report = timeline.filmDeliveryReport, report.isCurrent(for: timeline), !report.warnings.isEmpty {
-            appendDirectorNote(report.completionMessage + ".")
         }
         if usesCompactConfirmation {
             appendDirectorNote("Фильм пересобран")

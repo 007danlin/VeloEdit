@@ -9,7 +9,7 @@
 - На MacBook Air VLM jobs сериализованы. `serious` уменьшает число/разрешение кадров, `critical` пропускает deep VLM pass, Low Power Mode использует сокращённый профиль.
 - Project store не требует держать media payloads в RAM.
 - Embeddings строятся только для candidate shortlist из уже декодированных adaptive frames; отдельного full-frame прохода нет.
-- Face/object tracking углубляется только для 2 кандидатов в Fast, до 6 в Balanced и shortlist в Quality/Maximum.
+- Face/object tracking углубляется только для 2 кандидатов в Fast, до 6 в Balanced и shortlist в Quality.
 - `DeepAnalysisCache` по content hash переиспользует audio summary/events, ASR transcript, embeddings и subject tracks между запусками.
 - Music DSP имеет memory/in-flight/persistent cache по fingerprint локального трека.
 - `SemanticSceneIndex` использует exhaustive comparison только до 384 кандидатов; далее — locality buckets, bounded representatives и within-asset edges вместо полного O(N²).

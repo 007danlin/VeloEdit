@@ -70,6 +70,7 @@ public actor RenderEngine {
         destination: URL,
         softwareEncoder: Bool = false,
         masterForEditorialReview: Bool = false,
+        allowsQuietMix: Bool = false,
         progress: (@Sendable (ImportProgress) -> Void)? = nil
     ) async throws -> RenderReport {
         // Preview and export intentionally share one builder. This guarantees
@@ -101,15 +102,25 @@ public actor RenderEngine {
         progress?(ImportProgress(completed: timeline.items.count, total: timeline.items.count, currentName: "Монтаж собран"))
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
         let settings = ExportVideoSettings(timeline: renderTimeline, quality: quality)
-        return try await renderComposition(
-            playback: playback,
-            maximumAudioGainDB: masterForEditorialReview ? (SourceAudioMixPolicy.preservesAttenuation(in: renderTimeline) ? 0 : 12) : nil,
-            settings: settings,
-            destination: destination,
-            softwareEncoder: softwareEncoder,
-            preflightWarnings: preflight.warnings.map(\.message),
-            progress: progress
-        )
+        func encode() async throws -> RenderReport {
+            return try await renderComposition(
+                playback: playback,
+                maximumAudioGainDB: masterForEditorialReview ? (allowsQuietMix ? 0 : 12) : nil,
+                settings: settings,
+                destination: destination,
+                softwareEncoder: softwareEncoder,
+                preflightWarnings: preflight.warnings.map(\.message),
+                progress: progress
+            )
+        }
+        do {
+            return try await encode()
+        } catch is ExportCadenceMismatch where !softwareEncoder {
+            try Task.checkCancellation()
+            progress?(ImportProgress(completed: 0, total: 100,
+                currentName: "Повторяю аппаратный экспорт для точной частоты кадров"))
+            return try await encode()
+        }
     }
 
     private func renderComposition(
@@ -180,7 +191,7 @@ public actor RenderEngine {
                                 skippedItemIDs: playback.skippedItemIDs, warnings: playback.warnings + preflightWarnings,
                                 videoInfo: info)
         } catch {
-            if error is CancellationError { throw error }
+            if error is CancellationError || error is ExportCadenceMismatch { throw error }
             throw DerivedMediaError.exportFailed(Self.diagnostic(error, stage: "delivery"))
         }
     }

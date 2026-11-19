@@ -12,6 +12,10 @@ struct ContentView: View {
     @State private var isRenamingProject = false
     @State private var projectName = ""
 
+    private var showsFilmOptionsStep: Bool {
+        model.onboarding.isPresented && model.onboarding.step == .filmOptions
+    }
+
     private var sourceAssets: [MediaAsset] {
         model.mediaLibraryAssets
     }
@@ -75,6 +79,20 @@ struct ContentView: View {
                 .ignoresSafeArea(.container, edges: .top)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if showsFilmOptionsStep {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Другая музыка")
+                    Text("Послушать варианты")
+                    Text("Запомнить этот стиль")
+                }
+                .padding(12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+                .onboardingAnchor(.filmOptions)
+                .padding(12)
+                .allowsHitTesting(false)
+            }
+        }
         .toolbarBackground(!model.hasProjectWorkspace || model.section == .home ? .hidden : .automatic, for: .windowToolbar)
         .toolbar {
             if !intro.isPresented {
@@ -97,7 +115,7 @@ struct ContentView: View {
                             .labelStyle(.iconOnly)
                     }
                     .accessibilityElement(children: .contain)
-                } else if model.openingProjectURL == nil && model.timeline != nil {
+                } else if model.openingProjectURL == nil && (model.timeline != nil || showsFilmOptionsStep) {
                     HStack(spacing: 10) {
                         Menu("Довести фильм", systemImage: "slider.horizontal.3") {
                             Button("Другая музыка", action: model.replaceMusicImmediately).disabled(model.timeline?.music == nil)
@@ -105,9 +123,15 @@ struct ContentView: View {
                             Button("Запомнить этот стиль") { model.showEditorialStyle = true }
                         }
                         .labelStyle(.iconOnly)
+                        .disabled(showsFilmOptionsStep)
+                        .overlay {
+                            if showsFilmOptionsStep {
+                                RoundedRectangle(cornerRadius: 7).strokeBorder(Color.accentColor, lineWidth: 2)
+                            }
+                        }
                         .help("Довести фильм")
                         .accessibilityLabel("Довести фильм")
-                        if model.section != .export {
+                        if model.section != .export && model.timeline != nil {
                             Button("Сохранить видео", systemImage: "square.and.arrow.down", action: model.saveVideo)
                                 .labelStyle(.iconOnly)
                                 .help("Сохранить видео")
@@ -175,11 +199,6 @@ struct ContentView: View {
             }
                 .frame(width: 30, height: 32)
                 .zIndex(1)
-            if updater.showsUpdateDot {
-                Circle().fill(Color.blue).frame(width: 7, height: 7)
-                    .accessibilityLabel("Доступно обновление VeloEdit")
-                    .help("Доступно обновление — откройте настройки")
-            }
         }
         .padding(.horizontal, 6)
         .fixedSize(horizontal: true, vertical: false)
@@ -298,11 +317,12 @@ struct ContentView: View {
                                 .frame(width: 20)
                             Text(section.title)
                                 .lineLimit(1)
+                            if section == .settings && updater.showsUpdateDot {
+                                sidebarDot("Доступно обновление VeloEdit")
+                            }
                             Spacer(minLength: 0)
                             if section == .director && model.hasUnreadDirectorReply {
                                 sidebarDot("Новый ответ режиссёра")
-                            } else if section == .settings && updater.showsUpdateDot {
-                                sidebarDot("Доступно обновление VeloEdit")
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

@@ -122,10 +122,10 @@ public extension ChapterTitleModel {
 }
 
 public struct SmartChapterTitleEngine: Sendable {
-    public static let rulesVersion = 14
+    public static let rulesVersion = 15
     // The evidence/coverage rules are unchanged. Adding a separate language
     // gate does not invalidate a completed meaning check of identical words.
-    private static let semanticSignatureVersion = 12
+    private static let semanticSignatureVersion = 13
     public init() {}
 
     static func hasAutomaticTitles(_ timeline: Timeline) -> Bool {
@@ -135,7 +135,7 @@ public struct SmartChapterTitleEngine: Sendable {
 
     public func applying(to source: Timeline, plan: StoryPlan, assets: [MediaAsset], analyses: [AnalysisResult],
                          mode: AIPowerMode, model: any ChapterTitleModel, force: Bool = false,
-                         sourceAssessments: [ShotContentAssessment]? = nil) async throws -> Timeline {
+                         sourceAssessments: [ShotContentAssessment]? = nil, events: [Event] = []) async throws -> Timeline {
         let source = FilmOpeningTitles.restoringChapters(source)
         guard !ExplicitDeliveryRequirements(plan: plan).forbidsTitles,
               EditorialPresentationPolicy.requiresChapterTitles(plan) || source.effectiveTitleItems.contains(where: { $0.kind == .chapter }) else { return source }
@@ -182,6 +182,14 @@ public struct SmartChapterTitleEngine: Sendable {
                 coverage: coverage, limitations: ["Descriptions are fallible saved model observations, not human annotation.",
                     "Whole-candidate descriptions crossing a selected cut are omitted: their source context cannot safely be assigned to this part.",
                     "No extra frame decoding; unknown coverage remains unknown."])
+            let activity = Self.plannedActivity(in: items, plan: plan)
+            if let activity, let event = events.first(where: { $0.id == part.eventID }),
+               event.title == activity, (event.titleConfidence ?? 0) >= 0.9 {
+                let members = Set(event.effectiveScenes.flatMap(\.candidateIDs))
+                if items.allSatisfy({ $0.eventID == event.id && $0.candidateID.map(members.contains) == true }) {
+                    input.limitations.append("Все выбранные фрагменты принадлежат одному ранее распознанному событию «" + activity + "». Это контекст всей главы. Проверь по выбранным наблюдениям, соответствует ли им название события с учётом остановок и планов обстановки; само имя события не доказывает видимое действие.")
+                }
+            }
             if approved == nil && labels.contains(where: { $0 != nil }) { input.limitations.append("Conflicting or incomplete approved source labels; no blanket reference applied.") }
             struct Signature: Encodable {
                 var version: Int; var model: String; var mode: String; var input: ChapterTitleInput
@@ -216,7 +224,7 @@ public struct SmartChapterTitleEngine: Sendable {
             }
             let signature = try Self.signature(Signature(version: Self.semanticSignatureVersion, model: model.identity, mode: mode.rawValue, input: relative,
                 sources: sourceKeys, observations: Self.relative(allEvidence, start: first.timelineStart),
-                restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt],
+                restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt, activity ?? ""],
                 reviewRules: SelectedContentReviewer.version, reviewReceipts: receipts))
             // New assembly UUIDs are not new visual evidence. Canonicalize
             // only these identities; preserve source hashes, trims, order,
@@ -237,7 +245,7 @@ public struct SmartChapterTitleEngine: Sendable {
             input.responseCacheIdentity = try Self.signature(Signature(version: Self.semanticSignatureVersion,
                 model: model.identity, mode: mode.rawValue, input: canonical, sources: sourceKeys,
                 observations: canonicalEvidence(Self.relative(allEvidence, start: first.timelineStart)),
-                restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt],
+                restrictions: [manual?.text ?? "", approved ?? "", date ?? "", plan.prompt, activity ?? ""],
                 reviewRules: SelectedContentReviewer.version, reviewReceipts: receipts))
             var carriedLanguageReceipts = source.chapterTitleDecisions?.first(where: { $0.partID == part.id })?.languageReceipts
             if !force, var cached = source.chapterTitleDecisions?.first(where: { $0.partID == part.id && $0.inputSignature == signature }) {
@@ -275,7 +283,11 @@ public struct SmartChapterTitleEngine: Sendable {
                     // Preserve an existing good title, but never use its prior
                     // approval as evidence for a chapter whose contents changed.
                     if model.canGroundTitleCandidates {
-                      for candidate in [existing?.text].compactMap({ $0 }) where !SmartTitleEngine.isPlaceholderTitle(candidate) {
+                      var candidates = [activity].compactMap { $0 }
+                      if let draft = existing?.text, draft != activity, !SmartTitleEngine.isPlaceholderTitle(draft) {
+                          candidates.append(draft)
+                      }
+                      for candidate in candidates {
                       do {
                         decision.modelCalls += model.candidateGroundingCallCount
                         if let proposal = try await model.groundTitleCandidate(candidate, input: input) {
@@ -304,7 +316,7 @@ public struct SmartChapterTitleEngine: Sendable {
                         // A malformed optional proposal must not prevent the
                         // existing generator from producing a valid title.
                         decision.verifications.append(.init(accepted: false,
-                            reasons: ["Existing candidate grounding could not be completed"],
+                            reasons: ["Candidate grounding could not be completed"],
                             unsupportedClaims: [], evidenceIDs: [], coversWholePart: false))
                       }
                       }
@@ -563,6 +575,18 @@ public struct SmartChapterTitleEngine: Sendable {
         let contextCount = min(context.count, limit / 4, max(0, limit - selected.count))
         return (stratified(selected, count: limit - contextCount) + stratified(context, count: contextCount))
             .sorted { $0.timelineStart == $1.timelineStart ? $0.id < $1.id : $0.timelineStart < $1.timelineStart }
+    }
+
+    /// A plan names the event across its action shots, preparation and pauses.
+    /// Its wording is a candidate only: the selected footage must verify it.
+    private static func plannedActivity(in items: [TimelineItem], plan: StoryPlan) -> String? {
+        let selected = Set(items.compactMap(\.candidateID))
+        var names: Set<String> = []
+        for chapter in plan.chapters where !selected.isDisjoint(with: chapter.candidateIDs) {
+            let title = chapter.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let candidate = SmartTitleEngine().activityChapterCandidate(for: title) { names.insert(candidate) }
+        }
+        return names.count == 1 ? names.first : nil
     }
 
     static func coveredSeconds(_ evidence: [ChapterTitleEvidence]) -> Double {

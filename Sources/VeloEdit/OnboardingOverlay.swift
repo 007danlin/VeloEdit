@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum OnboardingAnchor: Hashable {
-    case welcome, media, director, preview, timeline, export, navigation
+    case welcome, media, director, preview, timeline, filmOptions, export, navigation
     case section(WorkspaceSection)
 }
 
@@ -130,6 +130,7 @@ enum OnboardingLayout {
         case .media: return [.media]
         case .director: return [.director]
         case .montage: return [.preview, .timeline]
+        case .filmOptions: return [.filmOptions]
         case .export: return [.export]
         }
     }

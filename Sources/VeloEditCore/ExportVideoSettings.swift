@@ -138,6 +138,14 @@ public struct EncodedVideoInfo: Sendable {
     }
 }
 
+struct ExportCadenceMismatch: LocalizedError {
+    let expected: Double
+    let measured: Double
+    var errorDescription: String? {
+        "Временные метки записанного MP4 не соответствуют частоте кадров: ожидалось \(ExportVideoSettings.frameRateLabel(expected)), получено \(ExportVideoSettings.frameRateLabel(measured)) кадров/с."
+    }
+}
+
 enum ExportVideoVerifier {
     static func verify(url: URL, settings: ExportVideoSettings, duration: Double, expectsAudio: Bool = false) async throws -> EncodedVideoInfo {
         let asset = AVURLAsset(url: url)
@@ -167,10 +175,13 @@ enum ExportVideoVerifier {
             }
         }
         guard Int(size.width) == settings.width, Int(size.height) == settings.height,
-              abs(fps - settings.frameRate) < 0.005, subtype == expected,
+              subtype == expected,
               primaries == AVVideoColorPrimaries_ITU_R_709_2, transfer == AVVideoTransferFunction_ITU_R_709_2,
               abs(actualDuration - duration) <= 1 / settings.frameRate + 0.01 else {
             throw DerivedMediaError.exportFailed("Проверка MP4: файл не соответствует выбранным разрешению, FPS, кодеку, цветовому профилю или длительности. Ожидалось \(settings.summary); получено \(Int(size.width)) × \(Int(size.height)), \(fps) кадров/с, \(actualDuration) с.")
+        }
+        guard fps.isFinite, abs(fps - settings.frameRate) < 0.005 else {
+            throw ExportCadenceMismatch(expected: settings.frameRate, measured: fps)
         }
         let generator = AVAssetImageGenerator(asset: asset)
         generator.maximumSize = CGSize(width: 640, height: 640)

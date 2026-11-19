@@ -19,7 +19,7 @@ def stats(values, allow_p95=False):
     return result
 
 summary = dict(coldWarm={}, paired={}, director={}, applySave={}, resources={})
-for mode in ['fast', 'balanced', 'quality', 'maximum']:
+for mode in ['fast', 'balanced', 'quality']:
     summary['coldWarm'][mode] = {}
     for label in ['before-valid', 'after-current']:
         for cache in ['cold', 'warm']:

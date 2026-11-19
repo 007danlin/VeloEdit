@@ -105,7 +105,7 @@ public actor VeloEditPipeline {
 
     public func updateAISettings(mode: AIPowerMode, advanced: AdvancedAISettings) async throws {
         try await store.update { project in
-            project.preferences.aiPowerMode = mode
+            project.preferences.aiPowerMode = mode.modeForNewJobs
             project.preferences.advancedAISettings = advanced
         }
     }
@@ -127,7 +127,7 @@ public actor VeloEditPipeline {
             previousModelIdentity: timeline.chapterTitleDecisions?.first?.modelID,
             responseCacheURL: force ? nil : CachePaths(root: await store.cacheURL).previewDerivedMediaDirectory.appendingPathComponent("ChapterTitleResponses")) }
         let renamed = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: project.assets,
-            analyses: project.analyses, mode: project.preferences.effectiveAIPowerMode, model: model, force: force)
+            analyses: project.analyses, mode: project.preferences.effectiveAIPowerMode, model: model, force: force, events: project.events)
         try Task.checkCancellation()
         try await store.update(ifRevision: snapshot.revision) { current in
             guard let index = current.timelines.firstIndex(where: { $0.id == timeline.id }) else { return }
@@ -3513,7 +3513,7 @@ public actor VeloEditPipeline {
         let needsTitleValidation = !preservingSelection || SmartChapterTitleEngine.hasAutomaticTitles(timeline)
         if needsTitleValidation {
             timeline = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: current.assets,
-                analyses: analyses, mode: FilmProcessContext.analysis(preferences: current.preferences).mode, model: titleModel, sourceAssessments: draft.verifiedSourceContent)
+                analyses: analyses, mode: FilmProcessContext.analysis(preferences: current.preferences).mode, model: titleModel, sourceAssessments: draft.verifiedSourceContent, events: draft.events)
         }
         if !preservingSelection, plan.narrativeBeatPlan != nil {
             // Repair the complete preview before paying for delivery encoding.
@@ -3579,7 +3579,7 @@ public actor VeloEditPipeline {
         }
         if needsTitleValidation {
             timeline = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: current.assets,
-                analyses: analyses, mode: FilmProcessContext.analysis(preferences: current.preferences).mode, model: titleModel, sourceAssessments: draft.verifiedSourceContent)
+                analyses: analyses, mode: FilmProcessContext.analysis(preferences: current.preferences).mode, model: titleModel, sourceAssessments: draft.verifiedSourceContent, events: draft.events)
         }
         if let brief = draft.directorBrief, brief.subtitlePolicy == .on || timeline.speechRecords != nil {
             await progress?(FilmBuildProgress(.speech))
@@ -4253,6 +4253,16 @@ public actor VeloEditPipeline {
                             destination: staged, softwareEncoder: useSoftware, progress: progress)
                         guard report.skippedItemIDs.isEmpty else {
                             throw AutonomousOperationError.verificationFailed("В готовом файле отсутствуют элементы монтажа")
+                        }
+                        // An untouched automatic film keeps the same loudness contract
+                        // at the user's export resolution as its verified control movie.
+                        if let plan = current.storyPlans.first(where: { $0.id == timeline.storyPlanID }),
+                           timeline.filmDeliveryReport?.isCurrent(for: timeline, plan: plan) == true,
+                           timeline.filmDeliveryReport?.exportVerification?.encodedAudio != nil,
+                           try await EncodedAudioNormalizer.repairIfNeeded(at: staged, duration: duration,
+                               allowsQuietMix: SourceAudioMixPolicy.allowsQuietDelivery(timeline: timeline, plan: plan)) {
+                            _ = try await ExportVideoVerifier.verify(url: staged, settings: settings,
+                                duration: duration, expectsAudio: true)
                         }
                         try Task.checkCancellation()
                         job.artifactHash = try MediaImporter.sha256(url: staged)

@@ -4,7 +4,12 @@ public enum AIPowerMode: String, Codable, CaseIterable, Identifiable, Sendable, 
     case fast
     case balanced
     case quality
+    // Kept for the immutable profiles of jobs saved by earlier releases.
     case maximum
+
+    public static let allCases: [Self] = [.fast, .balanced, .quality]
+
+    var modeForNewJobs: Self { self == .maximum ? .quality : self }
 
     public var id: String { rawValue }
 

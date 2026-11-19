@@ -158,14 +158,13 @@ Cache key включает content fingerprint, analysis schema и выбран�
 
 ### AI-мощность
 
-Пользователь выбирает намерение, а не размер модели. Значение хранится в `UserPreferences`; старые проекты без поля получают `.balanced`.
+Режим сборки хранится в `UserPreferences`. Для старого значения `maximum` новые задания используют `quality`. При отсутствии поля применяется `fast`. Уже начатые задания продолжаются с сохранённым профилем.
 
 | Режим | VLM по умолчанию | Выборка | Глубоких кандидатов | Политика |
 |---|---|---:|---:|---|
-| ⚡ Быстро | Qwen3-VL 2B, 4-bit | 12 с / 2 с | 4 × 3 кадра | минимальный нагрев |
-| ⚖️ Баланс | Qwen3-VL 4B, 4-bit | 7 с / 1 с | 8 × 5 кадров | default для M4 Air |
+| ⚡ Быстро | Qwen3-VL 2B, 4-bit | 12 с / 2 с | 4 × 3 кадра | VLM оценивает до 2 сцен |
+| ⚖️ Баланс | Qwen3-VL 4B, 4-bit | 7 с / 1 с | 8 × 5 кадров | VLM оценивает до 6 сцен |
 | 🧠 Качество | Qwen3-VL 8B, 4-bit | 4 с / 0,67 с | 12 × 8 кадров | один VLM job |
-| 🎬 Максимум | Qwen3-VL 30B-A3B 4-bit при ≥32 GB; иначе 8B 8-bit | 2,5 с / 0,4 с | 18 × 12 кадров | thinking, без спешки |
 
 Операционный runtime текущей сборки — локальный Ollama loopback; он работает полностью offline после `ollama pull`. Предпочтительный нативный Apple-Silicon backend — `mlx-swift-lm/MLXVLM`: он поддерживает `qwen3_vl`, Metal и unified memory и не требует отдельного daemon. Контракт runtime и MLX model IDs уже отделены от профилей и доступны в Advanced Settings. До включения MLXVLM package в release-сборку принудительный MLX корректно деградирует в Apple Vision, а UI/analysis warnings не выдают fallback за Qwen.
 

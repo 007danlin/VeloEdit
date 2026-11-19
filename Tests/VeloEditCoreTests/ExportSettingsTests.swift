@@ -34,6 +34,12 @@ struct ExportSettingsTests {
         let info = try await ExportVideoVerifier.verify(url: trimmed,
             settings: ExportVideoSettings(timeline: timeline, quality: .preview720p), duration: 0.5)
         #expect(abs(info.frameRate - 30) < 0.005)
+        var wrongRate = timeline
+        wrongRate.frameRate = 25
+        await #expect(throws: ExportCadenceMismatch.self) {
+            try await ExportVideoVerifier.verify(url: trimmed,
+                settings: ExportVideoSettings(timeline: wrongRate, quality: .preview720p), duration: 0.5)
+        }
         let asset = AVURLAsset(url: trimmed)
         let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
         #expect(try await ExportVideoVerifier.measuredCadence(asset: asset, track: track, expectedRate: 30, duration: 0.5) != nil)

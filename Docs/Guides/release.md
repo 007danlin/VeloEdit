@@ -110,7 +110,7 @@ Developer ID/hardened runtime требуют проверки запуска н�
 
 ## Обновления приложения (Sparkle)
 
-VeloEdit проверяет `https://github.com/007danlin/VeloEdit/releases/latest/download/appcast.xml` автоматически раз в сутки
+VeloEdit проверяет `https://github.com/007danlin/VeloEdit/releases/latest/download/appcast.xml` автоматически раз в час
 и по кнопке «Проверить обновления» в настройках или меню приложения. Автопроверку
 можно отключить. Установка требует нажатия пользователем; Sparkle проверяет
 Ed25519-подпись DMG. После согласия на установку показывает прогресс загрузки

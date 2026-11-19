@@ -25,6 +25,7 @@ public enum AutonomousFailureCause: String, Codable, Sendable {
 
     public static func classify(_ error: Error) -> Self {
         if error is CancellationError || (error as? URLError)?.code == .cancelled { return .cancelled }
+        if error is ExportCadenceMismatch { return .encoder }
         if error is LocalAIInferenceFailure { return .localService }
         if let error = error as? URLError {
             switch error.code {

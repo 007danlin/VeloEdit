@@ -6,6 +6,7 @@ import Testing
     let scenarios: [(Set<String>, String)] = [
         (["buggy", "off-road"], "Поездка на багги"),
         (["cycling", "bicycle"], "Велопрогулка"),
+        (["atv", "off-road"], "Поездка на квадроцикле"),
         (["sunset", "cottage"], "Закат"),
         (["morning", "lake"], "Утро у озера"),
         (["mountain", "travel"], "Поездка в горы"),
@@ -240,4 +241,15 @@ import Testing
     #expect(timeline.effectiveTitleItems.count == 2)
     #expect(timeline.effectiveTitleItems.allSatisfy { $0.templateID != nil })
     #expect(timeline.effectiveTitleItems.allSatisfy { TitleTemplateRegistry.template(for: $0) != nil })
+}
+
+
+@Test func editorialWordingApprovesOnlyTheExactActivityName() {
+    let engine = SmartTitleEngine()
+    for title in ["Сплав", "Рыбалка", "Поездка на багги", "Велопрогулка"] {
+        #expect(engine.hasEditorialActivityWording(title))
+    }
+    for title in ["Пейзаж с автомобилем", "Поездка на багги у замка", "Озеро с деревьями"] {
+        #expect(!engine.hasEditorialActivityWording(title))
+    }
 }

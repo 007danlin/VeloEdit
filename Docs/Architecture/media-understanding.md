@@ -24,7 +24,7 @@ P2 реализован поверх P0/P1 без нового UI, обязат�
 
 - Apple Vision извлекает faces, attention saliency и object class для adaptive frames.
 - `LocalSubjectTracker` связывает observations во времени, выбирает main/secondary tracks, оценивает visibility, composition и направление движения.
-- Tracking запускается только после candidate detection: 2 кандидата в Fast, до 6 в Balanced, весь shortlist в Quality/Maximum.
+- Tracking запускается только после candidate detection: 2 кандидата в Fast, до 6 в Balanced, весь shortlist в Quality.
 - `SubjectAwareReframeEngine` строит safe-area trajectory с motion lead room и face/object crop protection.
 - AI Director записывает `SubjectReframePlan` в `VideoAdjustments`; custom compositor выполняет динамический reframe. FCPXML получает переносимый средний transform и полную start/end trajectory в metadata. Для фото та же траектория управляет subject-aware Ken Burns.
 

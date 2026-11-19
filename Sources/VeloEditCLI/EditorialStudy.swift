@@ -106,7 +106,7 @@ extension VeloEditCLI {
             musicSelectionHistory: LocalMusicSelectionHistoryStore(url: package.appendingPathComponent("study-music-history.json")),
             personalTasteStore: LocalPersonalTasteStore(url: package.appendingPathComponent("study-taste.json")))
         let initial = await store.manifest
-        let prompt = initial.workspaceState?.prompt ?? "Сделай связный фильм из лучших моментов. Начни спокойно, затем добавь динамики и закончи красивым финалом."
+        let prompt = initial.workspaceState?.prompt ?? IntentLedgerEngine.defaultFilmPrompt
         let brief = initial.workspaceState?.directorBrief
         let started = ProcessInfo.processInfo.systemUptime
         var rows: [[String: Any]] = []

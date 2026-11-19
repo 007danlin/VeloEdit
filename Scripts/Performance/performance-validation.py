@@ -17,7 +17,7 @@ reports = root / 'Local/Reports/Validation/Performance'
 if args.wait_pid:
     while subprocess.run(['ps', '-p', str(args.wait_pid)], stdout=subprocess.DEVNULL).returncode == 0:
         time.sleep(5)
-required = root / ('Build/Performance/after-current/balanced-warm.json' if args.skip_high else 'Build/Performance/after-current/maximum-warm.json')
+required = root / ('Build/Performance/after-current/balanced-warm.json' if args.skip_high else 'Build/Performance/after-current/quality-warm.json')
 if not required.exists() or json.loads(required.read_text())['exitCode']:
     raise SystemExit('The required current-build run did not finish successfully.')
 
@@ -38,7 +38,7 @@ current = 'Build/veloedit-cli'
 if not args.skip_high:
     run('baseline-high-fixed', ['python3', 'Scripts/Performance/performance-study.py', '--cli', baseline,
         '--project', 'Build/RequestFulfillment/test9.veloedit', '--label', 'before-high-fixed',
-        '--modes', 'quality', 'maximum'])
+        '--modes', 'quality'])
 for mode, model in [('fast', 'qwen3-vl:2b-instruct'), ('balanced', 'qwen3-vl:4b-instruct')]:
     run('paired-' + mode, ['python3', 'Scripts/Performance/performance-pairs.py', '--before-cli', baseline,
         '--after-cli', current, '--before-project', f'Build/Performance/before-valid/{mode}.veloedit',

@@ -85,9 +85,9 @@ public enum EditorialDeliveryVerifier {
                         sha256: MusicStructureCache.contentIdentity(url))
         }
     }
-    public static func verify(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preview: [PerceptualRenderedFrameEvidence], cacheURL: URL, preferredVideoSources: [UUID: URL] = [:], sourceWarnings: [String] = []) async throws -> EditorialExportVerification {
+    public static func verify(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preview: [PerceptualRenderedFrameEvidence], cacheURL: URL, allowsQuietMix: Bool = false, preferredVideoSources: [UUID: URL] = [:], sourceWarnings: [String] = []) async throws -> EditorialExportVerification {
         try Task.checkCancellation()
-        let key = EditorialRenderDependencies.artifactSignature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources)
+        let key = EditorialRenderDependencies.artifactSignature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources) + (allowsQuietMix ? "-quiet" : "")
         let directory = cacheURL.appendingPathComponent("EditorialControlExports")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let output = directory.appendingPathComponent(key + ".mp4")
@@ -107,14 +107,14 @@ public enum EditorialDeliveryVerifier {
             // independent source/preview observations. Verify the actual MP4 below.
             if try await EncodedAudioNormalizer.repairIfNeeded(at: output,
                 duration: AutomaticFilmDurationPolicy.renderedDuration(of: timeline),
-                allowsQuietMix: SourceAudioMixPolicy.preservesAttenuation(in: timeline)) {
+                allowsQuietMix: allowsQuietMix) {
                 try JSONEncoder().encode(CompletedExport.read(output, signature: key)).write(to: receiptURL, options: .atomic)
             }
         } else {
             PerformanceTrace.current?.event("cache.result", fields: ["cache": "control-export", "result": "miss", "reason": receipt == nil ? "missing-or-incompatible-receipt" : "artifact-changed", "signature": key])
             _ = try await PerformanceTrace.measure(name: "control.export", fields: ["signature": key, "contract": "final1080p"]) {
               try await FilmBuildReporting.forwarding { report in
-                try await RenderEngine().render(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources, sourceWarnings: sourceWarnings, quality: .final1080p, destination: output, masterForEditorialReview: true) { update in
+                try await RenderEngine().render(timeline: timeline, assets: assets, musicTracks: tracks, telemetry: telemetry, preferredVideoSources: preferredVideoSources, sourceWarnings: sourceWarnings, quality: .final1080p, destination: output, masterForEditorialReview: true, allowsQuietMix: allowsQuietMix) { update in
                     report(FilmBuildProgress(.controlExport, completed: update.completed, total: update.total, detail: update.currentName))
                 }
             }

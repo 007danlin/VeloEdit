@@ -7,6 +7,7 @@ public protocol EditorialRenderedProbing: Sendable {
 }
 
 public struct LocalEditorialRenderedProber: EditorialRenderedProbing {
+    var allowsQuietMix = false
     public var verifyExport: Bool
     public var maximumSamples: Int
     public init(verifyExport: Bool = true, maximumSamples: Int = 4096) {
@@ -48,7 +49,7 @@ public struct LocalEditorialRenderedProber: EditorialRenderedProbing {
             frames[0].audioMasteringReport = audioReport
             if verifyExport {
                 do {
-                    frames[0].exportVerification = try await EditorialDeliveryVerifier.verify(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preview: frames, cacheURL: cacheURL, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings)
+                    frames[0].exportVerification = try await EditorialDeliveryVerifier.verify(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, preview: frames, cacheURL: cacheURL, allowsQuietMix: allowsQuietMix, preferredVideoSources: stableSources, sourceWarnings: sourceWarnings)
                     frames[0].audioMasteringReport = frames[0].exportVerification?.encodedAudio
                 } catch {
                     let value = error as NSError
@@ -196,14 +197,19 @@ public actor RenderedProbeCache {
     }
     private let directory: URL
     private let visualOnly: Bool
-    public init(directory: URL, visualOnly: Bool = false) { self.directory = directory; self.visualOnly = visualOnly }
+    private let allowsQuietMix: Bool
+    public init(directory: URL, visualOnly: Bool = false, allowsQuietMix: Bool = false) {
+        self.directory = directory
+        self.visualOnly = visualOnly
+        self.allowsQuietMix = allowsQuietMix
+    }
     private func signature(timeline: Timeline, assets: [MediaAsset], tracks: [LocalMusicTrack], telemetry: [UUID: TelemetrySummary], preferredVideoSources: [UUID: URL]) -> String {
         if visualOnly {
             return EditorialRenderDependencies.artifactSignature(timeline: timeline, assets: assets, tracks: tracks,
                 telemetry: telemetry, preferredVideoSources: preferredVideoSources, visualOnly: true)
         }
         return EditorialRenderDependencies.signature(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry,
-            preferredVideoSources: preferredVideoSources)
+            preferredVideoSources: preferredVideoSources) + (allowsQuietMix ? "-quiet" : "")
     }
     private func digest(payload: Data, titleIDs: [UUID]) -> String {
         EditorialIdentity.hash(payload.base64EncodedString() + "|titles:" + titleIDs.map(\.uuidString).joined(separator: "|"))
@@ -245,7 +251,7 @@ public actor RenderedProbeCache {
             // the completed MP4 and independent content-review receipts.
             guard export.expectsAudio != nil else { miss("missing-source-audio-evidence"); return nil }
             if let audio = export.encodedAudio, EncodedAudioNormalizer.needsRepair(audio,
-                allowsQuietMix: SourceAudioMixPolicy.preservesAttenuation(in: timeline)) {
+                allowsQuietMix: allowsQuietMix) {
                 miss("audio-policy-repair-needed"); return nil
             }
             guard export.videoDuration != nil, export.artifactIsCurrent,
@@ -320,7 +326,15 @@ extension VeloEditPipeline {
         // any presentation that already received a rendered readability fix.
         if normalizePresentation { timeline = EditorialPresentationPolicy.ensuringChapterTitles(in: timeline, plan: plan, preserveExistingPresentation: true) }
         if normalizePresentation { timeline = TitleTimelineAnchoring.reconcile(timeline) }
-        let cache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialProbes"))
+        let allowsQuietMix = SourceAudioMixPolicy.allowsQuietDelivery(timeline: timeline, plan: plan)
+        let cache = RenderedProbeCache(directory: cacheURL.appendingPathComponent("EditorialProbes"), allowsQuietMix: allowsQuietMix)
+        let reviewProber: any EditorialRenderedProbing
+        if var local = prober as? LocalEditorialRenderedProber {
+            local.allowsQuietMix = allowsQuietMix
+            reviewProber = local
+        } else {
+            reviewProber = prober
+        }
         // A deliberately sparse ranking probe is not production evidence and
         // must never poison the full-render cache used by the final winner.
         let isPreliminaryProbe = (prober as? LocalEditorialRenderedProber)?.verifyExport == false
@@ -334,7 +348,7 @@ extension VeloEditPipeline {
                 do {
                     try Task.checkCancellation()
                     let probed = try await PerformanceTrace.measure(name: "render.review", fields: ["attempt": String(attempt), "signature": EditorialRenderSignature.signature(timeline)]) {
-                      try await prober.frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
+                      try await reviewProber.frames(timeline: timeline, assets: assets, tracks: tracks, telemetry: telemetry, cacheURL: cacheURL)
                     }
                     try Task.checkCancellation()
                     frames = probed

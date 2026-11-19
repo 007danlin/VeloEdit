@@ -13,6 +13,17 @@ import Testing
     #expect(profile.maximumVLMScenes == 2)
 }
 
+@Test func retiredModeIsAvailableOnlyToPreviouslyStartedJobs() throws {
+    #expect(AIPowerMode.allCases == [.fast, .balanced, .quality])
+    var preferences = UserPreferences()
+    preferences.aiPowerMode = .maximum
+    let restored = try JSONDecoder().decode(UserPreferences.self, from: JSONEncoder().encode(preferences))
+    #expect(restored.effectiveAIPowerMode == .quality)
+    let job = FilmProcessProfile(analysis: .resolve(mode: .maximum))
+    let saved = try JSONDecoder().decode(FilmProcessProfile.self, from: JSONEncoder().encode(job))
+    #expect(saved == job)
+}
+
 @Test func maximumKeepsItsModelAndReportsUnsupportedMemory() {
     let baseMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
     let largeMemory = AIAnalysisProfile.resolve(mode: .maximum, physicalMemory: 32 * 1_073_741_824, thermalState: .nominal)

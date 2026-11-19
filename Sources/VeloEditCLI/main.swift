@@ -301,17 +301,17 @@ struct VeloEditCLI {
     }
 
     static func benchmark(_ arguments: [String]) async throws {
-        guard arguments.count >= 3 else { throw CLIError.usage("benchmark <project.veloedit> <fast|balanced|quality|maximum|all>") }
-        let store = try ProjectStore(open: projectURL(arguments[1]))
-        let original = await store.manifest
+        guard arguments.count >= 3 else { throw CLIError.usage("benchmark <project.veloedit> <fast|balanced|quality|all>") }
         let modes: [AIPowerMode]
         if arguments[2] == "all" {
             modes = AIPowerMode.allCases
-        } else if let mode = AIPowerMode(rawValue: arguments[2]) {
+        } else if let mode = AIPowerMode.allCases.first(where: { $0.rawValue == arguments[2] }) {
             modes = [mode]
         } else {
-            throw CLIError.usage("benchmark <project.veloedit> <fast|balanced|quality|maximum|all>")
+            throw CLIError.usage("benchmark <project.veloedit> <fast|balanced|quality|all>")
         }
+        let store = try ProjectStore(open: projectURL(arguments[1]))
+        let original = await store.manifest
         var rows: [AnalysisBenchmarkRow] = []
         do {
             for mode in modes {
@@ -359,7 +359,7 @@ struct VeloEditCLI {
           import <project.veloedit> <media ...>
           analyze <project.veloedit>
           prepare-editorial <project.veloedit> [duration-seconds]
-          benchmark <project.veloedit> <fast|balanced|quality|maximum|all>
+          benchmark <project.veloedit> <fast|balanced|quality|all>
           thumbnails <project.veloedit>
           verify <project.veloedit>
           film <project.veloedit> <prompt>

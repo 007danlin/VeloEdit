@@ -84,6 +84,12 @@ public enum EditorialGenerationError: LocalizedError {
 }
 
 public enum IntentLedgerEngine {
+    private static let defaultBriefClauses = [
+        "Сделай связный фильм из лучших моментов",
+        "Начни спокойно, затем добавь динамики и закончи красивым финалом"
+    ]
+    public static let defaultFilmPrompt = defaultBriefClauses.joined(separator: ". ") + "."
+
     public static func intents(prompt: String, brief: DirectorBrief?, pending: [String], newAssetIDs: [UUID]) -> [DirectorIntent] {
         let prompt = (pending.filter { !prompt.contains($0) } + [prompt]).joined(separator: "\n")
         var intents: [DirectorIntent] = [.createFilm]
@@ -96,7 +102,7 @@ public enum IntentLedgerEngine {
         for text in Array(Set(pending + [prompt])).flatMap({ $0.components(separatedBy: CharacterSet(charactersIn: ".!?;\n")) }) {
             let normalized = text.lowercased()
             let trimmed = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
+            if trimmed.isEmpty || defaultBriefClauses.contains(where: { $0.lowercased() == trimmed }) { continue }
             if ["влог", "режим влог", "стиль: влог", "создай влог", "сделай влог"].contains(trimmed) {
                 intents.append(.vlogSpeech); continue
             }
