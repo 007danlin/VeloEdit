@@ -174,8 +174,12 @@ public enum DirectorResponseComposer {
             }
             result = titles.count == 1 ? "Теперь титр называется \(titles[0])." : "Переписал титры: \(titles.prefix(3).joined(separator: ", "))\(titles.count > 3 ? "…" : ".")"
         } else if receipt.applied.isEmpty { result = "Монтаж сохранён." }
-        else if receipt.applied.count <= 2 { result = "Сохранено: \(receipt.applied.joined(separator: "; "))." }
-        else { result = "Готово. \(receipt.applied.prefix(2).joined(separator: "; ")). Остальные изменения — в подробностях." }
+        else {
+            let short = receipt.applied.count <= 2
+            result = (short ? "Сохранено: " : "Готово. ") + receipt.applied.prefix(2).joined(separator: "; ")
+            if !result.hasSuffix(".") { result += "." }
+            if !short { result += " Остальные изменения — в подробностях." }
+        }
         if !receipt.omitted.isEmpty { result += " Не выполнено: \(receipt.omitted.joined(separator: "; "))." }
         if let failure = receipt.failure { result += " \(failure)" }
         if !receipt.previewReady { result += " Просмотр пока не обновлён." }

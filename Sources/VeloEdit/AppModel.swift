@@ -736,15 +736,6 @@ final class AppModel: ObservableObject {
     var directorMusicTrack: LocalMusicTrack? {
         musicTracks.first { $0.id == directorMusicTrackID }
     }
-    var directorMusicSelectionTitle: String {
-        if let directorMusicTrack { return "Трек: \(directorMusicTrack.title)" }
-        switch directorBrief.musicPolicy {
-        case .matchVideo: return "Музыка: автоподбор"
-        case .soft: return "Музыка: мягкая"
-        case .none: return "Музыка: выключена"
-        case .specificTrack: return "Музыка: трек недоступен"
-        }
-    }
     var selectedTimelineItem: TimelineItem? { timeline?.items.first { $0.id == selectedTimelineItemID } }
     var selectedTimelineAudioClip: TimelineAudioClip? {
         timeline?.effectiveAudioClips.first { $0.id == selectedTimelineAudioClipID }

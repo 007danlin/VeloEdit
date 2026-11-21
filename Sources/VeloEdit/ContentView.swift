@@ -110,7 +110,7 @@ struct ContentView: View {
                 if model.openingProjectURL == nil && model.isWorking {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text(model.isCreatingFilm ? "Создаю фильм" : model.activityTitle).lineLimit(1)
+                        Text(model.isCreatingFilm && model.activityPresentation != .editorAI ? "Создаю фильм" : model.activityTitle).lineLimit(1)
                         Button("Отменить", systemImage: "xmark.circle", action: model.cancelOperation)
                             .labelStyle(.iconOnly)
                     }
@@ -4606,33 +4606,6 @@ private struct DirectorChatColumn: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                if !model.userMusicTracks.isEmpty {
-                    Menu {
-                        Button {
-                            model.selectDirectorMusicTrack(nil)
-                        } label: {
-                            Label(
-                                "Автоподбор",
-                                systemImage: model.directorMusicTrackID == nil && model.directorBrief.musicPolicy == .matchVideo
-                                    ? "checkmark"
-                                    : "wand.and.stars"
-                            )
-                        }
-                        Divider()
-                        ForEach(model.userMusicTracks) { track in
-                            Button {
-                                model.selectDirectorMusicTrack(track.id)
-                            } label: {
-                                Label(track.title, systemImage: model.directorMusicTrackID == track.id ? "checkmark" : "music.note")
-                            }
-                        }
-                    } label: {
-                        Label(model.directorMusicSelectionTitle, systemImage: "music.note.list")
-                            .lineLimit(1)
-                    }
-                    .help("Выбрать свой трек из медиатеки для создания фильма")
-                    .disabled(model.isWorking)
-                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

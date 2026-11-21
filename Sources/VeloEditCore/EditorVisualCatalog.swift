@@ -30,7 +30,7 @@ public enum EditorVisualCatalog {
 
     private static let filters = index(VideoFilter.self, title: \.localizedTitle, aliases: [
         "монохром": .monochrome, "чб": .monochrome, "ч/б": .monochrome, "без цвета": .monochrome,
-        "черно-белым": .monochrome, "черно-белое": .monochrome, "черно-белой": .monochrome,
+        "черно-белыми": .monochrome, "черно-белым": .monochrome, "черно-белое": .monochrome, "черно-белой": .monochrome,
         "сепию": .sepia, "сепии": .sepia
     ])
     private static let library = index(TimelineEffectType.self, title: \.localizedTitle, aliases: [
