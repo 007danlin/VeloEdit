@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 public enum DerivedMediaError: LocalizedError {
     case noVideoTrack
+    case unavailableVideoRange(String, Double, Double, Double, Double)
     case cannotCreateDestination
     case exportUnavailable
     case exportFailed(String)
@@ -14,6 +15,8 @@ public enum DerivedMediaError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .noVideoTrack: return "В файле нет видеодорожки"
+        case let .unavailableVideoRange(name, start, end, availableStart, availableEnd):
+            return String(format: "В файле «%@» нет полного фрагмента %.2f–%.2f с. Доступно %.2f–%.2f с. Подключите полный исходник.", name, start, end, availableStart, availableEnd)
         case .cannotCreateDestination: return "Не удалось создать производный файл"
         case .exportUnavailable: return "Системный экспорт недоступен для этого формата"
         case .exportFailed(let reason): return "Не удалось экспортировать видео: \(reason)"

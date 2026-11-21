@@ -411,7 +411,7 @@ public struct EditorCommandParser: Sendable {
             result.append(.setSpeedRamp(.action, target))
         } else if !asksInstantReplay && containsAny(text, ["обычная скорость", "нормальная скорость", "верни скорость", "скорость 1x", "скорость 1 x"]) {
             result.append(.setSpeed(1, target))
-        } else if !asksInstantReplay && containsAny(text, ["ускор", "быстрее", "скорость "]) {
+        } else if !asksInstantReplay && (containsAny(text, ["ускор", "быстрее"]) || (text.contains("скорость ") && speedFactor(in: text) != nil)) {
             let factor = speedFactor(in: text) ?? 2
             result.append(.setSpeed(min(max(0.1, factor), 8), target))
         } else if !asksInstantReplay && forbidsSlowMotion {
@@ -732,7 +732,7 @@ public struct EditorCommandParser: Sendable {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [prompt] }
         // Keep descriptions attached to the action: «добавь эффект, будто …»
         // must not turn into a generic effect followed by an unrelated clause.
-        let quotedRanges = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]|плавно замедли и ускорь|,\s*(?=(?:чтобы|будто|словно|как будто|котор\w*)\b)"#, options: .caseInsensitive))?
+        let quotedRanges = (try? NSRegularExpression(pattern: #"[«“\"][^»”\"]*[»”\"]|плавно замедли и ускорь|,\s*(?=(?:чтобы|будто|словно|как будто|где|котор\w*)\b)"#, options: .caseInsensitive))?
             .matches(in: prompt, range: NSRange(prompt.startIndex..., in: prompt)).map(\.range) ?? []
         let range = NSRange(prompt.startIndex..<prompt.endIndex, in: prompt)
         var cursor = prompt.startIndex
@@ -917,7 +917,8 @@ public struct EditorCommandExecutor: Sendable {
         selectedItemID: UUID? = nil,
         selectedCandidateID: UUID? = nil,
         assets: [MediaAsset] = [],
-        analyses: [AnalysisResult] = []
+        analyses: [AnalysisResult] = [],
+        telemetry: [UUID: TelemetrySummary]? = nil
     ) -> (timeline: Timeline, report: EditorCommandReport) {
         var timeline = source
         var applied: [String] = []
@@ -967,8 +968,8 @@ public struct EditorCommandExecutor: Sendable {
             }
         }
 
-        func mutate(_ target: EditorCommandTarget, description: (Int) -> String, operation: (inout TimelineItem) -> Void) {
-            let positions = indexes(for: target)
+        func mutate(_ target: EditorCommandTarget, positions: [Int]? = nil, description: (Int) -> String, operation: (inout TimelineItem) -> Void) {
+            let positions = positions ?? indexes(for: target)
             guard !positions.isEmpty else {
                 ignored.append("цель команды не найдена")
                 return
@@ -1373,20 +1374,54 @@ public struct EditorCommandExecutor: Sendable {
                     applied.append("наложение убрано")
                 }
             case .setTelemetryOverlay(let settings, let target):
-                let targetIndexes = indexes(for: target)
-                mutate(target, description: { settings == nil ? "телеметрия скрыта у \($0) фрагм." : "телеметрия добавлена к \($0) фрагм." }) { item in
-                    if var settings, let existing = item.telemetryOverlay {
-                        settings.metrics.formUnion(existing.metrics)
-                        item.telemetryOverlay = settings
-                    } else {
-                        item.telemetryOverlay = settings
+                let targets = indexes(for: target)
+                var eligible = targets
+                var settingsByClip: [UUID: TelemetryOverlaySettings] = [:]
+                if let settings, let telemetry, !targets.isEmpty {
+                    var incomplete = 0
+                    eligible = targets.filter { index in
+                        let clip = timeline.items[index]
+                        guard let summary = clip.assetID.flatMap({ telemetry[$0] }) else { return false }
+                        var accepted = settings
+                        if let widgets = settings.widgets, !widgets.isEmpty {
+                            let supported = widgets.filter { summary.supports($0.kind, presentation: $0.presentation) }
+                            guard !supported.isEmpty else { return false }
+                            accepted.widgets = supported
+                            accepted.metrics = Set(supported.compactMap { $0.kind.metric })
+                        } else {
+                            accepted.metrics = settings.metrics.filter { metric in
+                                TelemetryOverlaySettings(metrics: [metric]).resolvedWidgets.contains {
+                                    summary.supports($0.kind, presentation: $0.presentation)
+                                }
+                            }
+                            guard !accepted.metrics.isEmpty else { return false }
+                        }
+                        if accepted != settings { incomplete += 1 }
+                        settingsByClip[clip.id] = accepted
+                        return true
+                    }
+                    if eligible.isEmpty {
+                        let readings = settings.metrics == [.speed] ? "показания скорости" : "показания телеметрии"
+                        let clips = targets.count == 1 ? "выбранного клипа" : "выбранных клипов"
+                        ignored.append("\(readings) недоступны для \(clips)")
+                        continue
+                    }
+                    if targets.count != eligible.count || incomplete > 0 {
+                        ignored.append("не все запрошенные показания доступны (затронуто клипов: \(targets.count - eligible.count + incomplete))")
                     }
                 }
+                mutate(target, positions: eligible, description: { settings == nil ? "телеметрия скрыта у \($0) фрагм." : "телеметрия добавлена к \($0) фрагм." }) { item in
+                    var updated = settingsByClip[item.id] ?? settings
+                    if let existing = item.telemetryOverlay { updated?.metrics.formUnion(existing.metrics) }
+                    item.telemetryOverlay = updated
+                }
                 var telemetryItems = timeline.effectiveTelemetryItems
-                for index in targetIndexes where timeline.items.indices.contains(index) {
+                for index in eligible {
                     let item = timeline.items[index]
-                    telemetryItems.removeAll { $0.linkedAssetID == item.assetID && abs($0.timelineStart - item.timelineStart) < 0.001 }
-                    if let settings, let assetID = item.assetID {
+                    telemetryItems.removeAll {
+                        ($0.targetClipID == item.id || ($0.targetClipID == nil && $0.linkedAssetID == item.assetID)) && abs($0.timelineStart - item.timelineStart) < 0.001
+                    }
+                    if let settings = item.telemetryOverlay, let assetID = item.assetID {
                         telemetryItems.append(TimelineTelemetryItem(
                             targetClipID: item.id,
                             linkedAssetID: assetID,

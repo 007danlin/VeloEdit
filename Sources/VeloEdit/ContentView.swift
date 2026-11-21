@@ -5871,6 +5871,7 @@ private struct TimelineStrip: View {
         if let assetID = item.assetID,
            let asset = model.project?.assets.first(where: { $0.id == assetID }) {
             MediaThumbnail(url: model.timelineThumbnailURLs[item.id] ?? model.thumbnailURLs[assetID], kind: asset.kind)
+                .timelineClipColorPreview(item)
                 .frame(height: 30)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         } else {

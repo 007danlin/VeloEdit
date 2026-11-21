@@ -210,7 +210,19 @@ public actor PlaybackEngine {
         // Many cuts reference one camera file. Reuse loaded AVFoundation
         // metadata within this build; never retain stale files across builds.
         var sourceAssets: [URL: AVURLAsset] = [:]
-        var videoMetadata: [URL: (track: AVAssetTrack, size: CGSize, transform: CGAffineTransform)] = [:]
+        typealias VideoMetadata = (track: AVAssetTrack, size: CGSize, transform: CGAffineTransform, range: CMTimeRange)
+        var videoMetadata: [URL: VideoMetadata] = [:]
+
+        func metadata(for url: URL) async throws -> VideoMetadata? {
+            if let cached = videoMetadata[url] { return cached }
+            let asset = sourceAssets[url] ?? AVURLAsset(url: url)
+            sourceAssets[url] = asset
+            guard let track = try await asset.loadTracks(withMediaType: .video).first else { return nil }
+            let (size, transform, range) = try await track.load(.naturalSize, .preferredTransform, .timeRange)
+            let result = (track, size, transform, range)
+            videoMetadata[url] = result
+            return result
+        }
 
         for (index, item) in playableItems.enumerated() {
             try await resourcePacer.checkpoint()
@@ -262,18 +274,29 @@ public actor PlaybackEngine {
                 continue
             }
 
-            let metadata: (track: AVAssetTrack, size: CGSize, transform: CGAffineTransform)
-            if let cached = videoMetadata[sourceURL] {
-                metadata = cached
-            } else {
-                let source = sourceAssets[sourceURL] ?? AVURLAsset(url: sourceURL)
-                sourceAssets[sourceURL] = source
-                guard let track = try await source.loadTracks(withMediaType: .video).first else {
-                    skippedItemIDs.append(item.id)
-                    continue
-                }
-                metadata = (track, try await track.load(.naturalSize), try await track.load(.preferredTransform))
-                videoMetadata[sourceURL] = metadata
+            // AVFoundation can accept an edit beyond the track's end and silently
+            // fill it with empty frames. Use the file's clock, including on reopen.
+            let tolerance = 1 / max(1, media?.metadata.frameRate ?? timeline.frameRate)
+            func coversCut(_ trackRange: CMTimeRange) -> Bool {
+                let end = sourceStart + insertedSourceDuration
+                return sourceStart < trackRange.end.seconds && end > trackRange.start.seconds
+                    && sourceStart >= trackRange.start.seconds - tolerance
+                    && end <= trackRange.end.seconds + tolerance
+            }
+            var loaded = try await metadata(for: sourceURL)
+            if let media, sourceURL != media.originalURL, item.kind == .video,
+               loaded.map({ !coversCut($0.range) }) ?? true {
+                sourceURL = media.originalURL
+                loaded = try await metadata(for: sourceURL)
+            }
+            guard let metadata = loaded else {
+                skippedItemIDs.append(item.id)
+                continue
+            }
+            if item.kind == .video, !coversCut(metadata.range) {
+                throw DerivedMediaError.unavailableVideoRange(media?.displayName ?? sourceURL.lastPathComponent,
+                                                              sourceStart, sourceStart + insertedSourceDuration,
+                                                              metadata.range.start.seconds, metadata.range.end.seconds)
             }
             let sourceVideo = metadata.track
             let sourceRange = CMTimeRange(

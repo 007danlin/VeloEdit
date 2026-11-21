@@ -132,6 +132,10 @@ enum ExactEditorCommandParser {
         guard target != .selected || hasSelection else { return nil }
         func result(_ command: EditorCommand) -> Result { Result(commands: [command], target: explicitTarget) }
 
+        if match(#"(?:покажи скорость|добавь спидометр)(?: на экране)?"#) != nil {
+            return result(.setTelemetryOverlay(TelemetryOverlaySettings(metrics: [.speed]), target))
+        }
+
         let variety = #"(?:всяк(?:ие|их)|разн(?:ые|ых)|разнообразн(?:ые|ых)|каки[ех]-(?:нибудь|то))"#
         if match(add + variety + #" переход(?:ы|ов)"#) != nil || match(#"(?:поменяй|замени|измени) переходы"#) != nil {
             return result(.setTransitionPattern(EditorCommandParser.variedTransitions, target))

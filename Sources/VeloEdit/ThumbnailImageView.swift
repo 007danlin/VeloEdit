@@ -112,6 +112,14 @@ struct CachedAdaptiveFilmstripImage: View {
     }
 }
 
+extension View {
+    func timelineClipColorPreview(_ item: TimelineItem) -> some View {
+        let adjustments = item.effectiveVideoAdjustments
+        let monochrome = adjustments.filter == .monochrome || adjustments.filter == .noir
+        return grayscale(monochrome ? min(1, max(0, adjustments.filterIntensity ?? 1)) : 0)
+    }
+}
+
 enum FilmstripTileGeometry {
     /// Uniformly scale each source cell, then crop it to the visible tile.
     /// This works for portrait media and for the single-frame loading preview.

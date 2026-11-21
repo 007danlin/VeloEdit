@@ -1004,7 +1004,7 @@ public actor VeloEditPipeline {
             resolvedCommands,
             to: baseline,
             timelineRange: timelineRange,
-            assets: snapshot.manifest.assets
+            assets: snapshot.manifest.assets, telemetry: Self.telemetryLookup(in: snapshot.manifest)
         )
         if replacingShots {
             result.report.recognizedCount += 1
@@ -1060,7 +1060,7 @@ public actor VeloEditPipeline {
                 + fullResult.effectiveTransitionItems.filter { cuts.contains($0.incomingClipID) }).sorted { $0.startTime < $1.startTime }
         } else {
             let result = Self.applyingLocalizedEditorCommands(scopedCommands, to: baseline, timelineRange: range,
-                                                              assets: snapshot.manifest.assets)
+                                                              assets: snapshot.manifest.assets, telemetry: Self.telemetryLookup(in: snapshot.manifest))
             guard result.report.hasChanges && result.report.ignored.isEmpty else { return EditorCommandReport(
                 recognizedCount: commands.count, ignored: result.report.ignored.isEmpty ? ["В этом месте правка ничего не меняет."] : result.report.ignored) }
             revised = result.timeline
@@ -1285,7 +1285,7 @@ public actor VeloEditPipeline {
             to: source,
             selectedItemID: selectedItemID,
             selectedCandidateID: selectedCandidateID,
-            assets: current.assets, analyses: current.analyses
+            assets: current.assets, analyses: current.analyses, telemetry: Self.telemetryLookup(in: current)
         )
         var timeline = Self.clampedToAvailableMedia(result.timeline, assets: current.assets)
         if var directive = timeline.music, directive.trackID == nil {
@@ -3523,7 +3523,7 @@ public actor VeloEditPipeline {
             }
             timeline = EditorialIntentEnforcer.enforce(timeline, plan: plan)
             let finalCommands = DirectorRequestContract.commandsAfterGeneration(prompt: plan.prompt)
-            timeline = Self.clampedToAvailableMedia(EditorCommandExecutor().apply(finalCommands, to: timeline).timeline, assets: current.assets)
+            timeline = Self.clampedToAvailableMedia(EditorCommandExecutor().apply(finalCommands, to: timeline, telemetry: Self.telemetryLookup(in: current)).timeline, assets: current.assets)
             timeline = TimelineFrameRatePolicy.applying(to: timeline, assets: current.assets)
             draft.timeline = timeline
             draft.plan = plan
@@ -4451,7 +4451,7 @@ public actor VeloEditPipeline {
         TimelineTiming.retimed(items)
     }
 
-    private static func telemetryLookup(in project: ProjectManifest) -> [UUID: TelemetrySummary] {
+    static func telemetryLookup(in project: ProjectManifest) -> [UUID: TelemetrySummary] {
         var result = Dictionary(uniqueKeysWithValues: project.analyses.compactMap { analysis in
             analysis.telemetry.map { (analysis.assetID, $0) }
         })
@@ -4583,7 +4583,8 @@ public actor VeloEditPipeline {
         _ commands: [EditorCommand],
         to source: Timeline,
         timelineRange: ClosedRange<Double>,
-        assets: [MediaAsset]
+        assets: [MediaAsset],
+        telemetry: [UUID: TelemetrySummary]
     ) -> (timeline: Timeline, report: EditorCommandReport) {
         var applied: [String] = []
         var ignored: [String] = []
@@ -4832,7 +4833,7 @@ public actor VeloEditPipeline {
                     let result = EditorCommandExecutor().apply(
                         [commandForItem],
                         to: timeline,
-                        selectedItemID: itemID
+                        selectedItemID: itemID, telemetry: telemetry
                     )
                     timeline = result.timeline
                     appendReport(result.report)

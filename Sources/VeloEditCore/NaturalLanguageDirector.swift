@@ -875,7 +875,8 @@ public struct NaturalLanguageDirector: Sendable {
             to: tools.timeline,
             selectedItemID: input.selectedItemID ?? plan.intents.flatMap(\.target.itemIDs).first,
             selectedCandidateID: selectedCandidateID,
-            assets: input.assets, analyses: input.currentProject.analyses
+            assets: input.assets, analyses: input.currentProject.analyses,
+            telemetry: VeloEditPipeline.telemetryLookup(in: input.currentProject)
         )
         var candidate = Self.clampedToSources(edited.timeline, assets: input.assets)
         let safety = NaturalLanguageTimelineSafetyValidator().violations(candidate: candidate, comparedTo: input.timeline, plan: plan, assets: input.assets)

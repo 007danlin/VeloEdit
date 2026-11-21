@@ -5378,7 +5378,8 @@ final class AppModel: ObservableObject {
                 self.showViewer = true
                 previewReady = previewUpdated
                 if !previewUpdated {
-                    refinementFailure = "правка сохранена, но просмотр не обновлён: \(self.errorMessage ?? "повторите подготовку просмотра")"
+                    let reason = self.errorMessage ?? "Повторите подготовку просмотра."
+                    refinementFailure = [refinementFailure, reason].compactMap { $0 }.joined(separator: " ")
                 }
                 self.editTrace?.event(previewUpdated ? "director.preview-ready" : "director.preview-failed")
                 PerformanceTrace.current?.event(previewUpdated ? "comment.preview-available" : "comment.preview-failed")
@@ -5397,7 +5398,7 @@ final class AppModel: ObservableObject {
                 applied: applied, omitted: omitted, saved: changed || didRebuild, previewReady: previewReady,
                 cancelled: Task.isCancelled, failure: refinementFailure)
             self.setDirectorResponseRecord(edit.replyID, receipt: receipt)
-            if receipt.state == .applied, !didRebuild, finalExecution?.toolReport.applied.isEmpty == true,
+            if receipt.saved, receipt.omitted.isEmpty, !didRebuild, finalExecution?.toolReport.applied.isEmpty == true,
                let baseline = previousTimeline, let current = self.timeline, let projectID = self.project?.id,
                !receipt.requested.isEmpty, receipt.requested.allSatisfy(\.allowsScopeCorrection) {
                 let revision = RevisableDirectorEdit(replyID: edit.replyID, projectID: projectID,
@@ -8541,8 +8542,14 @@ final class AppModel: ObservableObject {
                             receipt.applied = [summary]
                             receipt.saved = true
                             receipt.previewReady = await self.rebuildPlaybackIfPossible(show: false)
-                            message = summary
-                            if !receipt.previewReady { message += " Просмотр пока не обновился." }
+                            if receipt.previewReady {
+                                message = summary
+                            } else {
+                                let reason = self.errorMessage ?? "Повторите подготовку просмотра."
+                                receipt.applied = ["Сохранён диапазон правки"]
+                                receipt.failure = reason
+                                message = "Диапазон сохранён. Просмотр не обновлён. " + reason
+                            }
                             self.scheduleFilmVerification()
                         } else {
                             message = report.ignored.first ?? "Это уже так."

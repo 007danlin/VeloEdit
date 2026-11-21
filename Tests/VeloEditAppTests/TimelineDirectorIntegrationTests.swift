@@ -444,6 +444,109 @@ struct TimelineDirectorIntegrationTests {
         }
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func liveDirectorBuildsAndExportsAcrossLibraries() async throws {
+        let fixture = try await Fixture(realDirector: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let original = try #require(model.timeline)
+        let pipeline = try #require(model.pipeline)
+        let intro = try await sendAndReopen("Добавь в начале фон небо с титром «Наш маршрут»", in: fixture)
+        let opening = try #require(intro.items.first)
+        let title = try #require(intro.effectiveTitleItems.first { $0.text == "Наш маршрут" })
+        #expect(title.targetClipID == opening.id)
+        #expect(intro.items.dropFirst().map(\.id) == original.items.map(\.id))
+        let asset = try #require(model.project?.assets.first { $0.id == opening.assetID })
+        #expect(BackgroundPreset.preset(for: asset) == .clouds)
+
+        let transitions = try await sendAndReopen("Хочу, чтобы на каждой склейке один кадр плавно перетекал в следующий", in: fixture)
+        #expect(transitions.effectiveTransitionItems.map(\.incomingClipID) == intro.items.dropFirst().map(\.id))
+        #expect(transitions.effectiveTransitionItems.allSatisfy { $0.style == .crossDissolve })
+        let before = try #require(model.previewPlayer?.currentItem)
+        let duration = try await before.asset.load(.duration).seconds
+        let lastTime = duration - 1
+        let openingFrame = try await frame(before, at: 1)
+        let originalFrame = try await frame(before, at: lastTime)
+        let sound = try await audioSignature(before, start: 1.2, duration: 0.5)
+
+        let edited = try await sendAndReopen("Добавь эффект видеокамеры на последний клип и поставь громкость музыки на 9%", in: fixture)
+        let camera = edited.effectiveEffects.filter { $0.effectType == .videoCamera }
+        #expect(camera.count == 1 && camera.first?.targetClipID == original.items.last?.id)
+        #expect(edited.music?.trackID == original.music?.trackID && edited.music?.volume == 0.09)
+        #expect(edited.effectiveTitleItems == intro.effectiveTitleItems)
+        #expect(edited.effectiveTransitionItems == transitions.effectiveTransitionItems)
+        let preview = try #require(model.previewPlayer?.currentItem)
+        #expect(try await frame(preview, at: 1) == openingFrame)
+        #expect(try await frame(preview, at: lastTime) != originalFrame)
+        let output = fixture.root.appendingPathComponent("director.mp4")
+        let report = try await pipeline.render(to: output, quality: .maximum)
+        #expect(report.skippedItemIDs.isEmpty)
+        let exported = AVPlayerItem(url: output)
+        let audio = try await audioSignature(exported, start: 1.2, duration: 0.5)
+        #expect(abs(audio.frequency - sound.frequency) < 8)
+        #expect(abs(audio.rms / sound.rms - 0.5) < 0.07)
+        if let path = ProcessInfo.processInfo.environment["VELOEDIT_DIRECTOR_PROOF_MOVIE"] {
+            try FileManager.default.copyItem(at: output, to: URL(fileURLWithPath: path))
+        }
+        let undone = try await sendAndReopen("Нет, передумал, отмени последнее изменение", in: fixture)
+        #expect(undone.effectiveEffects == transitions.effectiveEffects)
+        #expect(undone.music == transitions.music && undone.items == transitions.items)
+        #expect(undone.effectiveTransitionItems == transitions.effectiveTransitionItems)
+        #expect(undone.effectiveTitleItems == transitions.effectiveTitleItems)
+        let restored = try #require(model.previewPlayer?.currentItem)
+        #expect(try await frame(restored, at: lastTime) == originalFrame)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_REAL_COMMENT_DIRECTOR"] == "1"))
+    func liveDirectorAddsMatchingMediaMusicAndMeasuredSpeed() async throws {
+        let fixture = try await Fixture(realDirector: true)
+        defer { fixture.remove() }
+        let model = fixture.model
+        let pipeline = try #require(model.pipeline)
+        let store = await pipeline.store
+        let url = try await TitleCardVideoGenerator().generate(text: "ДОРОГА", style: TitleStyle(backgroundColorHex: "#176035"),
+            duration: 2, width: 640, height: 360, frameRate: 20, destination: fixture.root.appendingPathComponent("road.mov"), codec: .jpeg)
+        let asset = try await MediaImporter().makeAsset(url: url)
+        let road = Candidate(assetID: asset.id, sourceStart: 0, sourceDuration: 2,
+            scores: ClipScores(quality: 0.9, interest: 0.7, action: 0.6, stability: 0.8), tags: ["дорога", "road"])
+        let summary = TelemetrySummary(sampleCount: 2, maxSpeedMetersPerSecond: 12,
+            timedSamples: [.init(timestamp: 0, speedMetersPerSecond: 10), .init(timestamp: 2, speedMetersPerSecond: 12)])
+        try await store.update {
+            $0.timelines[0].music = nil
+            $0.assets.append(asset)
+            $0.analyses.append(.init(assetID: asset.id, analyzedContentHash: asset.contentHash, candidates: [road], telemetry: summary))
+        }
+        model.project = await pipeline.snapshot()
+        let media = try await sendAndReopen("Добавь в конец фрагмент из исходников, где дорога", in: fixture)
+        let last = try #require(media.items.last)
+        #expect(last.candidateID == road.id && last.assetID == asset.id)
+        let music = try await sendAndReopen("Поставь музыку повеселее", in: fixture)
+        #expect(music.music?.trackID == fixture.joyfulTrackID)
+        let before = try #require(model.previewPlayer?.currentItem)
+        let shot = try await frame(before, at: 7)
+        let request = "Покажи скорость на последнем клипе"
+        let plan = NaturalLanguageDirector().plan(input: NaturalLanguageDirectorInput(
+            userRequest: request, currentProject: await pipeline.snapshot(), timeline: music))
+        try #require(!plan.requiresBackgroundRefinement)
+        let measured = try await sendAndReopen(request, in: fixture)
+        #expect(measured.items.map(\.timelineDuration) == music.items.map(\.timelineDuration))
+        #expect(measured.effectiveTelemetryItems.count == 1)
+        #expect(measured.effectiveTelemetryItems.first?.targetClipID == last.id)
+        let preview = try #require(model.previewPlayer?.currentItem)
+        #expect(try await frame(preview, at: 7) != shot)
+        let output = fixture.root.appendingPathComponent("road-with-speed.mp4")
+        let exported = try await pipeline.render(to: output, quality: .maximum)
+        #expect(exported.skippedItemIDs.isEmpty)
+        let movie = AVPlayerItem(url: output)
+        let sound = try await audioSignature(movie, start: 7, duration: 0.5)
+        #expect(abs(sound.frequency - 440) < 8)
+        let unavailable = try await sendAndReopen("Покажи скорость на первом клипе", in: fixture)
+        #expect(unavailable.items == measured.items)
+        #expect(unavailable.effectiveTelemetryItems == measured.effectiveTelemetryItems)
+        #expect(model.directorMessages.last?.response?.saved == false)
+        #expect(model.directorMessages.last?.text.localizedCaseInsensitiveContains("недоступ") == true)
+    }
+
     private func sendAndReopen(_ message: String, in fixture: Fixture) async throws -> Timeline {
         let model = fixture.model
         model.directorInput = message
@@ -509,6 +612,64 @@ struct TimelineDirectorIntegrationTests {
                 #expect(segments.allSatisfy { $0.directive.trackID == original.music?.trackID })
             }
         }
+    }
+
+    @Test func monochromeScopeMatchesSavedClipsPreviewPixelsAndExport() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let model = fixture.model
+        let all = try await sendAndReopen("Сделай все клипы чёрно-белыми", in: fixture)
+        #expect(all.items.map(\.effectiveVideoAdjustments.filter) == [.monochrome, .monochrome])
+        let allPreview = try #require(model.previewPlayer?.currentItem)
+        try await checkFrameColor(allPreview, at: 1, monochrome: true)
+        try await checkFrameColor(allPreview, at: 4, monochrome: true)
+        let last = try await sendAndReopen("Я передумал, оставь это только на последнем плане", in: fixture)
+        #expect(last.items.map(\.effectiveVideoAdjustments.filter) == [.none, .monochrome])
+        #expect(model.directorMessages.last?.response?.previewReady == true)
+        let lastPreview = try #require(model.previewPlayer?.currentItem)
+        let output = fixture.root.appendingPathComponent("scope.mp4")
+        let pipeline = try #require(model.pipeline)
+        _ = try await pipeline.render(to: output, quality: .maximum)
+        for item in [lastPreview, AVPlayerItem(url: output)] {
+            try await checkFrameColor(item, at: 1, monochrome: false)
+            try await checkFrameColor(item, at: 4, monochrome: true)
+        }
+    }
+
+    private func checkFrameColor(_ item: AVPlayerItem, at seconds: Double, monochrome: Bool) async throws {
+        let generator = AVAssetImageGenerator(asset: item.asset)
+        generator.videoComposition = item.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let image = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
+        // Sample the solid background away from both title overlays.
+        let patch = try #require(image.cropping(to: CGRect(x: image.width / 8, y: image.height / 8, width: 8, height: 8)))
+        var rgb = [UInt8](repeating: 0, count: 4)
+        try rgb.withUnsafeMutableBytes { bytes in
+            let context = try #require(CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+            context.draw(patch, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        let channels = rgb.prefix(3)
+        let maximum = Int(channels.max()!)
+        let chroma = maximum - Int(channels.min()!)
+        #expect(maximum > 40)
+        #expect(monochrome ? chroma < 8 : chroma > 60)
+    }
+
+    @Test func missingLastShotReportsASavedEditWithoutClaimingPreviewSuccess() async throws {
+        let fixture = try await Fixture(sourceDuration: 0.95)
+        defer { fixture.remove() }
+        let model = fixture.model
+        for message in ["Сделай все клипы чёрно-белыми", "Я передумал, оставь это только на последнем плане"] {
+            _ = try await sendAndReopen(message, in: fixture)
+            let reply = try #require(model.directorMessages.last)
+            #expect(reply.response?.saved == true)
+            #expect(reply.response?.previewReady == false)
+            #expect(reply.response?.state == .partial)
+            #expect(reply.text.contains("source.mov"))
+        }
+        #expect(model.timeline?.items.map(\.effectiveVideoAdjustments.filter) == [.none, .monochrome])
     }
 
     @Test(arguments: [false, true]) func filterFollowsFirstClipThenWholeFilm(startOnOneClip: Bool) async throws {
@@ -998,12 +1159,12 @@ struct TimelineDirectorIntegrationTests {
         let joyfulTrackID: UUID
         private let mutePreview: AnyCancellable
 
-        init(commands: [EditorCommand] = [], realDirector: Bool = false, titleTexts: [String] = ["Первая глава", "Вторая глава"], clipCount: Int = 2, completedFilm: Bool = false) async throws {
+        init(commands: [EditorCommand] = [], realDirector: Bool = false, titleTexts: [String] = ["Первая глава", "Вторая глава"], clipCount: Int = 2, completedFilm: Bool = false, sourceDuration: Double = 6) async throws {
             suite = "VeloEdit.timeline-director.\(UUID())"
             root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
             url = root.appendingPathComponent("test.veloedit")
             let store = try ProjectStore(createAt: url, name: "Director integration")
-            let source = try await TitleCardVideoGenerator().generate(text: "SOURCE", style: TitleStyle(), duration: 6,
+            let source = try await TitleCardVideoGenerator().generate(text: "SOURCE", style: TitleStyle(backgroundColorHex: "#cc5520"), duration: sourceDuration,
                 width: 640, height: 360, frameRate: 20, destination: root.appendingPathComponent("source.mov"), codec: .jpeg)
             let asset = MediaAsset(originalURL: source, kind: .video, byteSize: 1, contentHash: UUID().uuidString,
                 metadata: MediaMetadata(duration: 6, width: 640, height: 360, frameRate: 20, hasAudio: false))

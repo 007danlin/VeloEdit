@@ -46,7 +46,7 @@ public enum AutonomousFailureCause: String, Codable, Sendable {
         if let error = error as? DerivedMediaError {
             switch error {
             case .soundtrackUnavailable: return .missingMusic
-            case .noVideoTrack: return .mediaDecode
+            case .noVideoTrack, .unavailableVideoRange: return .mediaDecode
             case .cannotCreateDestination: return .storage
             case .exportFailed, .exportUnavailable: return .encoder
             }

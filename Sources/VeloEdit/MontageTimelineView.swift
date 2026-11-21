@@ -1251,6 +1251,7 @@ struct MagneticTimelineView: View {
 
         return ZStack(alignment: .topLeading) {
             clipFilmstrip(item, width: preview == nil ? width : max(clipWidth(item), width + croppedLeadingWidth))
+                .timelineClipColorPreview(item)
                 .offset(x: -croppedLeadingWidth)
                 .frame(width: width, height: isPhoto ? 76 : 58, alignment: .topLeading)
                 .clipped()

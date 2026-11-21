@@ -10,10 +10,10 @@ public struct PromptInterpreter: LanguageDirectorProtocol {
     public func interpret(prompt: String, preset: FilmPreset, base: StoryConstraints? = nil) -> StoryConstraints {
         let lower = prompt.lowercased()
         // Playback cadence is not a requested event. In particular, preserving
-        // natural speed must never require high-speed footage.
+        // natural speed or displaying a speedometer must never require high-speed footage.
         func speedTopics(_ text: String) -> String {
             text.replacingOccurrences(
-                of: #"(?:естественн\p{L}*|оригинальн\p{L}*|обычн\p{L}*)\s+скорост\p{L}*|(?:natural|original|normal)\s+(?:playback\s+)?speed|скорост\p{L}*\s+воспроизвед\p{L}*"#,
+                of: #"(?:покажи|показывай|отобрази)\s+скорость\b|(?:естественн\p{L}*|оригинальн\p{L}*|обычн\p{L}*)\s+скорост\p{L}*|(?:natural|original|normal)\s+(?:playback\s+)?speed|скорост\p{L}*\s+воспроизвед\p{L}*"#,
                 with: "", options: .regularExpression)
         }
         let speedTopicText = speedTopics(lower)
