@@ -8,7 +8,7 @@ public struct LocalChapterTitleModel: ChapterTitleModel {
     private let model: String
     private let mode: AIPowerMode
     private let timeout: Double
-    private let responseCacheURL: URL?
+    let responseCacheURL: URL?
     var answerTransport: SelectedContentReviewer.AnswerTransport? = nil
     public var requiresWordingEdit: Bool { true }
     public var canGroundTitleCandidates: Bool { true }
@@ -24,11 +24,12 @@ public struct LocalChapterTitleModel: ChapterTitleModel {
 
     public static func configured(preferences: UserPreferences, previousModelIdentity: String? = nil, responseCacheURL: URL? = nil) async -> Self {
         let profile = FilmProcessContext.analysis(preferences: preferences)
-        let selected = profile.modelID
+        let legacy = FilmProcessContext.current?.version == 1
+        let selected = legacy ? profile.modelID : AIAnalysisProfile.sharedTitleModelID
         let info = await LocalAIModelManager.shared.installedModelInfo(model: selected)
         let prefix = selected + "@"
         let prior = previousModelIdentity.flatMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil }
-        return Self(model: selected, digest: info?.digest ?? prior, mode: profile.mode, responseCacheURL: responseCacheURL)
+        return Self(model: selected, digest: info?.digest ?? prior, mode: legacy ? profile.mode : .fast, responseCacheURL: responseCacheURL)
     }
 
     public func reviewLanguage(_ title: String, maxCharacters: Int) async throws -> ChapterTitleLanguageAssessment {

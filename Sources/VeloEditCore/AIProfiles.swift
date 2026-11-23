@@ -26,7 +26,7 @@ public enum AIPowerMode: String, Codable, CaseIterable, Identifiable, Sendable, 
         switch self {
         case .fast: return "2B · короткая выборка сцен · без proxy и анализа звука"
         case .balanced: return "4B · ключевые сцены и пейзажи · анализ звука"
-        case .quality: return "8B · все кандидаты · подробный анализ · речь при доступности Speech"
+        case .quality: return "9B · все кандидаты · подробный анализ · речь при доступности Speech"
         case .maximum: return "30B-A3B · больше контекста кадров · независимая перепроверка важных сцен"
         }
     }
@@ -109,6 +109,7 @@ public struct AdvancedAISettings: Codable, Hashable, Sendable {
 }
 
 public struct AIAnalysisProfile: Codable, Hashable, Sendable {
+    public static let sharedTitleModelID = "qwen3.5:2b-q4_K_M"
     public let mode: AIPowerMode
     public let runtime: LocalAIRuntime
     public let ollamaModelID: String
@@ -230,6 +231,7 @@ public struct AIAnalysisProfile: Codable, Hashable, Sendable {
     public var estimatedDownloadSize: String {
         if ollamaModelID.contains(":2b") { return "около 1,9 ГБ" }
         if ollamaModelID.contains(":4b") { return "около 3,3 ГБ" }
+        if ollamaModelID.contains(":9b") { return "около 6,6 ГБ" }
         if ollamaModelID.contains(":8b") { return "около 6,1 ГБ" }
         if ollamaModelID.contains(":30b") { return "около 20 ГБ" }
         return "размер определит выбранная модель"
@@ -245,11 +247,11 @@ public struct AIAnalysisProfile: Codable, Hashable, Sendable {
         let base: AIAnalysisProfile
         switch mode {
         case .fast:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:2b-instruct", mlxModelID: "mlx-community/Qwen3-VL-2B-Instruct-4bit", quantization: .q4, proxyLongEdge: 720, coarseInterval: 12, denseInterval: 2, maximumCoarseFrames: 40, maximumDeepCandidates: 4, framesPerCandidate: 3, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: sharedTitleModelID, mlxModelID: "", quantization: .q4, proxyLongEdge: 720, coarseInterval: 12, denseInterval: 2, maximumCoarseFrames: 40, maximumDeepCandidates: 4, framesPerCandidate: 3, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         case .balanced:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:4b-instruct", mlxModelID: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit", quantization: .q4, proxyLongEdge: 960, coarseInterval: 7, denseInterval: 1, maximumCoarseFrames: 70, maximumDeepCandidates: 8, framesPerCandidate: 5, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3.5:4b-q4_K_M", mlxModelID: "", quantization: .q4, proxyLongEdge: 960, coarseInterval: 7, denseInterval: 1, maximumCoarseFrames: 70, maximumDeepCandidates: 8, framesPerCandidate: 5, mediaConcurrency: 2, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         case .quality:
-            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:8b-instruct", mlxModelID: "mlx-community/Qwen3-VL-8B-Instruct-4bit", quantization: .q4, proxyLongEdge: 1080, coarseInterval: 4, denseInterval: 0.67, maximumCoarseFrames: 110, maximumDeepCandidates: 12, framesPerCandidate: 8, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
+            base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3.5:9b-q4_K_M", mlxModelID: "", quantization: .q4, proxyLongEdge: 1080, coarseInterval: 4, denseInterval: 0.67, maximumCoarseFrames: 110, maximumDeepCandidates: 12, framesPerCandidate: 8, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         case .maximum:
             base = AIAnalysisProfile(mode: mode, runtime: .automatic, ollamaModelID: "qwen3-vl:30b-a3b-instruct", mlxModelID: "", quantization: .q4, proxyLongEdge: 1440, coarseInterval: 2.5, denseInterval: 0.4, maximumCoarseFrames: 180, maximumDeepCandidates: 18, framesPerCandidate: 12, mediaConcurrency: 1, aiConcurrency: 1, thinkingEnabled: false, sceneObservationFirst: nil)
         }

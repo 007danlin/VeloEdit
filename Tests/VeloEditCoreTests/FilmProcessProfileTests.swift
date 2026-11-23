@@ -93,7 +93,7 @@ import Testing
         preferences.aiPowerMode = .maximum
         await FilmProcessContext.$current.withValue(restored) {
             #expect(FilmProcessContext.analysis(preferences: preferences).mode == .fast)
-            #expect(FilmProcessContext.analysis(preferences: preferences).modelID == "qwen3-vl:2b-instruct")
+            #expect(FilmProcessContext.analysis(preferences: preferences).modelID == "qwen3.5:2b-q4_K_M")
         }
         #expect(throws: FilmProcessProfileError.self) { try restored.validate(model: restored.modelID, digest: "weights-b") }
     }

@@ -51,6 +51,11 @@ enum ExactEditorCommandParser {
         let fadeClause = #"(?:"# + fade + #"|"# + fadeCommand + #")"#
         let endingRequest = #"(?:а )?(?:"# + end + #" "# + fadeClause + #"|"# + fadeClause + #" "# + end + #")"#
         if match(endingRequest) != nil { return Result(commands: [.setMusicEndingFade(4)], target: nil) }
+        // In timeline context a singular trim addresses the selected shot.
+        // It must never turn into a pacing change across the whole sequence.
+        if hasSelection, match(#"(?:сократи|укороти|подрежь) (?:(?:этот|выбранный|повторяющийся) )?(?:план|клип|фрагмент)"#) != nil {
+            return Result(commands: [.tightenCut(.selected)], target: .selected)
+        }
         let opening = #"(?:начало|вступление|первый план)(?: (?:фильма|ролика|видео))?"#
         let punchier = #"(?:по)?(?:бодрее|энергичнее|динамичнее|живее|плотнее)"#
         if match(#"(?:сделай )?(?:"# + opening + #" "# + punchier + #"|"# + punchier + #" "# + opening + #")"#) != nil {

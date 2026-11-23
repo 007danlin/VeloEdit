@@ -155,7 +155,7 @@ final class LocalDirectorAgent {
     init(responseProvider: ResponseProvider? = nil) {
         self.responseProvider = responseProvider
     }
-    nonisolated static let ollamaModel = "qwen3-vl:2b-instruct"
+    nonisolated static let ollamaModel = AIAnalysisProfile.sharedTitleModelID
     private static func runtimeLabel(_ mode: AIPowerMode) -> String {
         AIAnalysisProfile.resolve(mode: mode).modelID + " · локальная нейросеть"
     }
@@ -308,7 +308,7 @@ final class LocalDirectorAgent {
     }
 
     private func dialogueContent(for request: URLRequest) async throws -> String {
-        let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: 15)
+        let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: DirectorReplyDeadline.generationBudget)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         var stream = DirectorReplyStream()
         _ = try stream.append(String(decoding: data, as: UTF8.self))
@@ -332,7 +332,7 @@ final class LocalDirectorAgent {
         }
         let fallback = DirectorAIReply(text: DirectorResponseComposer.limitedAdvice(prompt: prompt, moment: context.moment, delayed: true),
             runtimeLabel: "Ограниченный ответ · модель не ответила", normalizedBrief: nil, isFallback: true)
-        let reply = await DirectorReplyDeadline.run(seconds: max(0, (detailed ? 30 : 6) - (ProcessInfo.processInfo.systemUptime - submittedAt)), fallback: fallback) {
+        let reply = await DirectorReplyDeadline.run(seconds: max(0, DirectorReplyDeadline.adviceBudget(detailed: detailed) - (ProcessInfo.processInfo.systemUptime - submittedAt)), fallback: fallback) {
             do {
                 try await self.acquireModelSlot()
                 defer { self.modelRequestActive = false }
@@ -361,8 +361,27 @@ final class LocalDirectorAgent {
         if available {
             var request = URLRequest(url: Self.ollamaBaseURL.appendingPathComponent("api/chat"))
             request.httpMethod = "POST"
-            request.timeoutInterval = detailed ? 30 : 6
+            request.timeoutInterval = DirectorReplyDeadline.adviceBudget(detailed: detailed)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let descriptions = DirectorResponseComposer.pictureDescriptions(prompt: prompt, moment: context.moment) {
+                guard !descriptions.isEmpty else { throw URLError(.resourceUnavailable) }
+                // A selection of observed sentences cannot turn into an opinion about the whole film.
+                let choices = descriptions.enumerated().map { "\($0.offset): \($0.element)" }.joined(separator: "\n")
+                let body: [String: Any] = [
+                    "model": requestData.model, "stream": true, "think": false, "keep_alive": "15m",
+                    "options": ["temperature": 0, "num_predict": 32],
+                    "format": ["type": "object", "properties": ["choice": ["type": "integer", "enum": Array(descriptions.indices)]],
+                               "required": ["choice"], "additionalProperties": false],
+                    "messages": [["role": "system", "content": "Выбери самое информативное описание для вопроса о выбранном плане. Все варианты — наблюдения по этому плану. Верни номер варианта."],
+                                 ["role": "user", "content": "\(prompt)\n\(choices)"]]
+                ]
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                struct Choice: Decodable { var choice: Int }
+                let content = try await dialogueContent(for: request)
+                let choice = try JSONDecoder().decode(Choice.self, from: Data(content.utf8)).choice
+                guard descriptions.indices.contains(choice) else { throw URLError(.cannotParseResponse) }
+                return DirectorAIReply(text: descriptions[choice], runtimeLabel: Self.runtimeLabel(context.aiPowerMode), normalizedBrief: nil)
+            }
             request.httpBody = try JSONEncoder().encode(requestData)
             let (data, response) = try await LocalAIInferenceClient.shared.response(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
@@ -432,7 +451,7 @@ final class LocalDirectorAgent {
                     interpret = SectionPacingPlan.commands(from:)
                 }
                 if let request {
-                    let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: 25)
+                    let (data, response) = try await LocalAIInferenceClient.shared.response(for: request, maximumDuration: DirectorReplyDeadline.generationBudget)
                     if (response as? HTTPURLResponse)?.statusCode == 200 {
                         var stream = DirectorReplyStream()
                         _ = try stream.append(String(decoding: data, as: UTF8.self))

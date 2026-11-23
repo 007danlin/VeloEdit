@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VeloEditCore
 
-private let response = #"{"scenes":[{"index":3,"interest":0.7,"action":0.6,"quality":0.8,"stability":0.9,"storyValue":0.7,"scene":"A cyclist","tags":["bicycle"],"reason":"Clear action"}]}"#
+private let response = validVisionResponse
 
 /// Intentionally ignores cancellation until released, like a stuck external service.
 private actor VisionGate {

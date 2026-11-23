@@ -231,7 +231,8 @@ struct DirectorLiveInteractionTests {
         let context = DirectorContext(assetCount: 0, videoCount: 0, photoCount: 0, analyzedCount: 0,
             candidateCount: 0, currentTimelineItemCount: 0, targetDuration: 30, preset: .story, currentOperation: "test")
         async let a = agent.respond(to: "Как тебе?", context: context, mode: .advisory)
-        async let b = agent.respond(to: "Здесь затянуто?", context: context, mode: .advisory, submittedAt: ProcessInfo.processInfo.systemUptime - 5.97)
+        while calls == 0 { await Task.yield() }
+        async let b = agent.respond(to: "Здесь затянуто?", context: context, mode: .advisory, submittedAt: ProcessInfo.processInfo.systemUptime - DirectorReplyDeadline.adviceBudget(detailed: false) + 0.03)
         let replies = await [a, b]
         #expect(maximum == 1)
         #expect(calls == 1)

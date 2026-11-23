@@ -197,6 +197,9 @@ public enum DirectorResponseComposer {
         }
         guard let moment, !moment.objects.isEmpty else { return "Укажите клип или таймкод — тогда смогу оценить конкретный момент." }
         if moment.scope == "comparison", moment.objects.count < 2 { return "Укажите два клипа для сравнения — по текущему выделению второй дубль не определён." }
+        if let descriptions = pictureDescriptions(prompt: prompt, moment: moment) {
+            return descriptions.first ?? "У меня пока нет описания изображения для выбранного плана."
+        }
         if let cut = moment.objects.flatMap(\.facts).first(where: { $0.kind == .cutSpeech }) {
             return "\(cut.text) Я бы сохранил слово целиком; границу стоит проверить на слух."
         }
@@ -205,6 +208,29 @@ public enum DirectorResponseComposer {
             return "Я пока не вижу, что происходит в этом фрагменте. Его можно проанализировать в медиатеке."
         }
         return "Какую часть фрагмента оценить — звук, картинку или склейку?"
+    }
+
+    /// Literal picture questions can cite complete observations or individual sentences from the selected shot.
+    public static func pictureDescriptions(prompt: String, moment: DirectorMomentContext?) -> [String]? {
+        let asksForPicture = ["что видно", "что в кадре", "что в этом кадре", "опиши кадр", "опиши выбранный план"]
+            .contains(where: prompt.lowercased().contains)
+        guard asksForPicture, let moment, moment.scope != "comparison", moment.objects.count == 1,
+              let shot = moment.objects.first else { return nil }
+        var descriptions: [String] = []
+        for fact in shot.facts where fact.kind == .scene && fact.itemID == shot.itemID && fact.sourceRange.overlaps(shot.sourceRange) {
+            let observation = fact.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !observation.isEmpty else { continue }
+            var excerpts = [observation]
+            observation.enumerateSubstrings(in: observation.startIndex..<observation.endIndex, options: .bySentences) { sentence, _, _, _ in
+                if let sentence { excerpts.append(sentence.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            }
+            let coversOnlyThisShot = shot.sourceRange.lowerBound <= fact.sourceRange.lowerBound && shot.sourceRange.upperBound >= fact.sourceRange.upperBound
+            for excerpt in excerpts where !excerpt.isEmpty {
+                let text = coversOnlyThisShot ? excerpt : "Описание исходного эпизода — «\(excerpt)». Выбранный план показывает часть этого эпизода."
+                if !descriptions.contains(text) { descriptions.append(text) }
+            }
+        }
+        return descriptions
     }
     private static func number(_ value: Double) -> String { String(format: "%g", value) }
 }

@@ -123,26 +123,60 @@ func verificationRecordedShortFilmRegressionsFailIndependently(_ values: (Double
     #expect(broken.findings.contains { $0.kind == .blankRenderedFrame })
 }
 
-@Test(arguments: ["Съёмка на озере", "Фильм о рыбалке", "Съёмка · 11 июля 2026", "Часть 1", "Chapter by the lake"])
+@Test(arguments: ["Съёмка на озере", "Фильм о рыбалке", "Съёмка · 11 июля 2026", "Chapter by the lake"])
 func verificationDescriptiveTitlesAreNotPlaceholders(text: String) async throws {
     var (timeline, plan, analyses) = verificationFixture()
-    timeline.titleItems = [TitleTimelineItem(kind: .chapter, text: text, startTime: 0, duration: 3)]
+    timeline.titleItems = [TitleTimelineItem(kind: .chapter, text: text, startTime: 0, duration: 3, explanation: ["Автоматический титр"])]
     let frames = try await FixtureEditorialProber().frames(timeline: timeline, assets: [], tracks: [], telemetry: [:], cacheURL: FileManager.default.temporaryDirectory)
     let claims = EditorialLocalSemanticVerifier.claims(timeline: timeline, plan: plan, analyses: analyses, frames: frames, tracks: [])
     #expect(claims.first { $0.domain == .titleGrounding }?.status == .passed)
 }
 
+@Test func verificationRespectsManualChapterTextAndRejectsUnverifiedAutomaticLabels() async throws {
+    var (timeline, plan, analyses) = verificationFixture()
+    let frames = try await FixtureEditorialProber().frames(timeline: timeline, assets: [], tracks: [], telemetry: [:], cacheURL: FileManager.default.temporaryDirectory)
+    func status(for item: TitleTimelineItem) -> EditorialEvidenceState? {
+        timeline.titleItems = [item]
+        return EditorialLocalSemanticVerifier.claims(timeline: timeline, plan: plan, analyses: analyses, frames: frames, tracks: [])
+            .first { $0.domain == .titleGrounding }?.status
+    }
+    var title = TitleTimelineItem(kind: .chapter, text: "Часть 1", startTime: 0, duration: 3)
+    #expect(status(for: title) == .passed)
+    title.explanation = ["Автоматический титр"]
+    #expect(status(for: title) == .failed)
+    let partID = UUID()
+    title.filmPartID = partID
+    timeline.chapterTitleDecisions = [.init(partID: partID, text: title.text, source: .reference,
+        inputSignature: "fixture", rulesVersion: 1, modelID: "", claims: [], evidence: [],
+        coverage: .init(selectedSeconds: 3, observedSeconds: 0, sampledEvidenceCount: 0, availableEvidenceCount: 0,
+                        beginning: false, middle: false, end: false),
+        verifications: [], modelCalls: 0, elapsedSeconds: 0)]
+    #expect(status(for: title) == .passed)
+    title.text = "Часть 2"
+    #expect(status(for: title) == .failed)
+    title.userEdited = true
+    #expect(status(for: title) == .passed)
+    title.text = " "
+    #expect(status(for: title) == .failed)
+}
+
 @Test(arguments: ["Съёмка", "Глава 1", "Фильм", "Untitled", "123", "Кульминация"])
-func verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text: String) {
+func verificationGeneratedPlaceholderTitlesAreRepairedBeforeRendering(text: String) throws {
     var (timeline, plan, _) = verificationFixture()
     #expect(SmartTitleEngine.isPlaceholderTitle(text))
     let generated = TitleTimelineItem(kind: .chapter, text: text, startTime: 0, duration: 3, explanation: ["Автоматический титр"])
     let manual = TitleTimelineItem(kind: .title, text: "Фильм", startTime: 4, duration: 3)
     timeline.titleItems = [generated, manual]
     let repaired = EditorialPresentationPolicy.stylingGeneratedTitles(in: timeline, plan: plan)
-    #expect(!SmartTitleEngine.isPlaceholderTitle(repaired.effectiveTitleItems[0].text))
+    #expect(repaired.effectiveTitleItems[0].text == "Часть 1")
     #expect(repaired.effectiveTitleItems[0].id == generated.id)
     #expect(repaired.effectiveTitleItems[1] == manual)
+
+    plan.chapters = [StoryChapter(title: "Рыбалка на озере", candidateIDs: [try #require(timeline.items[0].candidateID)])]
+    let named = EditorialPresentationPolicy.stylingGeneratedTitles(in: timeline, plan: plan)
+    #expect(named.effectiveTitleItems[0].text == "Рыбалка на озере")
+    #expect(named.effectiveTitleItems[0].id == generated.id)
+    #expect(named.effectiveTitleItems[1] == manual)
 }
 
 @Test func verificationFailureMessageSummarizesDistinctProblemsWithoutDumpingEvidence() {

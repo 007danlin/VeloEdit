@@ -6,6 +6,7 @@ struct FilmReviewContextTests {
     private func legacy(_ profile: FilmProcessProfile) throws -> FilmProcessProfile {
         var data = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(profile)) as? [String: Any])
         data.removeValue(forKey: "singleImageReviewContextTokens")
+        data.removeValue(forKey: "technicalObservationFirst")
         return try JSONDecoder().decode(FilmProcessProfile.self, from: JSONSerialization.data(withJSONObject: data))
     }
 

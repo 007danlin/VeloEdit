@@ -1798,20 +1798,32 @@ final class AppModel: ObservableObject {
         aiVisionModelStatus = availability.message
     }
 
+    func requiredAIProfiles(for mode: AIPowerMode) -> [AIAnalysisProfile] {
+        let selected = AIAnalysisProfile.resolve(mode: mode, advanced: advancedAISettings)
+        return mode == .fast ? [selected] : [selected, AIAnalysisProfile.resolve(mode: .fast)]
+    }
+
     private func prepareAutonomousAI() async throws {
         let profile = aiProfile
         try FilmProcessProfile(analysis: profile).validateDevice()
         let manager = LocalAIModelManager.shared
-        let availability = await manager.availability(model: profile.ollamaModelID)
-        if !availability.installed, !UserDefaults.standard.bool(forKey: "VeloEdit.ModelDownloadConsent.\(profile.ollamaModelID)") {
-            let alert = NSAlert()
-            alert.messageText = "Подготовить локальный анализ"
-            alert.informativeText = "Для всего процесса в режиме «\(profile.mode.title)» нужна \(profile.modelID) (\(profile.estimatedDownloadSize)). Материалы обрабатываются на этом Mac."
-            alert.addButton(withTitle: "Загрузить и создать фильм")
-            alert.addButton(withTitle: "Отмена")
-            guard alert.runModal() == .alertFirstButtonReturn else { throw CancellationError() }
-            manager.authorizeDownload(model: profile.ollamaModelID)
+        let required = requiredAIProfiles(for: profile.mode)
+        var missing: [AIAnalysisProfile] = []
+        for entry in required {
+            let availability = await manager.availability(model: entry.modelID)
+            if !availability.installed && !UserDefaults.standard.bool(forKey: "VeloEdit.ModelDownloadConsent.\(entry.modelID)") {
+                missing.append(entry)
+            }
         }
+        guard !missing.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Подготовить модели для фильма"
+        alert.informativeText = missing.map { "\($0.modelID) (\($0.estimatedDownloadSize))" }.joined(separator: "\n")
+            + "\nНазвания глав придумывает общая модель 2B. Материалы обрабатываются на этом Mac."
+        alert.addButton(withTitle: "Загрузить и создать фильм")
+        alert.addButton(withTitle: "Отмена")
+        guard alert.runModal() == .alertFirstButtonReturn else { throw CancellationError() }
+        for entry in missing { manager.authorizeDownload(model: entry.modelID) }
     }
 
     func downloadSelectedAIModel() {
@@ -1834,20 +1846,24 @@ final class AppModel: ObservableObject {
 
     func downloadAIModel(for mode: AIPowerMode) {
         guard canDownloadAIModel(for: mode), downloadingAIPowerMode == nil else { return }
-        let profile = AIAnalysisProfile.resolve(mode: mode, advanced: advancedAISettings, thermalState: .nominal)
-        let modelID = profile.ollamaModelID
-        LocalAIModelManager.shared.authorizeDownload(model: modelID)
+        let required = requiredAIProfiles(for: mode)
         downloadingAIPowerMode = mode
         isDownloadingAIModel = true
         aiModelDownloadProgress = 0
         if mode == aiPowerMode { aiVisionModelStatus = "Подготавливаю загрузку…" }
         Task {
             do {
-                try await LocalAIModelManager.shared.pull(model: modelID) { [weak self] update in
-                    Task { @MainActor in
-                        self?.aiModelDownloadProgress = update.fraction
-                        if self?.aiPowerMode == mode {
-                            self?.aiVisionModelStatus = "Загружаю · \(Int(update.fraction * 100))%"
+                let manager = LocalAIModelManager.shared
+                for (index, entry) in required.enumerated() {
+                    if !(await manager.availability(model: entry.modelID)).installed {
+                        manager.authorizeDownload(model: entry.modelID)
+                        try await manager.ensureAuthorizedModelAvailable(model: entry.modelID) { [weak self] update in
+                            Task { @MainActor in
+                                self?.aiModelDownloadProgress = (Double(index) + update.fraction) / Double(required.count)
+                                if self?.aiPowerMode == mode {
+                                    self?.aiVisionModelStatus = "Загружаю \(entry.modelID) · \(Int(update.fraction * 100))%"
+                                }
+                            }
                         }
                     }
                 }
@@ -2193,13 +2209,16 @@ final class AppModel: ObservableObject {
             let isMusicOnlyRequest = !parsedCommands.isEmpty && parsedCommands.allSatisfy {
                 $0.semanticCategory == "music" || $0.semanticCategory == "music-volume"
             }
-            if let requestedMusic, let pipeline, isMusicOnlyRequest, !naturalLanguageApplied {
+            // A film about to be composed selects its soundtrack against the actual cut.
+            // Preselecting here could announce a different track than the one in the film.
+            let willComposeFilm = self.timeline == nil && self.project?.assets.isEmpty == false
+            if let requestedMusic, let pipeline, isMusicOnlyRequest, !naturalLanguageApplied, !willComposeFilm {
                 do {
                     if self.timeline == nil {
                         let track = try await pipeline.prepareMusicTrack(for: requestedMusic)
                         await self.refreshMusicLibrary()
                         reply = DirectorAIReply(
-                            text: "Подобрал «\(track.title)» — \(track.author) и сохранил трек в локальную библиотеку. При создании фильма добавлю его в монтаж." + ((await pipeline.musicSearchNotice()).map { "\n" + $0 } ?? ""),
+                            text: "Подобрал «\(track.title)» — \(track.author) и сохранил трек в локальную библиотеку." + ((await pipeline.musicSearchNotice()).map { "\n" + $0 } ?? ""),
                             runtimeLabel: reply.runtimeLabel,
                             normalizedBrief: reply.normalizedBrief,
                             commands: reply.commands
@@ -2462,15 +2481,13 @@ final class AppModel: ObservableObject {
                     )
                 }
                 try Task.checkCancellation()
-                self.activityTitle = "Исполняю команды видеоредактора"
-                self.status = "Применяю скорость, кадр, звук, титры, переходы и эффекты из запроса"
-                self.beginUnmeasuredActivity(at: 0.78, step: .commands)
-                let commandReport: EditorCommandReport
+                var commandReport: EditorCommandReport?
                 if canEditExistingTimelineInPlace {
+                    self.activityTitle = "Применяю правки к монтажу"
+                    self.status = self.activityTitle
+                    self.beginUnmeasuredActivity(at: 0.78, step: .commands)
                     commandReport = try await pipeline.applyEditorCommands(editorCommands,
                         selectedItemID: nil, selectedCandidateID: selectedCandidateID, createCheckpoint: true)
-                } else {
-                    commandReport = EditorCommandReport(recognizedCount: editorCommands.count)
                 }
                 try Task.checkCancellation()
                 await self.refresh()
@@ -7630,13 +7647,12 @@ final class AppModel: ObservableObject {
         if !pendingDirectorInstructions.isEmpty {
             appendDirectorNote("Остались невыполненные инструкции: \(pendingDirectorInstructions.joined(separator: "; "))")
         }
-        if usesCompactConfirmation {
+        if let commandReport {
+            appendDirectorNote(commandReport.chatSummary)
+        } else if usesCompactConfirmation {
             appendDirectorNote("Фильм пересобран")
         } else {
             appendDirectorNote(Self.filmRevisionSummary(previous: previousTimeline, current: timeline))
-            if let commandReport {
-                appendDirectorNote(commandReport.chatSummary)
-            }
         }
         let frameTolerance = 1 / max(1, timeline.frameRate)
         if directorBrief.explicitRequestedDuration != nil, timeline.duration + frameTolerance < directorBrief.requestedDuration {
@@ -7697,7 +7713,9 @@ final class AppModel: ObservableObject {
     private static func filmRevisionSummary(previous: Timeline?, current: Timeline) -> String {
         guard let previous else {
             let result = current.filmDeliveryReport.map { $0.isCurrent(for: current) ? $0.completionMessage : "Фильм сохранён" } ?? "Фильм сохранён"
-            return "\(result). Собрал \(current.items.count) фрагментов на \(durationText(AutomaticFilmDurationPolicy.renderedDuration(of: current))). Timeline и просмотр обновлены."
+            let duration = clockText(AutomaticFilmDurationPolicy.renderedDuration(of: current).rounded())
+            let soundtrack = current.music?.trackTitle.map { " Музыка — «\($0)»." } ?? ""
+            return "\(result). Длительность — \(duration).\(soundtrack)"
         }
         let pairedChanges = zip(previous.items, current.items).filter { old, new in
             old.candidateID != new.candidateID ||
@@ -7868,7 +7886,7 @@ final class AppModel: ObservableObject {
                 if let knownReply {
                     reply = DirectorAIReply(text: knownReply, runtimeLabel: "Данные проекта", normalizedBrief: nil)
                 } else {
-                    reply = await DirectorReplyDeadline.run(seconds: detailed ? 30 : dialogue ? 18 : 6, fallback: fallback) {
+                    reply = await DirectorReplyDeadline.run(seconds: DirectorReplyDeadline.adviceBudget(detailed: detailed), fallback: fallback) {
                         if dialogue {
                             do {
                                 let allowsEdit = route == .interpret && !followsPrevious

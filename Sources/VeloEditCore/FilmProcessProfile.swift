@@ -3,7 +3,7 @@ import Foundation
 /// Immutable contract saved before the first film stage. Installed models and
 /// later UI changes cannot change a running or recovered job's semantics.
 public struct FilmProcessProfile: Codable, Hashable, Sendable {
-    public static let currentVersion = 1
+    public static let currentVersion = 2
     public struct SemanticSampling: Codable, Hashable, Sendable {
         public let temperature: Double
         public let seed: Int
@@ -16,6 +16,7 @@ public struct FilmProcessProfile: Codable, Hashable, Sendable {
     public let version: Int
     public let analysis: AIAnalysisProfile
     public private(set) var modelDigest: String?
+    public private(set) var titleModelDigest: String? = nil
     public let contextTokens: Int
     // New jobs group the independent one-image observers before temporal
     // comparisons. Their complete inputs fit this allocation; larger requests
@@ -86,6 +87,14 @@ public struct FilmProcessProfile: Codable, Hashable, Sendable {
         return bound
     }
 
+    func bindingTitleDigest(_ digest: String) throws -> Self {
+        guard !digest.isEmpty else { throw LocalAIInferenceFailure(model: AIAnalysisProfile.sharedTitleModelID, reason: "Неизвестен digest модели титров") }
+        if let titleModelDigest, titleModelDigest != digest { throw FilmProcessProfileError.changedWeights(AIAnalysisProfile.sharedTitleModelID) }
+        var bound = self
+        bound.titleModelDigest = digest
+        return bound
+    }
+
     // Raw replies are additionally keyed by the exact request, including its
     // actual context. Preserve unchanged temporal observations when only the
     // one-image allocation/scheduling policy changes.
@@ -103,12 +112,22 @@ public struct FilmProcessProfile: Codable, Hashable, Sendable {
     }
 
     public func validateDevice(physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory) throws {
-        let expected = AIAnalysisProfile.resolve(mode: mode).modelID
+        let expected: String
+        if version == 1 {
+            switch mode {
+            case .fast: expected = "qwen3-vl:2b-instruct"
+            case .balanced: expected = "qwen3-vl:4b-instruct"
+            case .quality: expected = "qwen3-vl:8b-instruct"
+            case .maximum: expected = "qwen3-vl:30b-a3b-instruct"
+            }
+        } else {
+            expected = AIAnalysisProfile.resolve(mode: mode).modelID
+        }
         guard modelID == expected else { throw FilmProcessProfileError.wrongModel(expected: expected, actual: modelID) }
         if mode == .maximum && physicalMemory < 32 * 1_073_741_824 {
             throw FilmProcessProfileError.unsupportedDevice
         }
-        guard version == Self.currentVersion else { throw FilmProcessProfileError.unsupportedVersion }
+        guard version == 1 || version == Self.currentVersion else { throw FilmProcessProfileError.unsupportedVersion }
         if let singleImageReviewContextTokens {
             guard singleImageReviewContextTokens == 4096, contextTokens >= singleImageReviewContextTokens else {
                 throw FilmProcessProfileError.unsupportedVersion

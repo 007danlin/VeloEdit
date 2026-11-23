@@ -5,7 +5,7 @@ import Foundation
 /// The observations are heuristic, but unlike the previous empty production
 /// boundary they are localized, reproducible and tied to a render signature.
 public enum EditorialLocalSemanticVerifier {
-    public static let version = 5
+    public static let version = 6
 
     /// A storage split is not a repeated shot. Keep both intervals (and all
     /// their probes/receipts), but do not delete their exact visual continuation
@@ -299,9 +299,21 @@ public enum EditorialLocalSemanticVerifier {
 
         let titles = timeline.effectiveTitleItems.filter(\.enabled)
         let titlePass = titles.allSatisfy { title in
-            !SmartTitleEngine.isPlaceholderTitle(title.text, allowsNumericText: title.kind == .date)
+            guard !title.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+            if title.kind == .chapter {
+                if title.userEdited == true { return true }
+                if let partID = title.filmPartID, let decision = timeline.chapterTitleDecisions?.first(where: {
+                    $0.partID == partID && $0.text == title.text
+                }) {
+                    if decision.source == .user || decision.source == .reference { return true }
+                } else if !AutomatedTitlePolicy.isGenerated(title) {
+                    // Older manually authored chapters have no decision record.
+                    return true
+                }
+            }
+            return !SmartTitleEngine.isPlaceholderTitle(title.text, allowsNumericText: title.kind == .date)
         }
-        if !titles.isEmpty, let value = claim(.titleGrounding, passed: titlePass, observation: titlePass ? "Титры содержательны и привязаны к покрываемым сценам" : "Обнаружен placeholder/бессодержательный автоматический титр", kind: .chapterCoverageMismatch, repair: .decoration) { result.append(value) }
+        if !titles.isEmpty, let value = claim(.titleGrounding, passed: titlePass, observation: titlePass ? "Проверены формулировки титров с учётом заданных вручную названий глав" : "Обнаружен пустой титр или неподтверждённое служебное название", kind: .chapterCoverageMismatch, repair: .decoration) { result.append(value) }
 
         if !timeline.effectiveTelemetryItems.isEmpty {
             let bad = timeline.effectiveTelemetryItems.contains { overlay in

@@ -8,13 +8,14 @@ import VeloEditCore
 @MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["VELOEDIT_AI_AUDIT_OUTPUT"] != nil))
 func actualDirectorModelAndExactCommandHaveDistinctExecutionPaths() async throws {
     let output = try #require(ProcessInfo.processInfo.environment["VELOEDIT_AI_AUDIT_OUTPUT"])
-    let availability = await LocalAIModelManager.shared.availability(model: "qwen3:4b-instruct")
-    #expect(availability.installed)
-    guard availability.installed else { return }
     let context = DirectorContext(assetCount: 3, videoCount: 3, photoCount: 0, analyzedCount: 3,
         candidateCount: 12, currentTimelineItemCount: 21, localMusicTrackCount: 12,
         targetDuration: 120, preset: .story, currentOperation: "Монтаж готов",
         selectedItemSummary: "Выбран второй клип", playheadTime: 10)
+    let modelID = AIAnalysisProfile.resolve(mode: context.aiPowerMode).modelID
+    let availability = await LocalAIModelManager.shared.availability(model: modelID)
+    #expect(availability.installed)
+    guard availability.installed else { return }
     struct Result: Encodable {
         var request: String
         var runtime: String
@@ -42,7 +43,7 @@ func actualDirectorModelAndExactCommandHaveDistinctExecutionPaths() async throws
         }
         let elapsed = ProcessInfo.processInfo.systemUptime - start
         let elapsedIncludingSleep = Date().timeIntervalSince(startedAt)
-        let digest = await LocalAIModelManager.shared.installedModelDigest(model: "qwen3:4b-instruct")
+        let digest = await LocalAIModelManager.shared.installedModelDigest(model: modelID)
         results.append(Result(request: prompt, runtime: reply.runtimeLabel, response: reply.text,
             commandCount: reply.commands.count, seconds: elapsed,
             elapsedIncludingSleepSeconds: elapsedIncludingSleep,
@@ -52,7 +53,7 @@ func actualDirectorModelAndExactCommandHaveDistinctExecutionPaths() async throws
             #expect(reply.commands == [.setMusicVolume(0.2)])
             #expect(reply.runtimeLabel == "Точная монтажная команда")
         } else {
-            #expect(reply.runtimeLabel == "Qwen3 4B Instruct · локальная нейросеть")
+            #expect(reply.runtimeLabel == modelID + " · локальная нейросеть")
             #expect(!reply.text.isEmpty)
             #expect(reply.text.range(of: #"«[^«»]{2,60}»"#, options: .regularExpression) != nil,
                     "Совет должен содержать запрошенное название, а не только подтверждение отсутствия изменений")

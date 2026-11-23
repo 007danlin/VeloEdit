@@ -26,8 +26,8 @@ identity = {"builtAt": now.isoformat(), "sourceSHA256": digest.hexdigest(),
             "build": now.strftime("%Y.%j.%H%M%S"), "runtime": f"Ollama {runtime['version']}"}
 identity["runtimeArchiveSHA256"] = runtime["archiveSHA256"]
 identity["architectures"] = subprocess.check_output(["lipo", "-archs", str(app / "Contents/MacOS/VeloEdit")], text=True).split()
-director = (source / "Sources/VeloEdit/LocalDirectorAgent.swift").read_text()
-model = re.search(r'static let ollamaModel = "([^"]+)"', director)
+director = (source / "Sources/VeloEditCore/AIProfiles.swift").read_text()
+model = re.search(r'static let sharedTitleModelID = "([^"]+)"', director)
 if model:
     identity["directorModel"] = model[1]
 plist_path = app / "Contents/Info.plist"

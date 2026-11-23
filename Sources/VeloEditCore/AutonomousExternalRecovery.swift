@@ -17,9 +17,9 @@ extension VeloEditPipeline {
             message = "Освободите место или подключите диск для сохранения. Правки сохранены."
         } else if cause == .transientNetwork, project.autonomousJob?.stage == .environment {
             message = "Ожидаю подключения к интернету для завершения загрузки модели"
-        } else if case LocalAIModelError.downloadApprovalRequired = error {
+        } else if case LocalAIModelError.downloadApprovalRequired(let model) = error {
             cause = .localService
-            message = "Разрешите первоначальную загрузку локальной модели"
+            message = "Загрузите \(model) в настройках моделей и продолжите создание фильма."
         } else if let error = error as? DirectorBriefFulfillmentError,
                   case .unavailableMusicTrack = error {
             cause = .missingMusic
@@ -75,7 +75,10 @@ extension VeloEditPipeline {
         case .localService:
             if let model = project.autonomousJob?.inferenceRetryModel {
                 do {
-                    try project.autonomousJob?.processProfile?.validate(model: model)
+                    if let profile = project.autonomousJob?.processProfile,
+                       !(profile.version >= 2 && model == AIAnalysisProfile.sharedTitleModelID) {
+                        try profile.validate(model: model)
+                    }
                     try await LocalAIInferenceClient.shared.recoverService(model: model)
                     return await LocalAIModelManager.shared.availability(model: model).installed
                 } catch {

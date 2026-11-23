@@ -15,6 +15,11 @@ public struct ChapterTitleLanguageAssessment: Codable, Hashable, Sendable {
     public var reason: String
     public var verdict: Verdict
 
+    func permitsReaffirmedWording(_ title: String, after previousTitle: String?, confirmedEvent: String?) -> Bool {
+        confirmedEvent == nil && previousTitle == title && verdict == .uncertain
+            && (issue == .awkwardCollocation || issue == .literalTranslation)
+    }
+
     public var accepted: Bool {
         verdict == .natural && issue == .none && !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }

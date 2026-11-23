@@ -63,6 +63,26 @@ struct DirectorLiveJudgmentTests {
         #expect(!moment.modelData.contains("local DSP: rms"))
     }
 
+    @Test func pictureDescriptionFallbackUsesOnlyTheSelectedEpisode() {
+        let project = Self.project()
+        let index = DirectorMomentIndex(project: project, revision: 1)
+        let prompt = "Опиши, что видно в выбранном плане"
+        let partial = index.resolve(prompt: prompt, selectedID: nil, playhead: 2)
+        let answer = DirectorResponseComposer.limitedAdvice(prompt: prompt, moment: partial)
+        #expect(answer.contains("Человек открывает дверь"))
+        #expect(answer.contains("часть этого эпизода"))
+        #expect(!answer.contains("Море"))
+        var whole = index.resolve(prompt: prompt, selectedID: nil, playhead: 7)
+        #expect(DirectorResponseComposer.limitedAdvice(prompt: prompt, moment: whole) == "Море")
+        if let scene = whole.objects[0].facts.firstIndex(where: { $0.kind == .scene }) {
+            whole.objects[0].facts[scene].text = "Берег ручья. В воде отражаются деревья."
+        }
+        #expect(DirectorResponseComposer.pictureDescriptions(prompt: prompt, moment: whole) == [
+            "Берег ручья. В воде отражаются деревья.", "Берег ручья.", "В воде отражаются деревья."
+        ])
+        #expect(DirectorResponseComposer.pictureDescriptions(prompt: "Удачная ли склейка?", moment: whole) == nil)
+    }
+
     @Test func sceneDescriptionsCannotResolveTimingOrAudioQuestions() {
         var p = Self.project()
         p.analyses[0].candidates[0].insights?.speech = nil

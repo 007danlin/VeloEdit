@@ -305,7 +305,7 @@ struct FilmContentDeliveryGateTests {
         #expect(await prober.calls == 0)
         #expect(await store.manifest.timelines.isEmpty)
         #expect(await store.manifest.autonomousJob?.state == .waitingForExternalResource)
-        #expect(await store.manifest.autonomousJob?.inferenceRetryModel == "qwen3-vl:2b-instruct")
+        #expect(await store.manifest.autonomousJob?.inferenceRetryModel == "qwen3.5:2b-q4_K_M")
         #expect(await store.manifest.autonomousJob?.inferenceRetryAt != nil)
         #expect(await store.manifest.autonomousJob?.processProfile?.modelDigest == (boundProfile ? Self.fixtureDigest : nil))
         #expect(await store.recoverableFilmBuild()?.draft?.timeline.items == draft.timeline.items)

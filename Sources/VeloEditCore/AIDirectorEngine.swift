@@ -1536,7 +1536,7 @@ public struct AIDirectorEngine: Sendable {
 
         if (ExplicitDeliveryRequirements(plan: plan).originalAudioVolume ?? timeline.effectiveOriginalAudioVolume) >= 1,
            timeline.music != nil, primaries.contains(where: { ($0.effectiveAudioAdjustments.effectiveVolume) > 0.55 }) {
-            calls.append(.setDucking(AudioDuckingSettings(enabled: true, attenuation: 0.34, attack: 0.16, release: 0.34), reason: "Музыка автоматически уступает полезному оригинальному звуку"))
+            calls.append(.setDucking(.automaticCameraMix(), reason: "Музыка плавно уступает разборчивой речи на переднем плане"))
         }
         if let music = timeline.music,
            (music.autonomousIntent?.beatSyncIntensity ?? 0.72) >= 0.30 {

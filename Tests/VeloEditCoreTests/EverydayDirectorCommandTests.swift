@@ -9,6 +9,17 @@ struct EverydayDirectorCommandTests {
         var description: String { prompt }
     }
 
+    @Test func singularRepeatTrimAffectsOnlyTheSelectedShot() throws {
+        let clips = (0..<3).map {
+            TimelineItem(kind: .video, sourceStart: 0, sourceDuration: 4, timelineStart: Double($0 * 4), timelineDuration: 4)
+        }
+        let original = Timeline(storyPlanID: UUID(), items: clips)
+        let commands = try #require(EditorCommandParser().parseComplete("Сократи повторяющийся план", hasSelection: true))
+        #expect(commands == [.tightenCut(.selected)])
+        let edited = EditorCommandExecutor().apply(commands, to: original, selectedItemID: clips[1].id)
+        #expect(edited.timeline.items.map(\.timelineDuration) == [4, 3, 4])
+    }
+
     @Test func openingAndSoundtrackFinishAreIndependentEdits() throws {
         let clips = (0..<4).map {
             TimelineItem(kind: .video, sourceStart: 0, sourceDuration: 4, timelineStart: Double($0 * 4), timelineDuration: 4)

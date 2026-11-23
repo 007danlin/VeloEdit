@@ -1878,6 +1878,14 @@ public struct SpeedRamp: Codable, Hashable, Sendable {
 }
 
 public struct AudioDuckingSettings: Codable, Hashable, Sendable {
+    // Missing in edits saved before prominence-aware camera mixing.
+    public var foregroundSpeechOnly: Bool?
+    public static func automaticCameraMix(enabled: Bool = true) -> Self {
+        var settings = Self(enabled: enabled, attenuation: 0.56, attack: 0.30, release: 0.85)
+        settings.foregroundSpeechOnly = true
+        return settings
+    }
+
     public var enabled: Bool
     public var attenuation: Double
     public var attack: Double

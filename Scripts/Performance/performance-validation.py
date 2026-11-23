@@ -39,7 +39,7 @@ if not args.skip_high:
     run('baseline-high-fixed', ['python3', 'Scripts/Performance/performance-study.py', '--cli', baseline,
         '--project', 'Build/RequestFulfillment/test9.veloedit', '--label', 'before-high-fixed',
         '--modes', 'quality'])
-for mode, model in [('fast', 'qwen3-vl:2b-instruct'), ('balanced', 'qwen3-vl:4b-instruct')]:
+for mode, model in [('fast', 'qwen3.5:2b-q4_K_M'), ('balanced', 'qwen3.5:4b-q4_K_M')]:
     run('paired-' + mode, ['python3', 'Scripts/Performance/performance-pairs.py', '--before-cli', baseline,
         '--after-cli', current, '--before-project', f'Build/Performance/before-valid/{mode}.veloedit',
         '--after-project', f'Build/Performance/after-current/{mode}.veloedit',

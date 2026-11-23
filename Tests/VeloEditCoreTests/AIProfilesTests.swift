@@ -9,7 +9,7 @@ import Testing
     #expect(profile.targetDepth == .quick)
     #expect(profile.proxyPolicy == .avoidFullEncode)
     #expect(profile.audioAnalysisLevel == .none)
-    #expect(profile.ollamaModelID == "qwen3-vl:2b-instruct")
+    #expect(profile.ollamaModelID == "qwen3.5:2b-q4_K_M")
     #expect(profile.maximumVLMScenes == 2)
 }
 
@@ -35,9 +35,9 @@ import Testing
 
 @Test func friendlyModesUseExplicitInstructVisionModels() {
     let expected: [AIPowerMode: String] = [
-        .fast: "qwen3-vl:2b-instruct",
-        .balanced: "qwen3-vl:4b-instruct",
-        .quality: "qwen3-vl:8b-instruct",
+        .fast: "qwen3.5:2b-q4_K_M",
+        .balanced: "qwen3.5:4b-q4_K_M",
+        .quality: "qwen3.5:9b-q4_K_M",
         .maximum: "qwen3-vl:30b-a3b-instruct"
     ]
     for (mode, modelID) in expected {
@@ -68,7 +68,54 @@ import Testing
 @Test func legacyManualModelCannotRedefineNamedMode() {
     let advanced = AdvancedAISettings(enabled: true, runtime: .ollama, modelID: "my-local-vlm", quantization: .q8)
     let profile = AIAnalysisProfile.resolve(mode: .fast, advanced: advanced, physicalMemory: 16 * 1_073_741_824, thermalState: .nominal)
-    #expect(profile.modelID == "qwen3-vl:2b-instruct")
+    #expect(profile.modelID == "qwen3.5:2b-q4_K_M")
     #expect(profile.quantization == .modelProvided)
     #expect(profile.mode == .fast)
+}
+
+@Test func savedV1JobsKeepTheirExactVLWeights() throws {
+    for (mode, oldTag) in [(AIPowerMode.fast, "qwen3-vl:2b-instruct"),
+                           (.balanced, "qwen3-vl:4b-instruct"), (.quality, "qwen3-vl:8b-instruct")] {
+        let current = FilmProcessProfile(analysis: .resolve(mode: mode), modelDigest: "original")
+        var data = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
+        data["version"] = 1
+        var analysis = try #require(data["analysis"] as? [String: Any])
+        analysis["ollamaModelID"] = oldTag
+        data["analysis"] = analysis
+        let saved = try JSONDecoder().decode(FilmProcessProfile.self, from: JSONSerialization.data(withJSONObject: data))
+        try saved.validateDevice()
+        try saved.validate(model: oldTag, digest: "original")
+        #expect(throws: FilmProcessProfileError.self) { try saved.validate(model: current.modelID) }
+        #expect(throws: FilmProcessProfileError.self) { try current.validate(model: oldTag) }
+    }
+}
+
+@Test func visualTitleUsesOneShortRussianLine() {
+    #expect(LocalChapterTitleModel.displayTitle("«Путешествие к воде»", maximum: 30) == "Путешествие к воде")
+    #expect(LocalChapterTitleModel.displayTitle(#"{"observation":"Люди на берегу","title":"Остановка у воды"}"#, maximum: 30) == "Остановка у воды")
+    #expect(LocalChapterTitleModel.displayTitle(#"{"title":"Остановка у воды"}"#, maximum: 30) == nil)
+    for invalid in ["", "Следующий кадр", "Название кадра", "Chapter 1", "Первый\nВторой", "Заголовок: дорога", "Раз два три четыре пять шесть"] {
+        #expect(LocalChapterTitleModel.displayTitle(invalid, maximum: 48) == nil)
+    }
+}
+
+@Test func visualTitleChecksClaimsBeforeShowingThem() {
+    func reason(_ title: String, _ note: String, event: String? = nil) -> String? {
+        let data = try! JSONEncoder().encode(["title": title, "observation": note])
+        return LocalChapterTitleModel.rejectionReason(for: title, answer: String(decoding: data, as: UTF8.self),
+            event: event, observations: [])
+    }
+    #expect(reason("Велосипедист ждёт", "На дорожке стоит велосипед") != nil)
+    #expect(reason("Велосипедист ждёт", "Велосипедист рядом с мостом") == nil)
+    #expect(reason("Парковка с отдыха", "Два человека отдыхают на лавочке") != nil)
+    #expect(reason("Возвращение с отдыха", "Люди возвращаются домой по дороге") == nil)
+    #expect(reason("Вид с берега", "С берега видны лодки") == nil)
+    #expect(reason("Прогулка с другом", "Два человека идут по тропе") == nil)
+    #expect(reason("Екатеринбургская дорога", "По дороге едет автомобиль") != nil)
+    #expect(reason("Дорога в Москве", "По дороге едет автомобиль") != nil)
+    #expect(reason("Семейный отдых", "Два человека сидят на стульях") != nil)
+    #expect(reason("Солнечный берег", "Река в ясный день") == nil)
+    #expect(reason("Заброшенный дом", "Позади машины бетонная стена") != nil)
+    #expect(reason("Джип на трассе", "Машина на дороге", event: "Поездка на багги") != nil)
+    #expect(reason("Путешествие к воде", "Дорога и остановка у реки", event: "Поездка на багги") == nil)
 }

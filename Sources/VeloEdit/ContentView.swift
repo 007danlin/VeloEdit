@@ -5024,7 +5024,7 @@ private struct AIPowerSelector: View {
             ForEach(AIPowerMode.allCases) { mode in
                 HStack(spacing: 3) {
                     Button(modeTitle(mode)) {
-                        if model.isAIModelInstalled(for: mode) || !model.canDownloadAIModel(for: mode) {
+                        if downloadProfiles(for: mode).isEmpty || !model.canDownloadAIModel(for: mode) {
                             model.setAIPowerMode(mode)
                         } else {
                             requestDownload(for: mode)
@@ -5044,7 +5044,7 @@ private struct AIPowerSelector: View {
                             .controlSize(.mini)
                             .frame(width: 13, height: 13)
                             .help("Загрузка: \(Int(model.aiModelDownloadProgress * 100))%")
-                    } else if !model.isAIModelInstalled(for: mode), model.canDownloadAIModel(for: mode) {
+                    } else if !downloadProfiles(for: mode).isEmpty, model.canDownloadAIModel(for: mode) {
                         Button("Загрузить модель для режима \(plainModeTitle(mode))", systemImage: "icloud.and.arrow.down") {
                             requestDownload(for: mode)
                         }
@@ -5071,7 +5071,7 @@ private struct AIPowerSelector: View {
         .fixedSize(horizontal: true, vertical: false)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Режим сборки фильма")
-        .help("Режим задаёт модель и глубину всей сборки: анализ, проверку фрагментов, титров и готового фильма. Профиль сохраняется при запуске задания.")
+        .help("Режим выбирает модель для режиссёра и анализа сцен. Названия глав во всех режимах придумывает общая 2B по кадрам монтажа.")
         .alert(downloadAlertTitle, isPresented: downloadConfirmationPresented) {
             Button("Отмена", role: .cancel) { pendingDownloadMode = nil }
             Button("Загрузить") {
@@ -5082,7 +5082,7 @@ private struct AIPowerSelector: View {
             }
         } message: {
             if let mode = pendingDownloadMode {
-                Text("Локальная модель займёт \(downloadSize(for: mode)) на диске. Загрузка начнётся только после подтверждения и может занять некоторое время.")
+                Text(downloadSize(for: mode))
             }
         }
     }
@@ -5096,7 +5096,7 @@ private struct AIPowerSelector: View {
 
     private func requestDownload(for mode: AIPowerMode) {
         guard model.downloadingAIPowerMode == nil,
-              !model.isAIModelInstalled(for: mode),
+              !downloadProfiles(for: mode).isEmpty,
               model.canDownloadAIModel(for: mode) else { return }
         pendingDownloadMode = mode
     }
@@ -5106,12 +5106,12 @@ private struct AIPowerSelector: View {
         return "Загрузить режим «\(plainModeTitle(mode))»?"
     }
 
+    private func downloadProfiles(for mode: AIPowerMode) -> [AIAnalysisProfile] {
+        model.requiredAIProfiles(for: mode).filter { !model.isAIModelInstalled(for: $0.mode) }
+    }
+
     private func downloadSize(for mode: AIPowerMode) -> String {
-        AIAnalysisProfile.resolve(
-            mode: mode,
-            advanced: model.advancedAISettings,
-            thermalState: .nominal
-        ).estimatedDownloadSize
+        downloadProfiles(for: mode).map { "\($0.modelID) · \($0.estimatedDownloadSize)" }.joined(separator: "\n")
     }
 
     private func modeDescription(_ mode: AIPowerMode) -> String {

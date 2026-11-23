@@ -9,7 +9,8 @@ public enum DirectorRequestContract {
             let title = ["титр", "названи", "title", "caption"].contains(where: clause.contains)
             let part = ["част", "глав", "эпизод", "chapter", "part", "section"].contains(where: clause.contains)
             let every = ["кажд", "всех", "все части", "every", "each", "all "].contains(where: clause.contains)
-            return title && part && every
+            let chapterNames = ["названия глав", "названиями глав", "названием главы", "chapter titles", "chapter names"].contains(where: clause.contains)
+            return chapterNames || (title && part && every)
         }
     }
 

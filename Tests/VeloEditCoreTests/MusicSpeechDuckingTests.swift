@@ -14,6 +14,30 @@ struct MusicSpeechDuckingTests {
         return (timeline, asset)
     }
 
+    @Test func cameraMixRequiresSustainedForegroundEvidence() throws {
+        var (timeline, asset) = fixture()
+        let legacy = try JSONDecoder().decode(AudioDuckingSettings.self, from:
+            Data(#"{"enabled":true,"attenuation":0.34,"attack":0.16,"release":0.34}"#.utf8))
+        #expect(legacy.foregroundSpeechOnly == nil)
+        timeline.audioDucking = .automaticCameraMix()
+        var transcript = SpeechTranscript(localeIdentifier: "ru", words: [], sentences: [], confidence: 0.9)
+        transcript.status = .ready
+        transcript.speechRanges = [10...20]
+        timeline.speechRecords = [.init(assetID: asset, transcript: transcript)]
+        #expect(MusicSpeechDucking.regions(in: timeline).isEmpty)
+        #expect(SpeechActivityDetector.sustainedSpeech([12...13, 13...14]).isEmpty)
+        let ranges = SpeechActivityDetector.sustainedSpeech([12...13, 12.5...13.5, 13...14, 16...17])
+        #expect(ranges == [12...14])
+        let evidence = [SpeechActivityRecord(assetID: asset, ranges: ranges)]
+        let zone = try #require(MusicSpeechDucking.regions(in: timeline, activity: evidence).first)
+        #expect(abs(zone.gain(at: 3) - 0.56) < 0.001)
+        #expect(zone.gain(at: 5) == 1)
+        timeline.items[0].audioAdjustments = .init(volume: 0.2)
+        #expect(MusicSpeechDucking.regions(in: timeline, activity: evidence).isEmpty)
+        timeline.audioDucking = legacy
+        #expect(!MusicSpeechDucking.regions(in: timeline).isEmpty)
+    }
+
     @Test func noEvidenceNeverDucksWholeAudioTrack() {
         let (timeline, _) = fixture()
         #expect(MusicSpeechDucking.regions(in: timeline).isEmpty)

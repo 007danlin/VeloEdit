@@ -2625,6 +2625,19 @@ public actor VeloEditPipeline {
                 profile = try profile.bindingModelDigest(digest)
                 try await store.updateAutonomousJob { $0.processProfile = profile }
             }
+            if profile.version >= 2, analyzer == nil, suppliedContentReviewer == nil,
+               renderedProber is LocalEditorialRenderedProber {
+                let titleID = AIAnalysisProfile.sharedTitleModelID
+                if titleID != profile.modelID {
+                    try await LocalAIModelManager.shared.ensureAuthorizedModelAvailable(model: titleID)
+                }
+                let titleDigest = titleID == profile.modelID ? profile.modelDigest : await modelDigestProvider(titleID)
+                let bound = try profile.bindingTitleDigest(titleDigest ?? "")
+                if bound != profile {
+                    profile = bound
+                    try await store.updateAutonomousJob { $0.processProfile = bound }
+                }
+            }
             if profile.modelDigest != nil {
                 let actual = await modelDigestProvider(profile.modelID)
                 try profile.validate(model: profile.modelID, digest: actual)
@@ -3565,7 +3578,7 @@ public actor VeloEditPipeline {
         // Revalidate every recovered automatic title by its exact signature.
         // A manual-only saved layout does not need automatic chapter creation.
         let needsTitleValidation = !preservingSelection || SmartChapterTitleEngine.hasAutomaticTitles(timeline)
-        if needsTitleValidation {
+        if needsTitleValidation && FilmProcessContext.current?.version == 1 {
             timeline = try await SmartChapterTitleEngine().applying(to: timeline, plan: plan, assets: current.assets,
                 analyses: analyses, mode: FilmProcessContext.analysis(preferences: current.preferences).mode, model: titleModel, sourceAssessments: draft.verifiedSourceContent, events: draft.events)
         }

@@ -32,7 +32,7 @@ import Testing
             from: Data(#"{"enabled":true,"runtime":"mlx","modelID":"mlx-community/Qwen3-VL-8B-Instruct-8bit","quantization":"8-bit"}"#.utf8))
         let profile = AIAnalysisProfile.resolve(mode: .quality, advanced: legacy, thermalState: .nominal)
         #expect(profile.runtime == .ollama)
-        #expect(profile.modelID == "qwen3-vl:8b-instruct")
+        #expect(profile.modelID == "qwen3.5:9b-q4_K_M")
         #expect(!profile.summary.contains("MLX"))
         #expect(!profile.summary.contains("8-bit"))
         let model = try JSONDecoder().decode(InstalledAIModel.self,

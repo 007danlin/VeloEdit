@@ -57,7 +57,7 @@ struct LocalAIInferenceLimits: Sendable {
               let body = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let model = body["model"] as? String else { throw URLError(.cannotParseResponse) }
         let images = (body["messages"] as? [[String: Any]] ?? []).reduce(0) { $0 + (($1["images"] as? [String])?.count ?? 0) }
-        let floor: Double = model.contains("30b") ? 240 : model.contains("8b") ? 180 : 120
+        let floor: Double = model.contains("30b") ? 240 : (model.contains(":8b") || model.contains(":9b")) ? 180 : 120
         // Prefill emits no tokens. Preserve the caller's allowance and account
         // for all attached images; healthy large-model prefill is not a stall.
         let first = max(request.timeoutInterval, floor, images == 0 ? 0 : 60 + Double(images) * 20)

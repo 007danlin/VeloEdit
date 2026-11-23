@@ -75,10 +75,14 @@ public enum MusicSpeechDucking {
         let duration = TimelineTiming.playbackTime(forTimelineTime: timeline.duration, timeline: timeline)
         guard duration > 0 else { return [] }
         var evidence = Dictionary(activity.map { ($0.assetID, $0.ranges) }, uniquingKeysWith: +)
+        var voiceTranscripts: [UUID: [ClosedRange<Double>]] = [:]
         for record in timeline.speechRecords ?? [] {
-            if let ranges = transcriptRanges(record) { evidence[record.assetID] = ranges }
+            if let ranges = transcriptRanges(record) {
+                voiceTranscripts[record.assetID] = ranges
+                if settings.foregroundSpeechOnly != true || ranges.isEmpty { evidence[record.assetID] = ranges }
+            }
         }
-        guard evidence.values.contains(where: { !$0.isEmpty }) else { return [] }
+        guard evidence.values.contains(where: { !$0.isEmpty }) || !voiceTranscripts.isEmpty else { return [] }
         struct Target { var key: String; var range: ClosedRange<Double> }
         var targets: [Target] = []
         func audioRange(_ clip: TimelineAudioClip) -> ClosedRange<Double> {
@@ -115,10 +119,13 @@ public enum MusicSpeechDucking {
         for target in targets {
             var events: [Event] = []
             func append(assetID: UUID?, itemID: UUID, isAudio: Bool, source: ClosedRange<Double>,
-                        audio: AudioAdjustments, map: (Double) -> Double?) {
+                        audio: AudioAdjustments, voice: Bool = false, map: (Double) -> Double?) {
                 guard let assetID, audio.effectiveVolume > 0 else { return }
                 let excluded = (audio.musicDuckingExclusions ?? []).filter { $0.target == target.key && $0.assetID == assetID }.map(\.sourceRange)
-                for speech in evidence[assetID] ?? [] {
+                var ranges = evidence[assetID] ?? []
+                if voice, settings.foregroundSpeechOnly == true,
+                   let spoken = voiceTranscripts[assetID] { ranges = spoken }
+                for speech in ranges {
                     let lo = max(source.lowerBound, speech.lowerBound), hi = min(source.upperBound, speech.upperBound)
                     guard lo.isFinite, hi.isFinite, hi > lo else { continue }
                     for range in subtract(excluded, from: lo...hi) {
@@ -147,6 +154,8 @@ public enum MusicSpeechDucking {
                 for item in timeline.items where item.kind == .video && !item.isReversed && !item.isFreezeFrame {
                     guard let assetID = item.assetID, evidence[assetID]?.isEmpty == false,
                           item.effectiveAudioAdjustments.effectiveVolume > 0 else { continue }
+                    if settings.foregroundSpeechOnly == true,
+                       item.effectiveAudioAdjustments.effectiveVolume * timeline.effectiveOriginalAudioVolume < 0.35 { continue }
                     let start = item.overlay == nil
                         ? SpeechTimeMap.playbackStart(itemID: item.id, timeline: timeline)
                         : TimelineTiming.playbackTime(forTimelineTime: item.timelineStart, timeline: timeline)
@@ -161,7 +170,7 @@ public enum MusicSpeechDucking {
             for clip in timeline.effectiveAudioClips where clip.role != .music {
                 let range = audioRange(clip), start = range.lowerBound, end = range.upperBound
                 append(assetID: clip.assetID, itemID: clip.id, isAudio: true,
-                    source: clip.sourceStart...(clip.sourceStart + clip.sourceDuration), audio: clip.adjustments) {
+                    source: clip.sourceStart...(clip.sourceStart + clip.sourceDuration), audio: clip.adjustments, voice: clip.role == .voice) {
                     start + ($0 - clip.sourceStart) / max(0.001, clip.sourceDuration) * (end - start)
                 }
             }

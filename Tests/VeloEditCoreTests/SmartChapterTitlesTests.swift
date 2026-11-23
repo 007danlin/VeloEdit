@@ -203,6 +203,21 @@ struct SmartChapterTitlesTests {
         }
     }
 
+    @Test func reaffirmedVisualTitleCanResolveOnlyStylisticDoubt() {
+        let title = "Дорога к реке"
+        let doubt = ChapterTitleLanguageAssessment(issue: .awkwardCollocation, reason: "Спорное сочетание", verdict: .uncertain)
+        #expect(doubt.permitsReaffirmedWording(title, after: title, confirmedEvent: nil))
+        #expect(!doubt.permitsReaffirmedWording(title, after: nil, confirmedEvent: nil))
+        #expect(!doubt.permitsReaffirmedWording(title, after: "Другая дорога", confirmedEvent: nil))
+        #expect(!doubt.permitsReaffirmedWording(title, after: title, confirmedEvent: "Сплав"))
+        for assessment in [
+            ChapterTitleLanguageAssessment(issue: .grammar, reason: "Ошибка согласования", verdict: .uncertain),
+            ChapterTitleLanguageAssessment(issue: .awkwardCollocation, reason: "Требуется правка", verdict: .revise)
+        ] {
+            #expect(!assessment.permitsReaffirmedWording(title, after: title, confirmedEvent: nil))
+        }
+    }
+
     @Test func languageOnlyRejectionMustBeRepairedAndIndependentlyVerified() async throws {
         let (timeline, plan, assets, analyses) = fixture(partCount: 1)
         let model = LanguageRepairModel()
@@ -354,6 +369,40 @@ struct SmartChapterTitlesTests {
         let plan = StoryPlan(prompt: "Титр в начале каждой части", preset: .story, constraints: PromptInterpreter.defaults(for: .story), chapters: chapters,
             directorBrief: DirectorBrief(titlePolicy: .keyOnly))
         return (Timeline(storyPlanID: plan.id, items: items), plan, assets, analyses)
+    }
+
+    @Test func visualChapterFramesCoverCutsInOrderAndExpireAfterTrim() throws {
+        var (timeline, _, _, _) = fixture(partCount: 8)
+        let firstShot = try #require(timeline.items.first)
+        var single = firstShot
+        single.timelineDuration = 3
+        single.sourceDuration = 3
+        #expect(LocalChapterTitleModel.framePositions([single]).map(\.seconds) ==
+            [0.2, 0.5, 0.8].map { single.timelineStart + 3 * $0 })
+        let shots = LocalChapterTitleModel.sampledShots(timeline.items)
+        #expect(shots.count == 12)
+        #expect(shots.first?.id == timeline.items.first?.id && shots.last?.id == timeline.items.last?.id)
+        #expect(shots.map(\.timelineStart) == shots.map(\.timelineStart).sorted())
+        #expect(Set(shots.compactMap(\.eventID)) == Set(timeline.items.compactMap(\.eventID)))
+        let part = FilmPart(id: UUID(), itemIDs: timeline.items.map(\.id), provenance: "fixture")
+        let frames = try shots.map { item in
+            let mid = item.timelineStart + item.timelineDuration / 2
+            return ChapterTitleFrame(itemID: item.id, assetID: try #require(item.assetID), sourceStart: item.sourceStart,
+                sourceDuration: item.sourceDuration, sourceSeconds: item.sourceTime(atTimelineTime: mid),
+                timelineSeconds: mid, imageHash: "test-image")
+        }
+        let receipt = VisualChapterTitleReceipt(requestRole: VisualChapterTitleReceipt.role,
+            modelIdentity: AIAnalysisProfile.sharedTitleModelID + "@test", frames: frames,
+            answer: "Дорога вдоль берега", responseCacheHit: false)
+        #expect(receipt.matches(part: part, timeline: timeline))
+        timeline.items[0].sourceDuration -= 0.5
+        #expect(!receipt.matches(part: part, timeline: timeline))
+        let parked = #"{"observation":"Два человека сидят в поле возле машины.","title":"Парение над полями"}"#
+        #expect(LocalChapterTitleModel.rejectionReason(for: "Парение над полями", answer: parked, event: nil, observations: ["parked buggy"]) != nil)
+        let flying = #"{"observation":"Дрон летит над полем.","title":"Полёт над полем"}"#
+        #expect(LocalChapterTitleModel.rejectionReason(for: "Полёт над полем", answer: flying, event: nil, observations: ["aerial view"]) == nil)
+        #expect(LocalChapterTitleModel.conflictsWithEvent("Поездка на багги", event: "Сплав"))
+        #expect(!LocalChapterTitleModel.conflictsWithEvent("Дорога вдоль берега", event: "Сплав"))
     }
 
     @Test func wholePartsKeepMembershipAndEqualNamesAcrossScenesAndFiles() async throws {

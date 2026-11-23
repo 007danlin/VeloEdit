@@ -9,6 +9,7 @@ actor SpeechActivityDetector {
     static let shared = SpeechActivityDetector()
     private var memory: [String: [ClosedRange<Double>]] = [:]
     private static let version = "apple-speech-v2-window1-threshold055"
+    private static let foregroundVersion = "apple-foreground-v1"
 
     struct Resolution: Sendable {
         var records: [SpeechActivityRecord]
@@ -35,7 +36,9 @@ actor SpeechActivityDetector {
         var unavailable = false
         for asset in assets where requested[asset.id] != nil && asset.metadata.hasAudio {
             try Task.checkCancellation()
+            let foreground = settings.foregroundSpeechOnly == true
             if let transcript = timeline.speechRecords?.first(where: { $0.assetID == asset.id }),
+               !foreground || transcript.status == .noSpeech,
                let ranges = MusicSpeechDucking.transcriptRanges(transcript) {
                 records.append(.init(assetID: asset.id, ranges: ranges))
                 continue
@@ -51,14 +54,14 @@ actor SpeechActivityDetector {
             for window in windows {
                 do {
                     let attributes = try asset.originalURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
-                    let identity = "\(Self.version)|\(asset.contentHash)|\(asset.originalURL.path)|\(attributes.fileSize ?? 0)|\(attributes.contentModificationDate?.timeIntervalSince1970 ?? 0)|\(window)"
+                    let identity = "\(foreground ? Self.foregroundVersion : Self.version)|\(asset.contentHash)|\(asset.originalURL.path)|\(attributes.fileSize ?? 0)|\(attributes.contentModificationDate?.timeIntervalSince1970 ?? 0)|\(window)"
                     let key = SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
                     let url = cacheDirectory?.appendingPathComponent("SpeechActivity/\(key).json")
                     let found = memory[key] ?? url.flatMap { try? JSONDecoder().decode([ClosedRange<Double>].self, from: Data(contentsOf: $0)) }
                     let measured: [ClosedRange<Double>]
                     if let found { measured = found }
                     else {
-                        measured = try await classify(url: asset.originalURL, range: window)
+                        measured = try await classify(url: asset.originalURL, range: window, foreground: foreground)
                         if let url {
                             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                             try? JSONEncoder().encode(measured).write(to: url, options: .atomic)
@@ -78,7 +81,7 @@ actor SpeechActivityDetector {
         return Resolution(records: records, unavailable: unavailable)
     }
 
-    private func classify(url: URL, range: ClosedRange<Double>) async throws -> [ClosedRange<Double>] {
+    private func classify(url: URL, range: ClosedRange<Double>, foreground: Bool) async throws -> [ClosedRange<Double>] {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.sourceAudioTrack() else { return [] }
         let rate = 16_000.0
@@ -101,6 +104,7 @@ actor SpeechActivityDetector {
         reader.add(output)
         guard reader.startReading() else { throw reader.error ?? URLError(.cannotDecodeContentData) }
         defer { if reader.status == .reading { reader.cancelReading() } }
+        var powers: [Double] = []
         var position: AVAudioFramePosition = 0
         while let sample = try await MediaSampleReader.next(from: output, reader: reader) {
             try Task.checkCancellation()
@@ -111,13 +115,45 @@ actor SpeechActivityDetector {
             buffer.frameLength = AVAudioFrameCount(count)
             guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: count * MemoryLayout<Float>.size,
                 destination: data) == kCMBlockBufferNoErr else { throw URLError(.cannotDecodeContentData) }
+            if foreground {
+                // Keep one energy sum per half-second, aligned to the classifier hop.
+                for index in 0..<count {
+                    let bin = (Int(position) + index) / 8000
+                    if bin == powers.count { powers.append(0) }
+                    powers[bin] += Double(data[index]) * Double(data[index])
+                }
+            }
             analyzer.analyze(buffer, atAudioFramePosition: position)
             position += AVAudioFramePosition(count)
         }
         if reader.status == .failed { throw reader.error ?? URLError(.cannotDecodeContentData) }
         analyzer.completeAnalysis()
         try Task.checkCancellation()
-        return try observer.result()
+        let windows = try observer.result()
+        if !foreground { return Self.merged(windows.map(\.range)) }
+        let eligible = windows.filter { window in
+            let first = max(0, Int(((window.range.lowerBound - range.lowerBound) * 2).rounded()))
+            let end = min(powers.count, first + 2)
+            let count = min(Int(position), end * 8000) - first * 8000
+            guard window.dominant, window.confidence >= 0.72, first < end, count > 0 else { return false }
+            // At -33 dBFS or lower, camera chatter seldom warrants moving the music bed.
+            return powers[first..<end].reduce(0, +) / Double(count) > pow(10.0, -3.3)
+        }
+        return Self.sustainedSpeech(eligible.map(\.range))
+    }
+
+    // Require overlapping confirmations. Isolated one-second guesses can be
+    // engines or distant exclamations and would produce an audible pump.
+    static func sustainedSpeech(_ windows: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
+        var result: [ClosedRange<Double>] = []
+        var previous: ClosedRange<Double>?
+        for window in windows.sorted(by: { $0.lowerBound < $1.lowerBound }) {
+            if let previous, window.lowerBound < previous.upperBound - 0.1 {
+                result.append(previous.lowerBound...max(previous.upperBound, window.upperBound))
+            }
+            previous = window
+        }
+        return merged(result)
     }
 
     static func merged(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
@@ -132,11 +168,17 @@ actor SpeechActivityDetector {
     }
 }
 
+private struct DetectedSpeechWindow {
+    let range: ClosedRange<Double>
+    let confidence: Double
+    let dominant: Bool
+}
+
 private final class SpeechActivityObserver: NSObject, SNResultsObserving {
     private let lock = NSLock()
     private let offset: Double
     private let end: Double
-    private var ranges: [ClosedRange<Double>] = []
+    private var ranges: [DetectedSpeechWindow] = []
     private var failure: Error?
     init(offset: Double, end: Double) { self.offset = offset; self.end = end }
 
@@ -149,15 +191,15 @@ private final class SpeechActivityObserver: NSObject, SNResultsObserving {
         let finish = min(end, offset + result.timeRange.end.seconds)
         guard finish > start else { return }
         lock.lock(); defer { lock.unlock() }
-        ranges.append(start...finish)
+        ranges.append(.init(range: start...finish, confidence: speech, dominant: result.classifications.first?.identifier == "speech"))
     }
     func request(_ request: SNRequest, didFailWithError error: Error) {
         lock.lock(); defer { lock.unlock() }; failure = error
     }
     func requestDidComplete(_ request: SNRequest) {}
-    func result() throws -> [ClosedRange<Double>] {
+    func result() throws -> [DetectedSpeechWindow] {
         lock.lock(); defer { lock.unlock() }
         if let failure { throw failure }
-        return SpeechActivityDetector.merged(ranges)
+        return ranges
     }
 }

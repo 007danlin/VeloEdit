@@ -156,7 +156,7 @@ private actor FrameProducerProbe {
     }
 }
 
-private let validVisionResponse = #"{"scenes":[{"index":3,"interest":0.7,"action":0.6,"quality":0.8,"stability":0.9,"storyValue":0.7,"scene":"A cyclist","tags":["bicycle"],"reason":"Clear action"}]}"#
+let validVisionResponse = #"{"scenes":[{"index":3,"interest":0.7,"action":0.6,"quality":0.8,"stability":0.9,"storyValue":0.7,"scene":"A cyclist rides along a gravel path.","tags":["bicycle"],"reason":"The steady framing shows the entire turn."}]}"#
 
 private actor VisionProducerProbe {
     var calls = 0

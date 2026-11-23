@@ -449,7 +449,7 @@ public struct TimelineComposer: Sendable {
             music: music,
             originalAudioVolume: originalAudioVolume,
             endingFadeDuration: endingFadeDuration,
-            audioDucking: audioClips.isEmpty ? nil : AudioDuckingSettings()
+            audioDucking: .automaticCameraMix(enabled: !audioClips.isEmpty || originalAudioVolume >= 1)
         )
         var result = EditorialIntentEnforcer.enforce(
             DirectorEffectsPolicyEngine.decorate(composed, plan: plan, candidates: candidates, assets: assets, analyses: analyses), plan: plan)

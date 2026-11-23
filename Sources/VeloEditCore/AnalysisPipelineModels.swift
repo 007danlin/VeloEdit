@@ -35,7 +35,7 @@ public enum AnalysisStage: String, Codable, CaseIterable, Sendable, Hashable {
         case .adaptiveSampling: return "Адаптивная выборка"
         case .localScoring: return "Локальная оценка"
         case .vision: return "Apple Vision"
-        case .vlm: return "Qwen3-VL"
+        case .vlm: return "Визуальная модель"
         case .audio: return "Анализ звука"
         case .embeddings: return "Семантический индекс"
         case .subjectTracking: return "Главные объекты"

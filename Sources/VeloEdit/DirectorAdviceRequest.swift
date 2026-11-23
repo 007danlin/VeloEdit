@@ -8,6 +8,11 @@ import FoundationModels
 /// suspended, and its late result cannot win the continuation a second time.
 @MainActor
 final class DirectorReplyDeadline {
+    // Includes loading a cold model and waiting for the shared local runtime.
+    // The inference client independently watches stalled generations.
+    static let generationBudget: TimeInterval = 300
+    static func adviceBudget(detailed: Bool) -> TimeInterval { detailed ? 480 : generationBudget }
+
     private var continuation: CheckedContinuation<DirectorAIReply, Never>?
     private var operation: Task<Void, Never>?
     private var timer: Task<Void, Never>?

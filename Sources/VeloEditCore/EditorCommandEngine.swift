@@ -1292,7 +1292,7 @@ public struct EditorCommandExecutor: Sendable {
                 timeline.audioClips = detached
                 applied.append("звук отделён у \(positions.count) фрагм.")
             case .setAudioDucking(let enabled):
-                timeline.audioDucking = AudioDuckingSettings(enabled: enabled)
+                timeline.audioDucking = .automaticCameraMix(enabled: enabled)
                 if var plan = timeline.adaptiveSoundtrack {
                     for index in plan.segments.indices { plan.segments[index].duckingEnabled = nil }
                     timeline.adaptiveSoundtrack = plan

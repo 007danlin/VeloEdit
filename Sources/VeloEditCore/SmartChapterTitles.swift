@@ -77,6 +77,8 @@ public struct ChapterTitleDecision: Codable, Hashable, Sendable {
     public var elapsedSeconds: Double
     /// Older projects have no independent language receipt. They must be
     /// checked before an automatic title can be reused as language-approved.
+    public var visualReceipt: VisualChapterTitleReceipt? = nil
+    public var reaffirmedVisualWording: Bool? = nil
     public var languageReceipts: [ChapterTitleLanguageReceipt]? = nil
 }
 
@@ -122,7 +124,7 @@ public extension ChapterTitleModel {
 }
 
 public struct SmartChapterTitleEngine: Sendable {
-    public static let rulesVersion = 15
+    public static let rulesVersion = 18
     // The evidence/coverage rules are unchanged. Adding a separate language
     // gate does not invalidate a completed meaning check of identical words.
     private static let semanticSignatureVersion = 13
@@ -137,8 +139,12 @@ public struct SmartChapterTitleEngine: Sendable {
                          mode: AIPowerMode, model: any ChapterTitleModel, force: Bool = false,
                          sourceAssessments: [ShotContentAssessment]? = nil, events: [Event] = []) async throws -> Timeline {
         let source = FilmOpeningTitles.restoringChapters(source)
+        let visualModel = (model as? LocalChapterTitleModel).flatMap {
+            $0.identity.hasPrefix(AIAnalysisProfile.sharedTitleModelID + "@") ? $0 : nil
+        }
         guard !ExplicitDeliveryRequirements(plan: plan).forbidsTitles,
-              EditorialPresentationPolicy.requiresChapterTitles(plan) || source.effectiveTitleItems.contains(where: { $0.kind == .chapter }) else { return source }
+              plan.directorBrief?.titlePolicy != DirectorTitlePolicy.none,
+              visualModel != nil || EditorialPresentationPolicy.requiresChapterTitles(plan) || source.effectiveTitleItems.contains(where: { $0.kind == .chapter }) else { return source }
         var result = FilmPartPolicy.freezing(source, plan: plan)
         let parts = result.filmParts ?? []
         let byAsset = Dictionary(assets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -183,14 +189,99 @@ public struct SmartChapterTitleEngine: Sendable {
                     "Whole-candidate descriptions crossing a selected cut are omitted: their source context cannot safely be assigned to this part.",
                     "No extra frame decoding; unknown coverage remains unknown."])
             let activity = Self.plannedActivity(in: items, plan: plan)
+            var confirmedEvent: String?
             if let activity, let event = events.first(where: { $0.id == part.eventID }),
                event.title == activity, (event.titleConfidence ?? 0) >= 0.9 {
                 let members = Set(event.effectiveScenes.flatMap(\.candidateIDs))
                 if items.allSatisfy({ $0.eventID == event.id && $0.candidateID.map(members.contains) == true }) {
+                    confirmedEvent = activity
                     input.limitations.append("Все выбранные фрагменты принадлежат одному ранее распознанному событию «" + activity + "». Это контекст всей главы. Проверь по выбранным наблюдениям, соответствует ли им название события с учётом остановок и планов обстановки; само имя события не доказывает видимое действие.")
                 }
             }
             if approved == nil && labels.contains(where: { $0 != nil }) { input.limitations.append("Conflicting or incomplete approved source labels; no blanket reference applied.") }
+            if let local = visualModel {
+                let role = VisualChapterTitleReceipt.role
+                let date = Self.trustedDate(items: items, assets: byAsset)
+                let positions = LocalChapterTitleModel.framePositions(items)
+                let sampleTimes = positions.map { String($0.item.sourceTime(atTimelineTime: $0.seconds)) }
+                let cuts = items.map { item -> String in
+                    let asset = item.assetID.flatMap { byAsset[$0] }
+                    return [item.id.uuidString, asset?.fullContentHash ?? asset?.contentHash ?? "",
+                            String(item.sourceStart), String(item.sourceDuration), String(item.timelineDuration),
+                            item.eventID?.uuidString ?? ""].joined(separator: "|")
+                }
+                let visualObservations = sampledVisual.map(\.observation)
+                let key = try Self.signature([role, "visual-claims-v\(Self.rulesVersion)", "language-v\(ChapterTitleLanguagePolicy.version)", local.identity, String(input.maxCharacters), manual?.text ?? "",
+                    approved ?? "", confirmedEvent ?? "", date ?? ""] + cuts + sampleTimes + visualObservations)
+                if !force, var old = source.chapterTitleDecisions?.first(where: { $0.partID == part.id && $0.inputSignature == key }) {
+                    if var receipt = old.visualReceipt, receipt.frames.count == positions.count {
+                        for index in receipt.frames.indices {
+                            receipt.frames[index].timelineSeconds = positions[index].seconds
+                        }
+                        old.visualReceipt = receipt
+                    }
+                    if old.source == .fallback && old.text.hasPrefix("Часть ") { old.text = "Часть \(index + 1)" }
+                    decisions.append(old)
+                    continue
+                }
+                let started = ProcessInfo.processInfo.systemUptime
+                var decision = ChapterTitleDecision(partID: part.id, text: manual?.text ?? approved ?? confirmedEvent ?? date ?? "Часть \(index + 1)",
+                    source: manual != nil ? .user : approved != nil ? .reference : .fallback,
+                    inputSignature: key, rulesVersion: Self.rulesVersion, modelID: local.identity, theme: nil,
+                    claims: [], evidence: evidence, coverage: coverage, verifications: [], modelCalls: 0, elapsedSeconds: 0)
+                if manual == nil && approved == nil {
+                    do {
+                        var correction: String?
+                        var previouslyReviewedTitle: String?
+                        for _ in 0..<2 {
+                            let receipt = try await local.visualTitle(items: items, assets: byAsset, limit: input.maxCharacters, correction: correction)
+                            decision.visualReceipt = receipt
+                            if !receipt.responseCacheHit { decision.modelCalls += 1 }
+                            if let title = LocalChapterTitleModel.displayTitle(receipt.answer, maximum: input.maxCharacters) {
+                                correction = LocalChapterTitleModel.rejectionReason(for: title, answer: receipt.answer,
+                                    event: confirmedEvent, observations: visualObservations)
+                                if correction == nil {
+                                    let titleProfile = try await local.verifiedVisualTitleProfile()
+                                    let natural = try await FilmProcessContext.$current.withValue(titleProfile) {
+                                        try await Self.approveLanguage(title, input: input, model: local, decision: &decision)
+                                    }
+                                    if !natural {
+                                        let assessment = decision.languageReceipts?.last(where: { $0.text == title })?.assessment
+                                        if assessment?.permitsReaffirmedWording(title, after: previouslyReviewedTitle, confirmedEvent: confirmedEvent) == true {
+                                            decision.reaffirmedVisualWording = true
+                                        } else {
+                                            correction = assessment?.reason ?? "Нужно естественное русское название"
+                                            previouslyReviewedTitle = title
+                                        }
+                                    }
+                                }
+                                if correction == nil {
+                                    decision.text = title
+                                    decision.source = .model
+                                    decision.fallbackReason = nil
+                                    break
+                                }
+                            } else {
+                                correction = "Ответ не соответствует формату короткого русского титра"
+                            }
+                            decision.fallbackReason = correction
+                            if confirmedEvent != nil { break }
+                        }
+                    } catch is CancellationError { throw CancellationError() }
+                    catch {
+                        try Task.checkCancellation()
+                        if error is LocalAIInferenceFailure || error is FilmProcessProfileError || error is LocalAIModelError { throw error }
+                        decision.fallbackReason = error.localizedDescription
+                    }
+                    decision.elapsedSeconds = ProcessInfo.processInfo.systemUptime - started
+                    PerformanceTrace.current?.event("chapter.title", fields: ["role": role, "model": local.identity,
+                        "times": decision.visualReceipt?.frames.map { String($0.sourceSeconds) }.joined(separator: ",") ?? "",
+                        "answer": decision.visualReceipt?.answer ?? "", "text": decision.text,
+                        "reason": decision.fallbackReason ?? "visual", "source": decision.source.rawValue])
+                }
+                decisions.append(decision)
+                continue
+            }
             struct Signature: Encodable {
                 var version: Int; var model: String; var mode: String; var input: ChapterTitleInput
                 var sources: [String]; var observations: [ChapterTitleEvidence]; var restrictions: [String]

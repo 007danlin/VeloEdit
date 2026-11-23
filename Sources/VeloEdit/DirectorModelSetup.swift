@@ -60,7 +60,7 @@ final class DirectorModelSetup: ObservableObject {
         case failed(String)
     }
 
-    static let authorizedKey = "VeloEdit.DirectorModelSetup.Mode2B.DownloadAuthorized"
+    static let authorizedKey = "VeloEdit.DirectorModelSetup.Qwen35Mode2B.DownloadAuthorized"
     static let pausedKey = "VeloEdit.DirectorModelSetup.Paused"
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var progress: Double = 0
@@ -234,7 +234,7 @@ struct DirectorModelSetupBanner: View {
     private var detail: String {
         switch setup.phase {
         case .idle, .checking: return "Проверяем, установлена ли локальная модель."
-        case .awaitingDownload: return "Для чата нужно один раз скачать около 1,9 ГБ. Загрузка начнётся по вашей команде; ручной монтаж доступен сразу. Эта же 2B используется во всём режиме «Быстрый». Другие режимы загружаются при выборе."
+        case .awaitingDownload: return "Для чата и названий глав нужна \(LocalDirectorAgent.ollamaModel) (около 1,9 ГБ). Загрузка начнётся по вашей команде; ручной монтаж доступен сразу. Эта же 2B используется во всём режиме «Быстрый». Другие режимы загружаются при выборе."
         case .verifying: return "Проверяем готовность ИИ. Это может занять несколько секунд."
         case .downloading: return "Один раз загрузим около 1,9 ГБ. Затем ИИ работает на этом Mac без интернета. Можно продолжать монтаж."
         case .installed: return "Локальная модель установлена. Можно общаться с режиссёром."

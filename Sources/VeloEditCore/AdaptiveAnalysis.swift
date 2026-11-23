@@ -1088,7 +1088,7 @@ public struct AdaptiveLocalAnalyzer: Sendable {
                 try await resourcePacer.checkpoint()
                 let scenePosition = min(selectedIndices.count, batchNumber * profile.scenesPerVLMRequest + 1)
                 let fraction = 0.44 + 0.48 * Double(batchNumber) / Double(max(1, batches.count))
-                let label = "Qwen3-VL: пакет сцен \(batchNumber + 1) из \(batches.count)"
+                let label = "\(profile.modelID): пакет сцен \(batchNumber + 1) из \(batches.count)"
                 progress?(label, fraction)
                 detailedProgress?(AnalysisStageUpdate(
                     stage: .vlm,
@@ -1179,11 +1179,11 @@ public struct AdaptiveLocalAnalyzer: Sendable {
             }
             await metrics?.finish(.vlm, workUnits: deepIndices.count)
             if deepFailures > 0 {
-                baseline.warnings.append("Qwen3-VL не смогла оценить \(deepFailures) сцен; для них сохранена совместная локальная оценка.")
+                baseline.warnings.append("\(profile.modelID) не смогла оценить \(deepFailures) сцен; для них сохранена совместная локальная оценка.")
             }
             baseline.aiRuntimeLabel = deepIndices.isEmpty
                 ? "Apple Vision + video/telemetry · локальный fallback"
-                : "Qwen3-VL batch + video/telemetry · Ollama · локально"
+                : "\(profile.modelID) batch + video/telemetry · Ollama · локально"
         } else {
             let reason = "Модель \(profile.ollamaModelID) не установлена; нейроанализ не завершён. Сохранён локальный анализ кадров."
             baseline.warnings.append(reason)

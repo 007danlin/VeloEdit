@@ -449,7 +449,11 @@ public struct NaturalLanguageDirector: Sendable {
         if deterministicCommands.contains(where: { $0.semanticCategory == "transition" }) {
             interpretedStoryConstraints.transitionFrequency = baseStoryConstraints.transitionFrequency
         }
-        let requiresStoryConstraintRebuild = interpretedStoryConstraints != baseStoryConstraints
+        // A complete command on one selected shot cannot change the brief.
+        // Reinterpreting a saved film prompt here can rebuild every other cut.
+        let exactSelectedTrim = input.selectedItemID != nil && deterministicCommands == [.tightenCut(.selected)]
+            && EditorCommandParser().parseComplete(input.userRequest, hasSelection: true) == deterministicCommands
+        let requiresStoryConstraintRebuild = !exactSelectedTrim && interpretedStoryConstraints != baseStoryConstraints
 
         if !scopedPacing && isVaguePacing(text) {
             // “Сделай быстрее” means denser editing, not 2× playback of every

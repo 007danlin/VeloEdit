@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import subprocess
@@ -67,8 +68,10 @@ def main():
                         '--full-release-notes-url', f'https://github.com/007danlin/VeloEdit/releases/tag/{quote(args.tag, safe="")}',
                         str(directory)], check=True)
         signature, version = validate_appcast(feed, dmg, args.tag)
-        # Sparkle also checks that the signing key matches SUPublicEDKey inside the DMG.
-        subprocess.run([str(tools / 'sign_update'), '--account', ACCOUNT, '--verify', str(dmg), signature], check=True)
+        # Verify with the public key trusted by installed clients. Only signing needs Keychain access.
+        public_key = plistlib.loads((ROOT / 'Resources/Info.plist').read_bytes())['SUPublicEDKey']
+        subprocess.run(['swift', str(ROOT / 'Scripts/Tools/verify-update-signature.swift'),
+                        str(dmg), public_key, signature], check=True)
         checksum = hashlib.file_digest(dmg.open('rb'), 'sha256').hexdigest()
         (directory / 'SHA256SUMS').write_text(f'{checksum}  {dmg.name}\n')
         (directory / 'update.json').write_text(json.dumps({'tag': args.tag, 'build': version,

@@ -199,15 +199,22 @@ public enum AutomaticFilmDelivery {
                 decisions.contains { decision in
                     guard decision.partID == title.filmPartID && decision.text == title.text else { return false }
                     if decision.source == .user || decision.source == .reference { return true }
+                    if let receipt = decision.visualReceipt {
+                        guard let part = timeline.filmParts?.first(where: { $0.id == decision.partID }),
+                              receipt.matches(part: part, timeline: timeline) else { return false }
+                        return decision.source == .model && receipt.requestRole == VisualChapterTitleReceipt.role
+                            && receipt.modelIdentity == decision.modelID && !receipt.frames.isEmpty
+                            && LocalChapterTitleModel.displayTitle(receipt.answer, maximum: 64) == title.text
+                    }
                     return (decision.source == .model || decision.source == .retained)
                         && !SmartTitleEngine.isPlaceholderTitle(title.text)
                         && decision.verifications.contains(where: \.accepted)
                         && decision.languageReceipts?.contains(where: { $0.approves(title.text, modelID: decision.modelID) }) == true
                 }
             }
-            check("chapterTitleMeaningAndLanguage", "Separate final-chapter grounding and independent Russian language review", passed,
-                  passed ? "Смысл и естественность автоматических титров проверены отдельно"
-                    : "Не все автоматические титры прошли отдельные проверки смысла и русского языка")
+            check("chapterTitleMeaningAndLanguage", "Final chapter title decision and source evidence", passed,
+                  passed ? "Названия глав подтверждены сохранёнными решениями"
+                    : "Для части титров отсутствует подтверждённое решение")
         }
         let commands = EditorCommandParser().parse(plan.prompt, preset: plan.preset)
         let titleReset = commands.lastIndex { if case .removeTitles = $0 { return true }; return false }

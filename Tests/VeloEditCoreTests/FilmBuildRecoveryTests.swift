@@ -125,8 +125,8 @@ private func preparationFixture(cached: Bool, kind: MediaKind = .photo) async th
     #expect(await store.manifest.timelines.isEmpty)
 }
 
-private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .verifying) async throws -> FilmBuildDraft {
-    let request = FilmBuildRequest(kind: .create, prompt: "Собери фильм", preset: .memories)
+private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .verifying, prompt: String = "Собери фильм") async throws -> FilmBuildDraft {
+    let request = FilmBuildRequest(kind: .create, prompt: prompt, preset: .memories)
     _ = try await store.beginEditorialGeneration(prompt: request.prompt, brief: nil)
     _ = try await store.beginFilmBuildRecovery(request)
     let plan = StoryPlan(prompt: request.prompt, preset: .memories, constraints: StoryConstraints(targetDuration: 12), chapters: [])
@@ -144,7 +144,7 @@ private func savedBuild(_ store: ProjectStore, phase: FilmBuildDraft.Phase = .ve
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let original = try ProjectStore(createAt: root, name: "Interrupted build")
-    let saved = try await savedBuild(original)
+    let saved = try await savedBuild(original, prompt: "Собери фильм без титров")
     // A new actor, decoded from disk, models termination of the original run.
     let reopened = try ProjectStore(open: root)
     #expect(await reopened.recoverableFilmBuild()?.draft?.phase == .verifying)
@@ -414,7 +414,7 @@ func filmBuildRecoveryReadyPhasePreservesTheSelectedSoundtrackAndTitles(phase: F
     }
     let reopened = try ProjectStore(open: root)
     #expect(await reopened.manifest.autonomousJob?.state == .waitingForExternalResource)
-    #expect(await reopened.manifest.autonomousJob?.inferenceRetryModel == "qwen3-vl:2b-instruct")
+    #expect(await reopened.manifest.autonomousJob?.inferenceRetryModel == "qwen3.5:2b-q4_K_M")
     #expect(await reopened.manifest.timelines.isEmpty)
     #expect(await reopened.recoverableFilmBuild()?.request.targetDuration == 8)
 }
