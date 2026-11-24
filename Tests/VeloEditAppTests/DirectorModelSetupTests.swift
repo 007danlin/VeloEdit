@@ -48,6 +48,14 @@ struct DirectorModelSetupTests {
         UserDefaults(suiteName: "VeloEdit.DirectorModelSetupTests.\(UUID().uuidString)")!
     }
 
+    @Test func upgradeReplacesOnlyPreviouslyInstalledModesAndSharesTheTitleModel() {
+        #expect(DirectorModelSetup.replacements(for: ["unrelated:7b"]).isEmpty)
+        #expect(DirectorModelSetup.replacements(for: ["qwen3-vl:8b-instruct", "qwen3-vl:30b-a3b-instruct"]) == [.fast, .quality])
+        #expect(DirectorModelSetup.replacements(for: DirectorModelSetup.legacyModes.map(\.0)) == [.fast, .balanced, .quality])
+        #expect(DirectorModelSetup.requiredModes(for: .quality) == [.quality, .fast])
+        #expect(DirectorModelSetup.requiredModes(for: .fast) == [.fast])
+    }
+
     @Test func firstLaunchWaitsForConsentAndRepeatedAppearDoesNotDuplicate() async throws {
         let backend = SetupBackend()
         let setup = DirectorModelSetup(defaults: defaults(), client: backend.client)

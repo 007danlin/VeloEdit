@@ -2,6 +2,7 @@
 """Prepare a signed GitHub DMG and Sparkle appcast; never publish automatically."""
 import argparse
 import hashlib
+from html import escape
 import json
 import os
 from pathlib import Path
@@ -39,6 +40,14 @@ def validate_appcast(path, dmg, tag):
     return signature, version
 
 
+def release_notes_html(source):
+    lines = [line.strip() for line in source.read_text().splitlines() if line.strip()]
+    if not lines or not lines[0].startswith('# ') or not any(line.startswith('- ') for line in lines[1:]):
+        raise ValueError(f'Expected a release heading and a list of changes in {source.name}')
+    body = ''.join(f'<li>{escape(line[2:])}</li>' for line in lines[1:] if line.startswith('- '))
+    return f'<h2>{escape(lines[0][2:])}</h2><ul>{body}</ul>'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dmg', required=True, type=Path)
@@ -61,13 +70,20 @@ def main():
         dmg = directory / f'VeloEdit_{args.tag.removeprefix("v")}_universal.dmg'
         shutil.copy2(args.dmg, dmg)
         feed = directory / 'appcast.xml'
+        notes = ROOT / 'Docs/Releases' / (args.tag.removeprefix('v') + '.md')
+        inline_notes = dmg.with_suffix('.html')
+        inline_notes.write_text(release_notes_html(notes))
         subprocess.run([str(tools / 'generate_appcast'), '--account', ACCOUNT,
-                        '--maximum-deltas', '0', '--maximum-versions', '1',
+                        '--embed-release-notes', '--maximum-deltas', '0', '--maximum-versions', '1',
                         '--download-url-prefix', f'https://github.com/007danlin/VeloEdit/releases/download/{quote(args.tag, safe="")}/',
                         '--link', 'https://veloedit.ru/',
                         '--full-release-notes-url', f'https://github.com/007danlin/VeloEdit/releases/tag/{quote(args.tag, safe="")}',
                         str(directory)], check=True)
         signature, version = validate_appcast(feed, dmg, args.tag)
+        description = ET.parse(feed).findtext('./channel/item/description') or ''
+        if inline_notes.read_text() not in description:
+            raise ValueError('Sparkle did not embed the release notes in the update window')
+        inline_notes.unlink()
         # Verify with the public key trusted by installed clients. Only signing needs Keychain access.
         public_key = plistlib.loads((ROOT / 'Resources/Info.plist').read_bytes())['SUPublicEDKey']
         subprocess.run(['swift', str(ROOT / 'Scripts/Tools/verify-update-signature.swift'),

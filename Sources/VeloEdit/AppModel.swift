@@ -1134,6 +1134,10 @@ final class AppModel: ObservableObject {
             projectURL = draft.packageURL
             rememberProject(draft.packageURL)
             defaults.set(draft.directoryURL, forKey: "newProjectDirectory.v1")
+            if let stored = defaults.string(forKey: DirectorModelSetup.selectionKey),
+               let startingMode = AIPowerMode(rawValue: stored), AIPowerMode.allCases.contains(startingMode) {
+                try await pipeline?.updateAISettings(mode: startingMode, advanced: AdvancedAISettings())
+            }
             await refresh()
             isPresentingNewProject = false
             sectionBeforeProjectCreation = nil

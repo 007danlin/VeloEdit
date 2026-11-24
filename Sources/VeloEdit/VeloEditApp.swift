@@ -21,7 +21,7 @@ struct VeloEditApp: App {
                     ContentView()
                 }
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        if model.project == nil {
+                        if model.project == nil || directorModelSetup.isMigration || directorModelSetup.offersCleanup || directorModelSetup.phase == .downloading {
                             DirectorModelSetupBanner(setup: directorModelSetup).environmentObject(model)
                                 .task {
                                     directorModelSetup.startIfNeeded()
@@ -45,13 +45,13 @@ struct VeloEditApp: App {
                     appDelegate.updater = updater
                     appDelegate.model = model
                     appDelegate.directorModelSetup = directorModelSetup
-                    if model.project == nil { directorModelSetup.startIfNeeded() }
+                    if model.project == nil || directorModelSetup.isMigration { directorModelSetup.startIfNeeded() }
                     updater.start(model: model)
                 }
                 .onChange(of: model.project?.id) { _, projectID in
                     // Project work owns its chosen mode and exact download.
                     // Initial Fast setup must not compete with another mode.
-                    if projectID != nil { directorModelSetup.stop() }
+                    if projectID != nil, !directorModelSetup.isMigration, directorModelSetup.phase != .downloading, directorModelSetup.phase != .verifying { directorModelSetup.stop() }
                 }
                 .onChange(of: directorModelSetup.isInstalled) { _, installed in
                     if installed { Task { await model.refreshDirectorRuntimeStatus() } }

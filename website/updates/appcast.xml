@@ -3,14 +3,15 @@
     <channel>
         <title>VeloEdit</title>
         <item>
-            <title>0.1.26</title>
-            <pubDate>Mon, 23 Nov 2026 21:14:45 +0300</pubDate>
+            <title>0.2.00</title>
+            <pubDate>Mon, 23 Nov 2026 23:05:41 +0300</pubDate>
             <link>https://veloedit.ru/</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/007danlin/VeloEdit/releases/tag/v0.1.26</sparkle:fullReleaseNotesLink>
-            <sparkle:version>2026.327.181255</sparkle:version>
-            <sparkle:shortVersionString>0.1.26</sparkle:shortVersionString>
+            <sparkle:fullReleaseNotesLink>https://github.com/007danlin/VeloEdit/releases/tag/v0.2.00</sparkle:fullReleaseNotesLink>
+            <sparkle:version>2026.327.200404</sparkle:version>
+            <sparkle:shortVersionString>0.2.00</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/007danlin/VeloEdit/releases/download/v0.1.26/VeloEdit_0.1.26_universal.dmg" length="1513424177" type="application/octet-stream" sparkle:edSignature="Ec4DHWlsCFV+iQA2r6u/qKgYB7HvbecfBFgdIKj4QL1jkF65d9U1rSL1D254fiGqfBcEENF5E/VpWwVNY4szDA=="/>
+            <description><![CDATA[<h2>Что нового в VeloEdit 0.2.00</h2><ul><li>Qwen3.5 работает на вашем Mac. «Быстро» использует 2B, «Баланс» — 4B, «Качество» — 9B. Выбранной моделью пользуются монтаж, ИИ-режиссёр и волшебная кисть.</li><li>При первом запуске можно выбрать режим и скачать его модель. Общая 2B придумывает названия глав по кадрам уже смонтированного фильма.</li><li>После обновления VeloEdit загружает замены для прежних моделей, установленных у вас, и показывает ход загрузки. Её можно отложить. Уже установленные веса используются повторно. Старые модели можно удалить отдельно, когда они больше не нужны.</li><li>Музыка сохраняет громкость при далёких фоновых голосах. При разборчивой речи на переднем плане она плавно приглушается.</li><li>Сохранённые фильмы открываются с прежними склейками, музыкой и ручными титрами. В чате режиссёр сообщает фактическую длительность фильма и выбранный трек.</li></ul>]]></description>
+            <enclosure url="https://github.com/007danlin/VeloEdit/releases/download/v0.2.00/VeloEdit_0.2.00_universal.dmg" length="1513602014" type="application/octet-stream" sparkle:edSignature="Bfp30krdjBbVn/MVeYetihDJ8AnMe7KQOoPEYB+jywx+9oUERgaVAQlYNGQS0P8jNuzCvDXqu9FOlDUP1MqBAg=="/>
         </item>
     </channel>
 </rss>
